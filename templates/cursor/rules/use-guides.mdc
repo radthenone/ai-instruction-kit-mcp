@@ -1,0 +1,24 @@
+---
+description: Bootstrap — pobieraj instrukcje z MCP project-guides przed pracą
+alwaysApply: true
+---
+
+# Instruction-kit bootstrap
+
+| Zadanie | MCP `get_bundle` |
+|---------|-------------------|
+| Backend Django/DRF | `backend` |
+| Frontend Expo (web + **mobile**) | `frontend` |
+| Platformy BE / web / mobile | `architecture` |
+| Sklep (products, orders) | `shop` |
+| Płatności + Stripe mobile | `payments` |
+| Infra (DB, cache, queue, storage) | `infra` |
+| CI/CD + EAS | `devops` |
+| Pełny kontekst | `full` |
+| Porty, taski projektu | `get_overlay` |
+
+Stripe mobile: [`@stripe/stripe-react-native`](https://docs.expo.dev/versions/latest/sdk/stripe/) — bundle `payments`.
+
+Docs bibliotek — **Context7**.
+
+Profil: `.ai/project.profile.yaml`

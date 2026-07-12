@@ -1,0 +1,289 @@
+# Rejestr modułów instruction-kit
+# Konwencja ID: <warstwa>:<kategoria>:<wariant>  np. infra:database:postgres
+
+version: "3"
+
+modules:
+  # ─── Core ───────────────────────────────────────────
+  core:repo-first:
+    path: modules/core/repo-first.md
+    title: Repo-first
+    tags: [core]
+
+  core:language-pl:
+    path: modules/core/language-pl.md
+    title: Język PL + konwencje kodu
+    tags: [core]
+
+  core:external-knowledge:
+    path: modules/core/external-knowledge.md
+    title: Wiedza zewnętrzna
+    tags: [core]
+
+  core:workflow:
+    path: modules/core/workflow.md
+    title: Workflow AI
+    tags: [core]
+
+  # ─── Architecture ───────────────────────────────────
+  arch:monorepo-layout:
+    path: modules/architecture/monorepo-layout.md
+    title: Monorepo — układ FE/BE
+    tags: [architecture]
+
+  arch:api-contract:
+    path: modules/architecture/api-contract.md
+    title: Kontrakt API (OpenAPI, Orval)
+    tags: [architecture]
+
+  arch:fe-be-separation:
+    path: modules/architecture/fe-be-separation.md
+    title: Rozdział frontend ↔ backend
+    tags: [architecture]
+
+  arch:ci-cd:
+    path: modules/architecture/ci-cd.md
+    title: CI/CD
+    tags: [architecture, devops]
+
+  arch:ui-ux-expo:
+    path: modules/architecture/ui-ux-expo.md
+    title: UI/UX — Expo
+    tags: [architecture, design]
+
+  arch:platforms:
+    path: modules/architecture/platforms.md
+    title: Platformy — backend, web, mobile
+    tags: [architecture]
+
+  core:typing-typescript:
+    path: modules/core/typing-typescript.md
+    title: TypeScript — typowanie
+    tags: [core, frontend, typing]
+
+  core:typing-python:
+    path: modules/core/typing-python.md
+    title: Python — typowanie
+    tags: [core, backend, typing]
+
+  # ─── Stacks: Django + DRF ───────────────────────────
+  stack:django-drf:
+    path: modules/stacks/django-drf/overview.md
+    title: Django + DRF — przegląd
+    tags: [backend, django]
+
+  stack:django-drf:structure:
+    path: modules/stacks/django-drf/project-structure.md
+    title: Struktura katalogów backendu
+    tags: [backend, django]
+
+  stack:django-drf:backend-standard:
+    path: modules/stacks/django-drf/backend-code-standard.md
+    title: Standard kodu DRF-first
+    tags: [backend, django, standard]
+
+  stack:django-drf:backend-instructions:
+    path: modules/stacks/django-drf/backend-instructions.md
+    title: Instrukcje agenta — backend
+    tags: [backend, django]
+
+  # ─── Stacks: Expo Router ────────────────────────────
+  stack:expo-router:
+    path: modules/stacks/expo-router/overview.md
+    title: Expo Router — przegląd
+    tags: [frontend, expo]
+
+  stack:expo-router:structure:
+    path: modules/stacks/expo-router/project-structure.md
+    title: Struktura katalogów frontendu
+    tags: [frontend, expo]
+
+  stack:expo-router:frontend-instructions:
+    path: modules/stacks/expo-router/frontend-instructions.md
+    title: Instrukcje agenta — frontend
+    tags: [frontend, expo]
+
+  stack:expo-router:mobile-native:
+    path: modules/stacks/expo-router/mobile-native.md
+    title: Expo — mobile (iOS/Android)
+    tags: [frontend, expo, mobile]
+
+  stack:expo-router:web-target:
+    path: modules/stacks/expo-router/web-target.md
+    title: Expo — web target
+    tags: [frontend, expo, web]
+
+  # ─── Capabilities ───────────────────────────────────
+  capability:auth:
+    path: modules/capabilities/auth.md
+    title: Auth (allauth, sesja)
+    tags: [capability, auth]
+
+  capability:files-storage:
+    path: modules/capabilities/files-storage.md
+    title: Files / Storage
+    tags: [capability, storage]
+
+  capability:payments:
+    path: modules/capabilities/payments.md
+    title: Payments — backend i kontrakt API
+    tags: [capability, payments]
+
+  capability:payments:expo-stripe:
+    path: modules/capabilities/payments-expo-stripe.md
+    title: Stripe — Expo mobile (PaymentSheet)
+    tags: [capability, payments, mobile, expo]
+
+  # ─── Domains ────────────────────────────────────────
+  domain:shop:
+    path: modules/domains/shop.md
+    title: Shop — katalog, koszyk, zamówienia
+    tags: [domain, ecommerce]
+
+  # ─── Patterns ───────────────────────────────────────
+  pattern:capability-overview:
+    path: modules/patterns/capability-overview.md
+    title: Capability + Provider — przegląd
+    tags: [architecture]
+
+  pattern:capability-provider:
+    path: modules/patterns/capability-provider.md
+    title: Capability + Provider — pełna spec
+    tags: [architecture]
+
+  pattern:providers-and-settings:
+    path: modules/patterns/providers-and-settings.md
+    title: Providery i settings
+    tags: [architecture, backend]
+
+  pattern:gateway-nginx:
+    path: modules/patterns/gateway-nginx.md
+    title: Gateway Nginx
+    tags: [infra, gateway]
+
+  pattern:microservices-auth:
+    path: modules/patterns/microservices-auth.md
+    title: Auth między mikroserwisami
+    tags: [infra, auth]
+
+  # ─── Infra: database ──────────────────────────────────
+  infra:database:postgres:
+    path: modules/infra/database/postgres.md
+    title: PostgreSQL
+    tags: [infra, database]
+
+  # ─── Infra: cache ───────────────────────────────────
+  infra:cache:redis:
+    path: modules/infra/cache/redis.md
+    title: Redis (cache)
+    tags: [infra, cache]
+
+  # ─── Infra: queue ─────────────────────────────────────
+  infra:queue:redis:
+    path: modules/infra/queue/redis.md
+    title: Redis (broker Celery)
+    tags: [infra, queue]
+
+  infra:queue:rabbitmq:
+    path: modules/infra/queue/rabbitmq.md
+    title: RabbitMQ (broker Celery)
+    tags: [infra, queue]
+
+  # ─── Infra: storage ───────────────────────────────────
+  infra:storage:s3:
+    path: modules/infra/storage/s3.md
+    title: S3-compatible storage (MinIO, AWS)
+    tags: [infra, storage]
+
+  # ─── Infra: tasks ─────────────────────────────────────
+  infra:tasks:celery:
+    path: modules/infra/tasks/celery.md
+    title: Celery (async tasks)
+    tags: [infra, tasks]
+
+default_bundles:
+  backend:
+    - core:repo-first
+    - core:language-pl
+    - core:external-knowledge
+    - core:typing-python
+    - stack:django-drf
+    - stack:django-drf:structure
+    - stack:django-drf:backend-standard
+    - stack:django-drf:backend-instructions
+    - pattern:capability-overview
+    - pattern:capability-provider
+    - pattern:providers-and-settings
+
+  frontend:
+    - core:repo-first
+    - core:language-pl
+    - core:external-knowledge
+    - core:typing-typescript
+    - arch:platforms
+    - stack:expo-router
+    - stack:expo-router:structure
+    - stack:expo-router:frontend-instructions
+    - stack:expo-router:mobile-native
+    - stack:expo-router:web-target
+    - arch:ui-ux-expo
+    - pattern:capability-overview
+
+  architecture:
+    - core:repo-first
+    - core:workflow
+    - arch:platforms
+    - arch:monorepo-layout
+    - arch:api-contract
+    - arch:fe-be-separation
+    - pattern:capability-overview
+    - pattern:capability-provider
+    - pattern:providers-and-settings
+    - arch:ci-cd
+
+  shop:
+    - domain:shop
+    - capability:files-storage
+
+  payments:
+    - capability:payments
+    - capability:payments:expo-stripe
+    - stack:expo-router:web-target
+    - pattern:providers-and-settings
+
+  infra:
+    []
+
+  devops:
+    - arch:ci-cd
+
+  full:
+    - core:repo-first
+    - core:language-pl
+    - core:external-knowledge
+    - core:workflow
+    - core:typing-typescript
+    - core:typing-python
+    - arch:platforms
+    - arch:monorepo-layout
+    - arch:api-contract
+    - arch:fe-be-separation
+    - arch:ui-ux-expo
+    - arch:ci-cd
+    - stack:django-drf
+    - stack:django-drf:structure
+    - stack:django-drf:backend-standard
+    - stack:django-drf:backend-instructions
+    - stack:expo-router
+    - stack:expo-router:structure
+    - stack:expo-router:frontend-instructions
+    - stack:expo-router:mobile-native
+    - stack:expo-router:web-target
+    - capability:auth
+    - capability:files-storage
+    - capability:payments
+    - capability:payments:expo-stripe
+    - domain:shop
+    - pattern:capability-overview
+    - pattern:capability-provider
+    - pattern:providers-and-settings

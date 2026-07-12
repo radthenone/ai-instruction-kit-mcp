@@ -1,0 +1,8 @@
+# Profil projektu
+name: my-project
+language: pl
+
+extends: profiles/_base.yaml
+
+overlays:
+  - .ai/project.md

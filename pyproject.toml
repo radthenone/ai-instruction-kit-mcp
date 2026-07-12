@@ -1,0 +1,34 @@
+[project]
+name = "guides-mcp"
+version = "0.1.0"
+description = "MCP server dostarczający modułowe instrukcje architektury do projektów"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+guides-mcp = "guides.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/guides"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"manifest.yaml" = "guides/_data/manifest.yaml"
+"modules" = "guides/_data/modules"
+"profiles" = "guides/_data/profiles"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "manifest.yaml",
+    "modules/**",
+    "profiles/**",
+    "src/**",
+    "README.md",
+]

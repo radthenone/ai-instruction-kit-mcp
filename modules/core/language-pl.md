@@ -1,0 +1,21 @@
+# Język i konwencje kodu
+
+## Komunikacja
+
+- ZAWSZE odpowiadaj po polsku, chyba że użytkownik wyraźnie poprosi o inny język.
+- Odpowiadaj konkretnie, technicznie i projektowo — bez lania wody.
+- Jeśli czegoś nie da się potwierdzić, napisz to wprost.
+
+## Kod
+
+- Nazwy techniczne w kodzie po angielsku: zmienne, funkcje, klasy, typy, pliki, endpointy, migracje, testy.
+- Docstringi publicznych funkcji, klas i endpointów — po polsku (Google style, PEP 257).
+- Komentarze logiczne — po polsku, tylko gdy wyjaśniają nietrywialną logikę biznesową.
+- Type hints — wymagane w nowym kodzie Python i TypeScript.
+
+## Zasady zmian
+
+- Preferuj lokalną, najmniejszą sensowną zmianę zamiast dużego refaktoru.
+- Pilnuj separation of concerns i silnego typowania.
+- Nie dodawaj abstrakcji bez realnej potrzeby.
+- Zwracaj uwagę na testowalność, naming, performance, bezpieczeństwo i ryzyko regresji.

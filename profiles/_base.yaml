@@ -1,0 +1,18 @@
+# Wspólny preset — stacks, patterns, typing
+# Projekty: extends profiles/_base.yaml + własne capabilities/domains/decisions
+
+language: pl
+core: true
+
+stacks:
+  django-drf: "1"
+  expo-router: "1"
+
+patterns:
+  - capability-overview
+  - providers-and-settings
+
+bundles:
+  architecture:
+    - pattern:capability-provider
+    - arch:ci-cd
