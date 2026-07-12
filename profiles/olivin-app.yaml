@@ -1,11 +1,6 @@
-# olivin-app — profil projektu w instruction-kit
+# Preset e-commerce (monorepo Django + Expo)
 #
-# Monorepo e-commerce: Django + DRF + Expo Router
 # Capabilities: auth, files, payments | Domain: shop
-#
-# W repo olivin-app trzymaj tylko:
-#   .ai/project.profile.yaml  → extends ten plik + overlays
-#   .ai/project.md            → overlay (taski, Docker, porty)
 
 name: olivin-app
 language: pl

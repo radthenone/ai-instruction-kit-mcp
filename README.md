@@ -42,7 +42,7 @@ modules/
   infra/             database, cache, queue, storage, tasks
 profiles/
   _base.yaml         wspólny preset (extends w profilach projektów)
-  olivin-app.yaml    e-commerce preset
+  *.yaml             presety projektów (np. e-commerce)
 ```
 
 ## Sloty infrastruktury (`decisions`)
@@ -71,21 +71,24 @@ Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
 | `devops` | CI/CD + infra |
 | `full` | wszystko + infra |
 
-## olivin-app
+## Bootstrap w projekcie docelowym
 
-W repo olivin-app zostaw tylko:
+W **repo aplikacji** (nie w instruction-kit) skopiuj z `templates/`:
 
-- `.ai/project.profile.yaml` — `extends: profiles/olivin-app.yaml`
-- `.ai/project.md` — overlay (Taskfile, Docker, porty)
-- `.cursor/mcp.json` — uvx
-- `.cursor/rules/use-guides.mdc`
-- `.cursor/rules/code-review.mdc` — przypomnienie o review przed pushem
-- `.cursor/BUGBOT.md` — reguły Bugbota (skopiuj z `templates/cursor/BUGBOT.md`, dostosuj)
-- `.cursor/hooks.json` + `.cursor/hooks/gate-push.sh` — przypomnienie przy `git push`
-- cienki `AGENTS.md`
-- opcjonalnie: `.git/hooks/pre-push` z `templates/git-hooks/pre-push`
+| Plik | Rola |
+|------|------|
+| `.ai/project.profile.yaml` | `extends: profiles/<preset>.yaml` z tego kita |
+| `.ai/project.md` | Overlay — Taskfile, Docker, porty |
+| `.cursor/mcp.json` | uvx → instruction-kit |
+| `.cursor/rules/use-guides.mdc` | Bootstrap MCP |
+| `.cursor/rules/code-review.mdc` | Przypomnienie o review przed pushem |
+| `.cursor/BUGBOT.md` | Reguły Bugbota (z `templates/cursor/BUGBOT.md`, dostosuj) |
+| `.cursor/hooks.json` + `.cursor/hooks/gate-push.sh` | Przypomnienie przy `git push` |
+| `AGENTS.md` | Cienki — odsyła do MCP i overlay |
 
-Usuń: `docs/ai/*.md`, stare `.cursor/rules/cursor-*.mdc`, długie `.github/instructions/`.
+Opcjonalnie: `.git/hooks/pre-push` z `templates/git-hooks/pre-push`.
+
+W projekcie docelowym **nie** duplikuj modułów z `modules/` — wystarczy profil + overlay + `.cursor/`.
 
 ## Code review (Bugbot + GitHub)
 

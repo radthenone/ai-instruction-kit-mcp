@@ -3,12 +3,12 @@
 | Plik | Rola |
 |------|------|
 | `_base.yaml` | Wspólny preset — stacks, patterns, domyślne bundle overrides |
-| `olivin-app.yaml` | olivin-app — monorepo e-commerce (extends `_base`) |
+| `*.yaml` | Presety projektów (np. e-commerce) — `extends: profiles/_base.yaml` |
 
 ## Nowy projekt
 
-1. Skopiuj `templates/project.profile.yaml` do `.ai/project.profile.yaml` w repo
-2. Opcjonalnie: skopiuj `olivin-app.yaml` → `profiles/moj-projekt.yaml`, dopasuj `capabilities`, `domains`, `decisions`
+1. Skopiuj `templates/project.profile.yaml` do `.ai/project.profile.yaml` w repo aplikacji
+2. Opcjonalnie: dodaj własny preset w `profiles/moj-projekt.yaml` w instruction-kit lub w overlay projektu
 3. W profilu projektu:
 
 ```yaml
