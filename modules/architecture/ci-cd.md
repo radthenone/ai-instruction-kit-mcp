@@ -142,10 +142,24 @@ Sekrety: `EXPO_TOKEN`, `STRIPE_PUBLISHABLE_KEY` w EAS Secrets — nie w repo.
 ## Branch protection (rekomendacja)
 
 - Wymagaj: backend-test + frontend-types + api-contract (jeśli dotyczy).
-- Opcjonalnie: code review przed merge.
+- Opcjonalnie: check `Cursor Bugbot` (AI review na PR).
+- Opcjonalnie: code review człowieka przed merge.
+
+## AI code review (Bugbot)
+
+Pełny workflow: moduł `core:code-review` (bundle `devops` lub `architecture`).
+
+Skrót:
+
+1. Lokalnie przed pushem: `/review-bugbot` w Cursor (hook `.cursor/hooks/gate-push.sh` przypomina).
+2. Po pushu: Bugbot na PR (automatycznie lub `cursor review` w komentarzu).
+3. Reguły zespołowe: `.cursor/BUGBOT.md` + dashboard Bugbota.
+
+Szablony plików: `templates/cursor/` w instruction-kit.
 
 ## Powiązane
 
+- `core:code-review` — lokalny review, GitHub, raporty, dry-run API
 - `arch:platforms` — trzy cele buildu
 - `arch:api-contract` — Orval
 - Overlay projektu — konkretne nazwy tasków w `.ai/project.md`

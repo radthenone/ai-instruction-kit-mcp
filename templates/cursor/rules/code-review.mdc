@@ -1,0 +1,16 @@
+---
+description: Przypomnienie o code review przed pushem i na PR
+alwaysApply: true
+---
+
+# Code review
+
+Przed `git push` na branch z featurem:
+
+1. Uruchom `/review-bugbot` (domyślnie) lub `/review-security` (auth, ACL, płatności).
+2. Napraw uzasadnione findings high/medium.
+3. Po pushu — Bugbot na GitHub (automatycznie lub komentarz `cursor review` na PR).
+
+Hook `.cursor/hooks/gate-push.sh` pyta o potwierdzenie przed `git push`. Bypass: `SKIP_PUSH_REVIEW=1`.
+
+Reguły Bugbota: `.cursor/BUGBOT.md`. Pełny workflow: MCP `get_bundle` → `devops` (moduł `core:code-review`).

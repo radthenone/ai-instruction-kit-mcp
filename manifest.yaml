@@ -25,6 +25,11 @@ modules:
     title: Workflow AI
     tags: [core]
 
+  core:code-review:
+    path: modules/core/code-review.md
+    title: Code review — lokalnie, GitHub, raporty
+    tags: [core, devops]
+
   # ─── Architecture ───────────────────────────────────
   arch:monorepo-layout:
     path: modules/architecture/monorepo-layout.md
@@ -232,6 +237,7 @@ default_bundles:
   architecture:
     - core:repo-first
     - core:workflow
+    - core:code-review
     - arch:platforms
     - arch:monorepo-layout
     - arch:api-contract
@@ -256,12 +262,14 @@ default_bundles:
 
   devops:
     - arch:ci-cd
+    - core:code-review
 
   full:
     - core:repo-first
     - core:language-pl
     - core:external-knowledge
     - core:workflow
+    - core:code-review
     - core:typing-typescript
     - core:typing-python
     - arch:platforms

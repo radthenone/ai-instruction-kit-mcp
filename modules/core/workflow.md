@@ -153,6 +153,16 @@ Najważniejsze taski kontrolne:
 
 Dobierz kontrolę do zakresu zmiany. Dla drobnej poprawki lokalnej wystarczy celowany test lub typecheck; dla zmian kontraktu API uwzględnij `task ovral:generate` i `task lints:frontend:typecheck`.
 
+## Code review przed pushem
+
+Przed `git push` na branch z featurem:
+
+1. Uruchom `/review-bugbot` (lub `/review-security` przy auth/płatnościach).
+2. Napraw findings o severity high/medium, jeśli są uzasadnione.
+3. Push — Bugbot na PR może pominąć review, jeśli diff był już lokalnie przejrzany (ten sam patch).
+
+Szczegóły, hooki i integracja GitHub: moduł `core:code-review` (MCP bundle `devops`).
+
 ## Kiedy nie komplikować procesu
 
 Nie uruchamiaj rozbudowanego procesu planowania, jeśli:

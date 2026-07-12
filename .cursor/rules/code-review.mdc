@@ -1,0 +1,14 @@
+---
+description: Przypomnienie o code review przed pushem
+alwaysApply: true
+---
+
+# Code review
+
+Przed `git push`:
+
+1. `/review-bugbot` na branch changes.
+2. `PYTHONPATH=src python -m unittest discover -s tests`
+3. Bypass hook: `SKIP_PUSH_REVIEW=1 git push`
+
+Reguły Bugbota: `.cursor/BUGBOT.md`.

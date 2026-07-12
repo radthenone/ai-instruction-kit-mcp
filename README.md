@@ -79,9 +79,27 @@ W repo olivin-app zostaw tylko:
 - `.ai/project.md` — overlay (Taskfile, Docker, porty)
 - `.cursor/mcp.json` — uvx
 - `.cursor/rules/use-guides.mdc`
+- `.cursor/rules/code-review.mdc` — przypomnienie o review przed pushem
+- `.cursor/BUGBOT.md` — reguły Bugbota (skopiuj z `templates/cursor/BUGBOT.md`, dostosuj)
+- `.cursor/hooks.json` + `.cursor/hooks/gate-push.sh` — przypomnienie przy `git push`
 - cienki `AGENTS.md`
+- opcjonalnie: `.git/hooks/pre-push` z `templates/git-hooks/pre-push`
 
 Usuń: `docs/ai/*.md`, stare `.cursor/rules/cursor-*.mdc`, długie `.github/instructions/`.
+
+## Code review (Bugbot + GitHub)
+
+Moduł MCP: `core:code-review` (bundle `devops` lub `architecture`).
+
+| Warstwa | Plik / akcja |
+|---------|----------------|
+| Lokalnie | `/review-bugbot`, `/review-security` w Cursor |
+| Przed push | `.cursor/hooks/gate-push.sh` |
+| Na PR | Bugbot (GitHub integration) |
+| Reguły | `.cursor/BUGBOT.md` |
+| CI | `arch:ci-cd` — testy + typy + opcjonalnie check Bugbota |
+
+Szablony: `templates/cursor/`, `templates/git-hooks/`.
 
 ## Context7
 
