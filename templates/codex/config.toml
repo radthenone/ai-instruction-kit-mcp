@@ -1,0 +1,12 @@
+# Codex CLI nie ma stałej zmiennej odpowiadającej ${workspaceFolder}.
+# Ścieżki w args bywają niestabilne między Codex CLI i Codex App — użyj ścieżki
+# absolutnej do profilu (albo ustaw `cwd` na katalog projektu i ścieżkę
+# relatywną od niego).
+
+[mcp_servers.project-guides]
+command = "uvx"
+args = [
+  "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+  "guides-mcp",
+  "--profile", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU/.ai/project.profile.yaml",
+]
