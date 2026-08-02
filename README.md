@@ -363,6 +363,13 @@ Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
 
 `gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.
 
+**Windows — bez wiszących okienek (tylko Bash, bez PowerShell):**  
+w `hooks.json` / `hooks.windows.json` komenda to pełna ścieżka Git Bash + flagi nieinteraktywne, np.  
+`\"C:/Program Files/Git/bin/bash.exe\" --noprofile --norc .cursor/hooks/gate-destructive.sh`  
+Sama ścieżka `.sh` → Cursor odpala `bash --login -i` i zostawia konsolę.  
+**Nie** używamy PowerShella jako launchera hooków. Terminal IDE (Git Bash) bez zmian.  
+Unix: `bash --noprofile --norc .cursor/hooks/…`.
+
 Szablon: `templates/cursor/hooks/gate-destructive.sh` (bootstrap → `.cursor/hooks/`).  
 Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh`.
 
