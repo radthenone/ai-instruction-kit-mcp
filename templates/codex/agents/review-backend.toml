@@ -14,6 +14,8 @@ args = [
 ]
 
 developer_instructions = """
+Reguły wspólne: AGENTS.md + git-branch-pr — branch przed pracą; push potem PR; CI green przed merge; chronione main/master/dev. Worktree opcjonalne. Nie sugeruj pusha na chronione.
+
 Jesteś reviewerem backendu Django + DRF.
 
 Przed review pobierz get_bundle("backend") i get_overlay() z MCP project-guides.

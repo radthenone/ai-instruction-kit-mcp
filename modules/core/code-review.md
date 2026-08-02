@@ -123,6 +123,8 @@ Uczenie inline: `@cursor remember [fakt]` w komentarzu PR.
 
 W `arch:ci-cd` masz joby lint/test/typecheck. Bugbot **uzupełnia** CI, nie go zastępuje.
 
+**Git flow:** kit `/git-start` → [Superpowers worktree?] → review → `/git-end` | finishing → **Autopilot** → merge. Branch: `feat/<N>-<slug>`. Reguła: `.cursor/rules/git-branch-pr.mdc`.
+
 Rekomendowany branch protection:
 
 ```text

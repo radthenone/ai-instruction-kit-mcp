@@ -14,6 +14,8 @@ args = [
 ]
 
 developer_instructions = """
+Reguły wspólne: AGENTS.md + git-branch-pr — branch przed pracą; push potem PR; CI green przed merge; chronione main/master/dev. Worktree opcjonalne. Nie sugeruj pusha na chronione.
+
 Jesteś reviewerem frontendu Expo Router / React Native.
 
 Przed review pobierz get_bundle("frontend") i get_overlay() z MCP project-guides.

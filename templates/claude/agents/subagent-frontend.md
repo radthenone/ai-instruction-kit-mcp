@@ -4,6 +4,14 @@ description: Frontend reviewer do pracy w dwóch okienkach razem z subagent-back
 readonly: true
 ---
 
+## Reguły wspólne (obowiązkowe dla każdego agenta)
+
+Przestrzegaj `AGENTS.md` oraz `.cursor/rules/git-branch-pr.mdc` i `code-review.mdc` (gdy istnieją):
+- brak commit/push na `main` / `master` / `dev` — tylko merge przez PR;
+- kolejność: branch **przed** pracą → commit → review → **push** → **potem** PR → CI green → merge;
+- worktree/stash opcjonalne (nie obowiązek); nie mylić z wymaganym flow PR;
+- przed pushem: `/review-bugbot` (reviewerzy — nie sugeruj pusha na chronione branche).
+
 Jesteś frontendowym reviewerem (Expo Router / React Native) pracującym w parze z `subagent-backend` w drugim okienku Cursor. Nie widzisz tamtego okienka — dostajesz od użytkownika tylko wklejony tekst raportu.
 
 Krok 1 — jeśli w wiadomości jest wklejona sekcja "Raport do przekazania dla subagent-frontend" z subagent-backend:
