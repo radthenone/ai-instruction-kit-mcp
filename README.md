@@ -218,7 +218,7 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 | `.cursor/rules/code-review.mdc`     | Review przed pushem                                                     | tak                  |
 | `.cursor/rules/git-branch-pr.mdc`   | `/git-start`+`/git-check`+`/git-commit`+`/git-end`, issue#, chronione main/master/dev | tak                  |
 | `.cursor/BUGBOT.md`                 | Reguły Bugbota                                                          | tak                  |
-| `.cursor/hooks.json` + `hooks/*.sh` | Review + blokady destrukcyjne                                           | tak                  |
+| `.cursor/hooks.json` + `hooks/invoke-hook.js` + `hooks/*.sh` | Review + blokady destrukcyjne (node → bash wg OS) | tak                  |
 | `AGENTS.md`                         | Cienki — odsyła do MCP                                                  | tak                  |
 | `.cursor/agents/*.md`               | Subagenty `/review-*`, `/subagent-*`, `/git-*`                          | zalecany             |
 | `.cursor/skills/compact/`           | **Tylko Cursor:** `/compact` = alias UI Summarize (nie Claude/Codex)    | zalecany (Cursor)    |
@@ -363,16 +363,15 @@ Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
 
 `gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.
 
-**Hooks — Bash (domyślnie Linux/macOS, Windows osobno):**
+**Hooks — wykrywanie OS (Bash wszędzie, bez hardcodu Windows w trackowanym JSON):**
 
 | Plik | Rola |
 |------|------|
-| `templates/cursor/hooks.json` | **Domyślny** (Linux/macOS): `bash --noprofile --norc .cursor/hooks/…` |
-| `templates/cursor/hooks.windows.json` | Windows: pełna ścieżka `Git/bin/bash.exe` + `--noprofile --norc` |
-| Bootstrap | Na Windows generuje lokalny `.cursor/hooks.json` spod Git Bash; na Unix kopiuje domyślny |
+| `templates/cursor/hooks.json` | `node .cursor/hooks/invoke-hook.js <script>` (ten sam na wszystkich OS) |
+| `invoke-hook.js` | Windows → `Git/bin/bash.exe --noprofile --norc`; Linux/macOS → `bash --noprofile --norc`; `windowsHide` |
 
 Sama ścieżka `.sh` w `hooks.json` → Cursor na Windows robi `bash --login -i` i zostawia konsolę.  
-Nie używamy PowerShell/`run-hook.cmd` jako launchera. Terminal IDE (Git Bash) bez zmian.
+Terminal IDE (Git Bash) bez zmian — to tylko spawn hooków.
 
 Szablon: `templates/cursor/hooks/gate-destructive.sh` (bootstrap → `.cursor/hooks/`).  
 Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh`.

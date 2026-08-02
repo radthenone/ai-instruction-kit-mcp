@@ -4,7 +4,7 @@
 #
 # Windows: NIE podawaj samej ścieżki .sh w hooks.json — Cursor odpala wtedy
 # `bash --login -i` i zostawia otwarte okna konsoli. Używaj:
-#   bash --noprofile --norc .cursor/hooks/gate-destructive.sh
+#   node .cursor/hooks/invoke-hook.js gate-destructive.sh
 
 set -u
 
@@ -64,6 +64,7 @@ has() {
 targets_protected_ref() {
   if has 'origin[ ]+\+?(main|master|dev)([ ]|$|:)' \
     || has 'origin/\+?(main|master|dev)([ ]|$|:)' \
+    || has 'upstream[ ]+\+?(main|master|dev)([ ]|$|:)' \
     || has '(^|[ ])\+(main|master|dev)([ ]|$|:)' \
     || has '(^|[ ])\+refs/heads/(main|master|dev)([ ]|$|:)' \
     || has 'HEAD:\+?(main|master|dev)([ ]|$)' \
@@ -72,9 +73,17 @@ targets_protected_ref() {
     || has '[^/+]:(main|master|dev)([ ]|$)' ; then
     return 0
   fi
-  # git push [opts…] [+]main|master|dev   — ref as final token (no remote prefix)
-  if has 'git[ ]+push[ ].*[ ]\+?(main|master|dev)[ ]*$' \
-    && ! has 'git[ ]+push[ ].*[ ]\+?(main|master|dev)[ ]+[^ ]+'; then
+  # Shorthand / URL: last refspec is main|master (never treat bare `dev` here).
+  # `git push main` — only options between push and branch.
+  # `git push <remote-or-url> main` — at least one non-option token before branch.
+  if has 'git[ ]+push([ ]+-[^ ]+)*[ ]+\+?(main|master)[ ]*$' \
+    || has 'git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[ ]+\+?(main|master)[ ]*$'; then
+    return 0
+  fi
+  # Last refspec `dev` only when previous token is origin/upstream or URL/path (has / or :).
+  # Bare `git push dev` = remote name → not protected.
+  if has 'git[ ]+push([ ]+-[^ ]+)*[ ]+(origin|upstream)[ ]+\+?dev[ ]*$' \
+    || has 'git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[/:][^ ]*[ ]+\+?dev[ ]*$'; then
     return 0
   fi
   return 1

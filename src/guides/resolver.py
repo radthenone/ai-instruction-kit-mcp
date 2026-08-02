@@ -20,14 +20,19 @@ def normalize_language(raw: str | None) -> str:
     Znormalizuj kod języka instrukcji do ``pl`` albo ``en``.
 
     Args:
-        raw: Surowa wartość z profilu, CLI albo env (np. ``PL``, ``en-US``).
+        raw: Surowa wartość z profilu, CLI albo env (np. ``PL``, ``en-US``, ``english``).
 
     Returns:
-        str: ``en`` gdy kod zaczyna się od ``en``, w przeciwnym razie ``pl``.
+        str: ``en`` dla angielskiego (tag ``en`` / ``eng`` / ``english``), inaczej ``pl``.
     """
-    code = (raw or "pl").strip().lower()
-    if code.startswith("en"):
+    code = (raw or "pl").strip().lower().replace("_", "-")
+    if not code:
+        return "pl"
+    primary = code.split("-", 1)[0]
+    if code in {"en", "eng", "english"} or primary in {"en", "eng"}:
         return "en"
+    if code in {"pl", "pol", "polish", "polski"} or primary in {"pl", "pol"}:
+        return "pl"
     return "pl"
 
 

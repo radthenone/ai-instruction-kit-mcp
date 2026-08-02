@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from guides.resolver import resolve_preset_path, resolve_profile
+from guides.resolver import normalize_language, resolve_preset_path, resolve_profile
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -127,6 +127,28 @@ class TestResolver(unittest.TestCase):
                     mid.startswith("core:language") for mid in bundle.module_ids
                 ):
                     self.assertIn("core:language-en", bundle.module_ids)
+
+    def test_normalize_language_exact_tags(self) -> None:
+        """normalize_language akceptuje tylko jawne tagi EN/PL, nie prefiksy w stylu enable."""
+        cases: list[tuple[str | None, str]] = [
+            (None, "pl"),
+            ("", "pl"),
+            ("pl", "pl"),
+            ("PL", "pl"),
+            ("pl-PL", "pl"),
+            ("polish", "pl"),
+            ("en", "en"),
+            ("EN", "en"),
+            ("en-US", "en"),
+            ("eng", "en"),
+            ("english", "en"),
+            ("enable", "pl"),
+            ("engine", "pl"),
+            (" ent ", "pl"),
+        ]
+        for raw, expect in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_language(raw), expect)
 
 
 if __name__ == "__main__":

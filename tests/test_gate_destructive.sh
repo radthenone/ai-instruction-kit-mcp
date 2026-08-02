@@ -37,5 +37,12 @@ run_hook "git status" allow
 # git+https must NOT be treated as force-refspec "+"
 run_hook "git push git+https://example.com/repo.git main" ask
 run_hook "git push git+https://example.com/repo.git feat/x" allow
+# Remote named "dev" is not a protected branch; origin/upstream + branch is.
+run_hook "git push dev" allow
+run_hook "git push origin feat/x" allow
+run_hook "git push origin dev" ask
+run_hook "git push upstream dev" ask
+run_hook "git push main" ask
+run_hook "git push master" ask
 
 echo "All gate-destructive +ref checks passed."
