@@ -10,6 +10,63 @@ import yaml
 
 from guides.manifest import Manifest, load_manifest
 
+LANGUAGE_MODULE_IDS: frozenset[str] = frozenset(
+    {"core:language-pl", "core:language-en"}
+)
+
+
+def normalize_language(raw: str | None) -> str:
+    """
+    Znormalizuj kod języka instrukcji do ``pl`` albo ``en``.
+
+    Args:
+        raw: Surowa wartość z profilu, CLI albo env (np. ``PL``, ``en-US``).
+
+    Returns:
+        str: ``en`` gdy kod zaczyna się od ``en``, w przeciwnym razie ``pl``.
+    """
+    code = (raw or "pl").strip().lower()
+    if code.startswith("en"):
+        return "en"
+    return "pl"
+
+
+def language_module_id(language: str) -> str:
+    """
+    Zwróć ID modułu językowego dla znormalizowanego języka.
+
+    Args:
+        language: ``pl`` albo ``en`` (wynik ``normalize_language``).
+
+    Returns:
+        str: ``core:language-en`` albo ``core:language-pl``.
+    """
+    return "core:language-en" if language == "en" else "core:language-pl"
+
+
+def _remap_language_modules(module_ids: list[str], language: str) -> list[str]:
+    """
+    Zastąp wszystkie moduły ``core:language-*`` jednym właściwym dla ``language``.
+
+    Args:
+        module_ids: Lista ID modułów (kolejność zachowana poza scaleniem language).
+        language: Znormalizowany język (``pl`` / ``en``).
+
+    Returns:
+        list[str]: Lista bez duplikatów language; pierwszy slot language → docelowy moduł.
+    """
+    target = language_module_id(language)
+    result: list[str] = []
+    language_placed = False
+    for module_id in module_ids:
+        if module_id in LANGUAGE_MODULE_IDS:
+            if not language_placed:
+                result.append(target)
+                language_placed = True
+            continue
+        result.append(module_id)
+    return result
+
 
 @dataclass(frozen=True)
 class ResolvedBundle:
@@ -259,12 +316,17 @@ def _collect_module_ids(profile_data: dict[str, Any], manifest: Manifest) -> lis
 
     module_ids.extend(_decision_module_ids(profile_data.get("decisions", {})))
 
+    language = normalize_language(str(profile_data.get("language", "pl")))
+    lang_module = language_module_id(language)
+
     # Domyślnie core jeśli profil nie wyłącza
     if profile_data.get("core", True):
         module_ids = _merge_unique(
-            ["core:repo-first", "core:language-pl", "core:external-knowledge"],
+            ["core:repo-first", lang_module, "core:external-knowledge"],
             module_ids,
         )
+
+    module_ids = _remap_language_modules(module_ids, language)
 
     # Walidacja — tylko znane moduły
     return [mid for mid in _merge_unique([], module_ids) if mid in manifest.modules]
@@ -386,6 +448,7 @@ def resolve_profile(
     *,
     workspace_root: Path | None = None,
     extra_overlays: list[Path] | None = None,
+    language_override: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
@@ -396,6 +459,8 @@ def resolve_profile(
         workspace_root: Root repo aplikacji (overlay). Gdy brak — ``profile_path.parent.parent``
             dla lokalnego ``.ai/…``, inaczej ``cwd``.
         extra_overlays: Dodatkowe pliki overlay z CLI.
+        language_override: Nadpisanie języka z CLI/env (``pl`` / ``en``); ma pierwszeństwo
+            przed ``language`` w YAML profilu.
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
@@ -414,6 +479,13 @@ def resolve_profile(
     raw_profile = _read_yaml(profile_path)
     profile_data = _resolve_extends(raw_profile, manifest.kit_root)
 
+    language = normalize_language(
+        language_override
+        if language_override is not None
+        else str(profile_data.get("language", "pl"))
+    )
+    profile_data = {**profile_data, "language": language}
+
     enabled_modules = _collect_module_ids(profile_data, manifest)
 
     bundles_config = _merge_bundle_configs(
@@ -421,6 +493,10 @@ def resolve_profile(
         profile_data.get("bundles", {}),
     )
     bundles_config = _inject_infra_bundles(bundles_config, profile_data)
+    bundles_config = {
+        name: _remap_language_modules(list(module_ids), language)
+        for name, module_ids in bundles_config.items()
+    }
 
     bundles: dict[str, ResolvedBundle] = {}
     for bundle_name, module_ids in bundles_config.items():
@@ -430,6 +506,7 @@ def resolve_profile(
     for bundle in bundles.values():
         all_from_bundles.extend(list(bundle.module_ids))
     enabled_modules = _merge_unique(enabled_modules, all_from_bundles)
+    enabled_modules = _remap_language_modules(enabled_modules, language)
     enabled_modules = [mid for mid in enabled_modules if mid in manifest.modules]
 
     overlay_content = _load_overlays(profile_data, resolved_workspace, extra_overlays)
@@ -437,7 +514,8 @@ def resolve_profile(
     index_lines = [
         f"# Instruction index: {profile_data.get('name', resolved_workspace.name)}",
         "",
-        f"- Język: {profile_data.get('language', 'pl')}",
+        f"- Język: {language}",
+        f"- Moduł języka: `{language_module_id(language)}`",
         f"- Profil: `{profile_path}`",
         f"- Workspace: `{resolved_workspace}`",
         f"- Kit root: `{manifest.kit_root}`",
@@ -459,7 +537,7 @@ def resolve_profile(
 
     return ResolvedProfile(
         name=str(profile_data.get("name", resolved_workspace.name)),
-        language=str(profile_data.get("language", "pl")),
+        language=language,
         kit_root=manifest.kit_root,
         profile_path=profile_path,
         workspace_root=resolved_workspace,

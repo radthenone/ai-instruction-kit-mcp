@@ -15,6 +15,11 @@ modules:
     title: Język PL + konwencje kodu
     tags: [core]
 
+  core:language-en:
+    path: modules/core/language-en.md
+    title: Language EN + code conventions
+    tags: [core]
+
   core:external-knowledge:
     path: modules/core/external-knowledge.md
     title: Wiedza zewnętrzna

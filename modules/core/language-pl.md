@@ -1,4 +1,4 @@
-# Język i konwencje kodu
+# Język i konwencje kodu (PL)
 
 ## Komunikacja
 
@@ -12,6 +12,11 @@
 - Docstringi publicznych funkcji, klas i endpointów — po polsku (Google style, PEP 257).
 - Komentarze logiczne — po polsku, tylko gdy wyjaśniają nietrywialną logikę biznesową.
 - Type hints — wymagane w nowym kodzie Python i TypeScript.
+
+## GitHub / git (proza)
+
+- **Tytuły zawsze po angielsku**: tytuł issue, tytuł PR, slug brancha (`feat/42-add-cart-coupon`).
+- Treść issue, treść PR, komentarze review, komunikaty commitów — po polsku (ten język ustawienia).
 
 ## Zasady zmian
 

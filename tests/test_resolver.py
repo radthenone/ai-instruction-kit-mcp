@@ -100,6 +100,34 @@ class TestResolver(unittest.TestCase):
             )
             self.assertIn("Extra overlay", resolved.overlay_content)
 
+    def test_default_language_pl_module(self) -> None:
+        """Domyślny język profilu to pl i moduł core:language-pl."""
+        resolved = resolve_profile(
+            resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT
+        )
+        self.assertEqual(resolved.language, "pl")
+        self.assertIn("core:language-pl", resolved.enabled_module_ids)
+        self.assertNotIn("core:language-en", resolved.enabled_module_ids)
+        self.assertIn("core:language-pl", resolved.bundles["backend"].module_ids)
+
+    def test_language_override_en_swaps_module(self) -> None:
+        """language_override=en zamienia language-pl na language-en we wszystkich bundle'ach."""
+        resolved = resolve_profile(
+            resolve_preset_path("shop", KIT_ROOT),
+            kit_root=KIT_ROOT,
+            language_override="EN",
+        )
+        self.assertEqual(resolved.language, "en")
+        self.assertIn("core:language-en", resolved.enabled_module_ids)
+        self.assertNotIn("core:language-pl", resolved.enabled_module_ids)
+        for name, bundle in resolved.bundles.items():
+            with self.subTest(bundle=name):
+                self.assertNotIn("core:language-pl", bundle.module_ids)
+                if "core:language-en" in bundle.module_ids or any(
+                    mid.startswith("core:language") for mid in bundle.module_ids
+                ):
+                    self.assertIn("core:language-en", bundle.module_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
