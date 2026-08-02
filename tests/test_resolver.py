@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 
-from guides.resolver import resolve_profile
+from guides.resolver import resolve_preset_path, resolve_profile
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +52,45 @@ class TestResolver(unittest.TestCase):
         resolved = resolve_profile(profile_path, kit_root=KIT_ROOT)
 
         self.assertIn("pattern:providers-and-settings", resolved.enabled_module_ids)
+
+    def test_resolve_preset_path(self) -> None:
+        """resolve_preset_path znajduje profiles/<name>.yaml."""
+        path = resolve_preset_path("olivin-app", KIT_ROOT)
+        self.assertEqual(path, (KIT_ROOT / "profiles" / "olivin-app.yaml").resolve())
+
+    def test_preset_with_workspace_overlay(self) -> None:
+        """Preset + workspace ładuje .ai/project.md bez lokalnego project.profile.yaml."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            ai_dir = workspace / ".ai"
+            ai_dir.mkdir()
+            (ai_dir / "project.md").write_text("# Overlay test\n\nport: 9999\n", encoding="utf-8")
+
+            profile_path = resolve_preset_path("olivin-app", KIT_ROOT)
+            resolved = resolve_profile(
+                profile_path,
+                kit_root=KIT_ROOT,
+                workspace_root=workspace,
+            )
+
+            self.assertEqual(resolved.workspace_root, workspace.resolve())
+            self.assertIn("Overlay test", resolved.overlay_content)
+            self.assertIn("9999", resolved.overlay_content)
+
+    def test_extra_overlays_cli(self) -> None:
+        """Dodatkowe --overlay trafiają do overlay_content."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            extra = workspace / "extra.md"
+            extra.write_text("# Extra overlay\n", encoding="utf-8")
+            profile_path = resolve_preset_path("olivin-app", KIT_ROOT)
+            resolved = resolve_profile(
+                profile_path,
+                kit_root=KIT_ROOT,
+                workspace_root=workspace,
+                extra_overlays=[extra],
+            )
+            self.assertIn("Extra overlay", resolved.overlay_content)
 
 
 if __name__ == "__main__":

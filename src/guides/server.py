@@ -8,8 +8,8 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from guides.manifest import load_manifest
-from guides.resolver import resolve_profile
+from guides.manifest import find_kit_root, load_manifest
+from guides.resolver import resolve_preset_path, resolve_profile
 
 mcp = FastMCP(
     "project-guides",
@@ -22,23 +22,30 @@ mcp = FastMCP(
 
 _profile_path: Path | None = None
 _kit_root: Path | None = None
+_workspace_root: Path | None = None
+_extra_overlays: list[Path] = []
 
 
 def _get_profile_path() -> Path:
-    """Zwróć ścieżkę profilu — z CLI lub env GUIDES_PROFILE."""
+    """Zwróć ścieżkę profilu — z CLI, presetu lub env GUIDES_PROFILE."""
     if _profile_path is not None:
         return _profile_path
     env_path = os.environ.get("GUIDES_PROFILE")
     if env_path:
         return Path(env_path).resolve()
     raise RuntimeError(
-        "Brak profilu projektu. Uruchom z --profile <ścieżka> lub ustaw GUIDES_PROFILE."
+        "Brak profilu projektu. Uruchom z --profile / --preset albo ustaw GUIDES_PROFILE."
     )
 
 
 def _get_resolved():
     """Rozwiąż profil (cache per request — profil rzadko się zmienia w sesji)."""
-    return resolve_profile(_get_profile_path(), kit_root=_kit_root)
+    return resolve_profile(
+        _get_profile_path(),
+        kit_root=_kit_root,
+        workspace_root=_workspace_root,
+        extra_overlays=_extra_overlays or None,
+    )
 
 
 @mcp.tool()
@@ -141,6 +148,25 @@ def get_module(module_id: str) -> str:
     return info.path.read_text(encoding="utf-8")
 
 
+@mcp.tool()
+def list_presets() -> str:
+    """
+    Lista dostępnych presetów w instruction-kit (``profiles/*.yaml`` bez ``_base``).
+
+    Returns:
+        str: Markdown z nazwami presetów do użycia z ``--preset``.
+    """
+    root = _kit_root or find_kit_root()
+    profiles_dir = root / "profiles"
+    lines = ["# Presety instruction-kit", ""]
+    if not profiles_dir.is_dir():
+        return "\n".join([*lines, "_Brak katalogu profiles._"])
+    for path in sorted(profiles_dir.glob("*.yaml")):
+        note = " _(wspólny bazowy)_" if path.stem == "_base" else ""
+        lines.append(f"- `{path.stem}` — `{path.name}`{note}")
+    return "\n".join(lines)
+
+
 @mcp.resource("guides://index")
 def resource_index() -> str:
     """Resource: indeks profilu projektu."""
@@ -156,7 +182,7 @@ def resource_overlay() -> str:
 
 def _register_bundle_resources() -> None:
     """Zarejestruj resources guides://bundle/{name} dynamicznie."""
-    resolved = resolve_profile(_get_profile_path(), kit_root=_kit_root)
+    resolved = _get_resolved()
     for bundle_name in resolved.bundles:
 
         def make_handler(name: str):
@@ -171,13 +197,29 @@ def _register_bundle_resources() -> None:
 
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
-    global _profile_path, _kit_root
+    global _profile_path, _kit_root, _workspace_root, _extra_overlays
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
         "--profile",
         required=False,
-        help="Ścieżka do .ai/project.profile.yaml projektu",
+        help="Ścieżka do .ai/project.profile.yaml (lokalne nadpisania presetu)",
+    )
+    parser.add_argument(
+        "--preset",
+        required=False,
+        help="Nazwa presetu z kita (np. olivin-app) — bez lokalnego project.profile.yaml",
+    )
+    parser.add_argument(
+        "--workspace",
+        required=False,
+        help="Root repo aplikacji (overlay .ai/project.md); domyślnie cwd przy --preset",
+    )
+    parser.add_argument(
+        "--overlay",
+        action="append",
+        default=[],
+        help="Dodatkowy plik overlay (można podać wielokrotnie)",
     )
     parser.add_argument(
         "--kit-root",
@@ -191,13 +233,37 @@ def main() -> None:
     elif os.environ.get("GUIDES_KIT_ROOT"):
         _kit_root = Path(os.environ["GUIDES_KIT_ROOT"]).resolve()
 
-    if args.profile:
-        _profile_path = Path(args.profile).resolve()
-    elif os.environ.get("GUIDES_PROFILE"):
-        _profile_path = Path(os.environ["GUIDES_PROFILE"]).resolve()
+    if args.workspace:
+        _workspace_root = Path(args.workspace).resolve()
+    elif os.environ.get("GUIDES_WORKSPACE"):
+        _workspace_root = Path(os.environ["GUIDES_WORKSPACE"]).resolve()
+
+    _extra_overlays = [Path(p).resolve() for p in args.overlay]
+    if os.environ.get("GUIDES_OVERLAY"):
+        _extra_overlays.append(Path(os.environ["GUIDES_OVERLAY"]).resolve())
+
+    preset = args.preset or os.environ.get("GUIDES_PRESET")
+    profile_arg = args.profile
+    env_profile = os.environ.get("GUIDES_PROFILE")
+
+    if profile_arg and preset:
+        parser.error("Podaj albo --profile, albo --preset — nie oba naraz")
+
+    if profile_arg:
+        _profile_path = Path(profile_arg).resolve()
+    elif preset:
+        kit = _kit_root or find_kit_root()
+        _kit_root = kit
+        _profile_path = resolve_preset_path(preset, kit)
+        if _workspace_root is None:
+            _workspace_root = Path.cwd().resolve()
+    elif env_profile:
+        _profile_path = Path(env_profile).resolve()
 
     if _profile_path is None:
-        parser.error("Wymagany argument --profile lub zmienna GUIDES_PROFILE")
+        parser.error(
+            "Wymagany --profile PATH, --preset NAME albo GUIDES_PROFILE / GUIDES_PRESET"
+        )
 
     _register_bundle_resources()
     mcp.run()

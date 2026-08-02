@@ -1,6 +1,6 @@
 ---
-name: backend-reviewer
-description: Reviewer backendu Django/DRF. Use when reviewing backend/, serializers, ACL, Celery, migracje.
+name: review-backend
+description: Reviewer backendu Django/DRF. Use when reviewing backend/, serializers, ACL, Celery, migracje. Wywołuj jako /review-backend.
 readonly: true
 ---
 

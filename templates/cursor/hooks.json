@@ -3,6 +3,11 @@
   "hooks": {
     "beforeShellExecution": [
       {
+        "command": ".cursor/hooks/gate-destructive.sh",
+        "matcher": "git\\s+(push|reset|clean|commit)|\\brm\\s+-[a-zA-Z]*r",
+        "failClosed": true
+      },
+      {
         "command": ".cursor/hooks/gate-push.sh",
         "matcher": "git\\s+push"
       }

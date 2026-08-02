@@ -302,40 +302,114 @@ def _build_bundle_content(
     )
 
 
-def _load_overlays(profile_data: dict[str, Any], workspace_root: Path) -> str:
-    """Wczytaj pliki overlay wskazane w profilu."""
-    overlay_paths: list[str] = profile_data.get("overlays", [])
+def _load_overlays(
+    profile_data: dict[str, Any],
+    workspace_root: Path,
+    extra_overlays: list[Path] | None = None,
+) -> str:
+    """
+    Wczytaj pliki overlay wskazane w profilu oraz dodatkowe ścieżki CLI.
+
+    Args:
+        profile_data: Dane profilu (klucz ``overlays``).
+        workspace_root: Root repo aplikacji (ścieżki względne).
+        extra_overlays: Dodatkowe pliki z ``--overlay`` (opcjonalne).
+
+    Returns:
+        str: Połączona treść overlay albo pusty string.
+    """
+    overlay_paths: list[str] = list(profile_data.get("overlays", []))
     parts: list[str] = []
+    seen: set[Path] = set()
+
+    def _append(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen or not resolved.is_file():
+            return
+        seen.add(resolved)
+        parts.append(resolved.read_text(encoding="utf-8").strip())
 
     for rel in overlay_paths:
         path = Path(rel)
         if not path.is_absolute():
             path = workspace_root / path
-        if path.is_file():
-            parts.append(path.read_text(encoding="utf-8").strip())
+        _append(path)
+
+    for path in extra_overlays or []:
+        _append(path)
+
+    # Zero-file preset: domyślny overlay projektu, jeśli istnieje.
+    default_overlay = workspace_root / ".ai" / "project.md"
+    _append(default_overlay)
 
     if not parts:
         return ""
     return "# Overlay projektu\n\n" + "\n\n---\n\n".join(parts)
 
 
+def resolve_preset_path(preset: str, kit_root: Path) -> Path:
+    """
+    Znajdź plik presetu w instruction-kit.
+
+    Args:
+        preset: Nazwa (np. ``olivin-app``) albo względna ścieżka ``profiles/….yaml``.
+        kit_root: Root kita (repo albo ``guides/_data`` w wheel).
+
+    Returns:
+        Path: Absolutna ścieżka do pliku YAML presetu.
+
+    Raises:
+        FileNotFoundError: Gdy preset nie istnieje.
+    """
+    raw = preset.strip().removesuffix(".yaml").removesuffix(".yml")
+    candidates: list[Path] = []
+    if raw.startswith("profiles/"):
+        candidates.append(kit_root / f"{raw}.yaml")
+    else:
+        candidates.append(kit_root / "profiles" / f"{raw}.yaml")
+        candidates.append(kit_root / f"{raw}.yaml")
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+
+    available = sorted(p.stem for p in (kit_root / "profiles").glob("*.yaml"))
+    hint = ", ".join(available) if available else "(brak profiles/*.yaml)"
+    raise FileNotFoundError(
+        f"Nie znaleziono presetu `{preset}` w `{kit_root}`. Dostępne: {hint}"
+    )
+
+
 def resolve_profile(
     profile_path: Path,
     kit_root: Path | None = None,
+    *,
+    workspace_root: Path | None = None,
+    extra_overlays: list[Path] | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
 
     Args:
-        profile_path: Ścieżka do `.ai/project.profile.yaml`.
+        profile_path: Ścieżka do profilu (``.ai/project.profile.yaml`` albo preset kita).
         kit_root: Opcjonalny root instruction-kit.
+        workspace_root: Root repo aplikacji (overlay). Gdy brak — ``profile_path.parent.parent``
+            dla lokalnego ``.ai/…``, inaczej ``cwd``.
+        extra_overlays: Dodatkowe pliki overlay z CLI.
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
     """
     profile_path = profile_path.resolve()
-    workspace_root = profile_path.parent.parent
     manifest = load_manifest(kit_root)
+
+    if workspace_root is not None:
+        resolved_workspace = workspace_root.resolve()
+    elif profile_path.parent.name == ".ai":
+        resolved_workspace = profile_path.parent.parent
+    else:
+        # Preset z kita — workspace to katalog roboczy konsumenta.
+        resolved_workspace = Path.cwd().resolve()
 
     raw_profile = _read_yaml(profile_path)
     profile_data = _resolve_extends(raw_profile, manifest.kit_root)
@@ -358,13 +432,14 @@ def resolve_profile(
     enabled_modules = _merge_unique(enabled_modules, all_from_bundles)
     enabled_modules = [mid for mid in enabled_modules if mid in manifest.modules]
 
-    overlay_content = _load_overlays(profile_data, workspace_root)
+    overlay_content = _load_overlays(profile_data, resolved_workspace, extra_overlays)
 
     index_lines = [
-        f"# Instruction index: {profile_data.get('name', workspace_root.name)}",
+        f"# Instruction index: {profile_data.get('name', resolved_workspace.name)}",
         "",
         f"- Język: {profile_data.get('language', 'pl')}",
         f"- Profil: `{profile_path}`",
+        f"- Workspace: `{resolved_workspace}`",
         f"- Kit root: `{manifest.kit_root}`",
         "",
         "## Włączone moduły",
@@ -383,11 +458,11 @@ def resolve_profile(
         index_lines.extend(["", "## Overlay", "", "Projekt ma lokalny overlay — użyj `guides://overlay`."])
 
     return ResolvedProfile(
-        name=str(profile_data.get("name", workspace_root.name)),
+        name=str(profile_data.get("name", resolved_workspace.name)),
         language=str(profile_data.get("language", "pl")),
         kit_root=manifest.kit_root,
         profile_path=profile_path,
-        workspace_root=workspace_root,
+        workspace_root=resolved_workspace,
         enabled_module_ids=tuple(enabled_modules),
         bundles=bundles,
         overlay_content=overlay_content,

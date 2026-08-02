@@ -1,15 +1,16 @@
 # Format subagentów Codex CLI jest młodszy i bardziej eksperymentalny niż
 # w Cursor/Claude Code — sprawdź zgodność ze swoją wersją (`codex --version`).
 
-name = "frontend_reviewer"
-description = "Reviewer frontendu Expo/React. Use when reviewing frontend/, pliki .web/.native, klient Orval, TypeScript."
+name = "review_frontend"
+description = "Reviewer frontendu Expo/React (/review-frontend). Use when reviewing frontend/, pliki .web/.native, klient Orval, TypeScript."
 
 [mcp_servers.project-guides]
 command = "uvx"
 args = [
   "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
   "guides-mcp",
-  "--profile", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU/.ai/project.profile.yaml",
+  "--preset", "_base",
+  "--workspace", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU",
 ]
 
 developer_instructions = """

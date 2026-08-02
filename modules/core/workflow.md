@@ -1,28 +1,31 @@
-# Workflow pracy z AI w olivin-app
+# Workflow pracy z AI
 
 ## Cel
 
-Ten dokument opisuje praktyczny sposób pracy z agentami AI w projekcie `olivin-app`.
-Łączy lokalne zasady repo z dobrymi praktykami podejścia podobnego do `obra/superpowers`, ale bez ślepego kopiowania zewnętrznego workflow.
+Praktyczny sposób pracy z agentami: instruction-kit jako fundament stacku, opcjonalnie Matt (proces) i Superpowers (meta sesji).
 
 ## Zasada nadrzędna
 
-AI ma pomagać w analizie, planowaniu i implementacji, ale nie może zastępować realnej analizy repozytorium.
-Najpierw repo, potem diagnoza, potem plan, na końcu kod.
+AI pomaga w analizie, planowaniu i implementacji, ale nie zastępuje analizy repozytorium.
+Najpierw repo + MCP kita, potem diagnoza, potem plan, na końcu kod.
 
-## Narzędzia AI
+## Warstwy narzędzi
 
-Instrukcje projektowe pisz neutralnie względem klienta AI. Ten sam workflow ma działać dla Codex, GitHub Copilot, Gemini w Antigravity, ACP clienta dla Hermesa, Continue z OpenRouter, OpenCode, Perplexity ze stackiem oraz Cursor.
+| Warstwa | Narzędzie | Rola |
+|---------|-----------|------|
+| Fundament | MCP `project-guides`, `/review-*`, overlay | prawda o stacku i review |
+| Proces | mattpocock (`/grill-me`, `/tdd`) | bramki przed/w trakcie feature |
+| Meta | superpowers | brainstorm, debug, finishing |
 
-Źródłem prawdy dla agentów jest repozytorium:
+Źródłem prawdy dla stacku jest:
 
-- `AGENTS.md` — nadrzędne zasady dla agentów i workflow repo-first,
-- `stack:django-drf:backend-standard` — wspólny standard tworzenia kodu backendu (Django/DRF),
-- `.github/copilot-instructions.md` — dodatkowe wskazówki dla Copilota i agentów IDE,
-- `.github/instructions/*.instructions.md` — lokalne instrukcje dla backendu i frontendu,
-- `Taskfile.yml` oraz `taskfiles/*.yml` — realne komendy projektu.
+- `AGENTS.md` — priorytety warstw i workflow,
+- bundle MCP z instruction-kit,
+- `.ai/project.md` — Taskfile, porty,
+- `Taskfile.yml` / `taskfiles/*.yml` — realne komendy.
 
-Nie zapisuj osobnych, sprzecznych reguł dla każdego narzędzia. Jeśli klient AI obsługuje własny plik konfiguracyjny, powinien odsyłać do powyższych dokumentów albo streszczać je bez zmiany znaczenia.
+Nie zapisuj sprzecznych reguł stacku w Matt/Superpowers — tam tylko proces i tryb sesji.
+
 
 ## Podstawowy przepływ pracy
 
@@ -157,7 +160,8 @@ Dobierz kontrolę do zakresu zmiany. Dla drobnej poprawki lokalnej wystarczy cel
 
 Przed `git push` na branch z featurem:
 
-1. Uruchom `/review-bugbot` (lub `/review-security` przy auth/płatnościach).
+1. Uruchom `/review-bugbot` (lub `/review-security` przy auth/płatnościach); opcjonalnie `/review-backend` / `/review-frontend`.
+2. Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main / reset --hard).
 2. Napraw findings o severity high/medium, jeśli są uzasadnione.
 3. Push — Bugbot na PR może pominąć review, jeśli diff był już lokalnie przejrzany (ten sam patch).
 

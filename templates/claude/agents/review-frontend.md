@@ -1,6 +1,6 @@
 ---
-name: frontend-reviewer
-description: Reviewer frontendu Expo/React. Use when reviewing frontend/, pliki .web/.native, klient Orval, typy TypeScript.
+name: review-frontend
+description: Reviewer frontendu Expo/React. Use when reviewing frontend/, pliki .web/.native, klient Orval, typy TypeScript. Wywołuj jako /review-frontend.
 readonly: true
 ---
 

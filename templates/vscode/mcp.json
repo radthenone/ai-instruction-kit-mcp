@@ -6,7 +6,8 @@
       "args": [
         "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
         "guides-mcp",
-        "--profile", "${workspaceFolder}/.ai/project.profile.yaml"
+        "--preset", "_base",
+        "--workspace", "${workspaceFolder}"
       ]
     }
   }

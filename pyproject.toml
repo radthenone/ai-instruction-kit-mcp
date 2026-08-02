@@ -5,8 +5,8 @@ description = "MCP server dostarczający modułowe instrukcje architektury do pr
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp>=1.0.0",
-    "pyyaml>=6.0",
+    "mcp>=1.0.0,<2",
+    "pyyaml>=6.0,<7",
 ]
 
 [project.scripts]

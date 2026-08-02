@@ -1,6 +1,6 @@
 ---
-name: test-verifier
-description: Sceptyczny weryfikator. Use after oznaczenia zadania jako zrobione — potwierdza że testy faktycznie przechodzą i implementacja działa.
+name: review-tests
+description: Sceptyczny weryfikator. Use after oznaczenia zadania jako zrobione — potwierdza że testy faktycznie przechodzą i implementacja działa. Wywołuj jako /review-tests.
 readonly: true
 ---
 

@@ -1,6 +1,6 @@
 ---
-name: edge-case-reviewer
-description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji.
+name: review-edge
+description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /review-edge.
 readonly: true
 ---
 
