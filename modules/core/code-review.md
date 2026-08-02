@@ -34,14 +34,25 @@ Nie zastępuj testów review AI. AI łapie logikę i kontekst; CI łapie regresj
 
 **Sync z GitHub:** po lokalnym `/review-bugbot` i otwarciu PR z tym samym diffem Bugbot na GitHubie może pominąć ponowny review (ten sam patch ID).
 
-### Cursor Hooks — przypomnienie przed `git push`
+### Cursor Hooks — review + blokady destrukcyjne
 
-W projekcie skopiuj z instruction-kit:
+W projekcie skopiuj z instruction-kit (albo użyj `scripts/bootstrap-project.sh`):
 
 - `.cursor/hooks.json`
 - `.cursor/hooks/gate-push.sh`
+- `.cursor/hooks/gate-destructive.sh`
 
-Hook `beforeShellExecution` pyta o potwierdzenie przed `git push`, gdy są niepushnięte commity. Bypass: `SKIP_PUSH_REVIEW=1 git push`.
+| Hook | Zachowanie |
+|------|------------|
+| `gate-push.sh` | **ask** przed `git push` z niepushniętymi commitami. Bypass: `SKIP_PUSH_REVIEW=1` |
+| `gate-destructive.sh` | **deny** force push na main/master, `reset --hard`, agresywny `clean -f`; **ask** force na feature / push na main. `failClosed: true` |
+
+### Slash commands review (konwencja)
+
+| Prefiks | Przykłady |
+|---------|-----------|
+| `/review-*` | `/review-backend`, `/review-frontend`, `/review-bugbot`, `/review-security` |
+| `/subagent-*` | `/subagent-backend`, `/subagent-frontend` (dwa okna) |
 
 ### Git pre-push (deterministyczne)
 
@@ -138,15 +149,18 @@ Wymagane checks:
 templates/cursor/BUGBOT.md
 templates/cursor/hooks.json
 templates/cursor/hooks/gate-push.sh
+templates/cursor/hooks/gate-destructive.sh
 templates/git-hooks/pre-push
+scripts/bootstrap-project.sh
 ```
 
 W projekcie docelowym:
 
 ```text
-.cursor/BUGBOT.md          ← dostosuj do stacku
+.cursor/BUGBOT.md
 .cursor/hooks.json
 .cursor/hooks/gate-push.sh
+.cursor/hooks/gate-destructive.sh
 .git/hooks/pre-push        ← opcjonalnie, z szablonu
 ```
 

@@ -1,8 +1,8 @@
 # Instruction Kit — MCP z instrukcjami projektów
 
-Centralne repo MD + serwer MCP. Projekty wybierają moduły przez `.ai/project.profile.yaml`.
+Centralne repo MD + serwer MCP. Projekty wybierają stack przez **preset** (w kicie) albo lokalny profil.
 
-## Uruchomienie (uvx — bez lokalnego klona)
+## Uruchomienie (zalecane — bez `.ai/project.profile.yaml`)
 
 ```json
 {
@@ -12,19 +12,52 @@ Centralne repo MD + serwer MCP. Projekty wybierają moduły przez `.ai/project.p
       "args": [
         "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
         "guides-mcp",
-        "--profile", "${workspaceFolder}/.ai/project.profile.yaml"
+        "--preset", "_base",
+        "--workspace", "${workspaceFolder}"
       ]
     }
   }
 }
 ```
 
-**Wybór modułów** = `.ai/project.profile.yaml` w projekcie (extends `profiles/<nazwa-projektu>.yaml`).
+| Flaga | Rola |
+|-------|------|
+| `--preset NAME` | Preset z kita (`profiles/NAME.yaml`) — **nie wymaga** lokalnego profilu. Szablon = `_base`; produkt e-commerce = `olivin-app` |
+| `--workspace PATH` | Root repo aplikacji (tu szukane jest `.ai/project.md`) |
+| `--overlay PATH` | Dodatkowy overlay (wielokrotnie) |
+| `--profile PATH` | Lokalny `.ai/project.profile.yaml` — **tylko** gdy naprawdę nadpisujesz capabilities/decisions |
+
+Opcjonalnie w projekcie: samo `.ai/project.md` (Taskfile, porty, ścieżki) — ładowane automatycznie z `--workspace`.
+
+Lokalny profil twórz **tylko** gdy projekt różni się od presetu:
+
+```yaml
+# .ai/project.profile.yaml (opcjonalne — fork)
+name: moj-fork
+extends: profiles/_base.yaml   # lub profiles/olivin-app.yaml
+decisions:
+  queue: rabbitmq
+```
 
 Dev lokalny (przed pushem na GitHub):
 
 ```json
 "--from", "/absolutna/sciezka/do/ai-instruction-kit-mcp"
+```
+
+Bootstrap:
+
+```bash
+# Nowy / generyczny projekt
+./scripts/bootstrap-project.sh /sciezka/do/projektu \
+  --preset _base \
+  --from /absolutna/sciezka/do/ai-instruction-kit-mcp \
+  --with-overlay
+
+# Produkt e-commerce (preset w kicie)
+./scripts/bootstrap-project.sh /sciezka/do/olivin-app \
+  --preset olivin-app \
+  --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
 ## MCP w innych klientach (Claude Code, Codex CLI, GitHub Copilot)
@@ -38,15 +71,13 @@ Każdy klient ma **własny plik i własny format** rejestracji MCP — nie da si
 | Codex CLI | `.codex/config.toml` | `[mcp_servers.x]` (TOML) | `templates/codex/config.toml` |
 | GitHub Copilot (VS Code) | `.vscode/mcp.json` | `servers` (**nie** `mcpServers`) | `templates/vscode/mcp.json` |
 
-Zmienna dla ścieżki `--profile` różni się per klient:
+Zmienna dla `--workspace`:
 
 | Klient | Zmienna |
 |--------|---------|
 | Cursor, VS Code | `${workspaceFolder}` |
 | Claude Code | `${CLAUDE_PROJECT_DIR:-.}` |
-| Codex CLI | brak stałej zmiennej — użyj ścieżki absolutnej lub `cwd` w `config.toml` (zmienne w `args` bywają niestabilne, zwłaszcza w Codex App) |
-
-Skopiuj odpowiedni szablon do repo aplikacji, podstaw `--from` (git+https jak wyżej, albo lokalna ścieżka na czas developmentu) i właściwą zmienną profilu.
+| Codex CLI | ścieżka absolutna (brak stabilnej zmiennej) |
 
 ## Katalog modułów
 
@@ -63,7 +94,7 @@ modules/
   infra/             database, cache, queue, storage, tasks
 profiles/
   _base.yaml         wspólny preset (extends w profilach projektów)
-  *.yaml             presety projektów (np. e-commerce)
+  *.yaml             presety projektów (np. olivin-app)
 ```
 
 ## Sloty infrastruktury (`decisions`)
@@ -94,23 +125,63 @@ Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
 
 ## Bootstrap w projekcie docelowym
 
-W **repo aplikacji** (nie w instruction-kit) skopiuj z `templates/`:
+W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `templates/`:
 
-| Plik | Rola |
-|------|------|
-| `.ai/project.profile.yaml` | `extends: profiles/<preset>.yaml` z tego kita |
-| `.ai/project.md` | Overlay — Taskfile, Docker, porty |
-| `.cursor/mcp.json` | uvx → instruction-kit |
-| `.cursor/rules/use-guides.mdc` | Bootstrap MCP |
-| `.cursor/rules/code-review.mdc` | Przypomnienie o review przed pushem |
-| `.cursor/BUGBOT.md` | Reguły Bugbota (z `templates/cursor/BUGBOT.md`, dostosuj) |
-| `.cursor/hooks.json` + `.cursor/hooks/gate-push.sh` | Przypomnienie przy `git push` |
-| `AGENTS.md` | Cienki — odsyła do MCP i overlay |
-| `.cursor/agents/*.md` (+ opcjonalnie `.claude/agents/*.md`) | Opcjonalnie — subagenty review, patrz sekcja niżej |
+| Plik | Rola | Wymagany? |
+|------|------|-----------|
+| `.cursor/mcp.json` | uvx → `--preset` + `--workspace` | tak |
+| `.ai/project.md` | Overlay — Taskfile, Docker, porty | zalecany |
+| `.ai/project.profile.yaml` | Lokalne nadpisania presetu | **nie** (tylko fork) |
+| `.cursor/rules/use-guides.mdc` | Bootstrap MCP | tak |
+| `.cursor/rules/code-review.mdc` | Review przed pushem | tak |
+| `.cursor/BUGBOT.md` | Reguły Bugbota | tak |
+| `.cursor/hooks.json` + `hooks/*.sh` | Review + blokady destrukcyjne | tak |
+| `AGENTS.md` | Cienki — odsyła do MCP | tak |
+| `.cursor/agents/*.md` | Subagenty `/review-*`, `/subagent-*` | zalecany |
 
-Opcjonalnie: `.git/hooks/pre-push` z `templates/git-hooks/pre-push`.
+W projekcie docelowym **nie** duplikuj `modules/` — wystarczy preset + opcjonalny overlay.
 
-W projekcie docelowym **nie** duplikuj modułów z `modules/` — wystarczy profil + overlay + `.cursor/`.
+## Slash commands — konwencja nazw
+
+| Prefiks | Rola | Przykłady |
+|---------|------|-----------|
+| `/review-*` | Review tylko do odczytu, raport | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
+| `/subagent-*` | Praca w dwóch oknach (wymiana raportów) | `/subagent-backend`, `/subagent-frontend` |
+
+| Slash | Plik szablonu |
+|-------|----------------|
+| `/review-architecture` | `templates/claude/agents/review-architecture.md` |
+| `/review-backend` | `templates/claude/agents/review-backend.md` |
+| `/review-frontend` | `templates/claude/agents/review-frontend.md` |
+| `/review-ui` | `templates/claude/agents/review-ui.md` |
+| `/review-edge` | `templates/claude/agents/review-edge.md` |
+| `/review-tests` | `templates/claude/agents/review-tests.md` |
+| `/subagent-backend` | `templates/claude/agents/subagent-backend.md` |
+| `/subagent-frontend` | `templates/claude/agents/subagent-frontend.md` |
+| `/review-bugbot`, `/review-security` | skille Cursor (user/global), nie ten kit |
+
+Szablony skopiuj do `<projekt>/.cursor/agents/` (Cursor) i opcjonalnie `.claude/agents/`. Codex: `templates/codex/agents/*.toml` → `.codex/agents/`.
+
+Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
+
+### Wywołanie
+
+```text
+/review-backend przejrzyj zmiany w backend/apps/products/
+```
+
+```text
+/subagent-backend przejrzyj zmiany…   # potem wklej raport do /subagent-frontend w drugim oknie
+```
+
+## Cursor Hooks — bezpieczeństwo
+
+| Hook | Zachowanie |
+|------|------------|
+| `gate-destructive.sh` | **deny** `git push --force` na main/master, `git reset --hard`, agresywny `git clean -f`; **ask** force na feature, push na main, `commit --no-verify`, `rm -rf` | 
+| `gate-push.sh` | **ask** przed zwykłym `git push` (przypomnienie `/review-bugbot`); bypass `SKIP_PUSH_REVIEW=1` |
+
+`gate-destructive` ma `failClosed: true` — padnięty skrypt blokuje akcję.
 
 ## Code review (Bugbot + GitHub)
 
@@ -118,90 +189,38 @@ Moduł MCP: `core:code-review` (bundle `devops` lub `architecture`).
 
 | Warstwa | Plik / akcja |
 |---------|----------------|
-| Lokalnie | `/review-bugbot`, `/review-security` w Cursor |
-| Przed push | `.cursor/hooks/gate-push.sh` |
+| Lokalnie | `/review-bugbot`, `/review-security`, `/review-backend`… |
+| Przed push | `.cursor/hooks/gate-push.sh` + `gate-destructive.sh` |
 | Na PR | Bugbot (GitHub integration) |
 | Reguły | `.cursor/BUGBOT.md` |
-| CI | `arch:ci-cd` — testy + typy + opcjonalnie check Bugbota |
+| CI (ten kit) | `.github/workflows/ci.yml` — unittest + smoke FastMCP |
 
-Szablony: `templates/cursor/`, `templates/git-hooks/`.
+## Zależności Python (pin majora)
 
-## Subagenty review (Cursor / Claude Code / Codex)
-
-### Co to jest
-
-Subagent to wyspecjalizowana „rola" AI z własnym, izolowanym kontekstem — wywołujesz ją na żądanie (`/nazwa`), ona robi swoje zadanie (np. review diffu), i zwraca **jeden** raport do Twojej głównej rozmowy. Nie zaśmieca Twojego kontekstu swoim procesem myślenia — widzisz tylko wynik.
-
-To nie jest kolejny system promptów wklejanych ręcznie do czatu — to pliki `.md` (Cursor/Claude Code) lub `.toml` (Codex), które narzędzie **automatycznie wykrywa** po umieszczeniu w odpowiednim katalogu projektu.
-
-### Do czego to służy
-
-Każdy plik = jedna wyspecjalizowana rola reviewera, dopasowana do warstwy stacku (Django/DRF, Expo/React), zamiast jednego ogólnego review wszystkiego naraz:
-
-| Rola | Plik | Kiedy używać |
-|------|------|--------------|
-| Architektura, kontrakt API | `architecture-reviewer.md` | zmiana dotyka monorepo, API, capability-provider |
-| Backend Django/DRF | `backend-reviewer.md` | zmiany w `backend/`, serializery, ACL, Celery |
-| Frontend Expo/React | `frontend-reviewer.md` | zmiany w `frontend/`, klient Orval, TypeScript |
-| UI/UX | `ui-ux-reviewer.md` | zmiany ekranów, formularzy, flow użytkownika |
-| Weryfikacja „zrobione" | `test-verifier.md` | po oznaczeniu zadania jako ukończone — sceptycznie sprawdza dowody |
-| Edge case'y, regresje | `edge-case-reviewer.md` | większe zmiany — szuka przypadków brzegowych |
-| Backend, praca w 2 okienkach | `backend-sub.md` | jak `backend-reviewer`, ale wymienia raporty z `frontend-sub` w drugim oknie (patrz niżej) |
-| Frontend, praca w 2 okienkach | `frontend-sub.md` | jak `frontend-reviewer`, ale wymienia raporty z `backend-sub` w drugim oknie (patrz niżej) |
-
-Każdy plik jest **cienkim wrapperem**: nie zawiera na sztywno reguł Django/Expo, tylko przy starcie sam woła `get_bundle` / `get_overlay` z MCP `project-guides` (ten sam serwer, który już skonfigurowałeś w sekcji „Uruchomienie" wyżej) i lokalne pliki repo (`.cursor/BUGBOT.md`, `.ai/project.md`). Dzięki temu jeden plik działa identycznie w każdym projekcie korzystającym z tego kita — wiedza merytoryczna żyje w `modules/`, nie w pliku subagenta.
-
-### Jak skopiować do swojego projektu
-
-To są **szablony** — nie działają, dopóki nie znajdą się w repo aplikacji (nie w instruction-kit).
-
-1. Skopiuj cały katalog `templates/claude/agents/` do `<twój-projekt>/.cursor/agents/` (Cursor czyta tę lokalizację jako główną; obsługuje też `.claude/agents/`, jeśli używasz też Claude Code — możesz skopiować do obu, treść jest identyczna).
-2. Upewnij się, że w `<twój-projekt>/.cursor/mcp.json` masz zarejestrowany serwer `project-guides` (patrz „Uruchomienie" i „MCP w innych klientach" wyżej) — subagenty wywołują go wewnętrznie, więc musi tam być.
-3. **Zrestartuj okno/workspace** narzędzia (Cursor/Claude Code) w tamtym projekcie — subagenty są wykrywane przy starcie, nie w locie.
-4. Dla Codex CLI: skopiuj `templates/codex/agents/*.toml` do `<twój-projekt>/.codex/agents/` (na razie przykład dla `backend-reviewer` i `frontend-reviewer` — reszta ról wg tego samego wzorca, patrz plik TOML).
-
-### Jak wywołać
-
-W czacie wpisz `/` + nazwę subagenta, opcjonalnie z opisem zadania:
-
-```text
-/backend-reviewer przejrzyj zmiany w backend/apps/products/
+```toml
+mcp>=1.0.0,<2      # FastMCP (1.x); mcp 2.0 usuwa mcp.server.fastmcp
+pyyaml>=6.0,<7
 ```
 
-```text
-/frontend-reviewer sprawdź czy klient Orval jest aktualny po zmianie API
-```
+`uvx` resolvuje zależności od zera (nie bierze lokalnego `uv.lock`) — upper bound chroni konsumentów przed breaking major.
 
-Po samym `/` Cursor podpowiada listę zamontowanych subagentów. Jeśli lista jest pusta lub brakuje na niej pliku, który właśnie skopiowałeś — zrestartuj okno (subagenty wczytują się przy starcie, nie w locie).
+## Skills / pluginy zewnętrzne (poza tym kitem)
 
-### Łączenie kilku subagentów w jednej rozmowie
+Trzy warstwy — nie bundluj Matt/Superpowers w `guides-mcp`:
 
-Do jednego głównego czatu (jedno okno) możesz wywołać kilku reviewerów po sobie — główny agent w tym oknie widzi raporty obu i sam je łączy:
+| Warstwa | Przykłady | Gdzie | Rola |
+|---------|-----------|--------|------|
+| Fundament | Context7, `project-guides`, `/review-*` | MCP projektu + agents z bootstrap | stack i review |
+| Proces | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` | `/grill-me`, `/tdd` |
+| Meta | superpowers, caveman | user / plugin Cursor | brainstorm, debug, finishing |
 
-```text
-1. Uruchom /backend-reviewer na diffie.
-2. Na podstawie jego raportu uruchom /frontend-reviewer,
-   przekazując mu istotne znaleziska backend-reviewera jako kontekst.
-3. Zsyntetyzuj oba raporty w jedną tabelę.
-```
+Priorytet w `AGENTS.md`: użytkownik → overlay+MCP → review kita → Matt → Superpowers.  
+TDD: jeden path na feature (preferuj Matt). Setup Matt: po instalacji uruchom `/setup-matt-pocock-skills`.
 
-Wpisujesz to jako jedną wiadomość do głównego agenta — on decyduje, co i kiedy przekazać dalej między subagentami.
+Context7 (docs Django/Expo): globalnie `npx ctx7 setup --cursor`.
 
-### Subagenty do pracy w dwóch okienkach (`backend-sub` / `frontend-sub`)
+## Subagenty — szczegóły
 
-To wariant dla innego stylu pracy: dwa **osobne** okna Cursor (np. jedno z kontekstem backendu, drugie frontendu), między którymi sam ręcznie przenosisz raport (kopiuj-wklej). Pliki: `backend-sub.md` i `frontend-sub.md` w `templates/claude/agents/` — montujesz je tak samo jak resztę (krok „Jak skopiować" wyżej, ten sam katalog `.cursor/agents/`).
+Każdy plik agentów jest **cienkim wrapperem**: przy starcie woła `get_bundle` / `get_overlay` z MCP `project-guides`. Wiedza merytoryczna żyje w `modules/`.
 
-Różnica względem `-reviewer`: `-sub` rozpoznaje wklejony raport z drugiego okienka i sprawdza względem niego kod w swojej warstwie, a swoją odpowiedź zawsze kończy sekcją „Raport do przekazania" gotową do skopiowania.
-
-Użycie:
-
-1. **Okno 1 (backend):** `/backend-sub przejrzyj zmiany w backend/apps/products/` → na końcu odpowiedzi dostajesz sekcję „Raport do przekazania dla frontend-sub".
-2. Kopiujesz tę sekcję.
-3. **Okno 2 (frontend):** `/frontend-sub` + wklejasz skopiowaną sekcję → frontend-sub sprawdza, czy frontend faktycznie konsumuje to, co zmienił backend, i na końcu zwraca własną sekcję „Raport do przekazania dla backend-sub".
-4. W razie potrzeby wracasz do okna 1, wklejasz tę sekcję i backend-sub weryfikuje odpowiedź frontendu.
-
-Na razie dostępne tylko dla Cursor/Claude Code (`.md`). Dla Codex CLI można dodać analogiczne pliki w `templates/codex/agents/*.toml` wg tego samego wzorca, jeśli będzie taka potrzeba.
-
-## Context7
-
-Docs Django/Expo/Stripe — globalnie `npx ctx7 setup --cursor`, osobno od instruction-kit.
+Praca w dwóch oknach: `/subagent-backend` ↔ `/subagent-frontend` — sekcja „Raport do przekazania” na końcu odpowiedzi.

@@ -1,4 +1,7 @@
-# Profil projektu
+# Profil projektu (opcjonalny — tylko fork presetu)
+# Zalecane: mcp.json z --preset _base|olivin-app|… --workspace ${workspaceFolder}
+# i ewentualnie samo .ai/project.md jako overlay.
+# Ten plik twórz wyłącznie gdy nadpisujesz capabilities/domains/decisions.
 name: my-project
 language: pl
 

@@ -12,8 +12,8 @@ project-root/
 ├── taskfiles/        # Taskfile modules
 ├── Taskfile.yml      # jeden punkt wejścia komend
 ├── .ai/
-│   ├── project.profile.yaml   # wybór modułów instruction-kit
-│   └── project.md             # overlay: porty, nazwy, taski
+│   ├── project.md             # overlay (Taskfile, porty) — zalecane
+│   └── project.profile.yaml   # opcjonalny — tylko gdy forujesz preset z kita
 └── .github/workflows/         # CI/CD
 ```
 

@@ -8,9 +8,13 @@ alwaysApply: true
 Przed `git push` na branch z featurem:
 
 1. Uruchom `/review-bugbot` (domyślnie) lub `/review-security` (auth, ACL, płatności).
-2. Napraw uzasadnione findings high/medium.
-3. Po pushu — Bugbot na GitHub (automatycznie lub komentarz `cursor review` na PR).
+2. Opcjonalnie warstwa stacku: `/review-backend` / `/review-frontend`.
+3. Napraw uzasadnione findings high/medium.
+4. Po pushu — Bugbot na GitHub (automatycznie lub komentarz `cursor review` na PR).
 
-Hook `.cursor/hooks/gate-push.sh` pyta o potwierdzenie przed `git push`. Bypass: `SKIP_PUSH_REVIEW=1`.
+Hooki:
+
+- `gate-push.sh` — ask przed push (bypass: `SKIP_PUSH_REVIEW=1`).
+- `gate-destructive.sh` — deny force na main/master, `reset --hard`.
 
 Reguły Bugbota: `.cursor/BUGBOT.md`. Pełny workflow: MCP `get_bundle` → `devops` (moduł `core:code-review`).

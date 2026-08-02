@@ -1,6 +1,6 @@
 ---
-name: ui-ux-reviewer
-description: Reviewer UI/UX. Use when zmiana dotyka ekranów, formularzy, flow użytkownika lub komponentów wspólnych.
+name: review-ui
+description: Reviewer UI/UX. Use when zmiana dotyka ekranów, formularzy, flow użytkownika lub komponentów wspólnych. Wywołuj jako /review-ui.
 readonly: true
 ---
 

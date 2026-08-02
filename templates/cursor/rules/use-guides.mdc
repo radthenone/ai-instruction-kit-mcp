@@ -1,24 +1,32 @@
 ---
-description: Bootstrap — pobieraj instrukcje z MCP project-guides przed pracą
+description: Bootstrap — warstwy AI + MCP project-guides przed pracą
 alwaysApply: true
 ---
 
-# Instruction-kit bootstrap
+# Warstwy AI + instruction-kit
 
-| Zadanie | MCP `get_bundle` |
-|---------|-------------------|
-| Backend Django/DRF | `backend` |
-| Frontend Expo (web + **mobile**) | `frontend` |
-| Platformy BE / web / mobile | `architecture` |
-| Sklep (products, orders) | `shop` |
-| Płatności + Stripe mobile | `payments` |
-| Infra (DB, cache, queue, storage) | `infra` |
-| CI/CD + EAS | `devops` |
-| Pełny kontekst | `full` |
-| Porty, taski projektu | `get_overlay` |
+## Fundament (ten projekt)
 
-Stripe mobile: [`@stripe/stripe-react-native`](https://docs.expo.dev/versions/latest/sdk/stripe/) — bundle `payments`.
+| Zadanie | Źródło |
+|---------|--------|
+| Backend / frontend / arch / infra | MCP `project-guides` → `get_bundle` |
+| Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
+| Docs bibliotek | Context7 (user MCP) |
+| Review stacku | `/review-backend`, `/review-frontend`, … |
+| Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` |
+| Przed pushem | `/review-bugbot` + hooki `gate-*` |
 
-Docs bibliotek — **Context7**.
+Moduły: `--preset` w `.cursor/mcp.json` + opcjonalnie `.ai/project.md`.  
+Lokalny `.ai/project.profile.yaml` tylko przy forku presetu.
 
-Profil: `.ai/project.profile.yaml`
+## Proces i meta (poza kitem — nie zastępują MCP)
+
+| Warstwa | Przykład | Kiedy |
+|---------|----------|--------|
+| Proces | mattpocock `/grill-me`, `/tdd` | scope feature, red-green |
+| Meta | superpowers | brainstorm, systematic-debug, finishing |
+
+Priorytet: użytkownik → overlay + MCP → review kita → Matt → Superpowers.  
+TDD: jeden path na feature (preferuj Matt `/tdd` na nowe rzeczy).
+
+Szczegóły: `AGENTS.md`.
