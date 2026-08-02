@@ -2,11 +2,11 @@
 # Bootstrap instruction-kit w repo aplikacji.
 #
 # Użycie:
-#   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--preset _base] [--from PATH|URL]
+#   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--from PATH|URL] [--preset shop]
 #
-# Minimalny wariant (zalecany): --preset + opcjonalnie .ai/project.md
-# Produkt e-commerce: --preset olivin-app
-# Lokalny fork presetu: --with-profile
+# Domyślny preset: _base (nie trzeba podawać).
+# Kategoria e-commerce: --preset shop
+# Lokalny fork kategorii: --with-profile
 
 set -euo pipefail
 
@@ -15,22 +15,21 @@ usage() {
 Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 
 Opcje:
-  --preset NAME       Preset z kita (domyślnie: _base). Przykład produktu: olivin-app
+  --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
   --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
   --skip-agents       Nie kopiuj .cursor/agents
   -h, --help          Ta pomoc
 
-Przykład (nowy projekt na bazie):
+Przykład (generyczny — default _base):
   ./scripts/bootstrap-project.sh ../moj-projekt \
-    --preset _base \
     --from /m/projects/ai-instruction-kit-mcp \
     --with-overlay
 
-Przykład (olivin-app):
+Przykład (kategoria shop / e-commerce):
   ./scripts/bootstrap-project.sh ../olivin-app \
-    --preset olivin-app \
+    --preset shop \
     --from /m/projects/ai-instruction-kit-mcp
 EOF
 }

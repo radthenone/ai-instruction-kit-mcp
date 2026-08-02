@@ -151,10 +151,10 @@ def get_module(module_id: str) -> str:
 @mcp.tool()
 def list_presets() -> str:
     """
-    Lista dostępnych presetów w instruction-kit (``profiles/*.yaml`` bez ``_base``).
+    Lista dostępnych presetów w instruction-kit (``profiles/*.yaml``).
 
     Returns:
-        str: Markdown z nazwami presetów do użycia z ``--preset``.
+        str: Markdown z kategoriami (``shop``, ``_base``) i aliasami deprecated.
     """
     root = _kit_root or find_kit_root()
     profiles_dir = root / "profiles"
@@ -162,7 +162,15 @@ def list_presets() -> str:
     if not profiles_dir.is_dir():
         return "\n".join([*lines, "_Brak katalogu profiles._"])
     for path in sorted(profiles_dir.glob("*.yaml")):
-        note = " _(wspólny bazowy)_" if path.stem == "_base" else ""
+        head = path.read_text(encoding="utf-8")[:240]
+        if path.stem == "_base":
+            note = " — fundament stacku (default)"
+        elif "DEPRECATED" in head:
+            note = " — alias (deprecated)"
+        elif path.stem == "shop":
+            note = " — kategoria e-commerce"
+        else:
+            note = " — kategoria"
         lines.append(f"- `{path.stem}` — `{path.name}`{note}")
     return "\n".join(lines)
 
@@ -208,7 +216,7 @@ def main() -> None:
     parser.add_argument(
         "--preset",
         required=False,
-        help="Nazwa presetu z kita (np. olivin-app) — bez lokalnego project.profile.yaml",
+        help="Nazwa kategorii z kita (np. shop; default bootstrapu: _base)",
     )
     parser.add_argument(
         "--workspace",

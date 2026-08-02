@@ -14,9 +14,9 @@ KIT_ROOT = Path(__file__).resolve().parents[1]
 class TestResolver(unittest.TestCase):
     """Weryfikacja składania profili i bundle'ów."""
 
-    def test_olivin_profile_no_missing_modules(self) -> None:
-        """Profil olivin-app nie powinien mieć brakujących modułów w bundle'ach."""
-        profile_path = KIT_ROOT / "profiles" / "olivin-app.yaml"
+    def test_shop_profile_no_missing_modules(self) -> None:
+        """Kategoria shop nie powinna mieć brakujących modułów w bundle'ach."""
+        profile_path = KIT_ROOT / "profiles" / "shop.yaml"
         resolved = resolve_profile(profile_path, kit_root=KIT_ROOT)
 
         for bundle_name, bundle in resolved.bundles.items():
@@ -29,7 +29,7 @@ class TestResolver(unittest.TestCase):
 
     def test_enabled_modules_include_bundle_defaults(self) -> None:
         """Indeks profilu zawiera moduły z default bundle'ów (typing, mobile-native)."""
-        profile_path = KIT_ROOT / "profiles" / "olivin-app.yaml"
+        profile_path = KIT_ROOT / "profiles" / "shop.yaml"
         resolved = resolve_profile(profile_path, kit_root=KIT_ROOT)
         enabled = set(resolved.enabled_module_ids)
 
@@ -40,7 +40,7 @@ class TestResolver(unittest.TestCase):
 
     def test_architecture_bundle_has_capability_provider(self) -> None:
         """Bundle architecture zawiera pełną spec capability-provider."""
-        profile_path = KIT_ROOT / "profiles" / "olivin-app.yaml"
+        profile_path = KIT_ROOT / "profiles" / "shop.yaml"
         resolved = resolve_profile(profile_path, kit_root=KIT_ROOT)
         arch = resolved.bundles["architecture"]
 
@@ -48,15 +48,23 @@ class TestResolver(unittest.TestCase):
 
     def test_base_extends_merges_patterns(self) -> None:
         """Preset _base.yaml dostarcza patterns przez extends."""
-        profile_path = KIT_ROOT / "profiles" / "olivin-app.yaml"
+        profile_path = KIT_ROOT / "profiles" / "shop.yaml"
         resolved = resolve_profile(profile_path, kit_root=KIT_ROOT)
 
         self.assertIn("pattern:providers-and-settings", resolved.enabled_module_ids)
 
-    def test_resolve_preset_path(self) -> None:
-        """resolve_preset_path znajduje profiles/<name>.yaml."""
-        path = resolve_preset_path("olivin-app", KIT_ROOT)
-        self.assertEqual(path, (KIT_ROOT / "profiles" / "olivin-app.yaml").resolve())
+    def test_resolve_preset_path_shop(self) -> None:
+        """resolve_preset_path znajduje profiles/shop.yaml."""
+        path = resolve_preset_path("shop", KIT_ROOT)
+        self.assertEqual(path, (KIT_ROOT / "profiles" / "shop.yaml").resolve())
+
+    def test_olivin_app_alias_extends_shop(self) -> None:
+        """Alias olivin-app ładuje te same capabilities co shop."""
+        shop = resolve_profile(resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT)
+        alias = resolve_profile(
+            resolve_preset_path("olivin-app", KIT_ROOT), kit_root=KIT_ROOT
+        )
+        self.assertEqual(set(shop.enabled_module_ids), set(alias.enabled_module_ids))
 
     def test_preset_with_workspace_overlay(self) -> None:
         """Preset + workspace ładuje .ai/project.md bez lokalnego project.profile.yaml."""
@@ -66,7 +74,7 @@ class TestResolver(unittest.TestCase):
             ai_dir.mkdir()
             (ai_dir / "project.md").write_text("# Overlay test\n\nport: 9999\n", encoding="utf-8")
 
-            profile_path = resolve_preset_path("olivin-app", KIT_ROOT)
+            profile_path = resolve_preset_path("shop", KIT_ROOT)
             resolved = resolve_profile(
                 profile_path,
                 kit_root=KIT_ROOT,
@@ -83,7 +91,7 @@ class TestResolver(unittest.TestCase):
             workspace = Path(tmp)
             extra = workspace / "extra.md"
             extra.write_text("# Extra overlay\n", encoding="utf-8")
-            profile_path = resolve_preset_path("olivin-app", KIT_ROOT)
+            profile_path = resolve_preset_path("shop", KIT_ROOT)
             resolved = resolve_profile(
                 profile_path,
                 kit_root=KIT_ROOT,

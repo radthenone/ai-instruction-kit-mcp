@@ -22,8 +22,8 @@ Przed pracą nad kodem:
 | Unikalne dla repo | MCP `get_overlay` lub `.ai/project.md` |
 | Docs bibliotek | Context7 (globalnie) |
 
-Wybór modułów: `--preset` w `.cursor/mcp.json` (`_base` albo preset produktu, np. `olivin-app`).  
-Lokalny `.ai/project.profile.yaml` **tylko** przy forku (nadpisania capabilities/decisions).
+Wybór modułów: `--preset` w `.cursor/mcp.json` (`_base` albo kategoria, np. `shop`).  
+Szczegóły produktu → `.ai/project.md`. Lokalny `.ai/project.profile.yaml` **tylko** przy forku kategorii.
 
 ## Priorytet źródeł
 

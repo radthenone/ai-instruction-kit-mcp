@@ -1,41 +1,71 @@
-# Profile projektów
+# Profile / presety
+
+Kanoniczna lista kategorii. **Pełna tabela flag MCP** (`--preset`, `--workspace`, `--profile`, planowane `--tag`) → [README główny](../README.md#konfiguracja-projektu--argumenty-guides-mcp).
 
 | Plik | Rola |
 |------|------|
-| `_base.yaml` | Wspólny preset — stacks Django+Expo, patterns, typing |
-| `olivin-app.yaml` | Preset produktu e-commerce (auth, shop, payments, infra) |
-| inne `*.yaml` | Kolejne produkty / stacki |
+| `_base.yaml` | Fundament stacku (Django+Expo, patterns) — **domyślny**, nie musisz podawać w CLI |
+| `shop.yaml` | **Kategoria** e-commerce (auth, shop, payments, infra) |
+| `olivin-app.yaml` | Alias → `shop` (deprecated, kompatybilność) |
+| inne `*.yaml` | Kolejne **kategorie** (np. `blog`) — nie nazwy produktów |
+
+## Warstwy — co pisać gdzie
+
+| Potrzeba | Mechanizm | Plik / flaga |
+|----------|-----------|--------------|
+| Nowy typ produktu (blog, CRM…) | Nowa kategoria w kicie | `profiles/<nazwa>.yaml` + `--preset <nazwa>` |
+| Ten sam shop, inne fakty (jubiler, porty) | Overlay | `.ai/project.md` + `--workspace` |
+| Ten sam shop, inny zestaw modułów | Fork | `.ai/project.profile.yaml` + `--profile` (bez `--preset`) |
+| Ten sam shop, powtarzalny wariant MD w wielu repo | Tagi / facety | **planowane** — zob. README; na razie overlay |
+
+Nie twórz `profiles/olivin-app.yaml` jako „produktu” — produkt = overlay w repo aplikacji.
 
 ## Nowy projekt (zalecane — zero lokalnego profilu)
 
-W `.cursor/mcp.json`:
-
-```text
---preset _base                 # albo olivin-app / inny produkt
---workspace ${workspaceFolder}
-```
-
-Opcjonalnie tylko `.ai/project.md` (overlay). Lokalny `.ai/project.profile.yaml` **nie jest wymagany**.
-
 ```bash
-./scripts/bootstrap-project.sh /sciezka/do/projektu --preset _base --from /sciezka/do/kita --with-overlay
+# Generyczny — default _base, bez --preset w CLI
+./scripts/bootstrap-project.sh /sciezka/do/projektu \
+  --from /sciezka/do/kita \
+  --with-overlay
+
+# Kategoria e-commerce
+./scripts/bootstrap-project.sh /sciezka/do/projektu \
+  --preset shop \
+  --from /sciezka/do/kita
 ```
 
-## Kiedy tworzyć lokalny profil
+Bootstrap zapisuje flagi w `.cursor/mcp.json`. Opcjonalnie `.ai/project.md`.
 
-Tylko gdy **to repo** nadpisuje capabilities / domains / decisions względem presetu z kita (nie kopiuj samego `extends` bez zmian):
+## Fork kategorii (modyfikacja vs preset)
+
+Tylko gdy **to repo** nadpisuje `capabilities` / `domains` / `decisions` względem kategorii (nie kopiuj samego `extends` bez zmian):
 
 ```yaml
 # .ai/project.profile.yaml
 name: moj-fork
-extends: profiles/_base.yaml
+extends: profiles/shop.yaml
 decisions:
   queue: rabbitmq
 overlays:
   - .ai/project.md
 ```
 
-Wtedy w mcp.json: `--profile ${workspaceFolder}/.ai/project.profile.yaml` zamiast `--preset`.
+W mcp.json: `--profile ${workspaceFolder}/.ai/project.profile.yaml` **zamiast** `--preset`.
+
+Fork kita (własne MD / nowe kategorie): edytuj `profiles/` i `modules/` w swoim klonie / forkach GitHub, potem `--from` na ten fork.
+
+## Tagi (plan — niezaimplementowane)
+
+Gdy wariant instrukcji powtarza się w wielu projektach przy tej samej kategorii, docelowo w YAML kategorii:
+
+```yaml
+# szkic — jeszcze nie czytane przez resolver
+name: shop
+facets:
+  fulfillment: [physical, digital]
+```
+
+i w mcp.json: `--tag physical` (lub `--facet fulfillment=physical`). Do czasu implementacji: overlay albo fork.
 
 ## Sloty `decisions`
 

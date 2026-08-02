@@ -1,7 +1,7 @@
 # Codex CLI nie ma stałej zmiennej odpowiadającej ${workspaceFolder}.
 # Użyj ścieżki absolutnej do workspace (katalog projektu aplikacji).
-# Wybierz preset z kita (`_base`, albo np. `olivin-app` dla e-commerce).
-# Lokalny .ai/project.profile.yaml tylko przy forku presetu → wtedy --profile zamiast --preset.
+# Wybierz kategorię z kita (`_base`, albo `shop` dla e-commerce).
+# Lokalny .ai/project.profile.yaml tylko przy forku kategorii → wtedy --profile zamiast --preset.
 
 [mcp_servers.project-guides]
 command = "uvx"

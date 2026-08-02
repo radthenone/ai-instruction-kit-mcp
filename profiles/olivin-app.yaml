@@ -1,43 +1,5 @@
-# Preset e-commerce (monorepo Django + Expo)
-#
-# Capabilities: auth, files, payments | Domain: shop
+# DEPRECATED alias → używaj --preset shop
+# Zachowane dla kompatybilności starych mcp.json
 
 name: olivin-app
-language: pl
-
-extends: profiles/_base.yaml
-
-capabilities:
-  - auth
-  - files-storage
-  - payments
-
-domains:
-  - shop
-
-decisions:
-  database: postgres
-  cache: redis
-  queue: redis
-  storage: s3
-  tasks: celery
-
-bundles:
-  backend:
-    - capability:auth
-    - capability:files-storage
-    - capability:payments
-    - domain:shop
-  frontend:
-    - capability:auth
-    - capability:payments
-    - capability:payments:expo-stripe
-    - domain:shop
-    - stack:expo-router:mobile-native
-    - arch:platforms
-  payments:
-    - capability:payments
-    - capability:payments:expo-stripe
-  architecture:
-    - arch:platforms
-    - arch:ci-cd
+extends: profiles/shop.yaml

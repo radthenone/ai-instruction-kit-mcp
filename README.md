@@ -1,8 +1,33 @@
 # Instruction Kit — MCP z instrukcjami projektów
 
-Centralne repo MD + serwer MCP. Projekty wybierają stack przez **preset** (w kicie) albo lokalny profil.
+Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) + opcjonalnie overlay / fork.
 
-## Uruchomienie (zalecane — bez `.ai/project.profile.yaml`)
+**Gdzie czytać / zmieniać konfigurację:**
+
+| Co | Gdzie pisać |
+|----|-------------|
+| Argumenty MCP (`--preset`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
+| Lista kategorii i fork | [`profiles/README.md`](profiles/README.md) |
+| Szczegóły jednego produktu | `.ai/project.md` w **repo aplikacji** |
+| Zmiana zestawu modułów vs kategoria | `.ai/project.profile.yaml` + `--profile` (fork) |
+
+## Konfiguracja projektu — argumenty `guides-mcp`
+
+Wszystkie flagi serwera MCP wpisujesz w `args` klienta (Cursor: `.cursor/mcp.json`). Kolejność: najpierw `--from` / nazwa pakietu (`guides-mcp`), potem flagi poniżej.
+
+### Warstwy (co gdzie należy)
+
+| Warstwa | Mechanizm | Przykład |
+|---------|-----------|----------|
+| Fundament stacku | `--preset _base` (default bootstrapu) | Django+Expo, typing |
+| Kategoria domeny | `--preset shop` | auth + shop + payments |
+| Powtarzalny wariant kategorii | `--tag` / facety (**planowane**, niezaimplementowane) | `physical`, `digital` |
+| Fakty jednego repo | `.ai/project.md` + `--workspace` | jubiler, porty, Taskfile |
+| Inny zestaw modułów niż kategoria | `--profile` + lokalny YAML | queue: rabbitmq |
+
+Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
+
+### Flagi (aktualne)
 
 ```json
 {
@@ -20,45 +45,74 @@ Centralne repo MD + serwer MCP. Projekty wybierają stack przez **preset** (w ki
 }
 ```
 
-| Flaga | Rola |
-|-------|------|
-| `--preset NAME` | Preset z kita (`profiles/NAME.yaml`) — **nie wymaga** lokalnego profilu. Szablon = `_base`; produkt e-commerce = `olivin-app` |
-| `--workspace PATH` | Root repo aplikacji (tu szukane jest `.ai/project.md`) |
-| `--overlay PATH` | Dodatkowy overlay (wielokrotnie) |
-| `--profile PATH` | Lokalny `.ai/project.profile.yaml` — **tylko** gdy naprawdę nadpisujesz capabilities/decisions |
+| Flaga | Wymagana? | Rola | Gdzie / jak zmieniać |
+|-------|-----------|------|----------------------|
+| `--from SOURCE` | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna | `.cursor/mcp.json` (i odpowiedniki innych klientów) |
+| `--preset NAME` | tak\* | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) | mcp.json; lista: MCP `list_presets` / `profiles/` |
+| `--workspace PATH` | zalecane | Root aplikacji — stąd auto `.ai/project.md` | mcp.json; Cursor/VS: `${workspaceFolder}` |
+| `--overlay PATH` | nie | Extra MD (można wielokrotnie) | mcp.json — rzadko; zwykle wystarczy workspace |
+| `--profile PATH` | nie | Lokalny fork YAML zamiast `--preset` | mcp.json + plik w aplikacji |
 
-Opcjonalnie w projekcie: samo `.ai/project.md` (Taskfile, porty, ścieżki) — ładowane automatycznie z `--workspace`.
+\*Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w CLI i tak zapisuje `_base` w mcp.json.
 
-Lokalny profil twórz **tylko** gdy projekt różni się od presetu:
+**Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
+
+**Fork kategorii** (inny zestaw capabilities / `decisions`):
 
 ```yaml
-# .ai/project.profile.yaml (opcjonalne — fork)
+# .ai/project.profile.yaml w repo aplikacji
 name: moj-fork
-extends: profiles/_base.yaml   # lub profiles/olivin-app.yaml
+extends: profiles/shop.yaml
 decisions:
   queue: rabbitmq
 ```
 
-Dev lokalny (przed pushem na GitHub):
+W mcp.json zamień `--preset` na:
 
-```json
-"--from", "/absolutna/sciezka/do/ai-instruction-kit-mcp"
+```text
+"--profile", "${workspaceFolder}/.ai/project.profile.yaml"
 ```
 
-Bootstrap:
+Szczegóły: [`profiles/README.md`](profiles/README.md).
+
+### Tagi / facety (planowane — jeszcze nie w CLI)
+
+Gdy wiele projektów dzieli **ten sam** powtarzalny wariant instrukcji (np. sklep fizyczny vs cyfrowy), zamiast mnożyć presety `shop-jewelry` / `shop-tokens`:
+
+1. W `profiles/shop.yaml` zdefiniować dozwolone facety (np. `fulfillment: [physical, digital]`).
+2. W mcp.json dodać np. `"--tag", "physical"` albo `"--facet", "fulfillment=physical"` (docelowa składnia przy implementacji).
+3. Resolver dołoży wtedy dodatkowe MD z `modules/` — bez lokalnego forka, jeśli zestawy capabilities są te same.
+
+**Teraz:** różnice jubiler vs tokeny → `.ai/project.md`. Tagi włączaj dopiero gdy wariant wraca w ≥2–3 projektach.
+
+Szkic (nie działa jeszcze):
+
+```json
+"args": [
+  "--from", "…",
+  "guides-mcp",
+  "--preset", "shop",
+  "--tag", "physical",
+  "--tag", "b2c",
+  "--workspace", "${workspaceFolder}"
+]
+```
+
+### Bootstrap
 
 ```bash
-# Nowy / generyczny projekt
+# Generyczny — default _base (nie podawaj --preset)
 ./scripts/bootstrap-project.sh /sciezka/do/projektu \
-  --preset _base \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp \
   --with-overlay
 
-# Produkt e-commerce (preset w kicie)
+# Kategoria e-commerce
 ./scripts/bootstrap-project.sh /sciezka/do/olivin-app \
-  --preset olivin-app \
+  --preset shop \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
+
+Dev lokalny: `"--from", "/absolutna/sciezka/do/ai-instruction-kit-mcp"`.
 
 ## MCP w innych klientach (Claude Code, Codex CLI, GitHub Copilot)
 
@@ -93,8 +147,9 @@ modules/
   patterns/          capability-provider, providers-and-settings, gateway…
   infra/             database, cache, queue, storage, tasks
 profiles/
-  _base.yaml         wspólny preset (extends w profilach projektów)
-  *.yaml             presety projektów (np. olivin-app)
+  _base.yaml         fundament stacku (default)
+  shop.yaml          kategoria e-commerce
+  *.yaml             kolejne kategorie (blog, …) — nie nazwy produktów
 ```
 
 ## Sloty infrastruktury (`decisions`)

@@ -30,9 +30,9 @@ class TestPresetDiscovery(unittest.TestCase):
     """Wykrywanie kit root i presetów."""
 
     def test_find_kit_root_has_profiles(self) -> None:
-        """Kit root zawiera profiles/olivin-app.yaml."""
+        """Kit root zawiera profiles/shop.yaml."""
         root = find_kit_root(Path(__file__))
-        preset = resolve_preset_path("olivin-app", root)
+        preset = resolve_preset_path("shop", root)
         self.assertTrue(preset.is_file())
 
 

@@ -352,7 +352,7 @@ def resolve_preset_path(preset: str, kit_root: Path) -> Path:
     Znajdź plik presetu w instruction-kit.
 
     Args:
-        preset: Nazwa (np. ``olivin-app``) albo względna ścieżka ``profiles/….yaml``.
+        preset: Nazwa kategorii (np. ``shop``) albo względna ścieżka ``profiles/….yaml``.
         kit_root: Root kita (repo albo ``guides/_data`` w wheel).
 
     Returns:

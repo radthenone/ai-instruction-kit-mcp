@@ -16,8 +16,8 @@ alwaysApply: true
 | Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` |
 | Przed pushem | `/review-bugbot` + hooki `gate-*` |
 
-Moduły: `--preset` w `.cursor/mcp.json` + opcjonalnie `.ai/project.md`.  
-Lokalny `.ai/project.profile.yaml` tylko przy forku presetu.
+Moduły: `--preset` (kategoria, np. `_base` / `shop`) + opcjonalnie `.ai/project.md`.  
+Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 
 ## Proces i meta (poza kitem — nie zastępują MCP)
 
