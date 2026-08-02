@@ -11,5 +11,5 @@ Przed `git push`:
 2. `PYTHONPATH=src python -m unittest discover -s tests`
 3. Bypass hook: `SKIP_PUSH_REVIEW=1 git push`
 
-Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force main / reset --hard).
+Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force main/master/dev / reset --hard).
 Reguły Bugbota: `.cursor/BUGBOT.md`.

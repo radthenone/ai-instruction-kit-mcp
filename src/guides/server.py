@@ -9,14 +9,21 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from guides.manifest import find_kit_root, load_manifest
-from guides.resolver import resolve_preset_path, resolve_profile
+from guides.resolver import (
+    language_module_id,
+    normalize_language,
+    resolve_preset_path,
+    resolve_profile,
+)
 
 mcp = FastMCP(
     "project-guides",
     instructions=(
         "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
         "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
-        "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski."
+        "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
+        "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
+        "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language."
     ),
 )
 
@@ -24,6 +31,7 @@ _profile_path: Path | None = None
 _kit_root: Path | None = None
 _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
+_language_override: str | None = None
 
 
 def _get_profile_path() -> Path:
@@ -45,6 +53,7 @@ def _get_resolved():
         kit_root=_kit_root,
         workspace_root=_workspace_root,
         extra_overlays=_extra_overlays or None,
+        language_override=_language_override,
     )
 
 
@@ -110,6 +119,50 @@ def get_overlay() -> str:
     """
     overlay = _get_resolved().overlay_content
     return overlay if overlay else "_Brak overlay projektu._"
+
+
+@mcp.tool()
+def get_language() -> str:
+    """
+    Aktualny język instrukcji i polityka tytułów vs prozy.
+
+    Returns:
+        str: Markdown z kodem języka, modułem `core:language-*` i regułami EN/PL.
+    """
+    resolved = _get_resolved()
+    lang = resolved.language
+    module_id = language_module_id(lang)
+    if lang == "en":
+        prose = (
+            "Agent replies, public docstrings, issue/PR bodies, review comments, "
+            "and commit messages — **English**."
+        )
+        chat = "Chat replies: English (unless user asks otherwise)."
+    else:
+        prose = (
+            "Odpowiedzi agenta, docstringi publiczne, body issue/PR, komentarze review "
+            "i komunikaty commitów — **po polsku**."
+        )
+        chat = "Odpowiedzi w czacie: po polsku (chyba że user prosi inaczej)."
+
+    lines = [
+        f"# Language: `{lang}`",
+        "",
+        f"- Module: `{module_id}`",
+        f"- Override CLI/env: `{_language_override or '—'}` "
+        f"(GUIDES_LANGUAGE / `--language` wins over profile YAML)",
+        "",
+        "## Policy",
+        "",
+        "- **Titles always English**: issue title, PR title, branch slug "
+        "(`feat/42-add-cart-coupon`).",
+        f"- **Prose follows `{lang}`**: {prose}",
+        "- **Code identifiers**: always English.",
+        f"- {chat}",
+        "",
+        "Source of truth for agents: this tool + the language module inside bundles.",
+    ]
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -205,7 +258,7 @@ def _register_bundle_resources() -> None:
 
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
-    global _profile_path, _kit_root, _workspace_root, _extra_overlays
+    global _profile_path, _kit_root, _workspace_root, _extra_overlays, _language_override
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -230,6 +283,12 @@ def main() -> None:
         help="Dodatkowy plik overlay (można podać wielokrotnie)",
     )
     parser.add_argument(
+        "--language",
+        required=False,
+        choices=("pl", "en", "PL", "EN"),
+        help="Język prozy instrukcji (pl|en); tytuły issue/PR zawsze EN. Domyślnie: profil lub pl",
+    )
+    parser.add_argument(
         "--kit-root",
         required=False,
         help="Root repozytorium instruction-kit (domyślnie: auto-detect)",
@@ -249,6 +308,10 @@ def main() -> None:
     _extra_overlays = [Path(p).resolve() for p in args.overlay]
     if os.environ.get("GUIDES_OVERLAY"):
         _extra_overlays.append(Path(os.environ["GUIDES_OVERLAY"]).resolve())
+
+    lang_cli = args.language or os.environ.get("GUIDES_LANGUAGE")
+    if lang_cli:
+        _language_override = normalize_language(lang_cli)
 
     preset = args.preset or os.environ.get("GUIDES_PRESET")
     profile_arg = args.profile

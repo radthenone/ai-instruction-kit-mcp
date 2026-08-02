@@ -1,13 +1,23 @@
 # Profile / presety
 
-Kanoniczna lista kategorii. **Pełna tabela flag MCP** (`--preset`, `--workspace`, `--profile`, planowane `--tag`) → [README główny](../README.md#konfiguracja-projektu--argumenty-guides-mcp).
+Kanoniczna lista kategorii. **Pełna tabela flag MCP** (`--preset`, `--workspace`, `--language`, `--profile`, planowane `--tag`) → [README główny](../README.md#konfiguracja-projektu--argumenty-guides-mcp).
 
 | Plik | Rola |
 |------|------|
-| `_base.yaml` | Fundament stacku (Django+Expo, patterns) — **domyślny**, nie musisz podawać w CLI |
+| `_base.yaml` | Fundament stacku (Django+Expo, patterns) — **domyślny**, nie musisz podawać w CLI; `language: pl` |
 | `shop.yaml` | **Kategoria** e-commerce (auth, shop, payments, infra) |
 | `olivin-app.yaml` | Alias → `shop` (deprecated, kompatybilność) |
 | inne `*.yaml` | Kolejne **kategorie** (np. `blog`) — nie nazwy produktów |
+
+## Język
+
+| Mechanizm | Priorytet |
+|-----------|-----------|
+| `--language pl\|en` / env `GUIDES_LANGUAGE` | najwyższy (CLI MCP) |
+| `language:` w YAML profilu / `extends` | średni |
+| domyślnie | `pl` |
+
+Tytuły issue/PR/branch: zawsze EN. Proza (body, docstringi, commity, czat): wybrany język. Tool: `get_language`.
 
 ## Warstwy — co pisać gdzie
 
@@ -23,14 +33,15 @@ Nie twórz `profiles/olivin-app.yaml` jako „produktu” — produkt = overlay 
 ## Nowy projekt (zalecane — zero lokalnego profilu)
 
 ```bash
-# Generyczny — default _base, bez --preset w CLI
+# Generyczny — default _base + PL, bez --preset w CLI
 ./scripts/bootstrap-project.sh /sciezka/do/projektu \
   --from /sciezka/do/kita \
   --with-overlay
 
-# Kategoria e-commerce
+# Kategoria e-commerce, proza EN
 ./scripts/bootstrap-project.sh /sciezka/do/projektu \
   --preset shop \
+  --language en \
   --from /sciezka/do/kita
 ```
 

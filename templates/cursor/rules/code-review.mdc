@@ -15,6 +15,6 @@ Przed `git push` na branch z featurem:
 Hooki:
 
 - `gate-push.sh` — ask przed push (bypass: `SKIP_PUSH_REVIEW=1`).
-- `gate-destructive.sh` — deny force na main/master, `reset --hard`.
+- `gate-destructive.sh` — deny force na main/master/dev, `reset --hard`.
 
 Reguły Bugbota: `.cursor/BUGBOT.md`. Pełny workflow: MCP `get_bundle` → `devops` (moduł `core:code-review`).

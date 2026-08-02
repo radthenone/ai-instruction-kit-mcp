@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Cursor hook: blokuj agresywne / destrukcyjne komendy gita i shella.
 # Zawsze wypisz JSON (failClosed w hooks.json).
+#
+# Windows: NIE podawaj samej ścieżki .sh w hooks.json — Cursor odpala wtedy
+# `bash --login -i` i zostawia otwarte okna konsoli. Używaj:
+#   node .cursor/hooks/invoke-hook.js gate-destructive.sh
 
 set -u
 
@@ -51,8 +55,49 @@ normalized=$(printf '%s' "$command" | tr '\n\r\t' '   ')
 normalized=$(printf '%s' "$normalized" | sed 's/  */ /g')
 
 has() {
-  printf '%s' "$normalized" | grep -Eqi "$1" && return 0
+  printf '%s' "$normalized" | grep -Eqi -- "$1" && return 0
   return 1
+}
+
+# True if push targets protected branch ref (main|master|dev), not remote named "dev".
+# Handles force refspecs with leading "+" (e.g. origin +main, +main:main, +refs/heads/main).
+targets_protected_ref() {
+  if has 'origin[ ]+\+?(main|master|dev)([ ]|$|:)' \
+    || has 'origin/\+?(main|master|dev)([ ]|$|:)' \
+    || has 'upstream[ ]+\+?(main|master|dev)([ ]|$|:)' \
+    || has '(^|[ ])\+(main|master|dev)([ ]|$|:)' \
+    || has '(^|[ ])\+refs/heads/(main|master|dev)([ ]|$|:)' \
+    || has 'HEAD:\+?(main|master|dev)([ ]|$)' \
+    || has '\+[^ ]+:(main|master|dev)([ ]|$)' \
+    || has 'refs/heads/\+?(main|master|dev)([ ]|$|:)' \
+    || has '[^/+]:(main|master|dev)([ ]|$)' ; then
+    return 0
+  fi
+  # Shorthand / URL: last refspec is main|master (never treat bare `dev` here).
+  # `git push main` — only options between push and branch.
+  # `git push <remote-or-url> main` — at least one non-option token before branch.
+  if has 'git[ ]+push([ ]+-[^ ]+)*[ ]+\+?(main|master)[ ]*$' \
+    || has 'git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[ ]+\+?(main|master)[ ]*$'; then
+    return 0
+  fi
+  # Last refspec `dev` only when previous token is origin/upstream or URL/path (has / or :).
+  # Bare `git push dev` = remote name → not protected.
+  if has 'git[ ]+push([ ]+-[^ ]+)*[ ]+(origin|upstream)[ ]+\+?dev[ ]*$' \
+    || has 'git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[/:][^ ]*[ ]+\+?dev[ ]*$'; then
+    return 0
+  fi
+  return 1
+}
+
+# Force push: --force / -f / --force-with-lease OR plus-refspec (+branch).
+# Plus must be its own token (space-bounded) — do NOT match URLs like git+https://…
+is_force_push() {
+  if ! has '(^|[ ])git[ ]+push[ ]'; then
+    return 1
+  fi
+  has '--force([ =]|$)|--force-with-lease' \
+    || has '(^|[ ])-f([ ]|$)' \
+    || has '(^|[ ])\+[A-Za-z0-9_./:@-]+'
 }
 
 decide() {
@@ -64,9 +109,9 @@ decide() {
   exit 0
 }
 
-if has '(^|[ ])git[ ]+push[ ].*(--force([ =]|-with-lease)|[[:space:]]-f([[:space:]]|$))'; then
-  if has '(^|[ ])(main|master)([ ]|$|:)' || has 'origin[ ]+(main|master)([ ]|$)'; then
-    decide deny "git force-push na main/master"
+if is_force_push; then
+  if targets_protected_ref; then
+    decide deny "git force-push na main/master/dev"
   fi
   decide ask "git force-push na feature branch"
 fi
@@ -83,8 +128,10 @@ if has '(^|[ ])git[ ]+commit[ ].*--no-verify'; then
   decide ask "git commit --no-verify"
 fi
 
-if has '(^|[ ])git[ ]+push[ ].*(main|master)([ ]|$)' && ! has '(--force|-f|--force-with-lease)'; then
-  decide ask "git push na main/master (preferuj PR)"
+if has '(^|[ ])git[ ]+push[ ]' && ! is_force_push; then
+  if targets_protected_ref; then
+    decide ask "git push na main/master/dev (preferuj PR)"
+  fi
 fi
 
 if has '(^|[ ])rm[ ]+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)'; then

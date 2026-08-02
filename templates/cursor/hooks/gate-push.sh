@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Cursor hook: przypomnienie o /review-bugbot przed git push.
 # Kopiuj do projektu: .cursor/hooks/gate-push.sh (chmod +x).
+#
+# Windows: w hooks.json używaj:
+#   bash --noprofile --norc .cursor/hooks/gate-push.sh
+# (sama ścieżka .sh → bash --login -i i wiszące okna konsoli)
 
 set -euo pipefail
 

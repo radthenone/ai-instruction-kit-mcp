@@ -4,12 +4,15 @@ Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) 
 
 **Gdzie czytać / zmieniać konfigurację:**
 
-| Co | Gdzie pisać |
-|----|-------------|
-| Argumenty MCP (`--preset`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
-| Lista kategorii i fork | [`profiles/README.md`](profiles/README.md) |
-| Szczegóły jednego produktu | `.ai/project.md` w **repo aplikacji** |
-| Zmiana zestawu modułów vs kategoria | `.ai/project.profile.yaml` + `--profile` (fork) |
+
+| Co                                           | Gdzie pisać                                             |
+| -------------------------------------------- | ------------------------------------------------------- |
+| Argumenty MCP (`--preset`, `--language`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
+| Lista kategorii i fork                       | [`profiles/README.md`](profiles/README.md)              |
+| Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji**                   |
+| Zmiana zestawu modułów vs kategoria          | `.ai/project.profile.yaml` + `--profile` (fork)         |
+| Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
+
 
 ## Konfiguracja projektu — argumenty `guides-mcp`
 
@@ -17,13 +20,15 @@ Wszystkie flagi serwera MCP wpisujesz w `args` klienta (Cursor: `.cursor/mcp.jso
 
 ### Warstwy (co gdzie należy)
 
-| Warstwa | Mechanizm | Przykład |
-|---------|-----------|----------|
-| Fundament stacku | `--preset _base` (default bootstrapu) | Django+Expo, typing |
-| Kategoria domeny | `--preset shop` | auth + shop + payments |
-| Powtarzalny wariant kategorii | `--tag` / facety (**planowane**, niezaimplementowane) | `physical`, `digital` |
-| Fakty jednego repo | `.ai/project.md` + `--workspace` | jubiler, porty, Taskfile |
-| Inny zestaw modułów niż kategoria | `--profile` + lokalny YAML | queue: rabbitmq |
+
+| Warstwa                           | Mechanizm                                             | Przykład                 |
+| --------------------------------- | ----------------------------------------------------- | ------------------------ |
+| Fundament stacku                  | `--preset _base` (default bootstrapu)                 | Django+Expo, typing      |
+| Kategoria domeny                  | `--preset shop`                                       | auth + shop + payments   |
+| Powtarzalny wariant kategorii     | `--tag` / facety (**planowane**, niezaimplementowane) | `physical`, `digital`    |
+| Fakty jednego repo                | `.ai/project.md` + `--workspace`                      | jubiler, porty, Taskfile |
+| Inny zestaw modułów niż kategoria | `--profile` + lokalny YAML                            | queue: rabbitmq          |
+
 
 Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 
@@ -38,6 +43,7 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
         "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
         "guides-mcp",
         "--preset", "_base",
+        "--language", "pl",
         "--workspace", "${workspaceFolder}"
       ]
     }
@@ -45,15 +51,20 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 }
 ```
 
-| Flaga | Wymagana? | Rola | Gdzie / jak zmieniać |
-|-------|-----------|------|----------------------|
-| `--from SOURCE` | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna | `.cursor/mcp.json` (i odpowiedniki innych klientów) |
-| `--preset NAME` | tak\* | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) | mcp.json; lista: MCP `list_presets` / `profiles/` |
-| `--workspace PATH` | zalecane | Root aplikacji — stąd auto `.ai/project.md` | mcp.json; Cursor/VS: `${workspaceFolder}` |
-| `--overlay PATH` | nie | Extra MD (można wielokrotnie) | mcp.json — rzadko; zwykle wystarczy workspace |
-| `--profile PATH` | nie | Lokalny fork YAML zamiast `--preset` | mcp.json + plik w aplikacji |
 
-\*Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w CLI i tak zapisuje `_base` w mcp.json.
+| Flaga              | Wymagana? | Rola                                                                                                                                               | Gdzie / jak zmieniać                                     |
+| ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
+| `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …)                                                                                              | mcp.json; lista: MCP `list_presets` / `profiles/`        |
+| `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
+| `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
+| `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
+| `--profile PATH`   | nie       | Lokalny fork YAML zamiast `--preset`                                                                                                               | mcp.json + plik w aplikacji                              |
+
+
+Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w CLI i tak zapisuje `_base` w mcp.json. Bootstrap zapisuje też `--language` (domyślnie `pl`).
+
+**Język:** MCP tool `get_language`. Priorytet: `--language` / `GUIDES_LANGUAGE` → `language:` w YAML profilu → `pl`. Moduł w bundle: `core:language-pl` albo `core:language-en`.
 
 **Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
 
@@ -73,7 +84,7 @@ W mcp.json zamień `--preset` na:
 "--profile", "${workspaceFolder}/.ai/project.profile.yaml"
 ```
 
-Szczegóły: [`profiles/README.md`](profiles/README.md).
+Szczegóły: `[profiles/README.md](profiles/README.md)`.
 
 ### Tagi / facety (planowane — jeszcze nie w CLI)
 
@@ -98,40 +109,49 @@ Szkic (nie działa jeszcze):
 ]
 ```
 
+
+
 ### Bootstrap
 
 ```bash
-# Generyczny — default _base (nie podawaj --preset)
+# Generyczny — default _base + --language pl (nie podawaj --preset)
 ./scripts/bootstrap-project.sh /sciezka/do/projektu \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp \
   --with-overlay
 
-# Kategoria e-commerce
+# Kategoria e-commerce, proza EN
 ./scripts/bootstrap-project.sh /sciezka/do/olivin-app \
   --preset shop \
+  --language en \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Dev lokalny: `"--from", "/absolutna/sciezka/do/ai-instruction-kit-mcp"`.
+Zapisuje m.in. `.cursor/mcp.json` (`--preset`, `--language`, `--workspace`), agents `/git-*`, skill Cursor `/compact`, hooki `gate-*`.
 
 ## MCP w innych klientach (Claude Code, Codex CLI, GitHub Copilot)
 
 Każdy klient ma **własny plik i własny format** rejestracji MCP — nie da się skopiować `.cursor/mcp.json` 1:1.
 
-| Klient | Plik | Klucz top-level | Szablon w tym repo |
-|--------|------|------------------|---------------------|
-| Cursor | `.cursor/mcp.json` | `mcpServers` | `templates/cursor/mcp.json` |
-| Claude Code | `.mcp.json` (root repo aplikacji) | `mcpServers` | `templates/claude/mcp.json` |
-| Codex CLI | `.codex/config.toml` | `[mcp_servers.x]` (TOML) | `templates/codex/config.toml` |
-| GitHub Copilot (VS Code) | `.vscode/mcp.json` | `servers` (**nie** `mcpServers`) | `templates/vscode/mcp.json` |
+
+| Klient                   | Plik                              | Klucz top-level                  | Szablon w tym repo            |
+| ------------------------ | --------------------------------- | -------------------------------- | ----------------------------- |
+| Cursor                   | `.cursor/mcp.json`                | `mcpServers`                     | `templates/cursor/mcp.json`   |
+| Claude Code              | `.mcp.json` (root repo aplikacji) | `mcpServers`                     | `templates/claude/mcp.json`   |
+| Codex CLI                | `.codex/config.toml`              | `[mcp_servers.x]` (TOML)         | `templates/codex/config.toml` |
+| GitHub Copilot (VS Code) | `.vscode/mcp.json`                | `servers` (**nie** `mcpServers`) | `templates/vscode/mcp.json`   |
+
 
 Zmienna dla `--workspace`:
 
-| Klient | Zmienna |
-|--------|---------|
-| Cursor, VS Code | `${workspaceFolder}` |
-| Claude Code | `${CLAUDE_PROJECT_DIR:-.}` |
-| Codex CLI | ścieżka absolutna (brak stabilnej zmiennej) |
+
+| Klient          | Zmienna                                     |
+| --------------- | ------------------------------------------- |
+| Cursor, VS Code | `${workspaceFolder}`                        |
+| Claude Code     | `${CLAUDE_PROJECT_DIR:-.}`                  |
+| Codex CLI       | ścieżka absolutna (brak stabilnej zmiennej) |
+
+
+
 
 ## Katalog modułów
 
@@ -152,6 +172,8 @@ profiles/
   *.yaml             kolejne kategorie (blog, …) — nie nazwy produktów
 ```
 
+
+
 ## Sloty infrastruktury (`decisions`)
 
 ```yaml
@@ -167,53 +189,150 @@ Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
 
 ## Bundle'e MCP
 
-| Bundle | Zastosowanie |
-|--------|--------------|
-| `backend` | Django, DRF, capabilities BE |
-| `frontend` | Expo, UI/UX |
-| `shop` | products, orders, cart |
-| `payments` | Stripe, webhooks |
+
+| Bundle         | Zastosowanie                                |
+| -------------- | ------------------------------------------- |
+| `backend`      | Django, DRF, capabilities BE                |
+| `frontend`     | Expo, UI/UX                                 |
+| `shop`         | products, orders, cart                      |
+| `payments`     | Stripe, webhooks                            |
 | `architecture` | monorepo, kontrakt API, capability-provider |
-| `infra` | postgres, redis, queue, s3, celery |
-| `devops` | CI/CD + infra |
-| `full` | wszystko + infra |
+| `infra`        | postgres, redis, queue, s3, celery          |
+| `devops`       | CI/CD + infra                               |
+| `full`         | wszystko + infra                            |
+
+
+
 
 ## Bootstrap w projekcie docelowym
 
 W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `templates/`:
 
-| Plik | Rola | Wymagany? |
-|------|------|-----------|
-| `.cursor/mcp.json` | uvx → `--preset` + `--workspace` | tak |
-| `.ai/project.md` | Overlay — Taskfile, Docker, porty | zalecany |
-| `.ai/project.profile.yaml` | Lokalne nadpisania presetu | **nie** (tylko fork) |
-| `.cursor/rules/use-guides.mdc` | Bootstrap MCP | tak |
-| `.cursor/rules/code-review.mdc` | Review przed pushem | tak |
-| `.cursor/BUGBOT.md` | Reguły Bugbota | tak |
-| `.cursor/hooks.json` + `hooks/*.sh` | Review + blokady destrukcyjne | tak |
-| `AGENTS.md` | Cienki — odsyła do MCP | tak |
-| `.cursor/agents/*.md` | Subagenty `/review-*`, `/subagent-*` | zalecany |
+
+| Plik                                | Rola                                                                    | Wymagany?            |
+| ----------------------------------- | ----------------------------------------------------------------------- | -------------------- |
+| `.cursor/mcp.json`                  | uvx → `--preset` + `--workspace`                                        | tak                  |
+| `.ai/project.md`                    | Overlay — Taskfile, Docker, porty                                       | zalecany             |
+| `.ai/project.profile.yaml`          | Lokalne nadpisania presetu                                              | **nie** (tylko fork) |
+| `.cursor/rules/use-guides.mdc`      | Bootstrap MCP                                                           | tak                  |
+| `.cursor/rules/code-review.mdc`     | Review przed pushem                                                     | tak                  |
+| `.cursor/rules/git-branch-pr.mdc`   | `/git-start`+`/git-check`+`/git-commit`+`/git-end`, issue#, chronione main/master/dev | tak                  |
+| `.cursor/BUGBOT.md`                 | Reguły Bugbota                                                          | tak                  |
+| `.cursor/hooks.json` + `hooks/invoke-hook.js` + `hooks/*.sh` | Review + blokady destrukcyjne (node → bash wg OS) | tak                  |
+| `AGENTS.md`                         | Cienki — odsyła do MCP                                                  | tak                  |
+| `.cursor/agents/*.md`               | Subagenty `/review-*`, `/subagent-*`, `/git-*`                          | zalecany             |
+| `.cursor/skills/compact/`           | **Tylko Cursor:** `/compact` = alias UI Summarize (nie Claude/Codex)    | zalecany (Cursor)    |
+
 
 W projekcie docelowym **nie** duplikuj `modules/` — wystarczy preset + opcjonalny overlay.
 
 ## Slash commands — konwencja nazw
 
-| Prefiks | Rola | Przykłady |
-|---------|------|-----------|
-| `/review-*` | Review tylko do odczytu, raport | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
-| `/subagent-*` | Praca w dwóch oknach (wymiana raportów) | `/subagent-backend`, `/subagent-frontend` |
 
-| Slash | Plik szablonu |
-|-------|----------------|
-| `/review-architecture` | `templates/claude/agents/review-architecture.md` |
-| `/review-backend` | `templates/claude/agents/review-backend.md` |
-| `/review-frontend` | `templates/claude/agents/review-frontend.md` |
-| `/review-ui` | `templates/claude/agents/review-ui.md` |
-| `/review-edge` | `templates/claude/agents/review-edge.md` |
-| `/review-tests` | `templates/claude/agents/review-tests.md` |
-| `/subagent-backend` | `templates/claude/agents/subagent-backend.md` |
-| `/subagent-frontend` | `templates/claude/agents/subagent-frontend.md` |
-| `/review-bugbot`, `/review-security` | skille Cursor (user/global), nie ten kit |
+| Prefiks       | Rola                                                 | Przykłady                                                                                                                                          |
+| ------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/compact`    | **Cursor only** — alias UI Summarize w tym projekcie | `/compact`                                                                                                                                         |
+| `/git-*`      | Start / sync issue / commit / PR                   | `/git-start`, `/git-check`, `/git-commit`, `/git-end`                                                                                               |
+| `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
+| `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
+
+
+
+
+### `/compact` (wyłącznie Cursor)
+
+Skill: `templates/cursor/skills/compact/SKILL.md` → **tylko** `.cursor/skills/compact/`.
+
+Bootstrap **nie** kopiuje tego do Claude / Codex. Nie nadpisuje ani nie „tłumaczy” ich wbudowanego `/compact`.
+
+- **Po co:** w Cursorze jedna komenda `/compact` zamiast szukania UI **Summarize**.
+- **Nie** jest wspólną konwencją kita cross-tool.
+- **Nie** mylić z `/handoff` (plik + nowy chat).
+
+```text
+/compact
+```
+
+
+
+### `/git-start`, `/git-check`, `/git-commit`, `/git-end` + Superpowers + Autopilot
+
+Wymaga `gh` + `git`. Konwencja: `feat/42-add-cart-coupon`. Pełne zasady: `.cursor/rules/git-branch-pr.mdc`.
+
+#### Podział ról (czytelnie)
+
+
+| Krok                     | Narzędzie                                                                  | Uwagi                                        |
+| ------------------------ | -------------------------------------------------------------------------- | -------------------------------------------- |
+| Scope / TDD              | Matt `/grill-me`, `/tdd`                                                   | Nie mieszać z Superpowers TDD                |
+| Issue + branch           | `/git-start` (kit)                                                         | Numeracja issue, Conventional name           |
+| Sync issue ↔ diff        | `/git-check` (kit)                                                         | Gdy tytuł/body rozjechały się z plikami      |
+| Commit(y)                | `/git-commit` (kit)                                                        | Conventional; `--one` / `--split` / `--dry-run` |
+| Izolacja (opc.)          | Superpowers `using-git-worktrees`                                          | Na branchu z `/git-start`, nie zamiast niego |
+| Review przed pushem      | `/review-bugbot`, `/review-*`                                              | Kit                                          |
+| Push + PR                | `/git-end` **lub** Superpowers `finishing-a-development-branch` → opcja PR | Jedno z dwóch. `/git-end` = push + PR (`Closes #N`); **bez** merge; brudne tree → najpierw `/git-commit` |
+| CI / komentarze aż green | **Autopilot**                                                              | Po istniejącym PR; bez auto-merge            |
+| Merge                    | Ty / `gh pr merge`                                                         | Gdy green → GitHub zamyka issue (`Closes #N`) |
+
+
+```text
+Krótko:   /git-start → kod → [/git-check] → /git-commit → /review-bugbot → /git-end → [Autopilot]
+Długo:    /git-start → worktree → kod → [/git-check] → /git-commit → finishing| /git-end → Autopilot → merge
+```
+
+
+| Komenda kit  | Co robi                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `/git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
+| `/git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
+| `/git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
+| `/git-end`   | Push + PR z `Closes #N` w body; `--help`; alias `/git-pr`. **Nie** merguje i **nie** zamyka issue od razu — issue zamyka się **po merge** PR |
+| `/compact`   | **Cursor only** — skrót czatu (alias UI Summarize); nie Claude/Codex                     |
+
+
+```text
+/git-start --help
+/git-start feat add cart coupon
+/git-start fix #108 login returns 500
+/git-start                    # auto z lokalnego diffa
+# … praca zmieniła scope …
+/git-check
+/git-commit                   # lub --one / --split / --dry-run
+# … review …
+/git-end --help
+/git-end
+```
+
+Ręczny odpowiednik:
+
+```bash
+gh issue create --title "Add cart coupon" --body "…"
+gh issue develop 42 --name feat/42-add-cart-coupon --base dev --checkout
+# … praca …
+git push -u origin HEAD
+gh pr create --base dev --title "feat: add cart coupon" --body "Closes #42"
+```
+
+UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie `typ/N-slug`).
+
+
+| Slash                                | Plik szablonu                                    |
+| ------------------------------------ | ------------------------------------------------ |
+| `/git-start`                         | `templates/claude/agents/git-start.md`           |
+| `/git-check`                         | `templates/claude/agents/git-check.md`           |
+| `/git-commit`                        | `templates/claude/agents/git-commit.md`          |
+| `/git-end`                           | `templates/claude/agents/git-end.md`             |
+| `/compact` (Cursor)                  | `templates/cursor/skills/compact/SKILL.md`       |
+| `/review-architecture`               | `templates/claude/agents/review-architecture.md` |
+| `/review-backend`                    | `templates/claude/agents/review-backend.md`      |
+| `/review-frontend`                   | `templates/claude/agents/review-frontend.md`     |
+| `/review-ui`                         | `templates/claude/agents/review-ui.md`           |
+| `/review-edge`                       | `templates/claude/agents/review-edge.md`         |
+| `/review-tests`                      | `templates/claude/agents/review-tests.md`        |
+| `/subagent-backend`                  | `templates/claude/agents/subagent-backend.md`    |
+| `/subagent-frontend`                 | `templates/claude/agents/subagent-frontend.md`   |
+| `/review-bugbot`, `/review-security` | skille Cursor (user/global), nie ten kit         |
+
 
 Szablony skopiuj do `<projekt>/.cursor/agents/` (Cursor) i opcjonalnie `.claude/agents/`. Codex: `templates/codex/agents/*.toml` → `.codex/agents/`.
 
@@ -222,33 +341,56 @@ Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
 ### Wywołanie
 
 ```text
+/git-start feat #42 cart coupon   # lub bez # — utworzy issue
+/git-check                        # gdy diff rozjechał się z opisem issue
+/git-commit                       # Conventional Commit(s)
 /review-backend przejrzyj zmiany w backend/apps/products/
+/git-end
 ```
 
 ```text
 /subagent-backend przejrzyj zmiany…   # potem wklej raport do /subagent-frontend w drugim oknie
 ```
 
+
+
 ## Cursor Hooks — bezpieczeństwo
 
 | Hook | Zachowanie |
 |------|------------|
-| `gate-destructive.sh` | **deny** `git push --force` na main/master, `git reset --hard`, agresywny `git clean -f`; **ask** force na feature, push na main, `commit --no-verify`, `rm -rf` | 
+| `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`. **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, `rm -rf` |
 | `gate-push.sh` | **ask** przed zwykłym `git push` (przypomnienie `/review-bugbot`); bypass `SKIP_PUSH_REVIEW=1` |
 
-`gate-destructive` ma `failClosed: true` — padnięty skrypt blokuje akcję.
+`gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.
+
+**Hooks — wykrywanie OS (Bash wszędzie, bez hardcodu Windows w trackowanym JSON):**
+
+| Plik | Rola |
+|------|------|
+| `templates/cursor/hooks.json` | `node .cursor/hooks/invoke-hook.js <script>` (ten sam na wszystkich OS) |
+| `invoke-hook.js` | Windows → `Git/bin/bash.exe --noprofile --norc`; Linux/macOS → `bash --noprofile --norc`; `windowsHide` |
+
+Sama ścieżka `.sh` w `hooks.json` → Cursor na Windows robi `bash --login -i` i zostawia konsolę.  
+Terminal IDE (Git Bash) bez zmian — to tylko spawn hooków.
+
+Szablon: `templates/cursor/hooks/gate-destructive.sh` (bootstrap → `.cursor/hooks/`).  
+Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh`.
 
 ## Code review (Bugbot + GitHub)
 
 Moduł MCP: `core:code-review` (bundle `devops` lub `architecture`).
 
-| Warstwa | Plik / akcja |
-|---------|----------------|
-| Lokalnie | `/review-bugbot`, `/review-security`, `/review-backend`… |
-| Przed push | `.cursor/hooks/gate-push.sh` + `gate-destructive.sh` |
-| Na PR | Bugbot (GitHub integration) |
-| Reguły | `.cursor/BUGBOT.md` |
-| CI (ten kit) | `.github/workflows/ci.yml` — unittest + smoke FastMCP |
+
+| Warstwa      | Plik / akcja                                             |
+| ------------ | -------------------------------------------------------- |
+| Lokalnie     | `/review-bugbot`, `/review-security`, `/review-backend`… |
+| Przed push   | `.cursor/hooks/gate-push.sh` + `gate-destructive.sh`     |
+| Na PR        | Bugbot (GitHub integration)                              |
+| Reguły       | `.cursor/BUGBOT.md`                                      |
+| CI (ten kit) | `.github/workflows/ci.yml` — unittest + smoke FastMCP    |
+| Hook regresja | `tests/test_gate_destructive.sh` (force / `+ref` / `-f`) |
+
+
 
 ## Zależności Python (pin majora)
 
@@ -263,11 +405,13 @@ pyyaml>=6.0,<7
 
 Trzy warstwy — nie bundluj Matt/Superpowers w `guides-mcp`:
 
-| Warstwa | Przykłady | Gdzie | Rola |
-|---------|-----------|--------|------|
-| Fundament | Context7, `project-guides`, `/review-*` | MCP projektu + agents z bootstrap | stack i review |
-| Proces | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` | `/grill-me`, `/tdd` |
-| Meta | superpowers, caveman | user / plugin Cursor | brainstorm, debug, finishing |
+
+| Warstwa   | Przykłady                                                 | Gdzie                                     | Rola                         |
+| --------- | --------------------------------------------------------- | ----------------------------------------- | ---------------------------- |
+| Fundament | Context7, `project-guides`, `/review-*`, `/git-*`, Cursor `/compact` | MCP + agents/skills z bootstrap | stack, git, skrót czatu (Cursor) |
+| Proces    | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` | `/grill-me`, `/tdd`          |
+| Meta      | superpowers, caveman, Autopilot                                      | user / plugin Cursor                      | worktree, finishing, CI loop |
+
 
 Priorytet w `AGENTS.md`: użytkownik → overlay+MCP → review kita → Matt → Superpowers.  
 TDD: jeden path na feature (preferuj Matt). Setup Matt: po instalacji uruchom `/setup-matt-pocock-skills`.

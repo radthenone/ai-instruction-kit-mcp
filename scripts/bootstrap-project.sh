@@ -16,26 +16,29 @@ Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 
 Opcje:
   --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
+  --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
   --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
   --skip-agents       Nie kopiuj .cursor/agents
   -h, --help          Ta pomoc
 
-Przykład (generyczny — default _base):
+Przykład (generyczny — default _base, język PL):
   ./scripts/bootstrap-project.sh ../moj-projekt \
     --from /m/projects/ai-instruction-kit-mcp \
     --with-overlay
 
-Przykład (kategoria shop / e-commerce):
+Przykład (kategoria shop / e-commerce, EN prose):
   ./scripts/bootstrap-project.sh ../olivin-app \
     --preset shop \
+    --language en \
     --from /m/projects/ai-instruction-kit-mcp
 EOF
 }
 
 TARGET=""
 PRESET="_base"
+LANGUAGE="pl"
 FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
 WITH_PROFILE=0
 WITH_OVERLAY=0
@@ -46,6 +49,14 @@ KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --preset) PRESET="${2:?}"; shift 2 ;;
+    --language)
+      LANGUAGE="$(echo "${2:?}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$LANGUAGE" != "pl" && "$LANGUAGE" != "en" ]]; then
+        echo "Nieprawidłowy --language: $LANGUAGE (dozwolone: pl, en)" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
     --from) FROM_SRC="${2:?}"; shift 2 ;;
     --with-profile) WITH_PROFILE=1; shift ;;
     --with-overlay) WITH_OVERLAY=1; shift ;;
@@ -83,11 +94,12 @@ fi
 
 echo "Bootstrap instruction-kit → $TARGET"
 echo "  preset=$PRESET"
+echo "  language=$LANGUAGE"
 echo "  from=$FROM_SRC"
 
 mkdir -p "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.ai"
 
-# --- MCP (Cursor): preset + workspace, bez obowiązkowego project.profile.yaml ---
+# --- MCP (Cursor): preset + workspace + language ---
 cat > "$TARGET/.cursor/mcp.json" <<EOF
 {
   "mcpServers": {
@@ -97,6 +109,7 @@ cat > "$TARGET/.cursor/mcp.json" <<EOF
         "--from", "${FROM_SRC}",
         "guides-mcp",
         "--preset", "${PRESET}",
+        "--language", "${LANGUAGE}",
         "--workspace", "\${workspaceFolder}"
       ]
     }
@@ -105,14 +118,19 @@ cat > "$TARGET/.cursor/mcp.json" <<EOF
 EOF
 
 # --- Hooks ---
+# Cross-platform: node invoke-hook.js wykrywa OS (Windows → Git Bash, inaczej bash).
+mkdir -p "$TARGET/.cursor/hooks"
 cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
 cp "$KIT_ROOT/templates/cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-push.sh"
 cp "$KIT_ROOT/templates/cursor/hooks/gate-destructive.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
+cp "$KIT_ROOT/templates/cursor/hooks/invoke-hook.js" "$TARGET/.cursor/hooks/invoke-hook.js"
 chmod +x "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
+echo "  + .cursor/hooks.json (node invoke-hook → bash)"
 
 # --- Rules / Bugbot / AGENTS ---
 cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
 cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
+cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
 if [[ ! -f "$TARGET/.cursor/BUGBOT.md" ]]; then
   cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/.cursor/BUGBOT.md"
 fi
@@ -124,6 +142,14 @@ fi
 if [[ "$SKIP_AGENTS" -eq 0 ]]; then
   mkdir -p "$TARGET/.cursor/agents"
   cp "$KIT_ROOT/templates/claude/agents/"*.md "$TARGET/.cursor/agents/"
+fi
+
+# --- Cursor-only skills (NIE kopiować do Claude/Codex) ---
+# /compact = alias UI Summarize wyłącznie w Cursorze; nie definiuje compact dla innych klientów.
+if [[ -d "$KIT_ROOT/templates/cursor/skills" ]]; then
+  mkdir -p "$TARGET/.cursor/skills"
+  cp -R "$KIT_ROOT/templates/cursor/skills/." "$TARGET/.cursor/skills/"
+  echo "  + .cursor/skills/ (Cursor-only, np. /compact → Summarize)"
 fi
 
 # --- Opcjonalny lokalny profil / overlay ---
@@ -146,5 +172,6 @@ fi
 
 echo ""
 echo "Gotowe. Zrestartuj okno Cursor w $TARGET."
-echo "Slash commands: /review-backend, /review-frontend, /subagent-backend, …"
-echo "MCP: --preset ${PRESET} --workspace \${workspaceFolder}"
+echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
+echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent-*"
+echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --workspace \${workspaceFolder}"
