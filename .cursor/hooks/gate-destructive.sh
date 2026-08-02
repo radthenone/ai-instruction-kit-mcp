@@ -81,14 +81,14 @@ targets_protected_ref() {
 }
 
 # Force push: --force / -f / --force-with-lease OR plus-refspec (+branch).
+# Plus must be its own token (space-bounded) — do NOT match URLs like git+https://…
 is_force_push() {
   if ! has '(^|[ ])git[ ]+push[ ]'; then
     return 1
   fi
-  # "-f" as its own token (not substring of a branch name)
   has '--force([ =]|$)|--force-with-lease' \
     || has '(^|[ ])-f([ ]|$)' \
-    || has '\+[A-Za-z0-9_./:@-]+'
+    || has '(^|[ ])\+[A-Za-z0-9_./:@-]+'
 }
 
 decide() {

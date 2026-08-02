@@ -17,6 +17,8 @@ CASES: list[tuple[str, dict[str, str], str]] = [
     ("gate-destructive.sh", {"command": "git push -f origin master"}, "deny"),
     ("gate-destructive.sh", {"command": "git push --force origin feat/x"}, "ask"),
     ("gate-destructive.sh", {"command": "git push origin feat/x"}, "allow"),
+    ("gate-destructive.sh", {"command": "git push git+https://example.com/repo.git main"}, "ask"),
+    ("gate-destructive.sh", {"command": "git push git+https://example.com/repo.git feat/x"}, "allow"),
     ("gate-push.sh", {"command": "git push origin feat/x"}, "ask"),
 ]
 

@@ -34,5 +34,8 @@ run_hook "git push --force origin feat/x" ask
 run_hook "git push origin main" ask
 run_hook "git push origin feat/x" allow
 run_hook "git status" allow
+# git+https must NOT be treated as force-refspec "+"
+run_hook "git push git+https://example.com/repo.git main" ask
+run_hook "git push git+https://example.com/repo.git feat/x" allow
 
 echo "All gate-destructive +ref checks passed."
