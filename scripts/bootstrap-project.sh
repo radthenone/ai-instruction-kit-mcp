@@ -118,7 +118,65 @@ cat > "$TARGET/.cursor/mcp.json" <<EOF
 EOF
 
 # --- Hooks ---
-cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
+# Windows: Git Bash z --noprofile --norc (NIE sama ścieżka .sh → Cursor robi bash --login -i).
+# Unix: bash --noprofile --norc.
+mkdir -p "$TARGET/.cursor/hooks"
+if [[ "${OS:-}" == "Windows_NT" ]] || uname -s 2>/dev/null | grep -Eqi 'mingw|msys|cygwin'; then
+  BASH_WIN=""
+  if command -v cygpath >/dev/null 2>&1 && command -v bash >/dev/null 2>&1; then
+    BASH_WIN="$(cygpath -m "$(command -v bash)" 2>/dev/null || true)"
+  fi
+  if [[ -z "$BASH_WIN" || ! -f "$BASH_WIN" ]]; then
+    for candidate in \
+      "/c/Program Files/Git/bin/bash.exe" \
+      "/c/Program Files/Git/usr/bin/bash.exe" \
+      "C:/Program Files/Git/bin/bash.exe" \
+      "C:/Program Files/Git/usr/bin/bash.exe"
+    do
+      if [[ -f "$candidate" ]]; then
+        BASH_WIN="$candidate"
+        break
+      fi
+    done
+  fi
+  # Prefer …/Git/bin/bash.exe over usr/bin when both exist
+  if [[ -f "C:/Program Files/Git/bin/bash.exe" ]]; then
+    BASH_WIN="C:/Program Files/Git/bin/bash.exe"
+  elif [[ -f "/c/Program Files/Git/bin/bash.exe" ]]; then
+    BASH_WIN="C:/Program Files/Git/bin/bash.exe"
+  fi
+  if [[ -z "$BASH_WIN" ]]; then
+    BASH_WIN="C:/Program Files/Git/bin/bash.exe"
+  fi
+  export BASH_WIN
+  export TARGET_HOOKS_JSON="$TARGET/.cursor/hooks.json"
+  BASH_WIN="$BASH_WIN" TARGET_HOOKS_JSON="$TARGET/.cursor/hooks.json" python - <<'PY'
+import json, os
+from pathlib import Path
+bash = os.environ["BASH_WIN"].replace("\\", "/")
+target = Path(os.environ["TARGET_HOOKS_JSON"])
+doc = {
+    "version": 1,
+    "hooks": {
+        "beforeShellExecution": [
+            {
+                "command": f'"{bash}" --noprofile --norc .cursor/hooks/gate-destructive.sh',
+                "matcher": r"git\s+(push|reset|clean|commit)|\brm\s+-[a-zA-Z]*r",
+                "failClosed": True,
+            },
+            {
+                "command": f'"{bash}" --noprofile --norc .cursor/hooks/gate-push.sh',
+                "matcher": r"git\s+push",
+            },
+        ]
+    },
+}
+target.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+PY
+  echo "  + .cursor/hooks.json (Windows Git Bash: ${BASH_WIN})"
+else
+  cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
+fi
 cp "$KIT_ROOT/templates/cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-push.sh"
 cp "$KIT_ROOT/templates/cursor/hooks/gate-destructive.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
 chmod +x "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
