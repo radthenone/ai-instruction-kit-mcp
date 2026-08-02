@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Cursor hook: blokuj agresywne / destrukcyjne komendy gita i shella.
 # Zawsze wypisz JSON (failClosed w hooks.json).
+#
+# Windows: NIE podawaj samej ścieżki .sh w hooks.json — Cursor odpala wtedy
+# `bash --login -i` i zostawia otwarte okna konsoli. Używaj:
+#   bash --noprofile --norc .cursor/hooks/gate-destructive.sh
 
 set -u
 

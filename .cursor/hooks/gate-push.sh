@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Cursor hook: przypomnienie o /review-bugbot przed git push.
-# Wejście: JSON na stdin (beforeShellExecution).
-# Wyjście: JSON z permission allow|ask|deny.
+# Kopiuj do projektu: .cursor/hooks/gate-push.sh (chmod +x).
+#
+# Windows: w hooks.json używaj:
+#   bash --noprofile --norc .cursor/hooks/gate-push.sh
+# (sama ścieżka .sh → bash --login -i i wiszące okna konsoli)
 
 set -euo pipefail
 
@@ -38,24 +41,19 @@ EOF
   exit 0
 }
 
-# Nie dotyczy pusha — przepuść.
 if [[ -z "$command" ]] || [[ ! "$command" =~ (^|[[:space:]])git[[:space:]]+push ]]; then
   allow
 fi
 
-# Jawny bypass (awaryjny push).
 if [[ -n "${SKIP_PUSH_REVIEW:-}" ]]; then
   allow
 fi
 
-# Brak repo git — nie blokuj.
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
   allow
 fi
 
-# Brak niepushniętych commitów — nic do review.
 if ! git rev-parse --abbrev-ref @{u} >/dev/null 2>&1; then
-  # Brak upstream — pierwszy push; warto review.
   ask_review "pierwszy push brancha (brak upstream)"
 fi
 
@@ -66,6 +64,5 @@ if [[ -n "$local_sha" && -n "$remote_sha" && "$local_sha" == "$remote_sha" ]]; t
   allow
 fi
 
-# Są commity do wypchnięcia.
 ask_review "niepushnięte commity na bieżącym branchu"
 allow
