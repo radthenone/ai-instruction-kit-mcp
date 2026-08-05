@@ -1,5 +1,15 @@
 # Overlay projektu — TYLKO unikalne informacje tego repo
 
+## Codegen
+
+```text
+codegen: orval
+```
+
+Warianty: `orval` (domyślnie przy REST+FE) \| `manual` \| `none`.  
+Przy `orval`: po zmianie API → `task ovral:generate` → commit klienta.  
+Docelowa flaga MCP: `--codegen` (design; jeszcze nie w CLI).
+
 ## Struktura
 
 - `backend/` — Django + DRF
@@ -32,4 +42,5 @@ Jeśli projekt używa lokalnych forków — wpisz ścieżki tutaj. Domyślnie: b
 
 ## Stan implementacji vs instruction-kit
 
-Opisz tu rozjazdy między **docelowymi** modułami MCP a **faktycznym** kodem (np. capability w szkielecie, blueprint w `_temp/`).
+Opisz tu **tylko** rozjazdy tego repo względem docelowych modułów MCP
+(np. brak `apps/files` jeszcze, inny auth). Nie kopiuj stanu produktu do modules/ w kicie.

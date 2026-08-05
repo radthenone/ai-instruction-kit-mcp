@@ -2,7 +2,7 @@
     "mcpServers": {
         "filesystem": {
             "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem", "M:/projects/olivin-app"]
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "M:/projects/ai-instruction-kit-mcp"]
         }
     }
 }

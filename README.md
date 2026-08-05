@@ -11,6 +11,7 @@ Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) 
 | Lista kategorii i fork                       | [`profiles/README.md`](profiles/README.md)              |
 | Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji**                   |
 | Zmiana zestawu modułów vs kategoria          | `.ai/project.profile.yaml` + `--profile` (fork)         |
+| Docelowy kontrakt `--profile` / stack / `--overlays` | [design spec](docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI jeszcze nie**) |
 | Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
 
 
@@ -119,14 +120,20 @@ Szkic (nie działa jeszcze):
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp \
   --with-overlay
 
-# Kategoria e-commerce, proza EN
-./scripts/bootstrap-project.sh /sciezka/do/olivin-app \
+# Tylko Cursor
+./scripts/bootstrap-project.sh /sciezka/do/projektu \
+  --clients cursor \
+  --from /absolutna/sciezka/do/ai-instruction-kit-mcp
+
+# Kategoria e-commerce, proza EN, wszyscy klienci AI
+./scripts/bootstrap-project.sh /sciezka/do/moj-sklep \
   --preset shop \
   --language en \
+  --clients all \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Zapisuje m.in. `.cursor/mcp.json` (`--preset`, `--language`, `--workspace`), agents `/git-*`, skill Cursor `/compact`, hooki `gate-*`.
+Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, skill Cursor `/compact`, hooki `gate-*` (Cursor).
 
 ## MCP w innych klientach (Claude Code, Codex CLI, GitHub Copilot)
 
@@ -318,23 +325,23 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 
 | Slash                                | Plik szablonu                                    |
 | ------------------------------------ | ------------------------------------------------ |
-| `/git-start`                         | `templates/claude/agents/git-start.md`           |
-| `/git-check`                         | `templates/claude/agents/git-check.md`           |
-| `/git-commit`                        | `templates/claude/agents/git-commit.md`          |
-| `/git-end`                           | `templates/claude/agents/git-end.md`             |
+| `/git-start`                         | `templates/shared/agents/git-start.md`           |
+| `/git-check`                         | `templates/shared/agents/git-check.md`           |
+| `/git-commit`                        | `templates/shared/agents/git-commit.md`          |
+| `/git-end`                           | `templates/shared/agents/git-end.md`             |
 | `/compact` (Cursor)                  | `templates/cursor/skills/compact/SKILL.md`       |
-| `/review-architecture`               | `templates/claude/agents/review-architecture.md` |
-| `/review-backend`                    | `templates/claude/agents/review-backend.md`      |
-| `/review-frontend`                   | `templates/claude/agents/review-frontend.md`     |
-| `/review-ui`                         | `templates/claude/agents/review-ui.md`           |
-| `/review-edge`                       | `templates/claude/agents/review-edge.md`         |
-| `/review-tests`                      | `templates/claude/agents/review-tests.md`        |
-| `/subagent-backend`                  | `templates/claude/agents/subagent-backend.md`    |
-| `/subagent-frontend`                 | `templates/claude/agents/subagent-frontend.md`   |
+| `/review-architecture`               | `templates/shared/agents/review-architecture.md` |
+| `/review-backend`                    | `templates/shared/agents/review-backend.md`      |
+| `/review-frontend`                   | `templates/shared/agents/review-frontend.md`     |
+| `/review-ui`                         | `templates/shared/agents/review-ui.md`           |
+| `/review-edge`                       | `templates/shared/agents/review-edge.md`         |
+| `/review-tests`                      | `templates/shared/agents/review-tests.md`        |
+| `/subagent-backend`                  | `templates/shared/agents/subagent-backend.md`    |
+| `/subagent-frontend`                 | `templates/shared/agents/subagent-frontend.md`   |
 | `/review-bugbot`, `/review-security` | skille Cursor (user/global), nie ten kit         |
 
 
-Szablony skopiuj do `<projekt>/.cursor/agents/` (Cursor) i opcjonalnie `.claude/agents/`. Codex: `templates/codex/agents/*.toml` → `.codex/agents/`.
+Bootstrap (`--clients`) kopiuje shared agents do natywnych ścieżek (`.cursor/agents/`, `.claude/agents/`, …). Codex TOML: `templates/codex/agents/*.toml` → `.codex/agents/`.
 
 Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
 

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Bootstrap instruction-kit w repo aplikacji.
+# Bootstrap instruction-kit w repo aplikacji (multi-client).
 #
 # Użycie:
 #   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--from PATH|URL] [--preset shop]
+#   ./scripts/bootstrap-project.sh ../app --clients cursor
+#   ./scripts/bootstrap-project.sh ../app --clients all
 #
-# Domyślny preset: _base (nie trzeba podawać).
+# Domyślny preset: _base. Domyślni klienci: all.
 # Kategoria e-commerce: --preset shop
-# Lokalny fork kategorii: --with-profile
+# Agenci: templates/shared/agents → natywne ścieżki klienta.
 
 set -euo pipefail
 
@@ -17,21 +19,24 @@ Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 Opcje:
   --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
   --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
+  --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity
+                      (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
   --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
-  --skip-agents       Nie kopiuj .cursor/agents
+  --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*)
   -h, --help          Ta pomoc
 
-Przykład (generyczny — default _base, język PL):
+Przykład (tylko Cursor):
   ./scripts/bootstrap-project.sh ../moj-projekt \
+    --clients cursor \
     --from /m/projects/ai-instruction-kit-mcp \
     --with-overlay
 
-Przykład (kategoria shop / e-commerce, EN prose):
-  ./scripts/bootstrap-project.sh ../olivin-app \
+Przykład (kategoria shop, wszyscy klienci):
+  ./scripts/bootstrap-project.sh ../moj-sklep \
     --preset shop \
-    --language en \
+    --clients all \
     --from /m/projects/ai-instruction-kit-mcp
 EOF
 }
@@ -39,12 +44,14 @@ EOF
 TARGET=""
 PRESET="_base"
 LANGUAGE="pl"
+CLIENTS_RAW="all"
 FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
 WITH_PROFILE=0
 WITH_OVERLAY=0
 SKIP_AGENTS=0
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +64,7 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
+    --clients) CLIENTS_RAW="${2:?}"; shift 2 ;;
     --from) FROM_SRC="${2:?}"; shift 2 ;;
     --with-profile) WITH_PROFILE=1; shift ;;
     --with-overlay) WITH_OVERLAY=1; shift ;;
@@ -87,80 +95,243 @@ fi
 mkdir -p "$TARGET"
 TARGET="$(cd "$TARGET" && pwd)"
 
-# Normalizuj --from: lokalna ścieżka → absolutna (uvx lubi absolutne).
 if [[ -d "$FROM_SRC" ]]; then
   FROM_SRC="$(cd "$FROM_SRC" && pwd)"
 fi
 
+# --- Parse --clients (Python = jedno źródło prawdy z guides.clients) ---
+CLIENTS_PARSE="$(
+  CLIENTS_RAW="$CLIENTS_RAW" PYTHONPATH="$KIT_ROOT/src" python - <<'PY'
+import os
+from guides.clients import expand_clients, format_clients_arg, parse_clients
+
+try:
+    parsed = parse_clients(os.environ.get("CLIENTS_RAW"))
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
+print(format_clients_arg(parsed))
+for cid in expand_clients(parsed):
+    print(cid)
+PY
+)" || {
+  echo "Nieprawidłowy --clients: $CLIENTS_RAW" >&2
+  echo "$CLIENTS_PARSE" >&2
+  exit 1
+}
+
+CLIENTS_ARG="$(echo "$CLIENTS_PARSE" | head -n1 | tr -d '\r')"
+CLIENTS_LIST=()
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line//$'\r'/}"
+  [[ -z "$line" ]] && continue
+  CLIENTS_LIST+=("$line")
+done < <(echo "$CLIENTS_PARSE" | tail -n +2)
+
+client_enabled() {
+  local want="$1" c
+  for c in "${CLIENTS_LIST[@]}"; do
+    [[ "$c" == "$want" ]] && return 0
+  done
+  return 1
+}
+
+# Wypełnij szablon MCP (JSON/TOML): from, preset, language, clients, opcjonalnie workspace.
+fill_mcp() {
+  local src="$1" dest="$2" workspace_repl="${3:-}"
+  mkdir -p "$(dirname "$dest")"
+  FROM_SRC="$FROM_SRC" PRESET="$PRESET" LANGUAGE="$LANGUAGE" CLIENTS_ARG="$CLIENTS_ARG" \
+  WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" python - <<'PY'
+import os
+import re
+from pathlib import Path
+
+src = Path(os.environ["SRC"])
+dest = Path(os.environ["DEST"])
+text = src.read_text(encoding="utf-8")
+text = text.replace(
+    "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+    os.environ["FROM_SRC"],
+)
+text = re.sub(
+    r'("--preset",\s*")[^"]*(")',
+    rf'\g<1>{os.environ["PRESET"]}\2',
+    text,
+)
+text = re.sub(
+    r'("--language",\s*")[^"]*(")',
+    rf'\g<1>{os.environ["LANGUAGE"]}\2',
+    text,
+)
+text = re.sub(
+    r'("--clients",\s*")[^"]*(")',
+    rf'\g<1>{os.environ["CLIENTS_ARG"]}\2',
+    text,
+)
+# TOML: "--preset", "_base" style already covered; also bare strings in toml lists
+text = re.sub(
+    r'("--workspace",\s*")[^"]*(")',
+    lambda m: m.group(0)
+    if not os.environ.get("WORKSPACE_REPL")
+    else f'{m.group(1)}{os.environ["WORKSPACE_REPL"]}{m.group(2)}',
+    text,
+)
+if os.environ.get("WORKSPACE_REPL"):
+    # Codex placeholder path
+    text = text.replace("/ABSOLUTNA/SCIEZKA/DO/PROJEKTU", os.environ["WORKSPACE_REPL"])
+dest.write_text(text, encoding="utf-8")
+PY
+}
+
+copy_shared_agents() {
+  local dest_dir="$1"
+  if [[ "$SKIP_AGENTS" -ne 0 ]]; then
+    return 0
+  fi
+  if [[ ! -d "$SHARED_AGENTS" ]]; then
+    echo "Brak $SHARED_AGENTS — nie skopiowano agentów" >&2
+    exit 1
+  fi
+  mkdir -p "$dest_dir"
+  cp "$SHARED_AGENTS/"*.md "$dest_dir/"
+  echo "  + $dest_dir (shared agents)"
+}
+
+install_agenty_md_once() {
+  if [[ ! -f "$TARGET/AGENTS.md" ]]; then
+    cp "$KIT_ROOT/templates/AGENTS.md" "$TARGET/AGENTS.md"
+    echo "  + AGENTS.md"
+  fi
+}
+
+install_cursor() {
+  mkdir -p "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.ai"
+  fill_mcp "$KIT_ROOT/templates/cursor/mcp.json" "$TARGET/.cursor/mcp.json"
+  echo "  + .cursor/mcp.json"
+
+  cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
+  cp "$KIT_ROOT/templates/cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-push.sh"
+  cp "$KIT_ROOT/templates/cursor/hooks/gate-destructive.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
+  cp "$KIT_ROOT/templates/cursor/hooks/invoke-hook.js" "$TARGET/.cursor/hooks/invoke-hook.js"
+  chmod +x "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
+  echo "  + .cursor/hooks.json (node invoke-hook → bash)"
+
+  cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
+  cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
+  cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
+  if [[ ! -f "$TARGET/.cursor/BUGBOT.md" ]]; then
+    cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/.cursor/BUGBOT.md"
+  fi
+
+  copy_shared_agents "$TARGET/.cursor/agents"
+
+  if [[ -d "$KIT_ROOT/templates/cursor/skills" ]]; then
+    mkdir -p "$TARGET/.cursor/skills"
+    cp -R "$KIT_ROOT/templates/cursor/skills/." "$TARGET/.cursor/skills/"
+    echo "  + .cursor/skills/ (Cursor-only, np. /compact)"
+  fi
+}
+
+install_claude() {
+  fill_mcp "$KIT_ROOT/templates/claude/mcp.json" "$TARGET/.mcp.json"
+  echo "  + .mcp.json (Claude Code)"
+  copy_shared_agents "$TARGET/.claude/agents"
+}
+
+install_codex() {
+  mkdir -p "$TARGET/.codex/agents"
+  fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$TARGET"
+  echo "  + .codex/config.toml"
+  if [[ "$SKIP_AGENTS" -eq 0 ]] && [[ -d "$KIT_ROOT/templates/codex/agents" ]]; then
+    cp "$KIT_ROOT/templates/codex/agents/"*.toml "$TARGET/.codex/agents/" 2>/dev/null || true
+    echo "  + .codex/agents/"
+  fi
+}
+
+install_vscode() {
+  mkdir -p "$TARGET/.vscode" "$TARGET/.github"
+  fill_mcp "$KIT_ROOT/templates/vscode/mcp.json" "$TARGET/.vscode/mcp.json"
+  echo "  + .vscode/mcp.json"
+  if [[ -f "$KIT_ROOT/templates/vscode/github/copilot-instructions.md" ]]; then
+    cp "$KIT_ROOT/templates/vscode/github/copilot-instructions.md" \
+      "$TARGET/.github/copilot-instructions.md"
+    echo "  + .github/copilot-instructions.md"
+  fi
+}
+
+install_kiro() {
+  mkdir -p "$TARGET/.kiro/settings" "$TARGET/.kiro/steering"
+  fill_mcp "$KIT_ROOT/templates/kiro/settings/mcp.json" "$TARGET/.kiro/settings/mcp.json"
+  echo "  + .kiro/settings/mcp.json"
+  if [[ -f "$KIT_ROOT/templates/kiro/steering/instruction-kit.md" ]]; then
+    cp "$KIT_ROOT/templates/kiro/steering/instruction-kit.md" \
+      "$TARGET/.kiro/steering/instruction-kit.md"
+  fi
+  copy_shared_agents "$TARGET/.kiro/agents"
+}
+
+install_kilo() {
+  mkdir -p "$TARGET/.kilocode"
+  fill_mcp "$KIT_ROOT/templates/kilo/mcp.json" "$TARGET/.kilocode/mcp.json"
+  echo "  + .kilocode/mcp.json"
+}
+
+install_antigravity() {
+  mkdir -p "$TARGET/.agents"
+  fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
+  echo "  + .agents/mcp_config.json"
+}
+
+install_git_pre_push_reminder() {
+  # Dla klientów bez Cursor hooks — szablon do ręcznej instalacji / copy do .git/hooks
+  if [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
+    mkdir -p "$TARGET/git-hooks"
+    cp "$KIT_ROOT/templates/git-hooks/pre-push" "$TARGET/git-hooks/pre-push"
+    chmod +x "$TARGET/git-hooks/pre-push"
+    echo "  + git-hooks/pre-push (zainstaluj do .git/hooks/pre-push)"
+  fi
+}
+
 echo "Bootstrap instruction-kit → $TARGET"
 echo "  preset=$PRESET"
 echo "  language=$LANGUAGE"
+echo "  clients=$CLIENTS_ARG"
 echo "  from=$FROM_SRC"
 
-mkdir -p "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.ai"
+mkdir -p "$TARGET/.ai"
+install_agenty_md_once
 
-# --- MCP (Cursor): preset + workspace + language ---
-cat > "$TARGET/.cursor/mcp.json" <<EOF
-{
-  "mcpServers": {
-    "project-guides": {
-      "command": "uvx",
-      "args": [
-        "--from", "${FROM_SRC}",
-        "guides-mcp",
-        "--preset", "${PRESET}",
-        "--language", "${LANGUAGE}",
-        "--workspace", "\${workspaceFolder}"
-      ]
-    }
-  }
-}
-EOF
+NEED_GIT_HOOK=0
+for c in "${CLIENTS_LIST[@]}"; do
+  case "$c" in
+    cursor) install_cursor ;;
+    claude) install_claude; NEED_GIT_HOOK=1 ;;
+    codex) install_codex; NEED_GIT_HOOK=1 ;;
+    vscode) install_vscode; NEED_GIT_HOOK=1 ;;
+    kiro) install_kiro; NEED_GIT_HOOK=1 ;;
+    kilo) install_kilo; NEED_GIT_HOOK=1 ;;
+    antigravity) install_antigravity; NEED_GIT_HOOK=1 ;;
+    *)
+      echo "Nieobsługiwany klient po expand: $c" >&2
+      exit 1
+      ;;
+  esac
+done
 
-# --- Hooks ---
-# Cross-platform: node invoke-hook.js wykrywa OS (Windows → Git Bash, inaczej bash).
-mkdir -p "$TARGET/.cursor/hooks"
-cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
-cp "$KIT_ROOT/templates/cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-push.sh"
-cp "$KIT_ROOT/templates/cursor/hooks/gate-destructive.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
-cp "$KIT_ROOT/templates/cursor/hooks/invoke-hook.js" "$TARGET/.cursor/hooks/invoke-hook.js"
-chmod +x "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
-echo "  + .cursor/hooks.json (node invoke-hook → bash)"
-
-# --- Rules / Bugbot / AGENTS ---
-cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
-cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
-cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
-if [[ ! -f "$TARGET/.cursor/BUGBOT.md" ]]; then
-  cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/.cursor/BUGBOT.md"
-fi
-if [[ ! -f "$TARGET/AGENTS.md" ]]; then
-  cp "$KIT_ROOT/templates/AGENTS.md" "$TARGET/AGENTS.md"
+if [[ "$NEED_GIT_HOOK" -eq 1 ]] && ! client_enabled cursor; then
+  install_git_pre_push_reminder
+elif [[ "$NEED_GIT_HOOK" -eq 1 ]] && client_enabled cursor; then
+  : # Cursor ma gate-*; opcjonalnie i tak zostaw szablon
+  if [[ ! -f "$TARGET/git-hooks/pre-push" ]] && [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
+    install_git_pre_push_reminder
+  fi
 fi
 
-# --- Agents ---
-if [[ "$SKIP_AGENTS" -eq 0 ]]; then
-  mkdir -p "$TARGET/.cursor/agents"
-  cp "$KIT_ROOT/templates/claude/agents/"*.md "$TARGET/.cursor/agents/"
-fi
-
-# --- Cursor-only skills (NIE kopiować do Claude/Codex) ---
-# /compact = alias UI Summarize wyłącznie w Cursorze; nie definiuje compact dla innych klientów.
-if [[ -d "$KIT_ROOT/templates/cursor/skills" ]]; then
-  mkdir -p "$TARGET/.cursor/skills"
-  cp -R "$KIT_ROOT/templates/cursor/skills/." "$TARGET/.cursor/skills/"
-  echo "  + .cursor/skills/ (Cursor-only, np. /compact → Summarize)"
-fi
-
-# --- Opcjonalny lokalny profil / overlay ---
 if [[ "$WITH_PROFILE" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
     sed "s/my-project/$(basename "$TARGET")/; s|profiles/_base.yaml|profiles/${PRESET}.yaml|" \
       "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
     echo "  + .ai/project.profile.yaml (extends profiles/${PRESET}.yaml)"
   fi
-  # Przy lokalnym profilu mcp może używać --profile zamiast --preset — zostawiamy preset;
-  # lokalny profil jest opcjonalnym dokumentem / przyszłym nadpisaniem.
 fi
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
@@ -171,7 +342,10 @@ if [[ "$WITH_OVERLAY" -eq 1 ]]; then
 fi
 
 echo ""
-echo "Gotowe. Zrestartuj okno Cursor w $TARGET."
-echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
+echo "Gotowe. Zrestartuj IDE w $TARGET."
+echo "Clients: ${CLIENTS_ARG}"
 echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent-*"
-echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --workspace \${workspaceFolder}"
+if client_enabled cursor; then
+  echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
+fi
+echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --clients ${CLIENTS_ARG} --workspace …"
