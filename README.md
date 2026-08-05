@@ -7,11 +7,13 @@ Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) 
 
 | Co                                           | Gdzie pisać                                             |
 | -------------------------------------------- | ------------------------------------------------------- |
-| Argumenty MCP (`--preset`, `--language`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
+| Argumenty MCP (`--preset`, `--language`, `--clients`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
 | Lista kategorii i fork                       | [`profiles/README.md`](profiles/README.md)              |
-| Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji**                   |
+| Kanon agentów / reguł (niezależny od IDE)    | [`templates/shared/`](templates/shared/README.md)       |
+| Multi-client design                          | [design](docs/superpowers/specs/2026-08-05-multi-client-templates-design.md) |
+| Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji** (`codegen:` tu)  |
 | Zmiana zestawu modułów vs kategoria          | `.ai/project.profile.yaml` + `--profile` (fork)         |
-| Docelowy kontrakt `--profile` / stack / `--overlays` | [design spec](docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI jeszcze nie**) |
+| Docelowy kontrakt `--profile` / stack / `--overlays` / `--codegen` | [design overlays](docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI stack jeszcze nie**) |
 | Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
 
 
@@ -45,6 +47,7 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
         "guides-mcp",
         "--preset", "_base",
         "--language", "pl",
+        "--clients", "all",
         "--workspace", "${workspaceFolder}"
       ]
     }
@@ -56,16 +59,21 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 | Flaga              | Wymagana? | Rola                                                                                                                                               | Gdzie / jak zmieniać                                     |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
-| `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …)                                                                                              | mcp.json; lista: MCP `list_presets` / `profiles/`        |
+| `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
+| `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
 | `--profile PATH`   | nie       | Lokalny fork YAML zamiast `--preset`                                                                                                               | mcp.json + plik w aplikacji                              |
 
 
-Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w CLI i tak zapisuje `_base` w mcp.json. Bootstrap zapisuje też `--language` (domyślnie `pl`).
+Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w CLI i tak zapisuje `_base` w mcp.json. Bootstrap zapisuje też `--language` (domyślnie `pl`) oraz `--clients` (domyślnie `all`).
 
 **Język:** MCP tool `get_language`. Priorytet: `--language` / `GUIDES_LANGUAGE` → `language:` w YAML profilu → `pl`. Moduł w bundle: `core:language-pl` albo `core:language-en`.
+
+**Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
+
+**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` \| `manual` \| `none`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API). Docelowo flaga MCP `--codegen` — zob. design overlays.
 
 **Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
 
@@ -133,19 +141,22 @@ Szkic (nie działa jeszcze):
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, skill Cursor `/compact`, hooki `gate-*` (Cursor).
+Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, skill Cursor `/compact`, hooki `gate-*` (Cursor). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
-## MCP w innych klientach (Claude Code, Codex CLI, GitHub Copilot)
+## MCP w innych klientach (multi-client)
 
-Każdy klient ma **własny plik i własny format** rejestracji MCP — nie da się skopiować `.cursor/mcp.json` 1:1.
+Kanon treści: `templates/shared/{agents,rules}`. Adaptery IDE trzymają tylko format MCP / ścieżki natywne. Bootstrap `--clients` instaluje wybrane pakiety (default `all`).
 
 
-| Klient                   | Plik                              | Klucz top-level                  | Szablon w tym repo            |
-| ------------------------ | --------------------------------- | -------------------------------- | ----------------------------- |
-| Cursor                   | `.cursor/mcp.json`                | `mcpServers`                     | `templates/cursor/mcp.json`   |
-| Claude Code              | `.mcp.json` (root repo aplikacji) | `mcpServers`                     | `templates/claude/mcp.json`   |
-| Codex CLI                | `.codex/config.toml`              | `[mcp_servers.x]` (TOML)         | `templates/codex/config.toml` |
-| GitHub Copilot (VS Code) | `.vscode/mcp.json`                | `servers` (**nie** `mcpServers`) | `templates/vscode/mcp.json`   |
+| Klient                   | Id `--clients` | Plik MCP w aplikacji              | Klucz top-level                  | Szablon                          |
+| ------------------------ | -------------- | --------------------------------- | -------------------------------- | -------------------------------- |
+| Cursor                   | `cursor`       | `.cursor/mcp.json`                | `mcpServers`                     | `templates/cursor/mcp.json`      |
+| Claude Code              | `claude`       | `.mcp.json` (root)                | `mcpServers`                     | `templates/claude/mcp.json`      |
+| Codex CLI                | `codex`        | `.codex/config.toml`              | `[mcp_servers.x]` (TOML)         | `templates/codex/config.toml`    |
+| GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | `.vscode/mcp.json`     | `servers` (**nie** `mcpServers`) | `templates/vscode/mcp.json`      |
+| Kiro                     | `kiro`         | `.kiro/settings/mcp.json`         | `mcpServers`                     | `templates/kiro/settings/mcp.json` |
+| Kilo                     | `kilo`         | `.kilocode/mcp.json`              | `mcpServers`                     | `templates/kilo/mcp.json`        |
+| Antigravity              | `antigravity`  | `.agents/mcp_config.json`         | `mcpServers`                     | `templates/antigravity/mcp_config.json` |
 
 
 Zmienna dla `--workspace`:
@@ -153,7 +164,7 @@ Zmienna dla `--workspace`:
 
 | Klient          | Zmienna                                     |
 | --------------- | ------------------------------------------- |
-| Cursor, VS Code | `${workspaceFolder}`                        |
+| Cursor, VS Code, Kiro, Kilo, Antigravity | `${workspaceFolder}`             |
 | Claude Code     | `${CLAUDE_PROJECT_DIR:-.}`                  |
 | Codex CLI       | ścieżka absolutna (brak stabilnej zmiennej) |
 
@@ -164,12 +175,13 @@ Zmienna dla `--workspace`:
 
 ```text
 modules/
-  core/              repo-first, workflow, typing (TS + Python)
-  architecture/      platforms (BE/web/mobile), CI/CD, API contract, UI/UX
+  core/              repo-first, workflow, typing, code-review, language-*
+  architecture/      platforms, CI/CD, API, security, testing, i18n, …
   stacks/
-    django-drf/
-    expo-router/     structure, mobile-native, web-target
-  capabilities/      auth, files, payments, payments-expo-stripe
+    django-drf/      (+ django/, fastapi/, flask/ layouts)
+    expo-router/
+    frontend/        warianty Expo/React (macierz web/mobile — design)
+  capabilities/      auth, files, payments, …
   domains/           shop
   patterns/          capability-provider, providers-and-settings, gateway…
   infra/             database, cache, queue, storage, tasks
@@ -177,6 +189,9 @@ profiles/
   _base.yaml         fundament stacku (default)
   shop.yaml          kategoria e-commerce
   *.yaml             kolejne kategorie (blog, …) — nie nazwy produktów
+templates/
+  shared/            kanon agents + rules (źródło prawdy)
+  cursor|claude|…    adaptery MCP / format IDE
 ```
 
 
@@ -218,8 +233,10 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 
 | Plik                                | Rola                                                                    | Wymagany?            |
 | ----------------------------------- | ----------------------------------------------------------------------- | -------------------- |
-| `.cursor/mcp.json`                  | uvx → `--preset` + `--workspace`                                        | tak                  |
-| `.ai/project.md`                    | Overlay — Taskfile, Docker, porty                                       | zalecany             |
+| `.cursor/mcp.json`                  | uvx → `--preset` + `--language` + `--clients` + `--workspace` | tak (Cursor)        |
+| `.mcp.json` / `.codex/` / `.vscode/` / … | MCP per klient z `--clients`                            | wg wybranego klienta |
+| `.ai/project.md`                    | Overlay — Taskfile, Docker, porty, **`codegen:`**           | zalecany             |
+
 | `.ai/project.profile.yaml`          | Lokalne nadpisania presetu                                              | **nie** (tylko fork) |
 | `.cursor/rules/use-guides.mdc`      | Bootstrap MCP                                                           | tak                  |
 | `.cursor/rules/code-review.mdc`     | Review przed pushem                                                     | tak                  |
@@ -271,12 +288,12 @@ Wymaga `gh` + `git`. Konwencja: `feat/42-add-cart-coupon`. Pełne zasady: `.curs
 
 | Krok                     | Narzędzie                                                                  | Uwagi                                        |
 | ------------------------ | -------------------------------------------------------------------------- | -------------------------------------------- |
-| Scope / TDD              | Matt `/grill-me`, `/tdd`                                                   | Nie mieszać z Superpowers TDD                |
+| Scope / TDD              | Matt `/grill-me`, `/tdd`                                                   | `/grill-me` tylko przy niejasnym scope; nie mieszać z Superpowers TDD |
 | Issue + branch           | `/git-start` (kit)                                                         | Numeracja issue, Conventional name           |
 | Sync issue ↔ diff        | `/git-check` (kit)                                                         | Gdy tytuł/body rozjechały się z plikami      |
 | Commit(y)                | `/git-commit` (kit)                                                        | Conventional; `--one` / `--split` / `--dry-run` |
 | Izolacja (opc.)          | Superpowers `using-git-worktrees`                                          | Na branchu z `/git-start`, nie zamiast niego |
-| Review przed pushem      | `/review-bugbot`, `/review-*`                                              | Kit                                          |
+| Review przed pushem      | `/review-bugbot` + **minimalny** stack (`/review-backend` i/lub `/review-frontend`) | Nie wszystkie `/review-*` naraz; format: Severity\|Location\|Finding\|Fix |
 | Push + PR                | `/git-end` **lub** Superpowers `finishing-a-development-branch` → opcja PR | Jedno z dwóch. `/git-end` = push + PR (`Closes #N`); **bez** merge; brudne tree → najpierw `/git-commit` |
 | CI / komentarze aż green | **Autopilot**                                                              | Po istniejącym PR; bez auto-merge            |
 | Merge                    | Ty / `gh pr merge`                                                         | Gdy green → GitHub zamyka issue (`Closes #N`) |
@@ -284,7 +301,7 @@ Wymaga `gh` + `git`. Konwencja: `feat/42-add-cart-coupon`. Pełne zasady: `.curs
 
 ```text
 Krótko:   /git-start → kod → [/git-check] → /git-commit → /review-bugbot → /git-end → [Autopilot]
-Długo:    /git-start → worktree → kod → [/git-check] → /git-commit → finishing| /git-end → Autopilot → merge
+Długo:    [/grill-me] → /git-start → worktree → kod → [/git-check] → /git-commit → finishing| /git-end → Autopilot → merge
 ```
 
 
@@ -368,7 +385,8 @@ Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
 | `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`. **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, `rm -rf` |
 | `gate-push.sh` | **ask** przed zwykłym `git push` (przypomnienie `/review-bugbot`); bypass `SKIP_PUSH_REVIEW=1` |
 
-`gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.
+`gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.  
+`invoke-hook.js` po wypisaniu JSON z `permission` **zawsze kończy exit 0** (niezerowy exit ukrywa payload przy failClosed).
 
 **Hooks — wykrywanie OS (Bash wszędzie, bez hardcodu Windows w trackowanym JSON):**
 
@@ -386,6 +404,19 @@ Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh`.
 ## Code review (Bugbot + GitHub)
 
 Moduł MCP: `core:code-review` (bundle `devops` lub `architecture`).
+
+**Minimalny zestaw przed pushem** (nie odpalaj całego wachlarza):
+
+| Zmiana | Minimum |
+|--------|---------|
+| Drobna | `/review-bugbot` |
+| Backend / Frontend | Bugbot + `/review-backend` lub `/review-frontend` |
+| API + UI | Bugbot + BE+FE **lub** para `/subagent-*` |
+| Auth / płatności | `/review-security` |
+| Dowód „działa” | `/review-tests` (komendy, nie styl) |
+
+Bugbot = blocking/security. Stack `/review-*` = konwencje z MCP (`Severity | Location | Finding | Fix`).  
+Przy `codegen: orval` w overlay — po zmianie API regeneruj klienta.
 
 
 | Warstwa      | Plik / akcja                                             |
