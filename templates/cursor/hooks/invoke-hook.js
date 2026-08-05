@@ -4,6 +4,9 @@
  * Windows: Git Bash with --noprofile --norc (no --login -i / leftover consoles).
  * Linux/macOS: system bash --noprofile --norc.
  * Usage: node .cursor/hooks/invoke-hook.js <hook-script.sh>
+ *
+ * Po wypisaniu JSON z polem permission zawsze kończymy exit 0 — przy failClosed: true
+ * niezerowy kod ukrywa payload (Cursor traktuje to jak awarię hooka).
  */
 "use strict";
 
@@ -20,7 +23,7 @@ function emitDeny(message) {
       agent_message: `invoke-hook: ${text}`,
     })
   );
-  process.exit(1);
+  process.exit(0);
 }
 
 function findBash() {
@@ -80,4 +83,4 @@ if (!out) {
 }
 
 process.stdout.write(out);
-process.exit(result.status == null ? 1 : result.status);
+process.exit(0);

@@ -143,10 +143,14 @@ def main() -> int:
             if perm != "allow":
                 print(f"FAIL invoke-hook expected=allow got={perm}")
                 failed += 1
+            elif proc.returncode != 0:
+                print(f"FAIL invoke-hook expected exit 0 got={proc.returncode}")
+                failed += 1
             else:
-                print("OK  [allow] invoke-hook.js gate-destructive.sh")
+                print("OK  [allow/exit0] invoke-hook.js gate-destructive.sh")
 
         # emitDeny must produce valid JSON when stderr contains control chars.
+        # Exit code must be 0 so Cursor failClosed does not hide the JSON payload.
         noisy = ROOT / ".cursor" / "hooks" / "_test_noisy_stderr.sh"
         try:
             noisy.write_text(
@@ -176,8 +180,11 @@ def main() -> int:
                 elif "\n" not in str(payload.get("user_message", "")):
                     print(f"FAIL emitDeny lost newline in message: {payload!r}")
                     failed += 1
+                elif proc.returncode != 0:
+                    print(f"FAIL emitDeny expected exit 0 got={proc.returncode}")
+                    failed += 1
                 else:
-                    print("OK  [deny] invoke-hook.js emitDeny escapes control chars")
+                    print("OK  [deny/exit0] invoke-hook.js emitDeny escapes control chars")
         finally:
             if noisy.is_file():
                 noisy.unlink()
