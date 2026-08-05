@@ -99,9 +99,19 @@ if [[ -d "$FROM_SRC" ]]; then
   FROM_SRC="$(cd "$FROM_SRC" && pwd)"
 fi
 
+# python3 (Linux/macOS) albo python (Windows / pyenv) — bez twardego `python`.
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN=python
+else
+  echo "Brak interpretera Python (python3 lub python) w PATH" >&2
+  exit 1
+fi
+
 # --- Parse --clients (Python = jedno źródło prawdy z guides.clients) ---
 CLIENTS_PARSE="$(
-  CLIENTS_RAW="$CLIENTS_RAW" PYTHONPATH="$KIT_ROOT/src" python - <<'PY'
+  CLIENTS_RAW="$CLIENTS_RAW" PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" - <<'PY'
 import os
 from guides.clients import expand_clients, format_clients_arg, parse_clients
 
@@ -140,7 +150,7 @@ fill_mcp() {
   local src="$1" dest="$2" workspace_repl="${3:-}"
   mkdir -p "$(dirname "$dest")"
   FROM_SRC="$FROM_SRC" PRESET="$PRESET" LANGUAGE="$LANGUAGE" CLIENTS_ARG="$CLIENTS_ARG" \
-  WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" python - <<'PY'
+  WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
 import os
 import re
 from pathlib import Path
