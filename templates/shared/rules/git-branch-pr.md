@@ -1,7 +1,3 @@
----
-description: Git flow — kit /git-* + Superpowers worktree/finishing + Autopilot CI
-alwaysApply: true
----
 
 # Git i Pull Request (elegancki flow)
 

@@ -21,14 +21,18 @@ Nie dubluj: **jeden** TDD path (Matt *albo* Superpowers TDD). Git nazewnictwa za
 ## Kanoniczny flow (zalecany)
 
 ```text
-[/grill-me]  →  /git-start  →  [Superpowers worktree — opcjonalnie]
+[/grill-me tylko gdy scope niejasny]  →  /git-start  →  [worktree opcjonalnie]
         →  implementacja [+/tdd]
         →  [/git-check] → /git-commit
-        →  /review-bugbot  (+ /review-* stack)
+        →  /review-bugbot  (+ minimalny /review-* stack — nie wszystkie)
         →  /git-end   LUB   Superpowers finishing → „Push and create PR”
         →  Autopilot (CI/komentarze na PR)
         →  merge gdy green (Ty / gh — nie Autopilot sam)
 ```
+
+**`/grill-me`:** tylko przy niejasnym scope / trade-offach. Oczywisty fix → pomiń.
+
+**Review przed pushem:** zawsze Bugbot; + `/review-backend` i/lub `/review-frontend` wg diffu; `/review-edge|ui|architecture|tests` tylko gdy potrzeba (zob. `code-review`).
 
 **Krótka ścieżka** (mały fix, bez izolacji):  
 `/git-start` → kod → `/git-commit` → `/review-bugbot` → `/git-end` → (opc.) Autopilot.
@@ -112,10 +116,11 @@ Ręcznie: `gh issue develop N --name feat/N-slug --base dev --checkout`.
 
 1. Chroniona gałąź + praca → `/git-start` zanim edycje.  
 2. Jeden temat = jeden branch = jeden PR.  
-3. Przed pierwszym pushem: `/review-bugbot`.  
+3. Przed pierwszym pushem: `/review-bugbot` (+ minimalny stack review).  
 4. Merge tylko przy green CI + required reviews.  
 5. Autopilot / finishing respektują chronione branche (zero force na main/dev).  
-6. Nie `--no-verify` bez powodu.
+6. Nie `--no-verify` bez powodu.  
+7. Niska pewność (auth/billing/ACL/migracje) → agent **pyta**, nie zgaduje.
 
 ## Definition of Done
 

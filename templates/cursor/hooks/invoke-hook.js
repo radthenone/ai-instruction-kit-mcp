@@ -10,12 +10,15 @@
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 
 function emitDeny(message) {
-  const safe = String(message).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const text = String(message);
   process.stdout.write(
-    `{"permission":"deny","user_message":"Hook: ${safe}","agent_message":"invoke-hook: ${safe}"}`
+    JSON.stringify({
+      permission: "deny",
+      user_message: `Hook: ${text}`,
+      agent_message: `invoke-hook: ${text}`,
+    })
   );
   process.exit(1);
 }

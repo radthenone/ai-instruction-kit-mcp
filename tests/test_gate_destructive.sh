@@ -45,4 +45,24 @@ run_hook "git push upstream dev" ask
 run_hook "git push main" ask
 run_hook "git push master" ask
 
+# Fail-closed: nieoczekiwany exit != 0 bez wcześniejszego emit → ask (nie allow).
+test_fail_closed_on_unexpected_error() {
+  local tmp out perm
+  tmp=$(mktemp)
+  awk '
+    { print }
+    /^trap finish_allow EXIT$/ { print "exit 42" }
+  ' "$HOOK" > "$tmp"
+  out=$(json_cmd "git status" | bash "$tmp" || true)
+  rm -f "$tmp"
+  perm=$(printf '%s' "$out" | sed -n 's/.*"permission": "\([^"]*\)".*/\1/p')
+  if [[ "$perm" != "ask" ]]; then
+    echo "FAIL fail-closed expected=ask got=${perm:-empty} out=$out" >&2
+    return 1
+  fi
+  echo "OK  [ask] unexpected hook exit → fail-closed"
+}
+
+test_fail_closed_on_unexpected_error
+
 echo "All gate-destructive +ref checks passed."

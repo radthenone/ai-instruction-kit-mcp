@@ -15,10 +15,13 @@ If the PR modifies files under `backend/` and there are no changes in `backend/*
 - Add a blocking bug titled "Missing tests for backend changes"
 - Body: "Dodaj lub zaktualizuj testy pytest dla zmian w backendzie."
 
-If changed files include serializers, viewsets, urls, or models affecting API:
+If changed files include serializers, viewsets, urls, or models affecting API
+**and** the project uses Orval (`codegen: orval` in `.ai/project.md` / extras, or REST+FE without `codegen: manual|none`):
 
 - Add a blocking bug unless `frontend/src/api/generated/` or Orval output was regenerated.
 - Body: "Po zmianie kontraktu API uruchom `task ovral:generate` i commituj wygenerowany klient."
+
+If overlay says `codegen: manual` or `codegen: none`: do **not** require Orval regeneration.
 
 If any changed Python file lacks type hints on new public functions:
 

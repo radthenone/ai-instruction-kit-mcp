@@ -23,11 +23,17 @@ emit() {
   fi
 }
 
-# Przy każdym wyjściu bez wcześniejszego emit — allow (nie wywołuj exit w trapie).
+# Przy wyjściu bez wcześniejszego emit: allow przy sukcesie, ask przy błędzie
+# (fail-closed — nie wywołuj exit w trapie).
 _emitted=0
 finish_allow() {
+  local code=$?
   if [[ "${_emitted}" -eq 0 ]]; then
-    emit allow
+    if [[ "$code" -ne 0 ]]; then
+      emit ask "hook error (exit ${code}) — potwierdź ręcznie"
+    else
+      emit allow
+    fi
     _emitted=1
   fi
 }

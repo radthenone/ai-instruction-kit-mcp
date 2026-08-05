@@ -5,16 +5,23 @@ alwaysApply: true
 
 # Code review
 
-Przed `git push` na branch z featurem:
+Przed `git push` — **minimalny zestaw**, nie wszystkie `/review-*`:
 
-1. Uruchom `/review-bugbot` (domyślnie) lub `/review-security` (auth, ACL, płatności).
-2. Opcjonalnie warstwa stacku: `/review-backend` / `/review-frontend`.
-3. Napraw uzasadnione findings high/medium.
-4. Po pushu — Bugbot na GitHub (automatycznie lub komentarz `cursor review` na PR).
+| Zmiana | Minimum |
+|--------|---------|
+| Drobna (bez API/auth) | `/review-bugbot` |
+| Backend | Bugbot + `/review-backend` |
+| Frontend | Bugbot + `/review-frontend` |
+| API + UI | Bugbot + BE+FE **lub** para `/subagent-*` |
+| Auth / płatności | `/review-security` (+ Bugbot) |
+| „Zrobione” | + `/review-tests` (dowód, nie styl) |
 
-Hooki:
+1. Odpal minimum jak wyżej.
+2. Napraw `high` / uzasadnione `medium` (format: Severity \| Location \| Finding \| Fix).
+3. Po pushu — Bugbot na GitHub.
 
-- `gate-push.sh` — ask przed push (bypass: `SKIP_PUSH_REVIEW=1`).
-- `gate-destructive.sh` — deny force na main/master/dev, `reset --hard`.
+Bugbot = blocking/security. Stack `/review-*` = konwencje MCP (bez dublowania).  
+Orval: gdy `codegen: orval` w overlay — po zmianie API regeneruj i commituj klienta.
 
-Reguły Bugbota: `.cursor/BUGBOT.md`. Pełny workflow: MCP `get_bundle` → `devops` (moduł `core:code-review`).
+Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force main/master/dev / reset --hard).  
+Bypass: `SKIP_PUSH_REVIEW=1 git push`. Reguły: `.cursor/BUGBOT.md`.
