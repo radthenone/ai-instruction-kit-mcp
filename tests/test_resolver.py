@@ -58,14 +58,6 @@ class TestResolver(unittest.TestCase):
         path = resolve_preset_path("shop", KIT_ROOT)
         self.assertEqual(path, (KIT_ROOT / "profiles" / "shop.yaml").resolve())
 
-    def test_olivin_app_alias_extends_shop(self) -> None:
-        """Alias olivin-app ładuje te same capabilities co shop."""
-        shop = resolve_profile(resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT)
-        alias = resolve_profile(
-            resolve_preset_path("olivin-app", KIT_ROOT), kit_root=KIT_ROOT
-        )
-        self.assertEqual(set(shop.enabled_module_ids), set(alias.enabled_module_ids))
-
     def test_preset_with_workspace_overlay(self) -> None:
         """Preset + workspace ładuje .ai/project.md bez lokalnego project.profile.yaml."""
         with tempfile.TemporaryDirectory() as tmp:

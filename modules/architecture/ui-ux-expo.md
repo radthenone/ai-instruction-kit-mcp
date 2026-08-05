@@ -22,11 +22,21 @@
 - Obrazy: optymalizacja rozmiaru, placeholder (expo-image).
 - Unikaj zbędnych re-renderów — stabilne referencje w hookach.
 
-## Dostępność
+## Dostępność (a11y)
 
-- Touch targets min. 44pt.
-- Kontrast kolorów (theme w `core/theme/`).
-- Label dla pól formularza.
+Minimum (web + native):
+
+| Zasada | Opis |
+|--------|------|
+| Touch target | min. ~44×44 pt |
+| Kontrast | tokeny theme — nie losowy gray na gray |
+| Etykiety | każde pole formularza: widoczny label / `accessibilityLabel` |
+| Role | przyciski jako button; unikaj `View` + `onPress` bez roli |
+| Stan | loading / disabled / error komunikowane nie tylko kolorem |
+| Dynamiczny typ | nie tnij fontów systemowych bez powodu |
+
+Testy: preferuj `getByRole` / `getByLabelText` (`stack:expo-router:testing`).
+Głębsze WCAG / audit — według wymagań produktu w overlay.
 
 ## Design system
 
@@ -36,4 +46,6 @@
 ## Powiązane moduły
 
 - `stack:expo-router:structure`
+- `stack:expo-router:testing` — a11y-friendly queries
+- `arch:i18n` — copy UI
 - `capability:auth` — flow logowania, MFA

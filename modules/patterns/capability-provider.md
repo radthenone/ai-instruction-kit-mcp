@@ -1,4 +1,4 @@
-# Architektura capability + provider (olivin-app)
+# Architektura capability + provider
 
 ## Cel dokumentu
 
@@ -9,8 +9,7 @@ oraz dla **capability apps** z własnymi URL-ami API.
 Agenci AI muszą stosować te zasady przy **każdej** nowej funkcjonalności, która dotyka
 infrastruktury lub wielu modułów domenowych.
 
-Blueprint referencyjny: `backend/src/_temp/ecommerce_backend_blueprint/`,
-`frontend/_temp/ecommerce_frontend_blueprint/`.
+Blueprint referencyjny (gdy w repo aplikacji): katalogi `_temp/*_blueprint/` albo ścieżki z `.ai/project.md`.
 
 ## Dwa rodzaje modułów
 

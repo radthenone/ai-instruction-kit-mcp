@@ -39,9 +39,12 @@ frontend/
 
 - Różnice platform: `.web.tsx` / `.native.tsx` lub `src/ui/platform/`.
 - Nie zakładaj DOM API bez weryfikacji na iOS/Android.
+- Testy: `src/**/__tests__/` lub `*.test.ts(x)` + `src/test/` (setup, MSW) —
+  zob. `stack:expo-router:testing`.
 
 ## Powiązane moduły
 
 - `arch:ui-ux-expo`
+- `arch:testing` / `stack:expo-router:testing`
 - `domain:shop` — catalog, cart, orders
 - `capability:payments` — checkout + Stripe

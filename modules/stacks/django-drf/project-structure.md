@@ -16,13 +16,20 @@ backend/
         mail/
         allauth/
     apps/
-      accounts/         # profile użytkownika (DRF CRUD)
+      accounts/         # profile użytkownika (DRF CRUD) + auth capability
       products/         # domain: katalog
       orders/           # domain: zamówienia
       payments/         # capability: sesje płatności, webhooks
       files/            # capability: upload, StoredFile
-    common/             # pagination, permissions base, mixins
+    common/             # pagination, permissions base, mixins, translatable
+    tests/              # pytest — NIE w apps/
+      conftest.py
+      factories/
+      shared/
+      accounts/         # lustrzane katalogi vs apps (opcjonalnie)
+      integration/
     schema.yaml         # OpenAPI export
+    manage.py
   pyproject.toml
   uv.lock
 ```
@@ -48,8 +55,17 @@ apps/<domain>/
 
 Opcjonalnie na żądanie: `filters/`, `selectors/`, `tasks.py` — nie domyślnie.
 
+## Testy
+
+- Kod produkcyjny w `apps/` / `core/` / `common/`.
+- Testy w `src/tests/` z `factories/` i `integration/`.
+- Nie trzymaj `tests.py` wewnątrz app jako jedynego miejsca dla dużych suite’ów.
+- Polityka i przykłady: `stack:django-drf:testing`, `arch:testing`.
+
 ## Powiązane moduły
 
 - `stack:django-drf:backend-standard` — DRF-first
+- `stack:django-drf:testing` — pytest, factories, APIClient
 - `domain:shop` — products + orders
+- `capability:files` — media
 - `capability:payments` — Stripe, webhooks

@@ -34,4 +34,5 @@ Backend musi być testowalny samodzielnie: pytest, Postman, Swagger UI — zanim
 ## Powiązane moduły
 
 - `stack:django-drf:backend-standard` — DRF-first
+- `arch:api-errors` — format błędów FE/BE
 - `stack:expo-router:structure` — gdzie trzymać klienta API

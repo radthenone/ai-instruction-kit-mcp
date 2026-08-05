@@ -54,6 +54,20 @@ W projekcie skopiuj z instruction-kit (albo użyj `scripts/bootstrap-project.sh`
 | `/review-*` | `/review-backend`, `/review-frontend`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | `/subagent-backend`, `/subagent-frontend` (dwa okna) |
 
+**Minimalny zestaw** — nie odpalaj wszystkich `/review-*` naraz:
+
+| Zmiana | Minimum |
+|--------|---------|
+| Drobna | `/review-bugbot` |
+| Backend / Frontend | Bugbot + odpowiedni stack review |
+| API + UI | Bugbot + BE+FE **lub** para subagentów |
+| Auth / płatności | `/review-security` |
+| Dowód „działa” | `/review-tests` (komendy, nie styl) |
+
+**Bugbot** = blocking/security. **Stack** = konwencje MCP (`Severity | Location | Finding | Fix`). Bez dublowania.
+
+**Codegen:** gdy overlay/`--codegen` = `orval` → po zmianie API regeneruj klienta; przy `manual`/`none` nie wymagaj Orval.
+
 ### Git pre-push (deterministyczne)
 
 Szablon `templates/git-hooks/pre-push` — uruchamia testy/linty z Taskfile (jeśli istnieje). Nie uruchamia AI (wymaga Cursor IDE).
@@ -112,7 +126,7 @@ Uczenie inline: `@cursor remember [fakt]` w komentarzu PR.
 
 | Źródło | Co dostajesz |
 |--------|--------------|
-| Cursor po `/review-bugbot` | Tabela: Severity, Location, Finding |
+| Cursor po `/review-bugbot` / stack | Tabela: Severity, Location, Finding, Fix |
 | GitHub PR | Komentarze inline + check status |
 | Bugbot dashboard | Analytics, acceptance rate, rule performance |
 | Bugbot API (Enterprise) | `POST /bugbot/review` + `GET /analytics/team/bugbot-reviews` |
@@ -139,10 +153,11 @@ Wymagane checks:
 
 | Zmiana | Minimum |
 |--------|---------|
-| Drobna poprawka, 1–2 pliki | lint + typecheck |
-| Feature / refactor | `/review-bugbot` przed pushem |
+| Drobna poprawka, 1–2 pliki | lint + typecheck + `/review-bugbot` |
+| Feature / refactor | Bugbot + stack review (BE/FE) przed pushem |
 | Auth, ACL, płatności, webhooki | `/review-security` + Bugbot na PR |
-| Kontrakt API | lint + `task ovral:generate` + api-contract CI |
+| Kontrakt API (`codegen: orval`) | lint + `task ovral:generate` + api-contract CI |
+| Kontrakt API (`manual`/`none`) | spójność ręcznego klienta — bez Orval |
 | Merge do main | CI green + Bugbot + (opcjonalnie) człowiek |
 
 ## Pliki do skopiowania z instruction-kit

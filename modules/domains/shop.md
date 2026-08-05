@@ -2,28 +2,23 @@
 
 ## Zakres
 
-Logika biznesowa sklepu: produkty, kategorie, koszyk, zamówienia, stany magazynowe — **bez** integracji zewnętrznych.
+Logika biznesowa sklepu: produkty, kategorie, koszyk, zamówienia, stany magazynowe — **bez**
+integracji zewnętrznych (storage, Stripe, SMTP → odpowiednie capability).
 
-## Stan w olivin-app
-
-| Obszar | Stan |
-|--------|------|
-| `accounts` | żywy (User, Profile, Address) |
-| `products` | częściowy — Product, Variant, `TranslatableModel`, **`ImageField`** |
-| `orders`, `inventory`, … | szkielet |
-| Frontend catalog/cart/checkout | brak w produkcyjnym `src/` — blueprint w `_temp/` |
-| Orval `APPS_TAGS` | Addresses, Profiles, Health |
-
-Przy rozbudowie domeny: rozszerzaj `APPS_TAGS` i regeneruj Orval po dodaniu viewsetów.
-
-## Backend apps (docelowo)
+## Backend apps (kategoria shop)
 
 ```text
 apps/products/      # Product, Category, Variant — CRUD REST
 apps/orders/        # Order, OrderLine, statusy — CRUD + checkout actions
 apps/inventory/     # opcjonalnie: stock, reservations
 apps/discounts/     # opcjonalnie: kody rabatowe
+apps/categories/    # opcjonalnie osobno od products
+apps/shipping/      # opcjonalnie: metody wysyłki
 ```
+
+Profile użytkownika / adresy: zwykle `apps/accounts` (capability auth), nie w domain shop.
+
+Pliki produktów: **`capability:files`** (`apps/files`) — domena trzyma tylko `file_id`.
 
 ## DRF-first
 
@@ -34,9 +29,10 @@ Model → Serializer (validate, create, update) → ViewSet (get_queryset, perfo
 ```
 
 - `ProductSerializer`, `ProductViewSet` — bez folderu `services/` jeśli jedyny caller to ViewSet.
-- Tłumaczenia katalogu: `TranslatableModel` + JSON `translations` (olivin: `common.translatable`).
-- Ceny: `django-money` (PLN); historia: `simple-history` na Product (olivin).
+- Tłumaczenia katalogu: wspólny `TranslatableModel` / JSON `translations` w `common/` (jeśli projekt i18n).
+- Ceny: `django-money` (lub Decimal + currency); historia zmian: `simple-history` opcjonalnie.
 - Custom `@action`: `checkout`, `cancel` — ciało w serializerze akcji lub metodzie modelu.
+- Przy rozbudowie API: rozszerzaj tagi Orval / OpenAPI i regeneruj klienta.
 
 ## Relacje z capability
 
@@ -60,10 +56,12 @@ OrderLine: product, quantity, unit_price (snapshot w momencie zakupu)
 
 ```text
 features/catalog/    # lista, filtry, szczegóły produktu
-features/cart/       # Zustand (local) + sync POST /api/cart/ opcjonalnie
+features/cart/       # lokalny stan + sync POST /api/cart/ opcjonalnie
 features/checkout/   # adres, podsumowanie → payments
 features/orders/     # historia, status, szczegóły
 ```
+
+Stack frontu: Expo Router (web + opcjonalnie Android/iOS) — zob. `stack:expo-router:*`.
 
 ## Query keys (TanStack Query)
 
@@ -81,9 +79,11 @@ Invalidacja po checkout: `orders`, `cart`, `order/{id}`.
 
 - Unit: serializer validate, price snapshot, status transitions
 - Integration: checkout flow z mock payment capability
+- Layout testów backendu: `backend/src/tests/` (per-app + `factories/`, `integration/`)
 
 ## Powiązane
 
 - `capability:payments` — checkout
-- `capability:files-storage` — zdjęcia produktów
+- `capability:files` — zdjęcia / media
+- `capability:auth` — konta, adresy
 - `stack:django-drf:backend-standard`

@@ -12,7 +12,7 @@ Moduły `infra:*` wybierasz slotami w profilu projektu (`decisions`).
 | Storage | `storage` | `s3`, `minio`, `aws` | `infra:storage:s3` |
 | Taski async | `tasks` | `celery` | `infra:tasks:celery` |
 
-## Przykład — olivin-app (Redis broker)
+## Przykład — kategoria shop (Redis broker)
 
 ```yaml
 decisions:

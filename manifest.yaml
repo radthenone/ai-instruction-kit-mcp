@@ -56,6 +56,41 @@ modules:
     title: CI/CD
     tags: [architecture, devops]
 
+  arch:testing:
+    path: modules/architecture/testing.md
+    title: Testing — standard monorepo
+    tags: [architecture, testing, devops]
+
+  arch:security:
+    path: modules/architecture/security.md
+    title: Security — baseline
+    tags: [architecture, security]
+
+  arch:api-errors:
+    path: modules/architecture/api-errors.md
+    title: API errors — jednolity format
+    tags: [architecture, api]
+
+  arch:observability:
+    path: modules/architecture/observability.md
+    title: Observability — logi i korelacja
+    tags: [architecture, devops]
+
+  arch:configuration:
+    path: modules/architecture/configuration.md
+    title: Configuration — env i settings
+    tags: [architecture, devops]
+
+  arch:migrations:
+    path: modules/architecture/migrations.md
+    title: Migrations i ORM performance
+    tags: [architecture, backend, database]
+
+  arch:i18n:
+    path: modules/architecture/i18n.md
+    title: i18n — UI i treści
+    tags: [architecture, i18n]
+
   arch:ui-ux-expo:
     path: modules/architecture/ui-ux-expo.md
     title: UI/UX — Expo
@@ -97,7 +132,52 @@ modules:
     title: Instrukcje agenta — backend
     tags: [backend, django]
 
-  # ─── Stacks: Expo Router ────────────────────────────
+  stack:django-drf:testing:
+    path: modules/stacks/django-drf/testing.md
+    title: Testing — Django + DRF (pytest)
+    tags: [backend, django, testing]
+
+  stack:django:layout:
+    path: modules/stacks/django/layout.md
+    title: Django HTML — layout
+    tags: [backend, django]
+
+  stack:fastapi:layout:
+    path: modules/stacks/fastapi/layout.md
+    title: FastAPI — layout
+    tags: [backend, fastapi]
+
+  stack:flask:layout:
+    path: modules/stacks/flask/layout.md
+    title: Flask — layout
+    tags: [backend, flask]
+
+  stack:frontend:expo-web:
+    path: modules/stacks/frontend/expo-web.md
+    title: Frontend — Expo web
+    tags: [frontend, expo]
+
+  stack:frontend:expo-unified:
+    path: modules/stacks/frontend/expo-unified.md
+    title: Frontend — Expo web+native
+    tags: [frontend, expo, mobile]
+
+  stack:frontend:react-web:
+    path: modules/stacks/frontend/react-web.md
+    title: Frontend — React web
+    tags: [frontend, react]
+
+  stack:frontend:react-expo-split:
+    path: modules/stacks/frontend/react-expo-split.md
+    title: Frontend — React + Expo split
+    tags: [frontend, react, expo]
+
+  stack:frontend:react-native-split:
+    path: modules/stacks/frontend/react-native-split.md
+    title: Frontend — React + RN split
+    tags: [frontend, react, mobile]
+
+  # ─── Stacks: Expo Router (legacy detail modules) ────
   stack:expo-router:
     path: modules/stacks/expo-router/overview.md
     title: Expo Router — przegląd
@@ -123,16 +203,21 @@ modules:
     title: Expo — web target
     tags: [frontend, expo, web]
 
+  stack:expo-router:testing:
+    path: modules/stacks/expo-router/testing.md
+    title: Testing — Frontend (Expo / React)
+    tags: [frontend, expo, testing]
+
   # ─── Capabilities ───────────────────────────────────
   capability:auth:
     path: modules/capabilities/auth.md
     title: Auth (allauth, sesja)
     tags: [capability, auth]
 
-  capability:files-storage:
-    path: modules/capabilities/files-storage.md
-    title: Files / Storage
-    tags: [capability, storage]
+  capability:files:
+    path: modules/capabilities/files.md
+    title: Files (upload, StoredFile)
+    tags: [capability, files, storage]
 
   capability:payments:
     path: modules/capabilities/payments.md
@@ -221,6 +306,12 @@ default_bundles:
     - stack:django-drf:structure
     - stack:django-drf:backend-standard
     - stack:django-drf:backend-instructions
+    - stack:django-drf:testing
+    - arch:security
+    - arch:api-errors
+    - arch:observability
+    - arch:configuration
+    - arch:i18n
     - pattern:capability-overview
     - pattern:capability-provider
     - pattern:providers-and-settings
@@ -236,7 +327,11 @@ default_bundles:
     - stack:expo-router:frontend-instructions
     - stack:expo-router:mobile-native
     - stack:expo-router:web-target
+    - stack:expo-router:testing
     - arch:ui-ux-expo
+    - arch:api-errors
+    - arch:i18n
+    - arch:security
     - pattern:capability-overview
 
   architecture:
@@ -251,10 +346,17 @@ default_bundles:
     - pattern:capability-provider
     - pattern:providers-and-settings
     - arch:ci-cd
+    - arch:testing
+    - arch:security
+    - arch:api-errors
+    - arch:observability
+    - arch:configuration
+    - arch:migrations
+    - arch:i18n
 
   shop:
     - domain:shop
-    - capability:files-storage
+    - capability:files
 
   payments:
     - capability:payments
@@ -267,6 +369,10 @@ default_bundles:
 
   devops:
     - arch:ci-cd
+    - arch:testing
+    - arch:security
+    - arch:observability
+    - arch:configuration
     - core:code-review
 
   full:
@@ -283,17 +389,26 @@ default_bundles:
     - arch:fe-be-separation
     - arch:ui-ux-expo
     - arch:ci-cd
+    - arch:testing
+    - arch:security
+    - arch:api-errors
+    - arch:observability
+    - arch:configuration
+    - arch:migrations
+    - arch:i18n
     - stack:django-drf
     - stack:django-drf:structure
     - stack:django-drf:backend-standard
     - stack:django-drf:backend-instructions
+    - stack:django-drf:testing
     - stack:expo-router
     - stack:expo-router:structure
     - stack:expo-router:frontend-instructions
     - stack:expo-router:mobile-native
     - stack:expo-router:web-target
+    - stack:expo-router:testing
     - capability:auth
-    - capability:files-storage
+    - capability:files
     - capability:payments
     - capability:payments:expo-stripe
     - domain:shop

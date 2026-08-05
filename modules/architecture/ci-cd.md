@@ -19,13 +19,13 @@ Monorepo = **osobne joby** per warstwa. Jeden czerwony test nie powinien ukrywa�
 
 Mobile **nie blokuje** każdego PR kosztem EAS — lint + tsc wystarczą na PR; EAS na merge do main lub tag.
 
-## Przykład olivin-app (stan faktyczny)
+## Przykład CI (typowe monorepo Django + Expo)
 
-Job CI uruchamia: ruff → **Pyrefly** (krok w workflow może być błędnie nazwany „MyPy”) → pytest `-m "not integration"`.
+Job CI uruchamia: ruff → typecheck (Pyrefly / mypy) → pytest `-m "not integration"`.
 Frontend: eslint → tsc → prettier.
 
-**Brakuje względem szkieletu poniżej:** job `api-contract`, testy integracyjne w Dockerze na PR, testy frontendowe, EAS.
-Pre-commit (ruff, eslint) działa **lokalnie** — nie w CI.
+**Często brakuje względem szkieletu poniżej:** job `api-contract`, testy integracyjne w Dockerze na PR, testy frontendowe, EAS.
+Pre-commit (ruff, eslint) działa **lokalnie** — nie zawsze w CI.
 
 ## GitHub Actions — szkielet docelowy
 

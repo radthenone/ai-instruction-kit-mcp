@@ -207,10 +207,10 @@ def _capability_module_ids(capabilities: list[str]) -> list[str]:
     """Zmapuj listę capabilities z profilu na ID modułów."""
     mapping = {
         "auth": "capability:auth",
-        "files": "capability:files-storage",
-        "files-storage": "capability:files-storage",
+        "files": "capability:files",
+        "files-storage": "capability:files",  # alias kompat
         "payments": "capability:payments",
-        "storage": "capability:files-storage",
+        "storage": "capability:files",
     }
     return [mapping[c] for c in capabilities if c in mapping]
 

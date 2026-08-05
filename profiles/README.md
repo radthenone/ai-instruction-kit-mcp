@@ -6,7 +6,6 @@ Kanoniczna lista kategorii. **Pełna tabela flag MCP** (`--preset`, `--workspace
 |------|------|
 | `_base.yaml` | Fundament stacku (Django+Expo, patterns) — **domyślny**, nie musisz podawać w CLI; `language: pl` |
 | `shop.yaml` | **Kategoria** e-commerce (auth, shop, payments, infra) |
-| `olivin-app.yaml` | Alias → `shop` (deprecated, kompatybilność) |
 | inne `*.yaml` | Kolejne **kategorie** (np. `blog`) — nie nazwy produktów |
 
 ## Język
@@ -28,7 +27,10 @@ Tytuły issue/PR/branch: zawsze EN. Proza (body, docstringi, commity, czat): wyb
 | Ten sam shop, inny zestaw modułów | Fork | `.ai/project.profile.yaml` + `--profile` (bez `--preset`) |
 | Ten sam shop, powtarzalny wariant MD w wielu repo | Tagi / facety | **planowane** — zob. README; na razie overlay |
 
-Nie twórz `profiles/olivin-app.yaml` jako „produktu” — produkt = overlay w repo aplikacji.
+Nie twórz profilu o nazwie konkretnego produktu — produkt = overlay w repo aplikacji (`.ai/project.md`).
+
+> Docelowy kontrakt (`--profile` / `--overlays` / stack CLI):  
+> [design](../docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) — **CLI jeszcze nie**.
 
 ## Nowy projekt (zalecane — zero lokalnego profilu)
 
