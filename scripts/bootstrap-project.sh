@@ -109,6 +109,12 @@ else
   exit 1
 fi
 
+# Bootstrap wymaga Pythona 3 (f-stringi / pathlib / type hints w guides.clients).
+if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+  echo "Wymagany Python 3 (znaleziono: $($PYTHON_BIN --version 2>&1))" >&2
+  exit 1
+fi
+
 # --- Parse --clients (Python = jedno źródło prawdy z guides.clients) ---
 CLIENTS_PARSE="$(
   CLIENTS_RAW="$CLIENTS_RAW" PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" - <<'PY'
