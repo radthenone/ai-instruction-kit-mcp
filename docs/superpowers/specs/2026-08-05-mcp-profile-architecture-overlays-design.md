@@ -1,6 +1,7 @@
 # MCP profile + architecture + overlays — design
 
-**Status:** draft (brainstorm 2026-08-05; pending user review of this file)  
+**Status:** approved design (2026-08-05) — **CLI / resolver jeszcze nie**  
+**Do czasu implementacji:** README, AGENTS i `use-guides` opisują **obecny** kontrakt (`--preset` + `.ai/project.md`).  
 **Approach:** jawne flagi CLI (podejście 1) — `--profile` + `--backend` + `--frontend` ± `--mobile` + `--overlays`
 
 ## Goals
@@ -30,8 +31,9 @@
 | Django goły vs DRF | `django` = HTML templates; `django-drf` = REST |
 | Backend v1 | Wszystkie 4: `django`, `django-drf`, `fastapi`, `flask` |
 | Frontend | `--frontend expo\|react` = web; `--mobile expo\|react-native` opcjonalnie |
-| Expo+Expo | Jeden katalog `frontend/` (jak olivin-app) |
+| Expo+Expo | Jeden katalog `frontend/` (web+native w jednym tree) |
 | Tree w MD | Generyczne placeholdery (`apps/<name>/`, `features/<feature>/`) |
+| Codegen FE | Flaga `--codegen orval\|manual\|none` (+ do czasu CLI: `codegen:` w overlay) |
 
 ## Sekcja 1 — warstwy args MCP
 
@@ -41,9 +43,22 @@
 | `--backend VALUE` | Layout + reguły BE | bootstrap: `django-drf` |
 | `--frontend VALUE` | Stack web | bootstrap: `expo` |
 | `--mobile VALUE` | Opcjonalny stack mobile | brak |
+| `--codegen VALUE` | Generowanie klienta API FE (`orval` \| `manual` \| `none`) | zob. niżej |
 | `--overlays PATH` | 0..N plików MD (append); nadpisują zasady | brak |
 | `--workspace PATH` | Root repo aplikacji | jak dziś |
 | `--language` / `--clients` | bez zmian semantycznych | jak dziś |
+
+### `--codegen` (Orval opcjonalny)
+
+| Wartość | Znaczenie |
+|---------|-----------|
+| `orval` | FE generuje klienta z OpenAPI; po zmianie API regeneruj + commit |
+| `manual` | Ręczny klient — bez Orval; review wymaga świadomej aktualizacji |
+| `none` | Brak klienta generowanego (np. Django HTML) |
+
+**Default bootstrap:** `orval` gdy backend REST + podano `--frontend`; inaczej `none`.  
+**Do czasu CLI:** to samo w overlay: `codegen: orval|manual|none` — `get_overlay` + reviewery FE/BE.  
+`get_architecture` (docelowo) zwraca też `codegen`.
 
 **Usuwamy:** lokalny `--profile PATH`, auto-load `.ai/project.md`, wymaganie `project.profile.yaml`.
 
@@ -58,6 +73,7 @@ Przykład:
   "--backend", "django-drf",
   "--frontend", "react",
   "--mobile", "expo",
+  "--codegen", "orval",
   "--overlays", "${workspaceFolder}/.ai/extras.md",
   "--language", "pl",
   "--clients", "all",
@@ -108,13 +124,13 @@ Nazwa mobile: zawsze `react-native` (nie `react-rn`).
 |------|------------|
 | `get_bundle` | jak wyżej |
 | `get_overlay` | concatenacja plików z `--overlays` (puste = komunikat „brak overlays”) |
-| `get_architecture` | **nowy** — JSON/tekst: profile, backend, frontend, mobile, overlays paths |
+| `get_architecture` | **nowy** — JSON/tekst: profile, backend, frontend, mobile, codegen, overlays paths |
 | `list_profiles` | rename z `list_presets` (alias `list_presets` 1 release) |
 | `get_language` / `get_clients` | bez zmian |
 
 ### Env (opcjonalne, lustrzane do CLI)
 
-`GUIDES_PROFILE`, `GUIDES_BACKEND`, `GUIDES_FRONTEND`, `GUIDES_MOBILE`, `GUIDES_OVERLAYS` (ścieżki rozdzielone `:` / `;` wg OS — preferuj wielokrotne `--overlays` w mcp.json).
+`GUIDES_PROFILE`, `GUIDES_BACKEND`, `GUIDES_FRONTEND`, `GUIDES_MOBILE`, `GUIDES_CODEGEN`, `GUIDES_OVERLAYS` (ścieżki rozdzielone `:` / `;` wg OS — preferuj wielokrotne `--overlays` w mcp.json).
 
 ## Sekcja 4 — struktura plików w kicie (decyzja autora)
 
@@ -124,7 +140,7 @@ modules/stacks/
     layout.md                 # tree + zasady HTML
     code-standard.md          # opcjonalnie cienki / wspólny później
   django-drf/
-    project-structure.md      # istniejący — uogólnić (już bez olivin)
+    project-structure.md      # istniejący — uogólnić (bez nazw produktów)
     backend-code-standard.md
   fastapi/
     layout.md
