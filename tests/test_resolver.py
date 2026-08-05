@@ -58,14 +58,6 @@ class TestResolver(unittest.TestCase):
         path = resolve_preset_path("shop", KIT_ROOT)
         self.assertEqual(path, (KIT_ROOT / "profiles" / "shop.yaml").resolve())
 
-    def test_olivin_app_alias_extends_shop(self) -> None:
-        """Alias olivin-app ładuje te same capabilities co shop."""
-        shop = resolve_profile(resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT)
-        alias = resolve_profile(
-            resolve_preset_path("olivin-app", KIT_ROOT), kit_root=KIT_ROOT
-        )
-        self.assertEqual(set(shop.enabled_module_ids), set(alias.enabled_module_ids))
-
     def test_preset_with_workspace_overlay(self) -> None:
         """Preset + workspace ładuje .ai/project.md bez lokalnego project.profile.yaml."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -149,6 +141,37 @@ class TestResolver(unittest.TestCase):
         for raw, expect in cases:
             with self.subTest(raw=raw):
                 self.assertEqual(normalize_language(raw), expect)
+
+    def test_files_storage_alias_in_bundle(self) -> None:
+        """``capability:files-storage`` w bundle mapuje się na ``capability:files``."""
+        from guides.resolver import normalize_module_id
+
+        self.assertEqual(
+            normalize_module_id("capability:files-storage"),
+            "capability:files",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile = root / "fork.yaml"
+            profile.write_text(
+                "\n".join(
+                    [
+                        "name: fork-files-alias",
+                        "extends: profiles/_base.yaml",
+                        "bundles:",
+                        "  backend:",
+                        "    - capability:files-storage",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            resolved = resolve_profile(profile, kit_root=KIT_ROOT)
+            backend = resolved.bundles["backend"]
+            self.assertIn("capability:files", backend.module_ids)
+            self.assertNotIn("capability:files-storage", backend.module_ids)
+            self.assertNotIn("capability:files-storage", backend.missing_modules)
+            self.assertIn("capability:files", backend.content)
 
 
 if __name__ == "__main__":

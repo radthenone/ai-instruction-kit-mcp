@@ -1,0 +1,128 @@
+
+# Git i Pull Request (elegancki flow)
+
+Cel: chronione `main` / `master` / `dev` + jasny podział **kto co robi** (kit ≠ Matt ≠ Superpowers ≠ Autopilot).
+
+## Kto za co odpowiada
+
+| Warstwa | Narzędzie | Robi | Nie robi |
+|---------|-----------|------|----------|
+| **Kit** | `/git-start`, `/git-check`, `/git-commit`, `/git-end`, ta reguła | Issue + sync + commit(y) + push/PR + `Closes #N` | Worktree, pętli CI |
+| **Matt** | `/grill-me`, `/tdd` | Scope, TDD feature | Gita / PR |
+| **Superpowers** | `using-git-worktrees`, `finishing-a-development-branch` | Izolacja worktree; domknięcie (testy lokalne → opcje merge/PR) | Konwencji `feat/N-slug` (to kit) |
+| **Autopilot** | skill Autopilot (Cursor) | Po PR: konflikty → komentarze → CI red → fix → push, aż merge-ready | Merge bez Ciebie; force na chronione |
+
+Nie dubluj: **jeden** TDD path (Matt *albo* Superpowers TDD). Git nazewnictwa zawsze z **kita**.
+
+## Kanoniczny flow (zalecany)
+
+```text
+[/grill-me tylko gdy scope niejasny]  →  /git-start  →  [worktree opcjonalnie]
+        →  implementacja [+/tdd]
+        →  [/git-check] → /git-commit
+        →  /review-bugbot  (+ minimalny /review-* stack — nie wszystkie)
+        →  /git-end   LUB   Superpowers finishing → „Push and create PR”
+        →  Autopilot (CI/komentarze na PR)
+        →  merge gdy green (Ty / gh — nie Autopilot sam)
+```
+
+**`/grill-me`:** tylko przy niejasnym scope / trade-offach. Oczywisty fix → pomiń.
+
+**Review przed pushem:** zawsze Bugbot; + `/review-backend` i/lub `/review-frontend` wg diffu; `/review-edge|ui|architecture|tests` tylko gdy potrzeba (zob. `code-review`).
+
+**Krótka ścieżka** (mały fix, bez izolacji):  
+`/git-start` → kod → `/git-commit` → `/review-bugbot` → `/git-end` → (opc.) Autopilot.
+
+**Długa / równoległa** (kolega-style):  
+`/git-start` (ustala `feat/N-slug`) → Superpowers **worktree** na tym branchu → kod → `/git-commit` → finishing lub `/git-end` → **Autopilot**.
+
+## Slash kit
+
+| Komenda | Rola |
+|---------|------|
+| `/git-start` | `#N` / opis / **puste = auto-diff** / **`--help`** → issue + branch |
+| `/git-check` | Dopasuj tytuł/body issue do realnego diffa; **`--dry-run`** / **`--help`** |
+| `/git-commit` | Conventional Commit(s) z lokalnego diffa; **`--one`** / **`--split`** / **`--dry-run`** |
+| `/git-end` | Push + PR (`Closes #N`); **`--help`**; alias `/git-pr` |
+
+Tytuły issue/PR/branch: **zawsze EN**. Body / commity / docstringi: język MCP (`get_language`, `--language pl|en`).
+
+```text
+/git-start feat add cart coupon
+/git-start fix #108 login crash
+/git-check
+/git-commit
+/git-end
+```
+
+## Superpowers — kiedy i jak
+
+### Worktree (`using-git-worktrees`)
+
+Użyj gdy: drugi temat równolegle, brudny główny checkout, Cloud/best-of-n, chcesz izolacji jak u „kolegi”.
+
+1. Najpierw **`/git-start`** (albo już masz branch `feat/N-…`) — konwencja nazwy z kita.  
+2. Potem skill worktree — izoluj **ten** branch (nie twórz drugiej, konkurencyjnej nazwy).  
+3. Koduj w worktree.
+
+**Nie** wymagaj worktree na każdym drobnym PR.
+
+### Finishing (`finishing-a-development-branch`)
+
+Gdy implementacja + **lokalne testy** OK: skill pyta merge / **PR** / zostaw / discard.
+
+- Wybór **PR** ≈ `/git-end` (push + create). Preferuj tytuł/`Closes #N` zgodne z konwencją kita.  
+- Jeśli finishing już zrobił PR — **nie** odpalaj drugiego `/git-end`; idź w Autopilot.
+
+## Autopilot — pętla po PR
+
+Gdy PR istnieje i CI/review blokuje merge:
+
+1. Odśwież stan (`gh pr view`, `gh pr checks`).  
+2. Konflikty → komentarze (Bugbot itd.) → CI — w tej kolejności.  
+3. Fix → push na **feature branch** (nie force na main/dev).  
+4. Nie merge’uj sam; zgłoś „merge-ready”.
+
+Wywołanie: skill Autopilot / „doprowadź ten PR do green”.
+
+## Kolejność — mity
+
+| Mit | Prawda |
+|-----|--------|
+| PR przed pushem | Najpierw push, potem PR |
+| Worktree = obowiązek | Opcja Superpowers / Cloud |
+| `/git-start` = cały pipeline | Tylko issue + branch |
+| Autopilot = Matt | Autopilot = CI/PR loop; Matt = proces feature |
+
+## Chronione branche
+
+`main`, `master`, `dev` — tylko przez PR. Baza: `dev` jeśli jest, inaczej `main`/`master`.
+
+## Nazewnictwo
+
+- z issue: `<typ>/<N>-<slug>` → `feat/42-add-cart-coupon`  
+- bez: `<typ>/<slug>` → `chore/bump-ruff`  
+
+Typy: `feat`, `fix`, `hotfix`, `docs`, `chore`, `refactor`, `test`, `ci`, `perf`, `style`, `build`, `release`.  
+Unikaj: `feature/`, `bugfix/`.
+
+Ręcznie: `gh issue develop N --name feat/N-slug --base dev --checkout`.
+
+## Zasady twarde
+
+1. Chroniona gałąź + praca → `/git-start` zanim edycje.  
+2. Jeden temat = jeden branch = jeden PR.  
+3. Przed pierwszym pushem: `/review-bugbot` (+ minimalny stack review).  
+4. Merge tylko przy green CI + required reviews.  
+5. Autopilot / finishing respektują chronione branche (zero force na main/dev).  
+6. Nie `--no-verify` bez powodu.  
+7. Niska pewność (auth/billing/ACL/migracje) → agent **pyta**, nie zgaduje.
+
+## Definition of Done
+
+- [ ] Branch zgodny z konwencją (+ issue gdy jest)  
+- [ ] Zmiany zacommitowane (`/git-commit` gdy trzeba)  
+- [ ] Review lokalny przed pushem  
+- [ ] PR otwarty (`/git-end` lub finishing)  
+- [ ] CI + komentarze ogarnięte (Autopilot gdy trzeba)  
+- [ ] Merge przez PR — nie bezpośredni push na bazę

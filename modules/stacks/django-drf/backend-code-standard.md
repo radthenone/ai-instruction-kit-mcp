@@ -1,10 +1,10 @@
-# Standard tworzenia kodu backendu (Django/DRF) — olivin-app
+# Standard tworzenia kodu backendu (Django/DRF)
 
 ## Cel dokumentu
 
 Ten dokument jest **jednym wspólnym standardem** generowania kodu backendu dla
-wszystkich agentów AI pracujących w tym repo: Cursor, Codex, GitHub Copilot,
-Gemini w Antigravity, Continue, OpenCode i każdy inny klient.
+wszystkich agentów AI pracujących w projektach opartych o ten kit: Cursor, Codex,
+GitHub Copilot, Claude, Antigravity i inne klienty.
 
 Cel jest praktyczny: kod backendu ma być spójny, czytelny, bezpieczny i zgodny
 z idiomami **Django i Django REST Framework**. Agenci nie mają wymyślać
@@ -278,60 +278,49 @@ w adapterze/tasku wokół wywołania serializera, jeśli obejmuje wiele kroków.
 
 ## Obsługa błędów i format odpowiedzi
 
-W projekcie: `drf-standardized-errors` jako `EXCEPTION_HANDLER`.
+Szczegóły: **`arch:api-errors`**.
 
-- Rzucaj wyjątki (`ValidationError`, `PermissionDenied`), nie ręczny
-  `Response(status=4xx)`.
-- Walidacja API → `rest_framework.serializers.ValidationError`.
-- `Model.clean()` → `django.core.exceptions.ValidationError`.
-- Błędy domenowe można modelować jako `APIException` lub `ValidationError` w
-  serializerze — nie jako `None`/tuple.
+W projekcie: `drf-standardized-errors` jako `EXCEPTION_HANDLER`. Rzucaj wyjątki
+(`ValidationError`, `PermissionDenied`), nie ręczny `Response(status=4xx)`.
 
 ## Schema / OpenAPI (drf-spectacular)
 
 - Schemat dokładny — z niego Orval generuje frontend.
 - `@extend_schema` gdy auto-inspekcja nie wystarcza.
-- Po zmianie kontraktu: regeneracja schematu i klienta.
+- Po zmianie kontraktu: regeneracja schematu i klienta (`arch:api-contract`).
 
 ## Tłumaczenia treści (JSONField)
 
-- Pola w `translations` definiowane przez serializer wpisu — bez osobnego rejestru.
-- Generowanie maszynowe (task) na poziomie wpisu języka — reguły w standardzie
-  projektu (język bazowy `pl`, puste `{}` jako trigger).
-- Odczyt z fallbackiem: logika wyboru języka w helperze (`common/helpers/i18n`) +
-  `request.LANGUAGE_CODE`; prezentacja w `to_representation` serializera.
+Szczegóły: **`arch:i18n`**. Helper odczytu + fallback; pola definiuje serializer wpisu.
 
 ## Baza danych, ORM i współbieżność
 
+Szczegóły: **`arch:migrations`** (N+1, expand/contract, `select_for_update`).
+
 - N+1: `select_related` / `prefetch_related` w `get_queryset()` lub selectorze.
 - Constraints na poziomie bazy.
-- Współbieżność (stock, płatności): `select_for_update` w `transaction.atomic`
-  wewnątrz `serializer.create()`/service integracji.
-- Operacje masowe: `bulk_*` gdy nie potrzebujesz `save()` per obiekt.
+- Współbieżność (stock, płatności): `select_for_update` w `transaction.atomic`.
 
 ## Migracje
 
-- `task db:migrations:make -- <app>`, `task db:migrate`.
-- Nie edytuj zastosowanych migracji; data-migration z `reverse_code`.
-- W migracjach: `apps.get_model`, nie import logiki z modeli.
+Szczegóły: **`arch:migrations`**. Nie edytuj zastosowanych; data-migration z
+`reverse_code`; w migracjach `apps.get_model`.
 
 ## Celery i zadania asynchroniczne
 
 - Argumenty serializowalne: `id`, nie instancje modeli.
 - `transaction.on_commit` przed enqueue.
-- Taski idempotentne; `autoretry_for` świadomie.
+- Taski idempotentne; `autoretry_for` świadomie (`arch:observability` — logi retry).
 
 ## Pieniądze i wartości liczbowe
 
 - `Decimal` / `PriceField`, nigdy `float`.
-- Obliczenia cen w jednym miejscu (serializer wyceny lub moduł pricing przy
-  złożonej logice) — nie w view.
+- Obliczenia cen w jednym miejscu (serializer wyceny lub moduł pricing).
 
 ## Pliki i media
 
 - Upload przez `core/storage` / capability `files`, nie `ImageField` na modelu
-  domenowym zamiast `fileId`.
-- Walidacja typu/rozmiaru przy zapisie.
+  domenowym zamiast `fileId` (`arch:security` — walidacja uploadu).
 
 ## Audyt i historia
 
@@ -345,17 +334,16 @@ W projekcie: `drf-standardized-errors` jako `EXCEPTION_HANDLER`.
 
 ## Internacjonalizacja komunikatów
 
-- Komunikaty walidacji w serializerze → `gettext_lazy` (`_()`).
-- Treść dynamiczna (`JSONField translations`) → helper i18n + serializer.
+Szczegóły: **`arch:i18n`**. Walidacja → `gettext_lazy`; treść dynamiczna → translations.
 
 ## Logowanie i observability
 
-- Logger (`pack-logger`), nie `print`. Bez PII/secrets w logach.
+Szczegóły: **`arch:observability`**. Logger, nie `print`. Bez PII/secrets.
 
 ## Stałe i konfiguracja
 
-- Tylko `core/settings/**` i `.env` (`core/envs.py`). Bez magicznych literałów
-  w kodzie domenowym.
+Szczegóły: **`arch:configuration`**. Tylko `core/settings/**` i `.env`.
+Bezpieczeństwo sekretów: **`arch:security`**.
 
 ## Struktura folderów (minimalna)
 
@@ -381,17 +369,11 @@ nazwany moduł (`helpers/` tylko dla czystej transformacji danych bez HTTP).
 
 ## Testy
 
-Priorytet testów (DRF-first):
+Szczegóły: **`stack:django-drf:testing`** oraz **`arch:testing`**.
 
-1. **Serializery** — walidacja, `create`/`update`, edge cases.
-2. **Viewsety** — auth, izolacja użytkowników, status codes, permissions.
-3. **Permissions** — reguły dostępu.
-4. **Integracje / Celery / adaptery allauth** — tam, gdzie nie ma ViewSetu.
-
+Priorytet (DRF-first): serializery → viewsety/auth → permissions → integracje/Celery.
+Stack: `pytest`, `pytest-django`, `factory-boy`; taski z `taskfiles/test.yml`.
 Nie pisz osobnych testów dla cienkiego wrappera `service → serializer.save()`.
-
-Stack: `pytest`, `pytest-django`, `factory-boy`; kontrola przez taski z
-`taskfiles/test.yml` i `taskfiles/lints.yml`.
 
 ## Kontrola jakości
 
@@ -421,11 +403,10 @@ Stack: `pytest`, `pytest-django`, `factory-boy`; kontrola przez taski z
 
 ## Źródła standardu (zewnętrzne)
 
-- Dokumentacja **Django** i **Django REST Framework** — podstawowe źródło
-  (serializery, viewsets, permissions).
-- OWASP REST / DRF Cheat Sheet — paginacja, throttling, jawne pola.
-- RFC 9457 + `drf-standardized-errors` — format błędów.
-- `capability-provider-architecture.md` — integracje zewnętrzne (uzupełnienie DRF-first).
-- `providers-and-settings.md` — settings, registry, `providers/`, `webhooks/`.
-- HackSoft Django Styleguide — **opcjonalna inspiracja** dla selectorów przy
-  złożonych odczytach; **nie** jako domyślny service layer dla CRUD.
+- Dokumentacja **Django** i **Django REST Framework** — podstawowe źródło.
+- OWASP REST / DRF Cheat Sheet — paginacja, throttling, jawne pola (`arch:security`).
+- RFC 9457 + `drf-standardized-errors` — `arch:api-errors`.
+- `capability-provider-architecture.md` — integracje zewnętrzne.
+- `providers-and-settings.md` / `arch:configuration` — settings, registry.
+- HackSoft Django Styleguide — **opcjonalna inspiracja** dla selectorów; **nie**
+  domyślny service layer dla CRUD.

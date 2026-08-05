@@ -20,7 +20,7 @@ Domyślna baza relacyjna dla Django. Jeden cluster Postgres na aplikację (monol
 ```text
 postgres:16
 port mapowany na host, np. 5434:5432  ← unikalny per projekt
-volume: nazwany, np. olivin-data
+volume: nazwany, np. `<projekt>-postgres-data`
 ```
 
 ## Zasady dla agentów

@@ -67,12 +67,14 @@ Użyj trybu feature, gdy trzeba:
 - ocenić wpływ na frontend, backend i API,
 - zaproponować etapowy plan wdrożenia.
 
+Przy **niejasnym scope** lub wielu trade-offach najpierw `/grill-me` (jedna decyzja naraz). Przy oczywistym zakresie pomiń grill.
+
 Typowy przebieg:
 
 1. Ustal, czy funkcja dotyczy frontendu, backendu, API czy kilku warstw naraz.
 2. Wskaż konkretne katalogi i pliki, w których powinna powstać zmiana.
 3. Zaprojektuj kontrakt danych, walidację, permissions, cache i stany UI, jeśli mają znaczenie.
-4. Po zmianach API uwzględnij `task ovral:generate` i `task lints:frontend:typecheck`.
+4. Po zmianach API: jeśli `codegen: orval` (overlay / docelowo `--codegen`) → `task ovral:generate` i typecheck; przy `manual`/`none` nie wymagaj Orval.
 
 #### Refactor
 
@@ -154,7 +156,7 @@ Najważniejsze taski kontrolne:
 - `task lints:frontend:format` — formatowanie frontendu Prettierem,
 - `task lints:frontend:format:check` — sprawdzenie formatowania frontendu bez modyfikowania plików.
 
-Dobierz kontrolę do zakresu zmiany. Dla drobnej poprawki lokalnej wystarczy celowany test lub typecheck; dla zmian kontraktu API uwzględnij `task ovral:generate` i `task lints:frontend:typecheck`.
+Dobierz kontrolę do zakresu zmiany. Dla drobnej poprawki lokalnej wystarczy celowany test lub typecheck; dla zmian kontraktu API przy `codegen: orval` uwzględnij `task ovral:generate` i typecheck FE.
 
 ## Code review przed pushem
 

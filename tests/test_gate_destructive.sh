@@ -45,4 +45,32 @@ run_hook "git push upstream dev" ask
 run_hook "git push main" ask
 run_hook "git push master" ask
 
+# Fail-closed: nieoczekiwany exit != 0 bez wcześniejszego emit → ask + exit 0
+# (JSON ask musi wyjść z 0, żeby failClosed w Cursor nie blokował mimo permission).
+test_fail_closed_on_unexpected_error() {
+  local tmp out perm code
+  tmp=$(mktemp)
+  awk '
+    { print }
+    /^trap finish_allow EXIT$/ { print "exit 42" }
+  ' "$HOOK" > "$tmp"
+  set +e
+  out=$(json_cmd "git status" | bash "$tmp")
+  code=$?
+  set -e
+  rm -f "$tmp"
+  perm=$(printf '%s' "$out" | sed -n 's/.*"permission": "\([^"]*\)".*/\1/p')
+  if [[ "$perm" != "ask" ]]; then
+    echo "FAIL fail-closed expected=ask got=${perm:-empty} out=$out" >&2
+    return 1
+  fi
+  if [[ "$code" -ne 0 ]]; then
+    echo "FAIL fail-closed expected exit 0 got=$code out=$out" >&2
+    return 1
+  fi
+  echo "OK  [ask/exit0] unexpected hook exit → fail-closed"
+}
+
+test_fail_closed_on_unexpected_error
+
 echo "All gate-destructive +ref checks passed."

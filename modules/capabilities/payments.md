@@ -4,16 +4,15 @@
 
 Sesje płatności, webhooki, status zamówienia. **Stripe** jako reference — ten sam wzorzec dla PayU/P24 przez adapter.
 
-## Stan implementacji (olivin-app)
+## Stan implementacji (w repo aplikacji)
 
-| Element | Stan |
-|---------|------|
-| `stripe` w deps | tak |
-| `apps/payments/` | **szkielet** (puste models/views) |
-| `@stripe/stripe-react-native` | **brak** w package.json |
-| Referencja | `_temp/ecommerce_*_blueprint/` |
+| Element | Źródło prawdy |
+|---------|---------------|
+| `stripe` / SDK w deps | lockfile + `.ai/project.md` |
+| App `payments` / adapter | kod aplikacji |
+| Stripe na mobile/web | package.json + overlay |
 
-Bundle MCP `payments` opisuje **docelowy** kontrakt. W olivin implementuj według blueprintu lub overlay — nie zakładaj gotowego Stripe w produkcyjnym `src/` bez zadania.
+Bundle MCP `payments` opisuje **docelowy** kontrakt. Implementuj według blueprintu lub overlay w repo aplikacji — nie zakładaj gotowego Stripe w produkcyjnym `src/` bez sprawdzenia.
 
 Platformy klienckie (docelowo):
 

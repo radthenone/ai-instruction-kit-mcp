@@ -18,9 +18,7 @@ Powiązane:
 
 - `pattern:capability-provider` — capability vs domena, zakazy
 - `stack:django-drf:backend-standard` — kiedy serializer, kiedy provider
-- `backend/src/_temp/ecommerce_backend_blueprint/` — kod referencyjny do ręcznego
-  przenoszenia do `src/` (blueprint ma uproszczone snippety settings, nie pełny
-  `core/settings/components/` produkcji)
+- `capability:files`, `capability:payments` — przykłady 4 warstw w praktyce
 
 ## Kiedy stosować ten wzorzec
 

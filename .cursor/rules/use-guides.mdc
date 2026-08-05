@@ -10,31 +10,34 @@ alwaysApply: true
 | Zadanie | Źródło |
 |---------|--------|
 | Backend / frontend / arch / infra | MCP `project-guides` → `get_bundle` |
-| Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
+| Porty, Taskfile, Docker, codegen | MCP `get_overlay` / `.ai/project.md` (`codegen: orval\|manual\|none`) |
 | Docs bibliotek | Context7 (user MCP) |
-| Review stacku | `/review-backend`, `/review-frontend`, … |
+| Review stacku | **minimalny zestaw** (nie wszystkie `/review-*`) — `code-review.mdc` |
 | Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` |
-| Przed pushem | `/review-bugbot` + hooki `gate-*` |
-| Branch / PR | `/git-start`, `/git-check`, `/git-commit`, `/git-end` + `git-branch-pr.mdc` |
-| Skrót czatu | **`/compact` tylko w Cursorze** (alias Summarize; nie dla Claude/Codex) |
+| Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
+| Branch / PR | `/git-start` … `/git-end` + `git-branch-pr.mdc` |
+| Skrót czatu | **`/compact` tylko w Cursorze** (alias Summarize) |
 | Język prozy | MCP `get_language` / `--language pl\|en` |
 | Worktree / finisz | Superpowers (opc.) na branchu z `/git-start` |
 | PR → CI green | Autopilot po `/git-end` |
 
-Moduły: `--preset` (kategoria, np. `_base` / `shop`) + opcjonalnie `.ai/project.md`.  
+Moduły: `--preset` + opcjonalnie `.ai/project.md`.  
 Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 
-**Wszystkie agenty:** `AGENTS.md` + `git-branch-pr.mdc`. Po PR — Autopilot; nie dubluj TDD Matt+Superpowers.
+**Wszystkie agenty:** `AGENTS.md` + `git-branch-pr.mdc`. Po PR — Autopilot; nie dubluj TDD.
 
-## Proces i meta (poza kitem — nie zastępują MCP)
+## Grill / pewność
+
+- `/grill-me` **tylko** przy niejasnym scope; oczywisty fix → od razu `/git-start`.
+- Auth, ACL, billing, migracje, brak dowodu → agent **pyta**, nie zgaduje.
+
+## Proces i meta (poza kitem)
 
 | Warstwa | Przykład | Kiedy |
 |---------|----------|--------|
-| Proces | mattpocock `/grill-me`, `/tdd` | scope feature, red-green |
-| Meta | Superpowers worktree / finishing / debug | izolacja, domknięcie brancha |
-| PR loop | Autopilot | CI + komentarze aż merge-ready |
+| Proces | `/grill-me`, `/tdd` | niejasny scope; red-green |
+| Meta | worktree / finishing / debug | izolacja, domknięcie |
+| PR loop | Autopilot | CI + komentarze |
 
 Priorytet: użytkownik → overlay+MCP → `/git-*`+review → Matt → Superpowers → Autopilot.  
-TDD: jeden path (preferuj Matt `/tdd`).
-
-Szczegóły: `AGENTS.md`.
+TDD: jeden path (preferuj Matt `/tdd`). Szczegóły: `AGENTS.md`.

@@ -2,9 +2,9 @@
 # Cursor hook: przypomnienie o /review-bugbot przed git push.
 # Kopiuj do projektu: .cursor/hooks/gate-push.sh (chmod +x).
 #
-# Windows: w hooks.json używaj:
-#   bash --noprofile --norc .cursor/hooks/gate-push.sh
-# (sama ścieżka .sh → bash --login -i i wiszące okna konsoli)
+# Windows: NIE podawaj samej ścieżki .sh w hooks.json — Cursor odpala wtedy
+# `bash --login -i` i zostawia otwarte okna konsoli. Używaj:
+#   node .cursor/hooks/invoke-hook.js gate-push.sh
 
 set -euo pipefail
 
@@ -65,4 +65,3 @@ if [[ -n "$local_sha" && -n "$remote_sha" && "$local_sha" == "$remote_sha" ]]; t
 fi
 
 ask_review "niepushnięte commity na bieżącym branchu"
-allow

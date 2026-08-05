@@ -1,15 +1,27 @@
 ---
-description: Przypomnienie o code review przed pushem
+description: Przypomnienie o code review przed pushem i na PR
 alwaysApply: true
 ---
 
 # Code review
 
-Przed `git push`:
+Przed `git push` — **minimalny zestaw**, nie wszystkie `/review-*`:
 
-1. `/review-bugbot` na branch changes.
-2. `PYTHONPATH=src python -m unittest discover -s tests`
-3. Bypass hook: `SKIP_PUSH_REVIEW=1 git push`
+| Zmiana | Minimum |
+|--------|---------|
+| Drobna (bez API/auth) | `/review-bugbot` |
+| Backend | Bugbot + `/review-backend` |
+| Frontend | Bugbot + `/review-frontend` |
+| API + UI | Bugbot + BE+FE **lub** para `/subagent-*` |
+| Auth / płatności | `/review-security` (+ Bugbot) |
+| „Zrobione” | + `/review-tests` (dowód, nie styl) |
 
-Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force main/master/dev / reset --hard).
-Reguły Bugbota: `.cursor/BUGBOT.md`.
+1. Odpal minimum jak wyżej.
+2. Napraw `high` / uzasadnione `medium` (format: Severity \| Location \| Finding \| Fix).
+3. Po pushu — Bugbot na GitHub.
+
+Bugbot = blocking/security. Stack `/review-*` = konwencje MCP (bez dublowania).  
+Orval: gdy `codegen: orval` w overlay — po zmianie API regeneruj i commituj klienta.
+
+Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force main/master/dev / reset --hard).  
+Bypass: `SKIP_PUSH_REVIEW=1 git push`. Reguły: `.cursor/BUGBOT.md`.

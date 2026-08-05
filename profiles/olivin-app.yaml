@@ -1,5 +1,0 @@
-# DEPRECATED alias → używaj --preset shop
-# Zachowane dla kompatybilności starych mcp.json
-
-name: olivin-app
-extends: profiles/shop.yaml

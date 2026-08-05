@@ -11,7 +11,7 @@ extends: profiles/_base.yaml
 
 capabilities:
   - auth
-  - files-storage
+  - files
   - payments
 
 domains:
@@ -27,7 +27,7 @@ decisions:
 bundles:
   backend:
     - capability:auth
-    - capability:files-storage
+    - capability:files
     - capability:payments
     - domain:shop
   frontend:

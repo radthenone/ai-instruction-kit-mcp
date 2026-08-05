@@ -9,7 +9,7 @@ Własne URL-e API, infrastruktura współdzielona:
 | Moduł instrukcji | Backend app | Frontend feature |
 |------------------|-------------|------------------|
 | `capability:auth` | allauth + accounts | `core/auth`, `features/auth` |
-| `capability:files-storage` | apps/files | features/files |
+| `capability:files` | apps/files | features/files |
 | `capability:payments` | apps/payments | features/payments, checkout |
 
 ### Domain apps
@@ -46,6 +46,6 @@ Mail, PDF, miniatury, webhook retry, masowe notyfikacje → taski idempotentne, 
 
 ## Powiązane moduły
 
-- `capability:auth`, `capability:files-storage`, `capability:payments`
+- `capability:auth`, `capability:files`, `capability:payments`
 - `domain:shop`
 - `pattern:providers-and-settings`

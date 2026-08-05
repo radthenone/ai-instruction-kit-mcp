@@ -38,12 +38,12 @@ Konflikt TDD: Matt `/tdd` *albo* Superpowers TDD — nie oba. Domyślnie Matt na
 Pełna reguła: `.cursor/rules/git-branch-pr.mdc`.
 
 ```text
-[/grill-me] → /git-start → [worktree?] → kod [+/tdd]
-  → [/git-check] → /git-commit → /review-bugbot → /git-end | finishing→PR → Autopilot → merge
+[/grill-me gdy scope niejasny] → /git-start → [worktree?] → kod [+/tdd]
+  → [/git-check] → /git-commit → /review-bugbot (+ min. stack) → /git-end | finishing→PR → Autopilot → merge
 ```
 
 - **`/git-start` / `/git-check` / `/git-commit` / `/git-end`** — issue, sync, Conventional commit(s), push+PR.  
-
+- **`/grill-me`** — tylko przy niejasnym scope / trade-offach (nie przy oczywistym fixie).  
 - **Superpowers worktree** — opcjonalna izolacja *na już nazwanym* branchu.  
 - **Finishing** — lokalne testy OK → opcja PR (zamiast lub obok `/git-end`).  
 - **Autopilot** — po PR: CI/komentarze aż merge-ready (bez auto-merge).
@@ -52,16 +52,25 @@ Chronione: `main` / `master` / `dev`.
 
 ## Flow jednej zmiany
 
-1. (Opc.) `/grill-me`  
+1. (Opc.) `/grill-me` — **tylko** gdy scope niejasny  
 2. `/git-start` — issue + branch  
 3. (Opc.) Superpowers worktree  
-4. MCP `get_bundle` + `get_overlay` (+ `get_language`)  
+4. MCP `get_bundle` + `get_overlay` (+ `get_language`; odczytaj `codegen:`)  
 5. Implementacja (+ opc. `/tdd`)  
 6. (Opc.) `/git-check` — gdy scope/diff rozjechał się z issue  
 7. `/git-commit` — Conventional Commit(s) z lokalnego diffa  
-8. `/review-*` + `/review-bugbot`  
+8. `/review-bugbot` + **minimalny** stack (`/review-backend` i/lub `/review-frontend`; nie wszystkie `/review-*`)  
 9. `/git-end` **lub** Superpowers finishing → PR  
 10. (Opc.) Autopilot → CI green → merge  
+
+## Niska pewność
+
+Auth, ACL, billing, migracje, concurrency, brak dowodu w repo → **zapytaj użytkownika**. Nie naprawiaj na ślepo. Finding bez pewności = pytanie, nie fakt.
+
+## Codegen (Orval)
+
+W overlay (`.ai/project.md` / extras) ustaw `codegen: orval` \| `manual` \| `none`.  
+Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE honorują tę wartość.  
 
 ## Język
 
@@ -86,6 +95,8 @@ Chronione: `main` / `master` / `dev`.
 
 ## Code review
 
-Przed `git push`: `/review-bugbot` (auth/płatności: `/review-security`).  
+Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
+Format stack review: `Severity | Location | Finding | Fix`.  
+`/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
 Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main/master/dev / reset --hard).
 Bootstrap: `scripts/bootstrap-project.sh`.

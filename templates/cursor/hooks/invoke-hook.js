@@ -4,20 +4,26 @@
  * Windows: Git Bash with --noprofile --norc (no --login -i / leftover consoles).
  * Linux/macOS: system bash --noprofile --norc.
  * Usage: node .cursor/hooks/invoke-hook.js <hook-script.sh>
+ *
+ * Po wypisaniu JSON z polem permission zawsze kończymy exit 0 — przy failClosed: true
+ * niezerowy kod ukrywa payload (Cursor traktuje to jak awarię hooka).
  */
 "use strict";
 
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 
 function emitDeny(message) {
-  const safe = String(message).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const text = String(message);
   process.stdout.write(
-    `{"permission":"deny","user_message":"Hook: ${safe}","agent_message":"invoke-hook: ${safe}"}`
+    JSON.stringify({
+      permission: "deny",
+      user_message: `Hook: ${text}`,
+      agent_message: `invoke-hook: ${text}`,
+    })
   );
-  process.exit(1);
+  process.exit(0);
 }
 
 function findBash() {
@@ -77,4 +83,4 @@ if (!out) {
 }
 
 process.stdout.write(out);
-process.exit(result.status == null ? 1 : result.status);
+process.exit(0);

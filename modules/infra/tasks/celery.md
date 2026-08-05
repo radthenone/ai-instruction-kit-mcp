@@ -47,4 +47,4 @@ Task runner (`tasks: celery`) ≠ broker (`queue: redis|rabbitmq`).
 ## Powiązane
 
 - `capability:payments` — webhook retry
-- `capability:files-storage` — miniatury, cleanup
+- `capability:files` — miniatury, cleanup

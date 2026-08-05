@@ -21,8 +21,46 @@ CASES: list[tuple[str, dict[str, str], str]] = [
     ("gate-destructive.sh", {"command": "git push git+https://example.com/repo.git main"}, "ask"),
     ("gate-destructive.sh", {"command": "git push git+https://example.com/repo.git feat/x"}, "allow"),
     ("gate-destructive.sh", {"command": "git push origin dev"}, "ask"),
-    ("gate-push.sh", {"command": "git push origin feat/x"}, "ask"),
 ]
+
+
+def expected_gate_push_permission(cwd: Path) -> str:
+    """
+    Oczekiwane ``permission`` dla gate-push (logika jak w skrypcie hooka).
+
+    Args:
+        cwd: Katalog repozytorium, w którym działa hook.
+
+    Returns:
+        str: ``ask`` albo ``allow``.
+    """
+    upstream = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "@{u}"],
+        cwd=str(cwd),
+        capture_output=True,
+        check=False,
+    )
+    if upstream.returncode != 0:
+        return "ask"
+    local = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    remote = subprocess.run(
+        ["git", "rev-parse", "@{u}"],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    local_sha = (local.stdout or "").strip()
+    remote_sha = (remote.stdout or "").strip()
+    if local_sha and remote_sha and local_sha == remote_sha:
+        return "allow"
+    return "ask"
 
 
 def resolve_bash() -> str | None:
@@ -54,7 +92,15 @@ def main() -> int:
         return 0
 
     failed = 0
-    for script, payload, expect in CASES:
+    cases = list(CASES)
+    cases.append(
+        (
+            "gate-push.sh",
+            {"command": "git push origin feat/x"},
+            expected_gate_push_permission(ROOT),
+        )
+    )
+    for script, payload, expect in cases:
         hook = ROOT / ".cursor" / "hooks" / script
         proc = subprocess.run(
             [bash, "--noprofile", "--norc", str(hook).replace("\\", "/")],
@@ -97,8 +143,51 @@ def main() -> int:
             if perm != "allow":
                 print(f"FAIL invoke-hook expected=allow got={perm}")
                 failed += 1
+            elif proc.returncode != 0:
+                print(f"FAIL invoke-hook expected exit 0 got={proc.returncode}")
+                failed += 1
             else:
-                print("OK  [allow] invoke-hook.js gate-destructive.sh")
+                print("OK  [allow/exit0] invoke-hook.js gate-destructive.sh")
+
+        # emitDeny must produce valid JSON when stderr contains control chars.
+        # Exit code must be 0 so Cursor failClosed does not hide the JSON payload.
+        noisy = ROOT / ".cursor" / "hooks" / "_test_noisy_stderr.sh"
+        try:
+            noisy.write_text(
+                "#!/usr/bin/env bash\n"
+                'printf "line1\\nline2\\ttab\\r" >&2\n'
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                ["node", str(invoker), noisy.name],
+                input=b"{}",
+                capture_output=True,
+                cwd=str(ROOT),
+                timeout=45,
+                check=False,
+            )
+            out = proc.stdout.decode("utf-8", "replace").strip()
+            try:
+                payload = json.loads(out)
+            except json.JSONDecodeError:
+                print(f"FAIL emitDeny control chars → invalid JSON: {out!r}")
+                failed += 1
+            else:
+                if payload.get("permission") != "deny":
+                    print(f"FAIL emitDeny expected=deny got={payload.get('permission')}")
+                    failed += 1
+                elif "\n" not in str(payload.get("user_message", "")):
+                    print(f"FAIL emitDeny lost newline in message: {payload!r}")
+                    failed += 1
+                elif proc.returncode != 0:
+                    print(f"FAIL emitDeny expected exit 0 got={proc.returncode}")
+                    failed += 1
+                else:
+                    print("OK  [deny/exit0] invoke-hook.js emitDeny escapes control chars")
+        finally:
+            if noisy.is_file():
+                noisy.unlink()
     else:
         print("SKIP invoke-hook.js (brak node lub pliku)")
 

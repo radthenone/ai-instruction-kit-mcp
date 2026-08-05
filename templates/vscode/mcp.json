@@ -8,6 +8,7 @@
         "guides-mcp",
         "--preset", "_base",
         "--language", "pl",
+        "--clients", "all",
         "--workspace", "${workspaceFolder}"
       ]
     }

@@ -8,6 +8,11 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from guides.clients import (
+    expand_clients,
+    format_clients_arg,
+    parse_clients,
+)
 from guides.manifest import find_kit_root, load_manifest
 from guides.resolver import (
     language_module_id,
@@ -23,7 +28,8 @@ mcp = FastMCP(
         "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
         "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
         "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
-        "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language."
+        "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
+        "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian."
     ),
 )
 
@@ -32,6 +38,7 @@ _kit_root: Path | None = None
 _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
 _language_override: str | None = None
+_clients: list[str] = ["all"]
 
 
 def _get_profile_path() -> Path:
@@ -202,12 +209,36 @@ def get_module(module_id: str) -> str:
 
 
 @mcp.tool()
+def get_clients() -> str:
+    """
+    Lista klientów AI skonfigurowanych przy starcie MCP (``--clients`` / GUIDES_CLIENTS).
+
+    Metadane instalacji szablonów — **nie** zmieniają treści bundle.
+
+    Returns:
+        str: Markdown z wartością flagi i rozwiniętą listą id klientów.
+    """
+    flag = format_clients_arg(_clients)
+    expanded = expand_clients(_clients)
+    lines = [
+        "# Clients (MCP metadata)",
+        "",
+        f"- Flag `--clients`: `{flag}`",
+        f"- Expanded: {', '.join(f'`{c}`' for c in expanded)}",
+        "",
+        "Bundle content is identical for every client. "
+        "Use this only to know which IDE packs were intended at bootstrap.",
+    ]
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def list_presets() -> str:
     """
     Lista dostępnych presetów w instruction-kit (``profiles/*.yaml``).
 
     Returns:
-        str: Markdown z kategoriami (``shop``, ``_base``) i aliasami deprecated.
+        str: Markdown z kategoriami (``_base``, ``shop``, …).
     """
     root = _kit_root or find_kit_root()
     profiles_dir = root / "profiles"
@@ -215,11 +246,8 @@ def list_presets() -> str:
     if not profiles_dir.is_dir():
         return "\n".join([*lines, "_Brak katalogu profiles._"])
     for path in sorted(profiles_dir.glob("*.yaml")):
-        head = path.read_text(encoding="utf-8")[:240]
         if path.stem == "_base":
             note = " — fundament stacku (default)"
-        elif "DEPRECATED" in head:
-            note = " — alias (deprecated)"
         elif path.stem == "shop":
             note = " — kategoria e-commerce"
         else:
@@ -258,7 +286,7 @@ def _register_bundle_resources() -> None:
 
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
-    global _profile_path, _kit_root, _workspace_root, _extra_overlays, _language_override
+    global _profile_path, _kit_root, _workspace_root, _extra_overlays, _language_override, _clients
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -293,6 +321,15 @@ def main() -> None:
         required=False,
         help="Root repozytorium instruction-kit (domyślnie: auto-detect)",
     )
+    parser.add_argument(
+        "--clients",
+        required=False,
+        default=None,
+        help=(
+            "Metadane klientów AI: all | cursor | claude | codex | vscode | kiro | kilo | "
+            "antigravity (lista po przecinku; alias copilot→vscode). Nie zmienia bundle."
+        ),
+    )
     args = parser.parse_args()
 
     if args.kit_root:
@@ -312,6 +349,12 @@ def main() -> None:
     lang_cli = args.language or os.environ.get("GUIDES_LANGUAGE")
     if lang_cli:
         _language_override = normalize_language(lang_cli)
+
+    clients_raw = args.clients if args.clients is not None else os.environ.get("GUIDES_CLIENTS")
+    try:
+        _clients = parse_clients(clients_raw)
+    except ValueError as exc:
+        parser.error(f"--clients: {exc}")
 
     preset = args.preset or os.environ.get("GUIDES_PRESET")
     profile_arg = args.profile

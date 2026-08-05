@@ -73,6 +73,30 @@ def _remap_language_modules(module_ids: list[str], language: str) -> list[str]:
     return result
 
 
+# Alias ID w bundle/include (stare nazwy → kanoniczne z manifestu).
+_MODULE_ID_ALIASES: dict[str, str] = {
+    "capability:files-storage": "capability:files",
+}
+
+
+def normalize_module_id(module_id: str) -> str:
+    """
+    Znormalizuj ID modułu (aliasy kompatybilności).
+
+    Args:
+        module_id: Surowy identyfikator z profilu / bundle.
+
+    Returns:
+        str: Kanoniczne ID z manifestu (lub bez zmian, gdy brak aliasu).
+    """
+    return _MODULE_ID_ALIASES.get(module_id, module_id)
+
+
+def _normalize_module_ids(module_ids: list[str]) -> list[str]:
+    """Zastosuj ``normalize_module_id`` z zachowaniem kolejności i bez duplikatów."""
+    return _merge_unique([], [normalize_module_id(mid) for mid in module_ids])
+
+
 @dataclass(frozen=True)
 class ResolvedBundle:
     """Gotowy bundle — lista modułów i połączona treść Markdown."""
@@ -207,10 +231,10 @@ def _capability_module_ids(capabilities: list[str]) -> list[str]:
     """Zmapuj listę capabilities z profilu na ID modułów."""
     mapping = {
         "auth": "capability:auth",
-        "files": "capability:files-storage",
-        "files-storage": "capability:files-storage",
+        "files": "capability:files",
+        "files-storage": "capability:files",  # alias kompat
         "payments": "capability:payments",
-        "storage": "capability:files-storage",
+        "storage": "capability:files",
     }
     return [mapping[c] for c in capabilities if c in mapping]
 
@@ -332,9 +356,10 @@ def _collect_module_ids(profile_data: dict[str, Any], manifest: Manifest) -> lis
         )
 
     module_ids = _remap_language_modules(module_ids, language)
+    module_ids = _normalize_module_ids(module_ids)
 
     # Walidacja — tylko znane moduły
-    return [mid for mid in _merge_unique([], module_ids) if mid in manifest.modules]
+    return [mid for mid in module_ids if mid in manifest.modules]
 
 
 def _build_bundle_content(
@@ -345,8 +370,9 @@ def _build_bundle_content(
     """Złóż treść Markdown bundle'a z plików modułów."""
     parts: list[str] = []
     missing: list[str] = []
+    canonical_ids = _normalize_module_ids(module_ids)
 
-    for module_id in module_ids:
+    for module_id in canonical_ids:
         info = manifest.modules.get(module_id)
         if info is None:
             missing.append(module_id)
@@ -363,7 +389,7 @@ def _build_bundle_content(
 
     return ResolvedBundle(
         name=bundle_name,
-        module_ids=tuple(module_ids),
+        module_ids=tuple(canonical_ids),
         content=content,
         missing_modules=tuple(missing),
     )
