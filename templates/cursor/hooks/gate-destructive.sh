@@ -23,14 +23,17 @@ emit() {
   fi
 }
 
-# Przy wyjściu bez wcześniejszego emit: allow przy sukcesie, ask przy błędzie
-# (fail-closed — nie wywołuj exit w trapie).
+# Przy wyjściu bez wcześniejszego emit: allow przy sukcesie, ask przy błędzie.
+# Po emit JSON zawsze kończymy z exit 0 — invoke-hook przekazuje status bash do Cursor
+# (failClosed: true inaczej zignoruje permission i zablokuje komendę).
 _emitted=0
 finish_allow() {
   local code=$?
   if [[ "${_emitted}" -eq 0 ]]; then
     if [[ "$code" -ne 0 ]]; then
       emit ask "hook error (exit ${code}) — potwierdź ręcznie"
+      _emitted=1
+      exit 0
     else
       emit allow
     fi
