@@ -3,6 +3,7 @@
 ## Communication
 
 - ALWAYS reply in English unless the user explicitly asks for another language.
+- Applies to short in-progress status/narration lines too (e.g. "Now checking X", "Adding Y") — not only the final answer. File names, commands, code, and identifiers stay as-is.
 - Be concrete, technical, and project-focused — no fluff.
 - If something cannot be verified, say so plainly.
 
