@@ -36,6 +36,7 @@ echo "OK  --clients opencode (+ rendered commands)"
 "$BOOT" "$TMP/claude-kiro" --clients claude,kiro --from "$ROOT" >/dev/null
 test -f "$TMP/claude-kiro/.mcp.json"
 test -d "$TMP/claude-kiro/.claude/agents"
+test -f "$TMP/claude-kiro/.claude/commands/cleanup.md"
 test -d "$TMP/claude-kiro/.kiro/agents"
 test ! -e "$TMP/claude-kiro/.cursor/mcp.json"
 echo "OK  --clients claude,kiro (+ agents)"
