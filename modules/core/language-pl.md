@@ -3,6 +3,7 @@
 ## Komunikacja
 
 - ZAWSZE odpowiadaj po polsku, chyba że użytkownik wyraźnie poprosi o inny język.
+- Dotyczy to też krótkich statusów/narracji w trakcie pracy (np. "Teraz sprawdzam X", "Dodaję Y") — nie tylko finalnej odpowiedzi. Nazwy plików, komend, kod i identyfikatory zostają w oryginale.
 - Odpowiadaj konkretnie, technicznie i projektowo — bez lania wody.
 - Jeśli czegoś nie da się potwierdzić, napisz to wprost.
 

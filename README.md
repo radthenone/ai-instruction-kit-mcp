@@ -61,7 +61,7 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 | `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
 | `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
-| `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
+| `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
 | `--profile PATH`   | nie       | Lokalny fork YAML zamiast `--preset`                                                                                                               | mcp.json + plik w aplikacji                              |
@@ -157,6 +157,7 @@ Kanon treści: `templates/shared/{agents,rules}`. Adaptery IDE trzymają tylko f
 | Kiro                     | `kiro`         | `.kiro/settings/mcp.json`         | `mcpServers`                     | `templates/kiro/settings/mcp.json` |
 | Kilo                     | `kilo`         | `.kilocode/mcp.json`              | `mcpServers`                     | `templates/kilo/mcp.json`        |
 | Antigravity              | `antigravity`  | `.agents/mcp_config.json`         | `mcpServers`                     | `templates/antigravity/mcp_config.json` |
+| opencode                 | `opencode`     | `opencode.json` (root)            | `mcp` (`type: "local"`)          | `templates/opencode/opencode.json` |
 
 
 Zmienna dla `--workspace`:
@@ -166,10 +167,75 @@ Zmienna dla `--workspace`:
 | --------------- | ------------------------------------------- |
 | Cursor, VS Code, Kiro, Kilo, Antigravity | `${workspaceFolder}`             |
 | Claude Code     | `${CLAUDE_PROJECT_DIR:-.}`                  |
-| Codex CLI       | ścieżka absolutna (brak stabilnej zmiennej) |
+| Codex CLI, opencode | ścieżka absolutna (brak stabilnej zmiennej) |
 
 
 
+
+## Instalacja per klient (krok po kroku)
+
+Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap-project.sh` w **repo aplikacji** (nie w repo kita) z `--from` wskazującym na kita → zrestartuj IDE.
+
+```bash
+./scripts/bootstrap-project.sh /sciezka/do/mojej-appki \
+  --from /m/projects/ai-instruction-kit-mcp \
+  --clients cursor \
+  --with-overlay
+```
+
+| Klient | `--clients` | Wymaga poza kitem | Extra config po bootstrapie |
+| --- | --- | --- | --- |
+| Cursor | `cursor` | Cursor IDE | Ustaw `--from` w `.cursor/mcp.json` jeśli nie `uvx`-owalny git remote. Hooki (`gate-*`) działają od razu — wymagają `bash` w PATH (Windows: Git Bash) |
+| Claude Code | `claude` | `claude` CLI albo desktop app | `.mcp.json` w root — Claude Code czyta go automatycznie po `cd` do repo. `.claude/commands/*.md` = prawdziwe `/nazwa`, `.claude/agents/*.md` = subagenty (Task tool) |
+| Codex CLI | `codex` | `codex` CLI | `.codex/config.toml` wymaga absolutnej ścieżki w `--workspace` (brak `${workspaceFolder}`) — bootstrap wypełnia sam z `TARGET` |
+| GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | VS Code + rozszerzenie GitHub Copilot Chat | `.vscode/mcp.json` (`servers`, nie `mcpServers`) + `.github/prompts/*.prompt.md` (Copilot Chat `/nazwa`) + `.github/copilot-instructions.md`. Wymaga w VS Code ustawienia `chat.promptFiles: true` (część wersji ma to domyślnie) |
+| Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
+| Kilo Code | `kilo` | rozszerzenie Kilo Code | `.kilocode/mcp.json` + `.kilocode/workflows/*.md` (`/nazwa`, `$ARGUMENTS` wspierane) |
+| Google Antigravity | `antigravity` | Antigravity IDE | `.agents/mcp_config.json` + `.agents/workflows/*.md` (`/nazwa`; limit 12 000 znaków/plik — kit przycina) |
+| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/command/*.md` (`/nazwa`, `$ARGUMENTS`) |
+
+Wiele klientów naraz: `--clients cursor,claude` albo `--clients all`. Każdy klient dostaje **ten sam** `--preset`/`--language`/`--workspace` — różni się tylko format pliku MCP i ścieżka komend.
+
+Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy starcie), potem sprawdź że MCP wstał (np. `get_bundle` / lista narzędzi w kliencie).
+
+## Czego kit **nie robi** / brakujące komendy
+
+Świadome braki — nie zgłaszaj jako bug, tylko sprawdź czy potrzebujesz obejścia niżej:
+
+| Brak | Status | Obejście |
+| --- | --- | --- |
+| `--tag` / facety wariantów presetu | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
+| `--codegen` (Orval) jako flaga MCP | Design, dziś tylko `.ai/project.md: codegen:` | Ustaw ręcznie w overlay |
+| `--profile` + `--preset` jednocześnie | Niedozwolone | Wybierz jedno; fork = `--profile` |
+| `/review-security` jako plik kita | Nie istnieje w `templates/shared/agents/` | To skill user/global (Cursor) — dodaj we własnym środowisku, kit go nie dostarcza |
+| `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
+| Natywna weryfikacja formatu VS Code/Kilo/Antigravity/opencode | Oparta o dokumentację (sierpień 2026), **nie testowana na żywych klientach** | Jeśli `/nazwa` nie działa w Twoim kliencie, zgłoś i popraw `scripts/render_agent_commands.py` |
+| Auto-instalacja Superpowers/Autopilot | Niemożliwa ze skryptu (marketplace pluginów Claude/Cursor, wymaga interaktywnego `/plugin install`) | `--with-plugins` wypisze dokładne komendy/kroki, patrz niżej |
+
+## Pluginy zewnętrzne — schemat użycia (4 warstwy)
+
+Kit **nie** bundluje tych pluginów w `guides-mcp` (różna dystrybucja: MCP vs Claude/Cursor plugin marketplace vs npx skill). Pełna tabela warstw i priorytet źródeł: `AGENTS.md`.
+
+```text
+1. Fundament   — ten kit (MCP + /git-* + /review-*)     → instaluje bootstrap
+2. Proces      — mattpocock/skills (/grill-me, /tdd)     → npx skills@latest add mattpocock/skills
+3. Meta/izolacja — Superpowers (worktree, finishing…)     → Claude Code: /plugin marketplace add obra/superpowers-marketplace
+                                                              /plugin install superpowers@superpowers-marketplace
+4. PR → green  — Autopilot (Cursor)                       → Cursor: Settings → Extensions/Skills → Autopilot
+```
+
+Nie mieszaj warstw: kit = prawda o stacku i nazwach branchy, Matt = proces feature, Superpowers = sesja/worktree/finisz, Autopilot = dociąganie PR.
+
+**Auto-instalacja przy bootstrapie:** `--with-plugins` (best-effort, opt-in — nic nie instaluje się bez tej flagi):
+
+```bash
+./scripts/bootstrap-project.sh ../moj-projekt \
+  --clients claude \
+  --from /m/projects/ai-instruction-kit-mcp \
+  --with-plugins
+```
+
+Co robi: odpala `npx skills@latest add mattpocock/skills` w `TARGET` (wymaga `npx`/Node.js w PATH; best-effort — błąd nie przerywa bootstrapu), i wypisuje gotowe komendy do Superpowers/Autopilot (te dwa wymagają interaktywnego kroku w kliencie, nie da się ich odpalić z bash). TDD: jeden path na feature — domyślnie Matt `/tdd`, nie mieszaj z Superpowers TDD.
 
 ## Katalog modułów
 
@@ -353,14 +419,27 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/review-ui`                         | `templates/shared/agents/review-ui.md`           |
 | `/review-edge`                       | `templates/shared/agents/review-edge.md`         |
 | `/review-tests`                      | `templates/shared/agents/review-tests.md`        |
+| `/review-bugbot`                     | `templates/shared/agents/review-bugbot.md` (manualny odpowiednik natywnego Cursor BugBot — stosuje reguły z `BUGBOT.md` ręcznie, dla klientów bez tej usługi) |
+| `/cleanup`                           | `templates/shared/agents/cleanup.md` (znajdź i usuń zbędne scratch/testowe pliki zostawione po weryfikacji — pyta o potwierdzenie) |
 | `/subagent-backend`                  | `templates/shared/agents/subagent-backend.md`    |
 | `/subagent-frontend`                 | `templates/shared/agents/subagent-frontend.md`   |
-| `/review-bugbot`, `/review-security` | skille Cursor (user/global), nie ten kit         |
+| `/review-security`                   | skille Cursor (user/global), nie ten kit         |
 
 
-Bootstrap (`--clients`) kopiuje shared agents do natywnych ścieżek (`.cursor/agents/`, `.claude/agents/`, …). Codex TOML: `templates/codex/agents/*.toml` → `.codex/agents/`.
+Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:
 
-Po skopiowaniu **zrestartuj** okno Cursor — agenty ładują się przy starcie.
+- **Cursor**: `.cursor/agents/` — natywne slash commands, działa 1:1.
+- **Claude Code**: `.claude/agents/` (subagenty, wywołanie przez Task/Agent tool) **oraz** `.claude/commands/` (prawdziwe slash commands `/git-start` itd. — `$ARGUMENTS` wstrzyknięty automatycznie przy kopiowaniu).
+- **Codex**: `templates/codex/agents/*.toml` (ręczny, curated) → `.codex/agents/`; agenci bez ręcznego TOML są auto-renderowani z `templates/shared/agents/*.md` (`scripts/render_agent_commands.py codex`) — pełna lista `/git-*`, `/review-*`, `/subagent-*` trafia do `.codex/agents/`, curated ma pierwszeństwo nad auto.
+- **Kiro**: `.kiro/agents/` — kopiowane 1:1, format niezweryfikowany na żywym Kiro.
+- **VS Code/Copilot**: `scripts/render_agent_commands.py vscode` → `.github/prompts/*.prompt.md` (wywołanie `/nazwa` w Copilot Chat).
+- **Kilo**: `scripts/render_agent_commands.py kilo` → `.kilocode/workflows/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
+- **Antigravity**: `scripts/render_agent_commands.py antigravity` → `.agents/workflows/*.md` (wywołanie `/nazwa`; limit 12 000 znaków/plik, kit przycina jeśli trzeba).
+- **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/command/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
+
+Formaty VS Code/Kilo/Antigravity/opencode oparte o publiczną dokumentację tych klientów (sierpień 2026) — nie testowane na żywych instalacjach; jeśli coś nie zadziała, zgłoś różnicę i popraw `scripts/render_agent_commands.py`.
+
+Po skopiowaniu/wyrenderowaniu **zrestartuj** okno IDE — agenty/komendy ładują się przy starcie.
 
 ### Wywołanie
 

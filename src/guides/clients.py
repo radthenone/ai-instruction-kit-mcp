@@ -13,6 +13,7 @@ KNOWN_CLIENTS: tuple[str, ...] = (
     "kiro",
     "kilo",
     "antigravity",
+    "opencode",
 )
 
 _ALIASES: dict[str, str] = {
