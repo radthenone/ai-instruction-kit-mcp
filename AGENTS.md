@@ -93,6 +93,14 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | `/grill-me`, `/tdd`, … | proces | mattpocock |
 | Superpowers / Autopilot | worktree, finishing, CI loop | plugin / skills Cursor |
 
+## Auto-sprzątanie (obowiązkowe)
+
+Jeśli w trakcie pracy tworzysz plik **tylko po to, by coś zweryfikować** (ad-hoc skrypt, scratch test, tmp dump, jednorazowy check) i nie jest to część właściwej zmiany ani plik z oficjalnego katalogu testów — usuń go **sam, od razu po użyciu, bez pytania o zgodę**. To Twój własny plik z tej sesji, więc nie wymaga potwierdzenia usera (w przeciwieństwie do `/cleanup`, które sprząta cudze/starsze śmieci i zawsze pyta).
+
+Nie usuwaj bez pytania: plików trackowanych w git, niczego czego nie jesteś pewien że sam stworzyłeś, `.env`/kluczy/credentiali.
+
+Zostawiłeś coś mimo to (albo dołączasz do sesji z już istniejącym syfem) → `/cleanup` znajdzie i zaproponuje usunięcie.
+
 ## Code review
 
 Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
