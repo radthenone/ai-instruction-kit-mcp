@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "project-guides": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+        "guides-mcp",
+        "--preset", "_base",
+        "--language", "pl",
+        "--clients", "all",
+        "--workspace", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU"
+      ],
+      "enabled": true
+    }
+  }
+}

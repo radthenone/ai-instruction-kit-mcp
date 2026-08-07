@@ -23,8 +23,15 @@ test -f "$TMP/all/.vscode/mcp.json"
 test -f "$TMP/all/.kiro/settings/mcp.json"
 test -f "$TMP/all/.kilocode/mcp.json"
 test -f "$TMP/all/.agents/mcp_config.json"
+test -f "$TMP/all/opencode.json"
 grep -q '"--clients", "all"' "$TMP/all/.cursor/mcp.json"
 echo "OK  --clients all"
+
+"$BOOT" "$TMP/opencode" --clients opencode --from "$ROOT" >/dev/null
+test -f "$TMP/opencode/opencode.json"
+test -f "$TMP/opencode/.opencode/command/cleanup.md"
+grep -q '"--clients", "opencode"' "$TMP/opencode/opencode.json"
+echo "OK  --clients opencode (+ rendered commands)"
 
 "$BOOT" "$TMP/claude-kiro" --clients claude,kiro --from "$ROOT" >/dev/null
 test -f "$TMP/claude-kiro/.mcp.json"

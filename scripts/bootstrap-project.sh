@@ -19,12 +19,15 @@ Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 Opcje:
   --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
   --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
-  --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity
+  --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity | opencode
                       (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
   --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
   --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*)
+  --with-plugins      Best-effort doinstaluj zewnętrzne pluginy (mattpocock skills przez npx;
+                      Superpowers/Autopilot tylko instrukcja — to marketplace pluginów Claude/Cursor,
+                      nie da się zainstalować z skryptu). Wymaga npx w PATH (Node.js)
   -h, --help          Ta pomoc
 
 Przykład (tylko Cursor):
@@ -49,6 +52,7 @@ FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
 WITH_PROFILE=0
 WITH_OVERLAY=0
 SKIP_AGENTS=0
+WITH_PLUGINS=0
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
@@ -69,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     --with-profile) WITH_PROFILE=1; shift ;;
     --with-overlay) WITH_OVERLAY=1; shift ;;
     --skip-agents) SKIP_AGENTS=1; shift ;;
+    --with-plugins) WITH_PLUGINS=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*)
       echo "Nieznana opcja: $1" >&2
@@ -247,20 +252,80 @@ install_cursor() {
   fi
 }
 
+copy_claude_commands() {
+  local dest_dir="$1"
+  if [[ "$SKIP_AGENTS" -ne 0 ]]; then
+    return 0
+  fi
+  if [[ ! -d "$SHARED_AGENTS" ]]; then
+    echo "Brak $SHARED_AGENTS — nie skopiowano komend" >&2
+    exit 1
+  fi
+  mkdir -p "$dest_dir"
+  # Claude Code custom slash commands: bez literalnego $ARGUMENTS w treści, tekst po
+  # `/nazwa ...` jest ignorowany (nie trafia do Claude). Wstrzykujemy go tu — tylko
+  # w kopii dla Claude, źródło w shared/agents zostaje nietknięte (Cursor ma inny mechanizm).
+  SHARED_AGENTS="$SHARED_AGENTS" DEST_DIR="$dest_dir" "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+src_dir = Path(os.environ["SHARED_AGENTS"])
+dest_dir = Path(os.environ["DEST_DIR"])
+
+for src in sorted(src_dir.glob("*.md")):
+    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+    assert lines[0].strip() == "---", f"{src}: brak frontmatter"
+    end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    # `name:`/`readonly:` to pola formatu subagentów — command frontmatter ich nie zna.
+    fm_lines = [
+        l for l in lines[1:end]
+        if not l.startswith("name:") and not l.startswith("readonly:")
+    ]
+    body = lines[end + 1:]
+    while body and body[0].strip() == "":
+        body.pop(0)
+
+    out = "---\n" + "".join(fm_lines) + "argument-hint: [args]\n---\n\n"
+    out += "Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS\n\n"
+    out += "".join(body)
+    (dest_dir / src.name).write_text(out, encoding="utf-8")
+PY
+  echo "  + $dest_dir (Claude slash commands, \$ARGUMENTS wired)"
+}
+
 install_claude() {
   fill_mcp "$KIT_ROOT/templates/claude/mcp.json" "$TARGET/.mcp.json"
   echo "  + .mcp.json (Claude Code)"
   copy_shared_agents "$TARGET/.claude/agents"
+  copy_claude_commands "$TARGET/.claude/commands"
 }
 
 install_codex() {
   mkdir -p "$TARGET/.codex/agents"
   fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$TARGET"
   echo "  + .codex/config.toml"
-  if [[ "$SKIP_AGENTS" -eq 0 ]] && [[ -d "$KIT_ROOT/templates/codex/agents" ]]; then
-    cp "$KIT_ROOT/templates/codex/agents/"*.toml "$TARGET/.codex/agents/" 2>/dev/null || true
-    echo "  + .codex/agents/"
+  if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+    if [[ -d "$KIT_ROOT/templates/codex/agents" ]]; then
+      cp "$KIT_ROOT/templates/codex/agents/"*.toml "$TARGET/.codex/agents/" 2>/dev/null || true
+    fi
+    # Reszta shared agentów bez ręcznego .toml: auto-render (curated ma pierwszeństwo).
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/render_agent_commands.py" codex "$SHARED_AGENTS" \
+      "$TARGET/.codex/agents" "$KIT_ROOT/templates/codex/agents"
+    echo "  + .codex/agents/ (curated + auto-rendered)"
   fi
+}
+
+render_agent_commands() {
+  local fmt="$1" dest_dir="$2"
+  if [[ "$SKIP_AGENTS" -ne 0 ]]; then
+    return 0
+  fi
+  if [[ ! -d "$SHARED_AGENTS" ]]; then
+    echo "Brak $SHARED_AGENTS — nie wyrenderowano komend ($fmt)" >&2
+    exit 1
+  fi
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/render_agent_commands.py" "$fmt" "$SHARED_AGENTS" "$dest_dir"
+  echo "  + $dest_dir ($fmt slash commands)"
 }
 
 install_vscode() {
@@ -272,6 +337,7 @@ install_vscode() {
       "$TARGET/.github/copilot-instructions.md"
     echo "  + .github/copilot-instructions.md"
   fi
+  render_agent_commands vscode "$TARGET/.github/prompts"
 }
 
 install_kiro() {
@@ -289,12 +355,42 @@ install_kilo() {
   mkdir -p "$TARGET/.kilocode"
   fill_mcp "$KIT_ROOT/templates/kilo/mcp.json" "$TARGET/.kilocode/mcp.json"
   echo "  + .kilocode/mcp.json"
+  render_agent_commands kilo "$TARGET/.kilocode/workflows"
 }
 
 install_antigravity() {
   mkdir -p "$TARGET/.agents"
   fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
   echo "  + .agents/mcp_config.json"
+  render_agent_commands antigravity "$TARGET/.agents/workflows"
+}
+
+install_opencode() {
+  mkdir -p "$TARGET/.opencode"
+  fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
+  echo "  + opencode.json"
+  render_agent_commands opencode "$TARGET/.opencode/command"
+}
+
+install_plugins() {
+  echo ""
+  echo "== --with-plugins =="
+  if command -v npx >/dev/null 2>&1; then
+    echo "  -> mattpocock/skills (npx skills@latest add mattpocock/skills)"
+    (cd "$TARGET" && npx --yes skills@latest add mattpocock/skills) || \
+      echo "  ! npx skills add nie powiodło się — doinstaluj ręcznie w $TARGET" >&2
+  else
+    echo "  ! brak npx w PATH — pomiń mattpocock/skills albo zainstaluj Node.js, potem ręcznie:" >&2
+    echo "      cd $TARGET && npx skills@latest add mattpocock/skills" >&2
+  fi
+  cat <<'EOF'
+  -> Superpowers (Claude Code plugin marketplace) — bez CLI, ręcznie w Claude Code:
+       /plugin marketplace add obra/superpowers-marketplace
+       /plugin install superpowers@superpowers-marketplace
+  -> Autopilot (Cursor) — ręcznie w Cursor: Settings → Extensions/Skills → Autopilot.
+  Te trzy to zewnętrzne ekosystemy pluginów (Claude/Cursor), nie ten kit — zob. README
+  "Skills / pluginy zewnętrzne".
+EOF
 }
 
 install_git_pre_push_reminder() {
@@ -326,6 +422,7 @@ for c in "${CLIENTS_LIST[@]}"; do
     kiro) install_kiro; NEED_GIT_HOOK=1 ;;
     kilo) install_kilo; NEED_GIT_HOOK=1 ;;
     antigravity) install_antigravity; NEED_GIT_HOOK=1 ;;
+    opencode) install_opencode; NEED_GIT_HOOK=1 ;;
     *)
       echo "Nieobsługiwany klient po expand: $c" >&2
       exit 1
@@ -355,6 +452,10 @@ if [[ "$WITH_OVERLAY" -eq 1 ]]; then
     cp "$KIT_ROOT/templates/project.md" "$TARGET/.ai/project.md"
     echo "  + .ai/project.md"
   fi
+fi
+
+if [[ "$WITH_PLUGINS" -eq 1 ]]; then
+  install_plugins
 fi
 
 echo ""

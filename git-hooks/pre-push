@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Git pre-push — deterministyczne bramki przed pushem.
+# Instalacja: cp templates/git-hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# Nie uruchamia AI (wymaga Cursor). AI review: /review-bugbot w IDE + hook gate-push.sh.
+
+set -euo pipefail
+
+echo "pre-push: sprawdzanie przed git push..."
+
+# --- Testy / linty (dostosuj do projektu) ---
+if [[ -f Taskfile.yml ]] || [[ -f taskfile.yml ]]; then
+  if command -v task >/dev/null 2>&1; then
+    echo "pre-push: task test (jeśli zdefiniowane)..."
+    if task --list-all 2>/dev/null | grep -qE 'test:backend-local-unit|test:backend'; then
+      task test:backend-local-unit 2>/dev/null || task test:backend-local 2>/dev/null || true
+    fi
+  fi
+elif [[ -d tests ]] && command -v python3 >/dev/null 2>&1; then
+  echo "pre-push: python -m unittest discover -s tests"
+  python3 -m unittest discover -s tests -q
+fi
+
+echo ""
+echo "────────────────────────────────────────────────────────"
+echo "  Przed pushem uruchom w Cursor:  /review-bugbot"
+echo "  (auth/płatności: /review-security)"
+echo "  Bypass hook Cursor: SKIP_PUSH_REVIEW=1 git push"
+echo "────────────────────────────────────────────────────────"
+echo ""
+
+exit 0

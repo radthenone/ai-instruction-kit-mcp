@@ -1,0 +1,12 @@
+name = "cleanup"
+description = "Znajdź i usuń zbędne pliki tymczasowe/testowe z working tree (/cleanup)."
+
+developer_instructions = """
+Skanuj `git status --porcelain` (untracked). Kandydat = min. 2 sygnały: nazwa typu
+tmp_/scratch_/debug_/test_tmp/poc_, leży poza katalogiem testów projektu, nic go nie
+importuje, powstał w tej sesji do jednorazowej weryfikacji, duplikuje istniejący test.
+Nigdy nie kwalifikuj: plików trackowanych, .env/credentials/kluczy, node_modules/.venv/dist/build.
+Pokaż tabelę Plik | Powód, poczekaj na potwierdzenie (chyba że --yes), usuń tylko
+zaakceptowane pozycje pojedynczo. --dry-run: tylko lista, bez usuwania.
+Odpowiadaj po polsku.
+"""

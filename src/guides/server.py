@@ -327,7 +327,7 @@ def main() -> None:
         default=None,
         help=(
             "Metadane klientów AI: all | cursor | claude | codex | vscode | kiro | kilo | "
-            "antigravity (lista po przecinku; alias copilot→vscode). Nie zmienia bundle."
+            "antigravity | opencode (lista po przecinku; alias copilot→vscode). Nie zmienia bundle."
         ),
     )
     args = parser.parse_args()
