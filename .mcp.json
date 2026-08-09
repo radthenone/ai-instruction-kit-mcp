@@ -1,15 +1,20 @@
 {
-  "mcpServers": {
-    "project-guides": {
-      "command": "uvx",
-      "args": [
-        "--from", "M:/projects/ai-instruction-kit-mcp",
-        "guides-mcp",
-        "--preset", "_base",
-        "--language", "pl",
-        "--clients", "cursor,claude",
-        "--workspace", "${CLAUDE_PROJECT_DIR:-.}"
-      ]
+    "mcpServers": {
+        "project-guides": {
+            "command": "uvx",
+            "args": [
+                "--from",
+                "M:/projects/ai-instruction-kit-mcp",
+                "guides-mcp",
+                "--preset",
+                "_base",
+                "--language",
+                "pl",
+                "--clients",
+                "cursor,claude",
+                "--workspace",
+                "${CLAUDE_PROJECT_DIR:-.}"
+            ]
+        }
     }
-  }
 }

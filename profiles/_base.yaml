@@ -16,3 +16,5 @@ bundles:
   architecture:
     - pattern:capability-provider
     - arch:ci-cd
+    - arch:taskfile
+    - arch:docker-structure

@@ -35,6 +35,11 @@ modules:
     title: Code review — lokalnie, GitHub, raporty
     tags: [core, devops]
 
+  core:tooling-rtk:
+    path: modules/core/tooling-rtk.md
+    title: Shell proxy — RTK (jeśli dostępny)
+    tags: [core]
+
   # ─── Architecture ───────────────────────────────────
   arch:monorepo-layout:
     path: modules/architecture/monorepo-layout.md
@@ -44,6 +49,16 @@ modules:
   arch:api-contract:
     path: modules/architecture/api-contract.md
     title: Kontrakt API (OpenAPI, Orval)
+    tags: [architecture]
+
+  arch:api-contract:none:
+    path: modules/architecture/api-contract-none.md
+    title: Kontrakt API (OpenAPI, generyczny klient — bez Orval)
+    tags: [architecture]
+
+  arch:api-contract:graphql:
+    path: modules/architecture/api-contract-graphql.md
+    title: Kontrakt API — GraphQL
     tags: [architecture]
 
   arch:fe-be-separation:
@@ -100,6 +115,16 @@ modules:
     path: modules/architecture/platforms.md
     title: Platformy — backend, web, mobile
     tags: [architecture]
+
+  arch:taskfile:
+    path: modules/architecture/taskfile.md
+    title: Taskfile — jedyny punkt wejścia komend
+    tags: [architecture, devops]
+
+  arch:docker-structure:
+    path: modules/architecture/docker-structure.md
+    title: Docker — struktura i podział env
+    tags: [architecture, devops]
 
   core:typing-typescript:
     path: modules/core/typing-typescript.md
@@ -211,8 +236,23 @@ modules:
   # ─── Capabilities ───────────────────────────────────
   capability:auth:
     path: modules/capabilities/auth.md
-    title: Auth (allauth, sesja)
+    title: Auth — wspólne (wybór wariantu przez decisions.auth)
     tags: [capability, auth]
+
+  capability:auth:allauth:
+    path: modules/capabilities/auth-allauth.md
+    title: Auth — django-allauth headless
+    tags: [capability, auth, allauth]
+
+  capability:auth:jwt:
+    path: modules/capabilities/auth-jwt.md
+    title: Auth — JWT (djangorestframework-simplejwt)
+    tags: [capability, auth, jwt]
+
+  capability:auth:custom:
+    path: modules/capabilities/auth-custom.md
+    title: Auth — custom (własny schemat, default)
+    tags: [capability, auth, custom]
 
   capability:files:
     path: modules/capabilities/files.md
@@ -261,6 +301,11 @@ modules:
     title: Auth między mikroserwisami
     tags: [infra, auth]
 
+  pattern:webhooks:
+    path: modules/patterns/webhooks.md
+    title: Webhooks — podpis, idempotency, retry
+    tags: [architecture, webhooks]
+
   # ─── Infra: database ──────────────────────────────────
   infra:database:postgres:
     path: modules/infra/database/postgres.md
@@ -289,6 +334,17 @@ modules:
     path: modules/infra/storage/s3.md
     title: S3-compatible storage (MinIO, AWS)
     tags: [infra, storage]
+
+  # ─── Infra: search ─────────────────────────────────────
+  infra:search:postgres:
+    path: modules/infra/search/postgres.md
+    title: Search — Postgres full-text (tsvector)
+    tags: [infra, search]
+
+  infra:search:meilisearch:
+    path: modules/infra/search/meilisearch.md
+    title: Search — Meilisearch
+    tags: [infra, search]
 
   # ─── Infra: tasks ─────────────────────────────────────
   infra:tasks:celery:

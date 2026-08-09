@@ -19,6 +19,9 @@ Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 Opcje:
   --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
   --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
+  --codegen NAME      Generator klienta API: orval (schema → frontend/src/api/generated
+                      + mutatory) | none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast
+                      REST). Domyślnie: orval
   --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity | opencode
                       (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
@@ -47,6 +50,7 @@ EOF
 TARGET=""
 PRESET="_base"
 LANGUAGE="pl"
+CODEGEN="orval"
 CLIENTS_RAW="all"
 FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
 WITH_PROFILE=0
@@ -69,6 +73,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --clients) CLIENTS_RAW="${2:?}"; shift 2 ;;
+    --codegen)
+      CODEGEN="$(echo "${2:?}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$CODEGEN" != "orval" && "$CODEGEN" != "none" && "$CODEGEN" != "graphql" ]]; then
+        echo "Nieprawidłowy --codegen: $CODEGEN (dozwolone: orval, none, graphql)" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
     --from) FROM_SRC="${2:?}"; shift 2 ;;
     --with-profile) WITH_PROFILE=1; shift ;;
     --with-overlay) WITH_OVERLAY=1; shift ;;
@@ -160,7 +172,8 @@ client_enabled() {
 fill_mcp() {
   local src="$1" dest="$2" workspace_repl="${3:-}"
   mkdir -p "$(dirname "$dest")"
-  FROM_SRC="$FROM_SRC" PRESET="$PRESET" LANGUAGE="$LANGUAGE" CLIENTS_ARG="$CLIENTS_ARG" \
+  FROM_SRC="$FROM_SRC" PRESET="$PRESET" LANGUAGE="$LANGUAGE" CODEGEN="$CODEGEN" \
+  CLIENTS_ARG="$CLIENTS_ARG" \
   WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
 import os
 import re
@@ -181,6 +194,11 @@ text = re.sub(
 text = re.sub(
     r'("--language",\s*")[^"]*(")',
     rf'\g<1>{os.environ["LANGUAGE"]}\2',
+    text,
+)
+text = re.sub(
+    r'("--codegen",\s*")[^"]*(")',
+    rf'\g<1>{os.environ["CODEGEN"]}\2',
     text,
 )
 text = re.sub(
@@ -406,6 +424,7 @@ install_git_pre_push_reminder() {
 echo "Bootstrap instruction-kit → $TARGET"
 echo "  preset=$PRESET"
 echo "  language=$LANGUAGE"
+echo "  codegen=$CODEGEN"
 echo "  clients=$CLIENTS_ARG"
 echo "  from=$FROM_SRC"
 
@@ -465,4 +484,4 @@ echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent
 if client_enabled cursor; then
   echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
 fi
-echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --clients ${CLIENTS_ARG} --workspace …"
+echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --codegen ${CODEGEN} --clients ${CLIENTS_ARG} --workspace …"

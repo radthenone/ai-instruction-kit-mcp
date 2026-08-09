@@ -16,6 +16,7 @@ from guides.clients import (
 from guides.manifest import find_kit_root, load_manifest
 from guides.resolver import (
     language_module_id,
+    normalize_codegen,
     normalize_language,
     resolve_preset_path,
     resolve_profile,
@@ -38,6 +39,7 @@ _kit_root: Path | None = None
 _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
 _language_override: str | None = None
+_codegen_override: str | None = None
 _clients: list[str] = ["all"]
 
 
@@ -61,6 +63,7 @@ def _get_resolved():
         workspace_root=_workspace_root,
         extra_overlays=_extra_overlays or None,
         language_override=_language_override,
+        codegen_override=_codegen_override,
     )
 
 
@@ -168,6 +171,49 @@ def get_language() -> str:
         f"- {chat}",
         "",
         "Source of truth for agents: this tool + the language module inside bundles.",
+    ]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def get_codegen() -> str:
+    """
+    Aktualny wybór generatora klienta API (``--codegen`` / `codegen:` w profilu).
+
+    Returns:
+        str: Markdown — ``orval`` (schema → `frontend/src/api/generated` + mutatory),
+            ``none`` (tool-agnostyczny klient, konkret w overlay projektu) albo
+            ``graphql`` (GraphQL zamiast REST, patrz `arch:api-contract:graphql`).
+    """
+    resolved = _get_resolved()
+    codegen = resolved.codegen
+    if codegen == "orval":
+        detail = (
+            "**Orval**: `task orval:generate` (nazwa taska zależy od overlay projektu) "
+            "czyta OpenAPI schema i generuje typowanego klienta + mutatory do "
+            "`frontend/src/api/generated/`. Nie edytuj wygenerowanych plików ręcznie."
+        )
+    elif codegen == "graphql":
+        detail = (
+            "**GraphQL** — zamiast REST+OpenAPI. `graphql-codegen` generuje typy z "
+            "`.graphql` query + schema. Osobny pipeline niż Orval — patrz "
+            "`arch:api-contract:graphql`."
+        )
+    else:
+        detail = (
+            "**Brak Orval** — generyczny/tool-agnostyczny klient API albo typy ręczne. "
+            "Konkretne narzędzie i komenda regeneracji — overlay projektu `.ai/project.md`."
+        )
+    module_suffix = {"orval": "", "none": ":none", "graphql": ":graphql"}[codegen]
+    lines = [
+        f"# Codegen: `{codegen}`",
+        "",
+        f"- Override CLI/env: `{_codegen_override or '—'}` "
+        f"(GUIDES_CODEGEN / `--codegen` wygrywa z `codegen:` w profilu; domyślnie `orval`)",
+        "",
+        detail,
+        "",
+        f"Moduł: `arch:api-contract{module_suffix}`.",
     ]
     return "\n".join(lines)
 
@@ -286,7 +332,8 @@ def _register_bundle_resources() -> None:
 
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
-    global _profile_path, _kit_root, _workspace_root, _extra_overlays, _language_override, _clients
+    global _profile_path, _kit_root, _workspace_root, _extra_overlays
+    global _language_override, _codegen_override, _clients
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -315,6 +362,16 @@ def main() -> None:
         required=False,
         choices=("pl", "en", "PL", "EN"),
         help="Język prozy instrukcji (pl|en); tytuły issue/PR zawsze EN. Domyślnie: profil lub pl",
+    )
+    parser.add_argument(
+        "--codegen",
+        required=False,
+        choices=("orval", "none", "graphql", "ORVAL", "NONE", "GRAPHQL"),
+        help=(
+            "Generator klienta API: orval (schema → frontend/src/api/generated + mutatory) "
+            "| none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast REST). "
+            "Domyślnie: codegen: w profilu albo orval"
+        ),
     )
     parser.add_argument(
         "--kit-root",
@@ -349,6 +406,10 @@ def main() -> None:
     lang_cli = args.language or os.environ.get("GUIDES_LANGUAGE")
     if lang_cli:
         _language_override = normalize_language(lang_cli)
+
+    codegen_cli = args.codegen or os.environ.get("GUIDES_CODEGEN")
+    if codegen_cli:
+        _codegen_override = normalize_codegen(codegen_cli)
 
     clients_raw = args.clients if args.clients is not None else os.environ.get("GUIDES_CLIENTS")
     try:
