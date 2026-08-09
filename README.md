@@ -331,6 +331,31 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 
 W projekcie docelowym **nie** duplikuj `modules/` — wystarczy preset + opcjonalny overlay.
 
+## Update kita w projekcie
+
+Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
+
+| Co | Przy ponownym `bootstrap-project.sh` |
+| --- | --- |
+| `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie |
+| `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny |
+| `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je live z `--from` przy każdym `get_bundle`/`get_overlay`, więc zawsze aktualne bez re-bootstrapu |
+
+Skąd wiedzieć **kiedy** re-bootstrapować (bez ciągłego czytania plików kita — tanie, jedno porównanie commitów):
+
+```text
+MCP tool: check_kit_status
+```
+
+Bootstrap zapisuje `.ai/.kit-bootstrap.json` (commit kita w momencie bootstrapu). `check_kit_status`
+porównuje go z aktualnym `HEAD` kita (`git rev-parse` + `git diff --name-only` tylko na ścieżkach
+które bootstrap faktycznie kopiuje) i zwraca: aktualny / zmienił się (+ lista plików) / brak stampu
+(stary bootstrap sprzed tej funkcji) / brak lokalnej historii git (gdy `--from` to zdalny URL, nie
+lokalny klon). Zero kosztu tokenów na nawigację plików — jedno wywołanie tool, agent woła je kiedy
+chce sprawdzić stan (np. na początku sesji), nie w pętli.
+
+Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co poprzednio.
+
 ## Slash commands — konwencja nazw
 
 

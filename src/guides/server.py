@@ -13,6 +13,7 @@ from guides.clients import (
     format_clients_arg,
     parse_clients,
 )
+from guides.kit_status import check_kit_updates
 from guides.manifest import find_kit_root, load_manifest
 from guides.resolver import (
     language_module_id,
@@ -216,6 +217,25 @@ def get_codegen() -> str:
         f"Moduł: `arch:api-contract{module_suffix}`.",
     ]
     return "\n".join(lines)
+
+
+@mcp.tool()
+def check_kit_status() -> str:
+    """
+    Sprawdź czy kit zmienił się od ostatniego `bootstrap-project.sh` w tym repo.
+
+    Tanie: porównuje commit zapisany w `.ai/.kit-bootstrap.json` z aktualnym HEAD
+    kita (git rev-parse/diff --name-only) — nie czyta treści modułów instrukcji.
+    Moduły (`modules/*.md`) są i tak czytane live przez `get_bundle`/`get_overlay`,
+    więc nigdy nie "gniją" — ten tool dotyczy tylko plików które bootstrap
+    **kopiuje** (agents/commands/mcp.json), bo te są statyczną migawką.
+
+    Returns:
+        str: Markdown — aktualny / zmienił się (+ lista plików które re-bootstrap
+            by nadpisał) / brak stampu / brak lokalnej historii git do porównania.
+    """
+    resolved = _get_resolved()
+    return check_kit_updates(kit_root=resolved.kit_root, workspace_root=resolved.workspace_root)
 
 
 @mcp.tool()

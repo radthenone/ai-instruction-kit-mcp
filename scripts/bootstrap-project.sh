@@ -551,6 +551,24 @@ if [[ "$WITH_PLUGINS" -eq 1 ]]; then
   install_plugins
 fi
 
+# Stamp — commit kita w momencie bootstrapu, do taniego "czy trzeba re-bootstrapować"
+# (MCP tool check_kit_status). Pusty kit_commit gdy --from to zdalny URL / nie-git.
+KIT_COMMIT="$(git -C "$KIT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+BOOTSTRAPPED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+mkdir -p "$TARGET/.ai"
+cat > "$TARGET/.ai/.kit-bootstrap.json" <<JSON
+{
+  "kit_commit": "${KIT_COMMIT}",
+  "kit_from": "${FROM_SRC}",
+  "bootstrapped_at": "${BOOTSTRAPPED_AT}",
+  "preset": "${PRESET}",
+  "language": "${LANGUAGE}",
+  "codegen": "${CODEGEN}",
+  "clients": "${CLIENTS_ARG}"
+}
+JSON
+echo "  + .ai/.kit-bootstrap.json (stamp dla check_kit_status)"
+
 echo ""
 echo "Gotowe. Zrestartuj IDE w $TARGET."
 echo "Clients: ${CLIENTS_ARG}"
