@@ -31,6 +31,9 @@ Opcje:
   --with-plugins      Best-effort doinstaluj zewnętrzne pluginy (mattpocock skills przez npx;
                       Superpowers/Autopilot tylko instrukcja — to marketplace pluginów Claude/Cursor,
                       nie da się zainstalować z skryptu). Wymaga npx w PATH (Node.js)
+  --keep-unselected-clients
+                      Nie usuwaj plików klientów spoza --clients (domyślnie: sprzątane —
+                      declarative sync, np. --clients claude usuwa .cursor/.codex/… kitowe pliki)
   -h, --help          Ta pomoc
 
 Przykład (tylko Cursor):
@@ -57,6 +60,7 @@ WITH_PROFILE=0
 WITH_OVERLAY=0
 SKIP_AGENTS=0
 WITH_PLUGINS=0
+PRUNE_CLIENTS=1
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
@@ -86,6 +90,7 @@ while [[ $# -gt 0 ]]; do
     --with-overlay) WITH_OVERLAY=1; shift ;;
     --skip-agents) SKIP_AGENTS=1; shift ;;
     --with-plugins) WITH_PLUGINS=1; shift ;;
+    --keep-unselected-clients) PRUNE_CLIENTS=0; shift ;;
     -h|--help) usage; exit 0 ;;
     -*)
       echo "Nieznana opcja: $1" >&2
@@ -166,6 +171,70 @@ client_enabled() {
     [[ "$c" == "$want" ]] && return 0
   done
   return 1
+}
+
+# Usuwa TYLKO pliki/foldery, które ten sam bootstrap sam kiedyś wygenerował dla danego
+# klienta (mapa 1:1 z install_*() niżej). Nigdy nie rusza sąsiednich plików tego samego
+# katalogu spoza kita (np. .vscode/settings.json, .github/workflows/, .kilocode/rules/).
+prune_client() {
+  local id="$1"
+  case "$id" in
+    cursor)
+      rm -f "$TARGET/.cursor/mcp.json" "$TARGET/.cursor/hooks.json" \
+        "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh" \
+        "$TARGET/.cursor/hooks/invoke-hook.js" \
+        "$TARGET/.cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/code-review.mdc" \
+        "$TARGET/.cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/BUGBOT.md"
+      rm -rf "$TARGET/.cursor/agents" "$TARGET/.cursor/skills"
+      rmdir "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.cursor" 2>/dev/null || true
+      ;;
+    claude)
+      rm -f "$TARGET/.mcp.json"
+      rm -rf "$TARGET/.claude/agents" "$TARGET/.claude/commands"
+      rmdir "$TARGET/.claude" 2>/dev/null || true
+      ;;
+    codex)
+      rm -f "$TARGET/.codex/config.toml"
+      rm -rf "$TARGET/.codex/agents"
+      rmdir "$TARGET/.codex" 2>/dev/null || true
+      ;;
+    vscode)
+      rm -f "$TARGET/.vscode/mcp.json" "$TARGET/.github/copilot-instructions.md"
+      if [[ -d "$TARGET/.github/prompts" ]]; then
+        rm -f "$TARGET/.github/prompts/"*.prompt.md 2>/dev/null || true
+        rmdir "$TARGET/.github/prompts" 2>/dev/null || true
+      fi
+      rmdir "$TARGET/.vscode" 2>/dev/null || true
+      ;;
+    kiro)
+      rm -f "$TARGET/.kiro/settings/mcp.json" "$TARGET/.kiro/steering/instruction-kit.md"
+      rm -rf "$TARGET/.kiro/agents"
+      rmdir "$TARGET/.kiro/settings" "$TARGET/.kiro/steering" "$TARGET/.kiro" 2>/dev/null || true
+      ;;
+    kilo)
+      rm -f "$TARGET/.kilocode/mcp.json"
+      rm -rf "$TARGET/.kilocode/workflows"
+      rmdir "$TARGET/.kilocode" 2>/dev/null || true
+      ;;
+    antigravity)
+      rm -f "$TARGET/.agents/mcp_config.json"
+      rm -rf "$TARGET/.agents/workflows"
+      rmdir "$TARGET/.agents" 2>/dev/null || true
+      ;;
+    opencode)
+      rm -f "$TARGET/opencode.json"
+      rm -rf "$TARGET/.opencode"
+      ;;
+  esac
+}
+
+prune_unselected_clients() {
+  local id
+  for id in cursor claude codex vscode kiro kilo antigravity opencode; do
+    if ! client_enabled "$id"; then
+      prune_client "$id"
+    fi
+  done
 }
 
 # Wypełnij szablon MCP (JSON/TOML): from, preset, language, clients, opcjonalnie workspace.
@@ -430,6 +499,11 @@ echo "  from=$FROM_SRC"
 
 mkdir -p "$TARGET/.ai"
 install_agenty_md_once
+
+if [[ "$PRUNE_CLIENTS" -eq 1 ]]; then
+  prune_unselected_clients
+  echo "  (sprzątnięto kitowe pliki klientów spoza --clients ${CLIENTS_ARG}; wyłącz: --keep-unselected-clients)"
+fi
 
 NEED_GIT_HOOK=0
 for c in "${CLIENTS_LIST[@]}"; do
