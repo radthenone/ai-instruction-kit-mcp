@@ -73,7 +73,7 @@ Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w 
 
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
-**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` \| `manual` \| `none`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API). Docelowo flaga MCP `--codegen` — zob. design overlays.
+**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` (default) \| `none` \| `graphql`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → `arch:api-contract:graphql` zamiast REST). Docelowo flaga MCP `--codegen` — zob. design overlays.
 
 **Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
 
@@ -241,16 +241,17 @@ Co robi: odpala `npx skills@latest add mattpocock/skills` w `TARGET` (wymaga `np
 
 ```text
 modules/
-  core/              repo-first, workflow, typing, code-review, language-*
-  architecture/      platforms, CI/CD, API, security, testing, i18n, …
+  core/              repo-first, workflow, typing, code-review, language-*, tooling-rtk
+  architecture/      platforms, CI/CD, API (REST/GraphQL), security, testing, i18n,
+                     taskfile, docker-structure, …
   stacks/
     django-drf/      (+ django/, fastapi/, flask/ layouts)
     expo-router/
     frontend/        warianty Expo/React (macierz web/mobile — design)
-  capabilities/      auth, files, payments, …
+  capabilities/      auth (+ allauth/jwt/custom warianty), files, payments, …
   domains/           shop
-  patterns/          capability-provider, providers-and-settings, gateway…
-  infra/             database, cache, queue, storage, tasks
+  patterns/          capability-provider, providers-and-settings, gateway, webhooks, …
+  infra/             database, cache, queue, storage, tasks, search
 profiles/
   _base.yaml         fundament stacku (default)
   shop.yaml          kategoria e-commerce
@@ -271,9 +272,23 @@ decisions:
   queue: redis            # → infra:queue:redis  (lub rabbitmq)
   storage: s3             # → infra:storage:s3
   tasks: celery           # → infra:tasks:celery
+  search: postgres        # → infra:search:postgres (lub meilisearch)
 ```
 
 Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
+
+## Wariant auth (`decisions.auth`)
+
+```yaml
+decisions:
+  auth: custom      # default — brak enforced pakietu, opisz w .ai/project.md
+  # auth: allauth   # → capability:auth:allauth (django-allauth headless)
+  # auth: jwt       # → capability:auth:jwt (djangorestframework-simplejwt)
+```
+
+Inny mechanizm niż infra: nie tworzy osobnego bundle'a — dokleja się zaraz po
+`capability:auth` wszędzie tam, gdzie ten moduł już jest wypisany w bundle
+(`capabilities: [auth]` albo ręcznie w `bundles.backend`/`bundles.frontend`).
 
 ## Bundle'e MCP
 

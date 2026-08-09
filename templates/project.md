@@ -1,14 +1,16 @@
 # Overlay projektu — TYLKO unikalne informacje tego repo
 
+> Reużywalna zasada architektoniczna (zadziałałaby w innym projekcie tej samej kategorii)?
+> Nie wpisuj jej tu — zaproponuj zmianę w instruction-kit (`core:repo-first`, sekcja
+> "Nowa zasada architektoniczna — dokąd ją zapisać"). Tu tylko fakty **tego** repo.
+
 ## Codegen
 
-```text
-codegen: orval
-```
+Źródło prawdy: MCP `get_codegen` / flaga `--codegen orval|none|graphql` w `.mcp.json` (nie ten plik).
+Domyślnie `orval`. Przy `orval`: po zmianie API → uruchom komendę regeneracji klienta
+(nazwa taska specyficzna dla tego repo — uzupełnij niżej) → commit klienta.
 
-Warianty: `orval` (domyślnie przy REST+FE) \| `manual` \| `none`.  
-Przy `orval`: po zmianie API → `task ovral:generate` → commit klienta.  
-Docelowa flaga MCP: `--codegen` (design; jeszcze nie w CLI).
+Task regeneracji klienta w tym repo: `<uzupełnij, np. task orval:generate>`.
 
 ## Struktura
 

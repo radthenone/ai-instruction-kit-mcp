@@ -69,7 +69,7 @@ Auth, ACL, billing, migracje, concurrency, brak dowodu w repo → **zapytaj uży
 
 ## Codegen (Orval)
 
-W overlay (`.ai/project.md` / extras) ustaw `codegen: orval` \| `manual` \| `none`.  
+W overlay (`.ai/project.md` / extras) ustaw `codegen: orval` (default) \| `none` \| `graphql`.  
 Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE honorują tę wartość.  
 
 ## Język
