@@ -61,6 +61,7 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 | `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
 | `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
+| `--codegen orval\|none\|graphql` | nie | Generator klienta API — patrz sekcja "Codegen" niżej. Domyślnie: `orval` | mcp.json / bootstrap `--codegen`; env `GUIDES_CODEGEN`; tool `get_codegen` |
 | `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
@@ -141,7 +142,9 @@ Szkic (nie działa jeszcze):
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, skill Cursor `/compact`, hooki `gate-*` (Cursor). Wymaga **Python 3** (`python3` albo `python` z major==3).
+Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--codegen`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
+
+**Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
 ## MCP w innych klientach (multi-client)
 

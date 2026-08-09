@@ -311,6 +311,17 @@ install_agenty_md_once() {
   fi
 }
 
+# BUGBOT.md w root — niezależnie od --clients, bo /review-bugbot (manualny odpowiednik)
+# ma działać dla WSZYSTKICH klientów (Claude, Codex, VS Code…), nie tylko Cursor.
+# .cursor/BUGBOT.md (install_cursor) zostaje osobno — to dla natywnej usługi Cursor
+# BugBot, która czyta z tamtej ścieżki; ta funkcja to nie duplikat, to inny konsument.
+install_bugbot_md_once() {
+  if [[ ! -f "$TARGET/BUGBOT.md" ]]; then
+    cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/BUGBOT.md"
+    echo "  + BUGBOT.md (root — dla /review-bugbot wszystkich klientów)"
+  fi
+}
+
 install_cursor() {
   mkdir -p "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.ai"
   fill_mcp "$KIT_ROOT/templates/cursor/mcp.json" "$TARGET/.cursor/mcp.json"
@@ -499,6 +510,7 @@ echo "  from=$FROM_SRC"
 
 mkdir -p "$TARGET/.ai"
 install_agenty_md_once
+install_bugbot_md_once
 
 if [[ "$PRUNE_CLIENTS" -eq 1 ]]; then
   prune_unselected_clients
