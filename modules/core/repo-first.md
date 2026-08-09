@@ -33,6 +33,43 @@ Jeśli instrukcje są sprzeczne, pierwszeństwo ma poziom wyższy.
 5. Propozycja implementacji (jeśli ma sens).
 6. Jeśli czegoś nie dało się potwierdzić — napisz wprost.
 
+## Nowa zasada architektoniczna — dokąd ją zapisać
+
+Zanim zapiszesz nową regułę/wzorzec (nie fakt jednego produktu) — rozstrzygnij:
+
+| Pytanie | TAK → `.ai/project.md` (fakt produktu) | TAK → instruction-kit (reużywalna zasada) |
+| --- | --- | --- |
+| Dotyczy tylko tego repo (nazwa, porty, konkretny provider bez uzasadnienia architektonicznego)? | ✓ | — |
+| Zadziałałaby tak samo w innym projekcie tej samej kategorii (`shop`, `_base`)? | — | ✓ |
+| To nowy wzorzec/standard, nie jednorazowa decyzja biznesowa tego klienta? | — | ✓ |
+
+Reużywalna zasada → **nie** zapisuj wyłącznie w `.ai/project.md`. Zaproponuj zmianę w instruction-kit:
+
+1. Znajdź najbliższy istniejący moduł (`modules/**`) — rozszerz go, jeśli tematycznie pasuje.
+2. Brak pasującego modułu → zaproponuj nowy (+ wpis w `manifest.yaml`, ew. `profiles/*.yaml`).
+3. Instruction-kit to **osobne repo** — przed edycją zapytaj użytkownika, gdzie ono lokalnie leży
+   (ścieżka z `--from` w `mcp.json`, albo wprost zapytaj) i potwierdź zanim tam coś zmienisz.
+4. W `.ai/project.md` zostaw wtedy tylko odnośnik, nie kopię treści:
+   `patrz instruction-kit: capability:X` — nie duplikuj tekstu w dwóch repo naraz.
+
+Bez tego kroku reguły reużywalne rozjeżdżają się po projektach jako lokalne kopie w `.ai/project.md`
+zamiast żyć w jednym miejscu, które inne projekty dziedziczą przez `--preset`/`extends`.
+
+## Sprawdź synchronizację kita
+
+Na początku pracy (pierwsza wiadomość w sesji dotycząca kodu/architektury — nie przy
+czysto konwersacyjnych pytaniach) zawołaj MCP tool `check_kit_status` **raz**. Tanie —
+jedno porównanie commitów, nie czytanie treści modułów, nie polling w trakcie sesji.
+
+- Wynik "aktualny" / "brak stampu" / "brak historii git" → nic nie rób, kontynuuj normalnie.
+- Wynik "ZMIENIŁ SIĘ" (+ lista plików) → **poinformuj usera** jednym zdaniem i zapytaj czy
+  odpalić `bootstrap-project.sh` ponownie (te same flagi co poprzednio, patrz
+  `.ai/.kit-bootstrap.json`). **Nie** odpalaj bootstrapa sam bez zgody — nadpisuje
+  `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`, co może
+  skasować lokalne ręczne edycje tych plików.
+
+Nie wołaj ponownie w tej samej sesji bez powodu — raz na start pracy wystarczy.
+
 ## Higiena repozytorium
 
 - Nie commituj cache, coverage, logów, `.env`, `.venv`, `node_modules`, build outputów.

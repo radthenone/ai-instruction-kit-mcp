@@ -104,9 +104,13 @@ Kebab-case ASCII, 3–6 słów.
 git fetch --all --prune 2>/dev/null || true
 git status -sb
 gh repo view --json nameWithOwner,defaultBranchRef -q .
+PREV_BRANCH=$(git branch --show-current)
 ```
 
-Baza: `dev` jeśli istnieje, inaczej default branch.
+Baza: `dev` jeśli istnieje, inaczej default branch. Zapamiętaj `PREV_BRANCH` — to branch na
+którym stał user przed `/git-start` (najczęściej `main`/`master`/`dev`, czasem inny feature
+branch w toku). `/git-end` ma na niego wrócić po push+PR — zapisz go od razu w konfigu nowego
+brancha (krok 2–3), nie tylko w raporcie.
 
 ### 1. Issue
 
@@ -129,6 +133,16 @@ Albo (gdy CLI wspiera): `gh issue create … --json number,url -q .number`.
 Czysty tree + issue: `gh issue develop N --name "…" --base <baza> --checkout`.  
 Brudny: `checkout -b` od `origin/<baza>` jak wyżej.
 
+Zaraz po utworzeniu brancha (**każda** ścieżka powyżej), zapisz `PREV_BRANCH` do configu
+lokalnego dla tego brancha — to jedyny sposób żeby `/git-end` wiedział dokąd wrócić:
+
+```bash
+git config branch."<typ>/<N>-<slug>".startedFrom "$PREV_BRANCH"
+```
+
+Pomiń tylko gdy `PREV_BRANCH` jest puste (detached HEAD) — wtedy `/git-end` zostanie na
+feature branchu, bez próby powrotu.
+
 ### 4. Raport
 
 ```markdown
@@ -137,6 +151,7 @@ Brudny: `checkout -b` od `origin/<baza>` jak wyżej.
 - Issue: #N — title — url
 - Branch: …
 - Base: … (wanted / actual)
+- Powrót po `/git-end`: `$PREV_BRANCH` (zapisane w `branch.<nazwa>.startedFrom`)
 - Następne: **`/git-commit`** → review → **`/git-end`** (Ty) → [Autopilot]
 ```
 

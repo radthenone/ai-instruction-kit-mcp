@@ -61,6 +61,7 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 | `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
 | `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
+| `--codegen orval\|none\|graphql` | nie | Generator klienta API — patrz sekcja "Codegen" niżej. Domyślnie: `orval` | mcp.json / bootstrap `--codegen`; env `GUIDES_CODEGEN`; tool `get_codegen` |
 | `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
@@ -73,7 +74,7 @@ Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w 
 
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
-**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` \| `manual` \| `none`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API). Docelowo flaga MCP `--codegen` — zob. design overlays.
+**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` (default) \| `none` \| `graphql`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → `arch:api-contract:graphql` zamiast REST). Docelowo flaga MCP `--codegen` — zob. design overlays.
 
 **Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
 
@@ -141,7 +142,9 @@ Szkic (nie działa jeszcze):
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, skill Cursor `/compact`, hooki `gate-*` (Cursor). Wymaga **Python 3** (`python3` albo `python` z major==3).
+Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--codegen`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
+
+**Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
 ## MCP w innych klientach (multi-client)
 
@@ -241,16 +244,17 @@ Co robi: odpala `npx skills@latest add mattpocock/skills` w `TARGET` (wymaga `np
 
 ```text
 modules/
-  core/              repo-first, workflow, typing, code-review, language-*
-  architecture/      platforms, CI/CD, API, security, testing, i18n, …
+  core/              repo-first, workflow, typing, code-review, language-*, tooling-rtk
+  architecture/      platforms, CI/CD, API (REST/GraphQL), security, testing, i18n,
+                     taskfile, docker-structure, …
   stacks/
     django-drf/      (+ django/, fastapi/, flask/ layouts)
     expo-router/
     frontend/        warianty Expo/React (macierz web/mobile — design)
-  capabilities/      auth, files, payments, …
+  capabilities/      auth (+ allauth/jwt/custom warianty), files, payments, …
   domains/           shop
-  patterns/          capability-provider, providers-and-settings, gateway…
-  infra/             database, cache, queue, storage, tasks
+  patterns/          capability-provider, providers-and-settings, gateway, webhooks, …
+  infra/             database, cache, queue, storage, tasks, search
 profiles/
   _base.yaml         fundament stacku (default)
   shop.yaml          kategoria e-commerce
@@ -271,9 +275,23 @@ decisions:
   queue: redis            # → infra:queue:redis  (lub rabbitmq)
   storage: s3             # → infra:storage:s3
   tasks: celery           # → infra:tasks:celery
+  search: postgres        # → infra:search:postgres (lub meilisearch)
 ```
 
 Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
+
+## Wariant auth (`decisions.auth`)
+
+```yaml
+decisions:
+  auth: custom      # default — brak enforced pakietu, opisz w .ai/project.md
+  # auth: allauth   # → capability:auth:allauth (django-allauth headless)
+  # auth: jwt       # → capability:auth:jwt (djangorestframework-simplejwt)
+```
+
+Inny mechanizm niż infra: nie tworzy osobnego bundle'a — dokleja się zaraz po
+`capability:auth` wszędzie tam, gdzie ten moduł już jest wypisany w bundle
+(`capabilities: [auth]` albo ręcznie w `bundles.backend`/`bundles.frontend`).
 
 ## Bundle'e MCP
 
@@ -315,6 +333,31 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 
 
 W projekcie docelowym **nie** duplikuj `modules/` — wystarczy preset + opcjonalny overlay.
+
+## Update kita w projekcie
+
+Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
+
+| Co | Przy ponownym `bootstrap-project.sh` |
+| --- | --- |
+| `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie |
+| `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny |
+| `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je live z `--from` przy każdym `get_bundle`/`get_overlay`, więc zawsze aktualne bez re-bootstrapu |
+
+Skąd wiedzieć **kiedy** re-bootstrapować (bez ciągłego czytania plików kita — tanie, jedno porównanie commitów):
+
+```text
+MCP tool: check_kit_status
+```
+
+Bootstrap zapisuje `.ai/.kit-bootstrap.json` (commit kita w momencie bootstrapu). `check_kit_status`
+porównuje go z aktualnym `HEAD` kita (`git rev-parse` + `git diff --name-only` tylko na ścieżkach
+które bootstrap faktycznie kopiuje) i zwraca: aktualny / zmienił się (+ lista plików) / brak stampu
+(stary bootstrap sprzed tej funkcji) / brak lokalnej historii git (gdy `--from` to zdalny URL, nie
+lokalny klon). Zero kosztu tokenów na nawigację plików — jedno wywołanie tool, agent woła je kiedy
+chce sprawdzić stan (np. na początku sesji), nie w pętli.
+
+Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co poprzednio.
 
 ## Slash commands — konwencja nazw
 

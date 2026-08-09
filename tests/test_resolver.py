@@ -6,7 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from guides.resolver import normalize_language, resolve_preset_path, resolve_profile
+from guides.resolver import (
+    normalize_auth_variant,
+    normalize_language,
+    resolve_preset_path,
+    resolve_profile,
+)
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -172,6 +177,73 @@ class TestResolver(unittest.TestCase):
             self.assertNotIn("capability:files-storage", backend.module_ids)
             self.assertNotIn("capability:files-storage", backend.missing_modules)
             self.assertIn("capability:files", backend.content)
+
+    def test_normalize_auth_variant_default_custom(self) -> None:
+        """Brak/nierozpoznana wartość decisions.auth → default custom."""
+        self.assertEqual(normalize_auth_variant(None), "custom")
+        self.assertEqual(normalize_auth_variant("unknown"), "custom")
+        self.assertEqual(normalize_auth_variant("ALLAUTH"), "allauth")
+        self.assertEqual(normalize_auth_variant(" jwt "), "jwt")
+        self.assertEqual(normalize_auth_variant("custom"), "custom")
+
+    def test_normalize_auth_variant_non_string_does_not_crash(self) -> None:
+        """decisions.auth jako YAML bool/int (niecudzysłowione) nie crashuje, default custom."""
+        for raw in (True, False, 1, 0, ["allauth"], {"a": 1}):
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_auth_variant(raw), "custom")
+
+    def test_shop_profile_auth_variant_allauth(self) -> None:
+        """shop.yaml ma decisions.auth: allauth — wariant trafia do enabled i do bundle backend."""
+        resolved = resolve_profile(resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT)
+        self.assertIn("capability:auth:allauth", resolved.enabled_module_ids)
+        self.assertIn("capability:auth:allauth", resolved.bundles["backend"].module_ids)
+        self.assertNotIn("capability:auth:jwt", resolved.enabled_module_ids)
+        self.assertNotIn("capability:auth:custom", resolved.enabled_module_ids)
+
+    def test_auth_variant_default_custom_without_decision(self) -> None:
+        """Profil z capability:auth ale bez decisions.auth → wariant custom (default)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "fork.yaml"
+            profile.write_text(
+                "\n".join(
+                    [
+                        "name: fork-auth-default",
+                        "extends: profiles/_base.yaml",
+                        "bundles:",
+                        "  backend:",
+                        "    - capability:auth",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            resolved = resolve_profile(profile, kit_root=KIT_ROOT)
+            self.assertIn("capability:auth:custom", resolved.bundles["backend"].module_ids)
+            self.assertNotIn("capability:auth:allauth", resolved.bundles["backend"].module_ids)
+
+    def test_codegen_graphql_swaps_api_contract(self) -> None:
+        """codegen: graphql podmienia arch:api-contract na arch:api-contract:graphql."""
+        resolved = resolve_profile(
+            resolve_preset_path("shop", KIT_ROOT),
+            kit_root=KIT_ROOT,
+            codegen_override="graphql",
+        )
+        self.assertEqual(resolved.codegen, "graphql")
+        self.assertIn("arch:api-contract:graphql", resolved.enabled_module_ids)
+        self.assertNotIn("arch:api-contract", resolved.enabled_module_ids)
+        self.assertIn("arch:api-contract:graphql", resolved.bundles["architecture"].module_ids)
+
+    def test_search_decision_flows_to_infra_bundle(self) -> None:
+        """decisions.search: postgres (shop.yaml) trafia do bundle infra jak inne sloty infra."""
+        resolved = resolve_profile(resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT)
+        self.assertIn("infra:search:postgres", resolved.bundles["infra"].module_ids)
+
+    def test_taskfile_and_docker_structure_in_base_architecture(self) -> None:
+        """arch:taskfile i arch:docker-structure dziedziczone z _base przez każdy preset extends."""
+        resolved = resolve_profile(resolve_preset_path("shop", KIT_ROOT), kit_root=KIT_ROOT)
+        arch = resolved.bundles["architecture"]
+        self.assertIn("arch:taskfile", arch.module_ids)
+        self.assertIn("arch:docker-structure", arch.module_ids)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@
         "guides-mcp",
         "--preset", "_base",
         "--language", "pl",
+        "--codegen", "orval",
         "--clients", "all",
         "--workspace", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU"
       ],

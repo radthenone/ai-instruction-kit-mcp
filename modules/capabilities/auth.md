@@ -4,37 +4,20 @@
 
 Uwierzytelnianie użytkownika: login, rejestracja, MFA, social login, sesja.
 
-## Wzorzec referencyjny: django-allauth headless
+## Wybór wariantu backendu
 
-Preferowany dla aplikacji web + mobile (Expo) w kategorii shop / `_base`:
+Wariant wybierasz przez `decisions.auth` w profilu (`allauth` / `jwt` / `custom`,
+domyślnie **`custom`**). Ładuje odpowiedni moduł:
 
-```text
-core/integrations/allauth/    # adaptery, taski cleanup
-apps/accounts/                # Profile, adresy — DRF CRUD (nie logika auth)
-```
+| `decisions.auth` | Moduł | Kiedy |
+|-------------------|-------|-------|
+| `allauth` | `capability:auth:allauth` | django-allauth headless, web + mobile Expo, MFA/social wbudowane |
+| `jwt` | `capability:auth:jwt` | własny `/api/auth/*`, prosty access+refresh, brak potrzeby MFA/social z pudełka |
+| `custom` (default) | `capability:auth:custom` | inny/istniejący mechanizm — opisz kontrakt w `.ai/project.md` |
 
-| Aspekt | Implementacja |
-|--------|---------------|
-| API auth | allauth headless — `_allauth/{browser\|app}/v1/` |
-| Web | cookies + CSRF, `allauthClient = "browser"` |
-| Mobile | `X-Session-Token` + SecureStore, `allauthClient = "app"` |
-| MFA | TOTP, recovery codes, WebAuthn |
-| Social | Google / Facebook via `expo-auth-session` + Dev Client |
-| Profile CRUD | DRF pod ścieżkami customers/accounts (profile, addresses) |
+Nie mieszaj wariantów w tym samym API bez jasnego podziału (np. `pattern:microservices-auth`).
 
-**Orval:** osobny klient z `/_allauth/openapi.json` i mutatorem auth — nie mieszaj z DRF schema.
-
-## Alternatywa: JWT Bearer
-
-Gdy projekt używa własnego `/api/auth/login/` → access + refresh JWT:
-
-- Domain apps weryfikują token lokalnie (RS256 public key).
-- Frontend: interceptor refresh przy 401.
-
-Ten wariant wybieraj świadomie (overlay / fork profilu) — nie mieszaj z allauth headless
-w tym samym API bez jasnego podziału.
-
-## Frontend
+## Frontend (wspólne dla wszystkich wariantów)
 
 ```text
 src/core/auth/        # session, platform (browser/app), storage native/web
@@ -45,10 +28,12 @@ src/features/account/ # profil po zalogowaniu
 ## Testy
 
 - Unit: adapterzy, uprawnienia CRUD profilu.
-- Integration: login browser vs app client headers.
+- Integration: pełny flow login → autoryzowany request → refresh/expiry.
 
 ## Powiązane
 
+- `capability:auth:allauth`, `capability:auth:jwt`, `capability:auth:custom` — wariant backendu
 - `pattern:microservices-auth` — gdy wiele serwisów
 - `domain:shop` — zamówienia wymagają zalogowanego usera
 - `stack:django-drf:structure`
+- `arch:api-contract` — Orval per wariant (patrz moduł wariantu)

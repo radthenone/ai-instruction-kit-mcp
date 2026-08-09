@@ -14,11 +14,11 @@ codegen: orval
 
 | Wartość | Kiedy |
 |---------|--------|
-| `orval` | REST API + FE z wygenerowanym klientem OpenAPI |
-| `manual` | FE ma ręczny klient / fetch — bez Orval |
-| `none` | Brak generowanego klienta (np. tylko Django HTML) |
+| `orval` | REST API + FE z wygenerowanym klientem OpenAPI (default) |
+| `none` | REST bez Orval — generyczny klient innym narzędziem albo ręczny fetch/typy |
+| `graphql` | GraphQL zamiast REST — patrz `arch:api-contract:graphql` |
 
-Docelowo to samo jako flaga MCP: `--codegen orval|manual|none` (jeszcze nie w CLI).
+Docelowo to samo jako flaga MCP: `--codegen orval|none|graphql` (jeszcze nie w CLI).
 
 Gdy `orval`: po zmianie serializera/viewsetu/schema → `task ovral:generate` (lub task z Taskfile poniżej) → commit wygenerowanych plików.
 

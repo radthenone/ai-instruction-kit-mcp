@@ -29,8 +29,11 @@ Brak findingów → jedna linia: "Brak uwag wg BUGBOT.md."
 
 W kolejności:
 
-1. `.cursor/BUGBOT.md` (najczęstsze — kopiowane przez bootstrap kita).
-2. `BUGBOT.md` w root repo.
+1. `BUGBOT.md` w root repo (kopiowany przez bootstrap kita **niezależnie od `--clients`** —
+   to ten plik dla wszystkich klientów, nie tylko Cursor).
+2. `.cursor/BUGBOT.md` (kopia dla natywnej usługi Cursor BugBot — istnieje tylko gdy
+   projekt bootstrapowano z `--clients cursor`/`all`; jeśli oba pliki istnieją, oba mają
+   tę samą treść — użyj root, nie czytaj dwa razy).
 3. Brak pliku → powiedz to wprost i zastosuj tylko reguły ogólne z `AGENTS.md` (sekrety, minimalny diff, brak testów).
 
 ### 2. Diff

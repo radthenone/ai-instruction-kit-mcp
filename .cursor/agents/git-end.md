@@ -20,7 +20,8 @@ Gdy user poda help — wypisz i zakończ (bez push/PR):
 ```markdown
 # /git-end — pomoc
 
-Push bieżącego feature brancha + `gh pr create` z `Closes #N`.
+Push bieżącego feature brancha + `gh pr create` z `Closes #N`. Po pushu wraca na branch
+sprzed `/git-start` (jeśli zapisany), jeśli nie — zostaje na feature branchu.
 
 ## Kiedy
 Po `/git-start`, implementacji, **`/git-commit`** (jeśli były lokalne zmiany) i **Twoim** `/review-*` (napraw findings).
@@ -93,14 +94,32 @@ EOF
 
 Bez `#N`: bez `Closes`. Istniejący PR: `gh pr view --json url -q .url`.
 
-### 4. Raport
+### 4. Powrót na branch sprzed `/git-start`
+
+Po udanym push+PR, **nie zostawaj** na feature branchu — wróć tam skąd user startował:
+
+```bash
+CUR_BRANCH=$(git branch --show-current)
+PREV=$(git config "branch.${CUR_BRANCH}.startedFrom" 2>/dev/null || true)
+if [[ -n "$PREV" ]] && git show-ref --verify --quiet "refs/heads/$PREV"; then
+  git checkout "$PREV"
+fi
+```
+
+Bezpieczne bo **po pushu** — praca feature brancha jest już na remote, nic nie ginie.
+Brak configu (branch stworzony ręcznie, nie przez `/git-start`) albo `PREV` już nie istnieje
+lokalnie → **zostań** na feature branchu, nie zgaduj docelowego (nie myl z `--base` PR-a —
+to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
+
+### 5. Raport
 
 ```markdown
 ## /git-end OK
-- Branch: …
+- Branch: … (branch feature, z którego poszedł push/PR)
 - PR: <url>
-- Base: …
+- Base: … (target PR-a — merge base, nie branch powrotu)
 - Closes: #N
+- IDE teraz na: … (branch powrotu jeśli był zapisany, inaczej nadal branch feature)
 - Dalej: Autopilot → merge gdy green
 ```
 

@@ -23,6 +23,11 @@ decisions:
   queue: redis
   storage: s3
   tasks: celery
+  auth: allauth
+  search: postgres
+
+patterns:
+  - webhooks
 
 bundles:
   backend:
@@ -30,6 +35,7 @@ bundles:
     - capability:files
     - capability:payments
     - domain:shop
+    - pattern:webhooks
   frontend:
     - capability:auth
     - capability:payments

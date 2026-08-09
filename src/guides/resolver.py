@@ -14,6 +14,27 @@ LANGUAGE_MODULE_IDS: frozenset[str] = frozenset(
     {"core:language-pl", "core:language-en"}
 )
 
+CODEGEN_VALUES: frozenset[str] = frozenset({"orval", "none", "graphql"})
+
+
+def normalize_codegen(raw: str | None) -> str:
+    """
+    Znormalizuj wybór generatora klienta API do ``orval`` / ``none`` / ``graphql``.
+
+    Args:
+        raw: Wartość z CLI/env/profilu YAML (dowolny case, może być ``None``).
+
+    Returns:
+        str: ``orval`` (Orval — schema → `frontend/src/api/generated` + mutatory,
+            **default**), ``none`` (tool-agnostyczny wygenerowany klient REST — konkret
+            w overlay projektu) albo ``graphql`` (GraphQL zamiast REST — patrz
+            `arch:api-contract:graphql`).
+    """
+    if raw is None:
+        return "orval"
+    value = raw.strip().lower()
+    return value if value in CODEGEN_VALUES else "orval"
+
 
 def normalize_language(raw: str | None) -> str:
     """
@@ -47,6 +68,76 @@ def language_module_id(language: str) -> str:
         str: ``core:language-en`` albo ``core:language-pl``.
     """
     return "core:language-en" if language == "en" else "core:language-pl"
+
+
+AUTH_VARIANT_VALUES: frozenset[str] = frozenset({"allauth", "jwt", "custom"})
+
+_AUTH_VARIANT_MODULES: dict[str, str] = {
+    "allauth": "capability:auth:allauth",
+    "jwt": "capability:auth:jwt",
+    "custom": "capability:auth:custom",
+}
+
+
+def normalize_auth_variant(raw: object | None) -> str:
+    """
+    Znormalizuj wybór wariantu auth do ``allauth`` / ``jwt`` / ``custom``.
+
+    Args:
+        raw: Wartość ``decisions.auth`` z profilu — spodziewany string (dowolny case),
+            ale YAML może dać ``None``/bool/int (np. niecudzysłowione ``auth: true``).
+
+    Returns:
+        str: Jeden z ``AUTH_VARIANT_VALUES``; ``None``, nie-string albo nierozpoznana
+            wartość → ``custom``.
+    """
+    if not isinstance(raw, str):
+        return "custom"
+    value = raw.strip().lower()
+    return value if value in AUTH_VARIANT_VALUES else "custom"
+
+
+def _apply_auth_variant(module_ids: list[str], auth_variant: str) -> list[str]:
+    """
+    Dopisz wariant backendu auth zaraz po ``capability:auth``, jeśli ten jest na liście.
+
+    Args:
+        module_ids: Lista ID modułów bundle'a/profilu.
+        auth_variant: Znormalizowany wariant (wynik ``normalize_auth_variant``).
+
+    Returns:
+        list[str]: Lista z dopisanym ``capability:auth:{allauth|jwt|custom}``
+            zaraz po każdym wystąpieniu ``capability:auth``.
+    """
+    variant_id = _AUTH_VARIANT_MODULES[auth_variant]
+    result: list[str] = []
+    for module_id in module_ids:
+        result.append(module_id)
+        if module_id == "capability:auth":
+            result.append(variant_id)
+    return result
+
+
+def _apply_codegen(module_ids: list[str], codegen: str) -> list[str]:
+    """
+    Podmień ``arch:api-contract`` na wariant zależny od wybranego generatora klienta API.
+
+    Args:
+        module_ids: Lista ID modułów bundle'a.
+        codegen: Znormalizowany wybór (``orval`` / ``none`` / ``graphql``,
+            wynik ``normalize_codegen``).
+
+    Returns:
+        list[str]: Lista z podmienionym ``arch:api-contract`` na ``arch:api-contract:{codegen}``
+            gdy ``codegen != "orval"``; bez zmian dla ``orval`` (default).
+    """
+    if codegen == "orval":
+        return module_ids
+    variant_id = f"arch:api-contract:{codegen}"
+    return [
+        variant_id if mid == "arch:api-contract" else mid
+        for mid in module_ids
+    ]
 
 
 def _remap_language_modules(module_ids: list[str], language: str) -> list[str]:
@@ -113,6 +204,7 @@ class ResolvedProfile:
 
     name: str
     language: str
+    codegen: str
     kit_root: Path
     profile_path: Path
     workspace_root: Path
@@ -253,7 +345,11 @@ def _decision_module_ids(decisions: dict[str, Any]) -> list[str]:
     Zmapuj sloty decisions z profilu na moduły infra:*.
 
     Sloty:
-        database, cache, queue, storage, tasks
+        database, cache, queue, storage, tasks, search
+
+    Uwaga: slot ``auth`` nie jest tu obsługiwany — ma osobny mechanizm
+    (``_apply_auth_variant``), bo dokleja się do ``capability:auth`` w bundle'ach
+    backend/frontend, nie do infra/devops/full.
     """
     slot_mapping: dict[str, dict[str, str]] = {
         "database": {
@@ -270,6 +366,10 @@ def _decision_module_ids(decisions: dict[str, Any]) -> list[str]:
             "s3": "infra:storage:s3",
             "minio": "infra:storage:s3",
             "aws": "infra:storage:s3",
+        },
+        "search": {
+            "postgres": "infra:search:postgres",
+            "meilisearch": "infra:search:meilisearch",
         },
         "tasks": {
             "celery": "infra:tasks:celery",
@@ -337,6 +437,7 @@ def _collect_module_ids(profile_data: dict[str, Any], manifest: Manifest) -> lis
         "providers-and-settings": "pattern:providers-and-settings",
         "gateway-nginx": "pattern:gateway-nginx",
         "microservices-auth": "pattern:microservices-auth",
+        "webhooks": "pattern:webhooks",
         "repo-first": "core:repo-first",
     }
     for pattern in patterns:
@@ -351,11 +452,14 @@ def _collect_module_ids(profile_data: dict[str, Any], manifest: Manifest) -> lis
     # Domyślnie core jeśli profil nie wyłącza
     if profile_data.get("core", True):
         module_ids = _merge_unique(
-            ["core:repo-first", lang_module, "core:external-knowledge"],
+            ["core:repo-first", lang_module, "core:external-knowledge", "core:tooling-rtk"],
             module_ids,
         )
 
     module_ids = _remap_language_modules(module_ids, language)
+    module_ids = _apply_codegen(module_ids, str(profile_data.get("codegen", "orval")))
+    auth_variant = normalize_auth_variant(profile_data.get("decisions", {}).get("auth"))
+    module_ids = _apply_auth_variant(module_ids, auth_variant)
     module_ids = _normalize_module_ids(module_ids)
 
     # Walidacja — tylko znane moduły
@@ -480,6 +584,7 @@ def resolve_profile(
     workspace_root: Path | None = None,
     extra_overlays: list[Path] | None = None,
     language_override: str | None = None,
+    codegen_override: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
@@ -492,6 +597,8 @@ def resolve_profile(
         extra_overlays: Dodatkowe pliki overlay z CLI.
         language_override: Nadpisanie języka z CLI/env (``pl`` / ``en``); ma pierwszeństwo
             przed ``language`` w YAML profilu.
+        codegen_override: Nadpisanie generatora klienta API z CLI/env (``orval`` / ``none``);
+            ma pierwszeństwo przed ``codegen`` w YAML profilu.
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
@@ -515,7 +622,12 @@ def resolve_profile(
         if language_override is not None
         else str(profile_data.get("language", "pl"))
     )
-    profile_data = {**profile_data, "language": language}
+    codegen = normalize_codegen(
+        codegen_override
+        if codegen_override is not None
+        else str(profile_data.get("codegen", "orval"))
+    )
+    profile_data = {**profile_data, "language": language, "codegen": codegen}
 
     enabled_modules = _collect_module_ids(profile_data, manifest)
 
@@ -524,8 +636,12 @@ def resolve_profile(
         profile_data.get("bundles", {}),
     )
     bundles_config = _inject_infra_bundles(bundles_config, profile_data)
+    auth_variant = normalize_auth_variant(profile_data.get("decisions", {}).get("auth"))
     bundles_config = {
-        name: _remap_language_modules(list(module_ids), language)
+        name: _remap_language_modules(
+            _apply_auth_variant(_apply_codegen(list(module_ids), codegen), auth_variant),
+            language,
+        )
         for name, module_ids in bundles_config.items()
     }
 
@@ -547,6 +663,7 @@ def resolve_profile(
         "",
         f"- Język: {language}",
         f"- Moduł języka: `{language_module_id(language)}`",
+        f"- Codegen: {codegen}",
         f"- Profil: `{profile_path}`",
         f"- Workspace: `{resolved_workspace}`",
         f"- Kit root: `{manifest.kit_root}`",
@@ -569,6 +686,7 @@ def resolve_profile(
     return ResolvedProfile(
         name=str(profile_data.get("name", resolved_workspace.name)),
         language=language,
+        codegen=codegen,
         kit_root=manifest.kit_root,
         profile_path=profile_path,
         workspace_root=resolved_workspace,
