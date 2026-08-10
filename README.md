@@ -280,6 +280,15 @@ decisions:
 
 Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
 
+**Dodanie nowej technologii nie wymaga Pythona** (ADR-0001). Trzy kroki:
+
+1. Napisz `modules/infra/queue/kafka.md`.
+2. Zarejestruj go w `manifest.yaml` → `modules:`.
+3. Dopisz wartość w `manifest.yaml` → `mappings.slots.queue.kafka`.
+
+Nierozpoznana Decyzja (literówka `postgress`, technologia bez modułu) **nie wywraca
+serwera** — ląduje w sekcji „Nierozpoznane decyzje" w `get_index` (ADR-0004).
+
 ## Wariant auth (`decisions.auth`)
 
 ```yaml
@@ -292,6 +301,18 @@ decisions:
 Inny mechanizm niż infra: nie tworzy osobnego bundle'a — dokleja się zaraz po
 `capability:auth` wszędzie tam, gdzie ten moduł już jest wypisany w bundle
 (`capabilities: [auth]` albo ręcznie w `bundles.backend`/`bundles.frontend`).
+W manifeście to `mappings.variants.auth` (Wariant = wstaw po module bazowym),
+w odróżnieniu od `mappings.substitutions.codegen` (Substytucja = podmień moduł bazowy).
+
+## Słownik i decyzje
+
+| Plik                       | Rola                                                                      |
+| -------------------------- | ------------------------------------------------------------------------- |
+| [`CONTEXT.md`](CONTEXT.md) | Ubiquitous language kita — Bundle, Preset, Slot, Wariant, Alias, Overlay… |
+| [`docs/adr/`](docs/adr/)   | Decyzje architektoniczne z uzasadnieniem (dlaczego tak, a nie inaczej)    |
+
+Nazwy z `CONTEXT.md` obowiązują w kodzie, docstringach i review. Zanim zaproponujesz
+zmianę architektury, sprawdź `docs/adr/` — część rzeczy już rozstrzygnięto.
 
 ## Bundle'e MCP
 

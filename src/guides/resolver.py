@@ -8,21 +8,23 @@ from typing import Any
 
 import yaml
 
-from guides.manifest import Manifest, load_manifest
+from guides.manifest import Manifest, Mappings, load_manifest
 
-LANGUAGE_MODULE_IDS: frozenset[str] = frozenset(
-    {"core:language-pl", "core:language-en"}
-)
-
-CODEGEN_VALUES: frozenset[str] = frozenset({"orval", "none", "graphql"})
+CODEGEN_SLOT = "codegen"
+AUTH_SLOT = "auth"
 
 
-def normalize_codegen(raw: str | None) -> str:
+def normalize_codegen(raw: str | None, manifest: Manifest) -> str:
     """
-    Znormalizuj wybór generatora klienta API do ``orval`` / ``none`` / ``graphql``.
+    Znormalizuj wybór generatora klienta API do wartości znanej manifestowi.
+
+    Manifest jest wymagany — dozwolone wartości są danymi (ADR-0001), a domyślne
+    doczytywanie z auto-wykrytego Kit Root odpowiadałoby na inny Kit niż ten,
+    z którego rozwiązywany jest profil.
 
     Args:
         raw: Wartość z CLI/env/profilu YAML (dowolny case, może być ``None``).
+        manifest: Manifest z sekcją ``mappings.substitutions.codegen``.
 
     Returns:
         str: ``orval`` (Orval — schema → `frontend/src/api/generated` + mutatory,
@@ -30,10 +32,7 @@ def normalize_codegen(raw: str | None) -> str:
             w overlay projektu) albo ``graphql`` (GraphQL zamiast REST — patrz
             `arch:api-contract:graphql`).
     """
-    if raw is None:
-        return "orval"
-    value = raw.strip().lower()
-    return value if value in CODEGEN_VALUES else "orval"
+    return manifest.mappings.rule(CODEGEN_SLOT).normalize(raw)
 
 
 def normalize_language(raw: str | None) -> str:
@@ -57,135 +56,137 @@ def normalize_language(raw: str | None) -> str:
     return "pl"
 
 
-def language_module_id(language: str) -> str:
+def language_module_id(language: str, manifest: Manifest) -> str:
     """
     Zwróć ID modułu językowego dla znormalizowanego języka.
 
     Args:
         language: ``pl`` albo ``en`` (wynik ``normalize_language``).
+        manifest: Manifest z sekcją ``mappings.languages``.
 
     Returns:
         str: ``core:language-en`` albo ``core:language-pl``.
     """
-    return "core:language-en" if language == "en" else "core:language-pl"
+    return manifest.mappings.languages.module_for(language)
 
 
-AUTH_VARIANT_VALUES: frozenset[str] = frozenset({"allauth", "jwt", "custom"})
-
-_AUTH_VARIANT_MODULES: dict[str, str] = {
-    "allauth": "capability:auth:allauth",
-    "jwt": "capability:auth:jwt",
-    "custom": "capability:auth:custom",
-}
-
-
-def normalize_auth_variant(raw: object | None) -> str:
+def normalize_auth_variant(raw: object | None, manifest: Manifest) -> str:
     """
-    Znormalizuj wybór wariantu auth do ``allauth`` / ``jwt`` / ``custom``.
+    Znormalizuj wybór Wariantu auth do wartości znanej manifestowi.
 
     Args:
         raw: Wartość ``decisions.auth`` z profilu — spodziewany string (dowolny case),
             ale YAML może dać ``None``/bool/int (np. niecudzysłowione ``auth: true``).
+        manifest: Manifest z sekcją ``mappings.variants.auth``.
 
     Returns:
-        str: Jeden z ``AUTH_VARIANT_VALUES``; ``None``, nie-string albo nierozpoznana
-            wartość → ``custom``.
+        str: Jedna z wartości Wariantu; ``None``, nie-string albo nierozpoznana
+            wartość → wartość domyślna z manifestu (``custom``).
     """
-    if not isinstance(raw, str):
-        return "custom"
-    value = raw.strip().lower()
-    return value if value in AUTH_VARIANT_VALUES else "custom"
+    value = raw if isinstance(raw, str) else None
+    return manifest.mappings.rule(AUTH_SLOT).normalize(value)
 
 
-def _apply_auth_variant(module_ids: list[str], auth_variant: str) -> list[str]:
+def normalize_module_id(module_id: str, manifest: Manifest) -> str:
     """
-    Dopisz wariant backendu auth zaraz po ``capability:auth``, jeśli ten jest na liście.
-
-    Args:
-        module_ids: Lista ID modułów bundle'a/profilu.
-        auth_variant: Znormalizowany wariant (wynik ``normalize_auth_variant``).
-
-    Returns:
-        list[str]: Lista z dopisanym ``capability:auth:{allauth|jwt|custom}``
-            zaraz po każdym wystąpieniu ``capability:auth``.
-    """
-    variant_id = _AUTH_VARIANT_MODULES[auth_variant]
-    result: list[str] = []
-    for module_id in module_ids:
-        result.append(module_id)
-        if module_id == "capability:auth":
-            result.append(variant_id)
-    return result
-
-
-def _apply_codegen(module_ids: list[str], codegen: str) -> list[str]:
-    """
-    Podmień ``arch:api-contract`` na wariant zależny od wybranego generatora klienta API.
-
-    Args:
-        module_ids: Lista ID modułów bundle'a.
-        codegen: Znormalizowany wybór (``orval`` / ``none`` / ``graphql``,
-            wynik ``normalize_codegen``).
-
-    Returns:
-        list[str]: Lista z podmienionym ``arch:api-contract`` na ``arch:api-contract:{codegen}``
-            gdy ``codegen != "orval"``; bez zmian dla ``orval`` (default).
-    """
-    if codegen == "orval":
-        return module_ids
-    variant_id = f"arch:api-contract:{codegen}"
-    return [
-        variant_id if mid == "arch:api-contract" else mid
-        for mid in module_ids
-    ]
-
-
-def _remap_language_modules(module_ids: list[str], language: str) -> list[str]:
-    """
-    Zastąp wszystkie moduły ``core:language-*`` jednym właściwym dla ``language``.
-
-    Args:
-        module_ids: Lista ID modułów (kolejność zachowana poza scaleniem language).
-        language: Znormalizowany język (``pl`` / ``en``).
-
-    Returns:
-        list[str]: Lista bez duplikatów language; pierwszy slot language → docelowy moduł.
-    """
-    target = language_module_id(language)
-    result: list[str] = []
-    language_placed = False
-    for module_id in module_ids:
-        if module_id in LANGUAGE_MODULE_IDS:
-            if not language_placed:
-                result.append(target)
-                language_placed = True
-            continue
-        result.append(module_id)
-    return result
-
-
-# Alias ID w bundle/include (stare nazwy → kanoniczne z manifestu).
-_MODULE_ID_ALIASES: dict[str, str] = {
-    "capability:files-storage": "capability:files",
-}
-
-
-def normalize_module_id(module_id: str) -> str:
-    """
-    Znormalizuj ID modułu (aliasy kompatybilności).
+    Znormalizuj ID modułu (Aliasy kompatybilności — ADR-0003).
 
     Args:
         module_id: Surowy identyfikator z profilu / bundle.
+        manifest: Manifest z sekcją ``mappings.aliases.modules``.
 
     Returns:
-        str: Kanoniczne ID z manifestu (lub bez zmian, gdy brak aliasu).
+        str: Kanoniczne ID z manifestu (lub bez zmian, gdy brak Aliasu).
     """
-    return _MODULE_ID_ALIASES.get(module_id, module_id)
+    return manifest.mappings.canonical_module_id(module_id)
 
 
-def _normalize_module_ids(module_ids: list[str]) -> list[str]:
-    """Zastosuj ``normalize_module_id`` z zachowaniem kolejności i bez duplikatów."""
-    return _merge_unique([], [normalize_module_id(mid) for mid in module_ids])
+def profile_selections(profile_data: dict[str, Any], mappings: Mappings) -> dict[str, str]:
+    """
+    Wybrana wartość dla każdego Slotu Wariantu i Substytucji.
+
+    Skąd czytamy, zależy od rodzaju Slotu, nie od jego nazwy — dzięki temu nowy wpis
+    w manifeście działa bez dotykania Pythona (ADR-0001):
+
+    - **Substytucja** (``codegen``) — klucz najwyższego poziomu profilu.
+    - **Wariant** (``auth``) — wartość z sekcji ``decisions``.
+
+    Args:
+        profile_data: Scalone dane profilu (po nałożeniu nadpisań CLI/env).
+        mappings: Mapowania z manifestu.
+
+    Returns:
+        dict[str, str]: Slot → znormalizowana wartość.
+    """
+    decisions: dict[str, Any] = profile_data.get("decisions") or {}
+    selections = {
+        slot: rule.normalize(profile_data.get(slot))
+        for slot, rule in mappings.substitutions.items()
+    }
+    selections.update(
+        {slot: rule.normalize(decisions.get(slot)) for slot, rule in mappings.variants.items()}
+    )
+    return selections
+
+
+def apply_profile_decisions(
+    module_ids: list[str],
+    *,
+    manifest: Manifest,
+    language: str,
+    selections: dict[str, str],
+) -> tuple[str, ...]:
+    """
+    Jedyny pipeline transformacji Module ID — używany przez `enabled` i przez bundle.
+
+    Kolejność jest własnością tej funkcji, nie jej wywołań (ADR-0002): normalizacja
+    Aliasów biegnie **pierwsza**, żeby Alias celujący w moduł bazowy Wariantu
+    (``capability:auth``) czy Substytucji (``arch:api-contract``) nie zgubił po cichu
+    swojego wariantu.
+
+    Args:
+        module_ids: Surowa lista ID z profilu albo z konfiguracji bundle'a.
+        manifest: Manifest z mapowaniami.
+        language: Znormalizowany język (``pl`` / ``en``).
+        selections: Slot → wybrana wartość (wynik ``profile_selections``).
+
+    Returns:
+        tuple[str, ...]: Kanoniczne ID bez duplikatów, w kolejności wejściowej.
+    """
+    mappings = manifest.mappings
+
+    # 1. Aliasy → postać kanoniczna (+ dedup).
+    resolved = _merge_unique([], [mappings.canonical_module_id(mid) for mid in module_ids])
+
+    # 2. Moduły językowe scalają się do jednego, na pozycji pierwszego.
+    language_target = mappings.languages.module_for(language)
+    language_modules = set(mappings.languages.values.values())
+    collapsed: list[str] = []
+    language_placed = False
+    for module_id in resolved:
+        if module_id in language_modules:
+            if not language_placed:
+                collapsed.append(language_target)
+                language_placed = True
+            continue
+        collapsed.append(module_id)
+
+    # 3. Substytucje — podmiana modułu bazowego na Wariant.
+    for slot, rule in mappings.substitutions.items():
+        target = rule.module_for(selections.get(slot))
+        collapsed = [target if mid == rule.base else mid for mid in collapsed]
+
+    # 4. Warianty — wstawienie modułu zaraz po module bazowym.
+    for slot, rule in mappings.variants.items():
+        target = rule.module_for(selections.get(slot))
+        expanded: list[str] = []
+        for module_id in collapsed:
+            expanded.append(module_id)
+            if module_id == rule.base:
+                expanded.append(target)
+        collapsed = expanded
+
+    return tuple(_merge_unique([], collapsed))
 
 
 @dataclass(frozen=True)
@@ -212,6 +213,9 @@ class ResolvedProfile:
     bundles: dict[str, ResolvedBundle]
     overlay_content: str
     index_markdown: str
+    language_module_id: str
+    unrecognised_decisions: tuple[tuple[str, str], ...]
+    deprecated_aliases: tuple[tuple[str, str], ...]
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -319,78 +323,141 @@ def _resolve_extends(
     return merged
 
 
-def _capability_module_ids(capabilities: list[str]) -> list[str]:
-    """Zmapuj listę capabilities z profilu na ID modułów."""
-    mapping = {
-        "auth": "capability:auth",
-        "files": "capability:files",
-        "files-storage": "capability:files",  # alias kompat
-        "payments": "capability:payments",
-        "storage": "capability:files",
-    }
-    return [mapping[c] for c in capabilities if c in mapping]
-
-
-def _domain_module_ids(domains: list[str]) -> list[str]:
-    """Zmapuj listę domains z profilu na ID modułów."""
-    mapping = {
-        "shop": "domain:shop",
-        "ecommerce": "domain:shop",
-    }
-    return [mapping[d] for d in domains if d in mapping]
-
-
-def _decision_module_ids(decisions: dict[str, Any]) -> list[str]:
+def _named_module_ids(names: list[str], mapping: dict[str, str], aliases: dict[str, str]) -> list[str]:
     """
-    Zmapuj sloty decisions z profilu na moduły infra:*.
+    Zmapuj nazwy z profilu (Capability / Domain / Pattern) na Module ID.
 
-    Sloty:
-        database, cache, queue, storage, tasks, search
+    Args:
+        names: Nazwy z profilu.
+        mapping: Sekcja mapowań z manifestu.
+        aliases: Aliasy nazw (ADR-0003) — stara pisownia → kanoniczna.
 
-    Uwaga: slot ``auth`` nie jest tu obsługiwany — ma osobny mechanizm
-    (``_apply_auth_variant``), bo dokleja się do ``capability:auth`` w bundle'ach
-    backend/frontend, nie do infra/devops/full.
+    Returns:
+        list[str]: Module ID dla rozpoznanych nazw; nierozpoznane pomijane.
     """
-    slot_mapping: dict[str, dict[str, str]] = {
-        "database": {
-            "postgres": "infra:database:postgres",
-        },
-        "cache": {
-            "redis": "infra:cache:redis",
-        },
-        "queue": {
-            "redis": "infra:queue:redis",
-            "rabbitmq": "infra:queue:rabbitmq",
-        },
-        "storage": {
-            "s3": "infra:storage:s3",
-            "minio": "infra:storage:s3",
-            "aws": "infra:storage:s3",
-        },
-        "search": {
-            "postgres": "infra:search:postgres",
-            "meilisearch": "infra:search:meilisearch",
-        },
-        "tasks": {
-            "celery": "infra:tasks:celery",
-        },
-    }
     module_ids: list[str] = []
-    for slot, value in decisions.items():
-        if not isinstance(value, str):
-            continue
-        module_id = slot_mapping.get(slot, {}).get(value)
+    for name in names:
+        module_id = mapping.get(aliases.get(name, name))
         if module_id:
             module_ids.append(module_id)
     return module_ids
 
 
+def _decision_module_ids(decisions: dict[str, Any], mappings: Mappings) -> list[str]:
+    """
+    Zmapuj Sloty z ``decisions`` na moduły infra.
+
+    Slot ``auth`` leży w ``mappings.variants`` — dokleja Wariant do ``capability:auth``
+    w bundle'ach backend/frontend, więc nie wnosi tu własnego modułu.
+
+    Args:
+        decisions: Sekcja ``decisions`` profilu.
+        mappings: Mapowania z manifestu.
+
+    Returns:
+        list[str]: Module ID rozpoznanych Decyzji.
+    """
+    module_ids: list[str] = []
+    for slot, value in decisions.items():
+        if not isinstance(value, str):
+            continue
+        module_id = mappings.slots.get(slot, {}).get(value)
+        if module_id:
+            module_ids.append(module_id)
+    return module_ids
+
+
+def unrecognised_decisions(
+    profile_data: dict[str, Any],
+    mappings: Mappings,
+) -> tuple[tuple[str, str], ...]:
+    """
+    Wybory, których manifest nie zna (ADR-0004: raportujemy, nie wywracamy serwera).
+
+    Pokrywa oba źródła wyborów: sekcję ``decisions`` (Slot infra i Wariant) oraz
+    klucze najwyższego poziomu sterujące Substytucjami (``codegen``).
+
+    Args:
+        profile_data: Scalone dane profilu.
+        mappings: Mapowania z manifestu.
+
+    Returns:
+        tuple[tuple[str, str], ...]: Pary ``(slot, wartość)`` — nieznany Slot albo
+            nieznana wartość znanego Slotu.
+    """
+    found: list[tuple[str, str]] = []
+    decisions: dict[str, Any] = profile_data.get("decisions") or {}
+
+    for slot, value in decisions.items():
+        name = str(slot)
+        if not isinstance(value, str):
+            found.append((name, str(value)))
+            continue
+        if name in mappings.variants:
+            if not mappings.variants[name].knows(value):
+                found.append((name, value))
+        elif name not in mappings.slots:
+            found.append((name, value))
+        elif value not in mappings.slots[name]:
+            found.append((name, value))
+
+    for slot, rule in mappings.substitutions.items():
+        raw = profile_data.get(slot)
+        if raw is not None and not rule.knows(str(raw)):
+            found.append((slot, str(raw)))
+
+    return tuple(found)
+
+
+def used_aliases(
+    profile_data: dict[str, Any],
+    mappings: Mappings,
+) -> tuple[tuple[str, str], ...]:
+    """
+    Aliasy faktycznie użyte przez profil (ADR-0003 — do zgłoszenia w indeksie).
+
+    Każdą przestrzeń nazw sprawdzamy tam, gdzie resolver ją naprawdę rozwiązuje:
+    Alias Module ID w ``include`` i w ``bundles``, Alias nazwy w sekcjach
+    ``capabilities`` / ``domains``. ``patterns`` nie jest aliasowane, więc się go
+    nie skanuje — indeks nie może obiecać migracji, której nie było.
+
+    Args:
+        profile_data: Scalone dane profilu.
+        mappings: Mapowania z manifestu.
+
+    Returns:
+        tuple[tuple[str, str], ...]: Pary ``(alias, kanoniczna nazwa)``.
+    """
+    found: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _collect(candidates: list[str], aliases: dict[str, str]) -> None:
+        for candidate in candidates:
+            target = aliases.get(candidate)
+            if target is not None and candidate not in seen:
+                seen.add(candidate)
+                found.append((candidate, target))
+
+    module_candidates: list[str] = [str(mid) for mid in profile_data.get("include", [])]
+    for module_ids in (profile_data.get("bundles") or {}).values():
+        module_candidates.extend(str(mid) for mid in module_ids)
+    _collect(module_candidates, mappings.module_aliases)
+
+    name_candidates: list[str] = []
+    for key in ("capabilities", "domains"):
+        name_candidates.extend(str(name) for name in profile_data.get(key, []))
+    _collect(name_candidates, mappings.name_aliases)
+
+    return tuple(found)
+
+
 def _inject_infra_bundles(
     bundles_config: dict[str, list[str]],
     profile_data: dict[str, Any],
+    mappings: Mappings,
 ) -> dict[str, list[str]]:
-    """Dopisz moduły infra:* do bundle infra i devops na podstawie decisions."""
-    infra_modules = _decision_module_ids(profile_data.get("decisions", {}))
+    """Dopisz moduły infra do bundle'i infra/devops/full na podstawie Decyzji."""
+    infra_modules = _decision_module_ids(profile_data.get("decisions", {}), mappings)
     if not infra_modules:
         return bundles_config
 
@@ -404,66 +471,71 @@ def _inject_infra_bundles(
     )
 
 
-def _collect_module_ids(profile_data: dict[str, Any], manifest: Manifest) -> list[str]:
-    """Zbierz pełną listę modułów włączonych przez profil."""
+def _collect_module_ids(
+    profile_data: dict[str, Any],
+    manifest: Manifest,
+    *,
+    language: str,
+    selections: dict[str, str],
+) -> list[str]:
+    """
+    Zbierz listę modułów włączonych przez profil.
+
+    Args:
+        profile_data: Scalone dane profilu.
+        manifest: Manifest z rejestrem i mapowaniami.
+        language: Znormalizowany język.
+        selections: Slot → wybrana wartość (wynik ``profile_selections``).
+
+    Returns:
+        list[str]: Kanoniczne ID istniejących w rejestrze modułów.
+    """
+    mappings = manifest.mappings
     module_ids: list[str] = list(profile_data.get("include", []))
 
     stacks: dict[str, Any] = profile_data.get("stacks", {})
-    if stacks.get("django-drf"):
-        module_ids.extend(
-            [
-                "stack:django-drf",
-                "stack:django-drf:structure",
-                "stack:django-drf:backend-standard",
-                "stack:django-drf:backend-instructions",
-            ]
+    for stack_name, stack_modules in mappings.stacks.items():
+        if stacks.get(stack_name):
+            module_ids.extend(stack_modules)
+
+    module_ids.extend(
+        _named_module_ids(
+            list(profile_data.get("capabilities", [])),
+            mappings.capabilities,
+            mappings.name_aliases,
         )
-    if stacks.get("expo-router"):
-        module_ids.extend(
-            [
-                "stack:expo-router",
-                "stack:expo-router:structure",
-                "stack:expo-router:frontend-instructions",
-            ]
+    )
+    module_ids.extend(
+        _named_module_ids(
+            list(profile_data.get("domains", [])), mappings.domains, mappings.name_aliases
         )
+    )
+    for pattern in profile_data.get("patterns", []):
+        module_ids.append(mappings.patterns.get(pattern, pattern))
 
-    module_ids.extend(_capability_module_ids(profile_data.get("capabilities", [])))
-    module_ids.extend(_domain_module_ids(profile_data.get("domains", [])))
-
-    patterns: list[str] = profile_data.get("patterns", [])
-    pattern_map = {
-        "capability-provider": "pattern:capability-provider",
-        "capability-overview": "pattern:capability-overview",
-        "providers-and-settings": "pattern:providers-and-settings",
-        "gateway-nginx": "pattern:gateway-nginx",
-        "microservices-auth": "pattern:microservices-auth",
-        "webhooks": "pattern:webhooks",
-        "repo-first": "core:repo-first",
-    }
-    for pattern in patterns:
-        mapped = pattern_map.get(pattern, pattern)
-        module_ids.append(mapped)
-
-    module_ids.extend(_decision_module_ids(profile_data.get("decisions", {})))
-
-    language = normalize_language(str(profile_data.get("language", "pl")))
-    lang_module = language_module_id(language)
+    module_ids.extend(_decision_module_ids(profile_data.get("decisions", {}), mappings))
 
     # Domyślnie core jeśli profil nie wyłącza
     if profile_data.get("core", True):
         module_ids = _merge_unique(
-            ["core:repo-first", lang_module, "core:external-knowledge", "core:tooling-rtk"],
+            [
+                "core:repo-first",
+                mappings.languages.module_for(language),
+                "core:external-knowledge",
+                "core:tooling-rtk",
+            ],
             module_ids,
         )
 
-    module_ids = _remap_language_modules(module_ids, language)
-    module_ids = _apply_codegen(module_ids, str(profile_data.get("codegen", "orval")))
-    auth_variant = normalize_auth_variant(profile_data.get("decisions", {}).get("auth"))
-    module_ids = _apply_auth_variant(module_ids, auth_variant)
-    module_ids = _normalize_module_ids(module_ids)
+    resolved = apply_profile_decisions(
+        module_ids,
+        manifest=manifest,
+        language=language,
+        selections=selections,
+    )
 
     # Walidacja — tylko znane moduły
-    return [mid for mid in module_ids if mid in manifest.modules]
+    return [mid for mid in resolved if mid in manifest.modules]
 
 
 def _build_bundle_content(
@@ -471,10 +543,16 @@ def _build_bundle_content(
     module_ids: list[str],
     manifest: Manifest,
 ) -> ResolvedBundle:
-    """Złóż treść Markdown bundle'a z plików modułów."""
+    """
+    Złóż treść Markdown bundle'a z plików modułów.
+
+    Precondition: ``module_ids`` przeszły już przez ``apply_profile_decisions`` —
+    są kanoniczne i odduplikowane. Ta funkcja nie normalizuje ponownie, żeby
+    kolejność transformacji miała dokładnie jedno miejsce (ADR-0002).
+    """
     parts: list[str] = []
     missing: list[str] = []
-    canonical_ids = _normalize_module_ids(module_ids)
+    canonical_ids = list(module_ids)
 
     for module_id in canonical_ids:
         info = manifest.modules.get(module_id)
@@ -625,44 +703,59 @@ def resolve_profile(
     codegen = normalize_codegen(
         codegen_override
         if codegen_override is not None
-        else str(profile_data.get("codegen", "orval"))
+        else str(profile_data.get("codegen", "orval")),
+        manifest,
     )
-    profile_data = {**profile_data, "language": language, "codegen": codegen}
+    profile_data: dict[str, Any] = {**profile_data, "language": language, "codegen": codegen}
+    selections = profile_selections(profile_data, manifest.mappings)
 
-    enabled_modules = _collect_module_ids(profile_data, manifest)
+    def _pipeline(module_ids: list[str]) -> tuple[str, ...]:
+        """Jeden seam transformacji — ta sama kolejność dla `enabled` i dla bundle'i."""
+        return apply_profile_decisions(
+            module_ids,
+            manifest=manifest,
+            language=language,
+            selections=selections,
+        )
+
+    enabled_modules = _collect_module_ids(
+        profile_data,
+        manifest,
+        language=language,
+        selections=selections,
+    )
 
     bundles_config = _merge_bundle_configs(
         manifest.default_bundles,
         profile_data.get("bundles", {}),
     )
-    bundles_config = _inject_infra_bundles(bundles_config, profile_data)
-    auth_variant = normalize_auth_variant(profile_data.get("decisions", {}).get("auth"))
-    bundles_config = {
-        name: _remap_language_modules(
-            _apply_auth_variant(_apply_codegen(list(module_ids), codegen), auth_variant),
-            language,
-        )
-        for name, module_ids in bundles_config.items()
-    }
+    bundles_config = _inject_infra_bundles(bundles_config, profile_data, manifest.mappings)
 
     bundles: dict[str, ResolvedBundle] = {}
     for bundle_name, module_ids in bundles_config.items():
-        bundles[bundle_name] = _build_bundle_content(bundle_name, module_ids, manifest)
+        bundles[bundle_name] = _build_bundle_content(
+            bundle_name, list(_pipeline(list(module_ids))), manifest
+        )
 
     all_from_bundles: list[str] = []
     for bundle in bundles.values():
         all_from_bundles.extend(list(bundle.module_ids))
-    enabled_modules = _merge_unique(enabled_modules, all_from_bundles)
-    enabled_modules = _remap_language_modules(enabled_modules, language)
-    enabled_modules = [mid for mid in enabled_modules if mid in manifest.modules]
+    enabled_modules = [
+        mid
+        for mid in _pipeline(_merge_unique(enabled_modules, all_from_bundles))
+        if mid in manifest.modules
+    ]
 
     overlay_content = _load_overlays(profile_data, resolved_workspace, extra_overlays)
+    unknown_decisions = unrecognised_decisions(profile_data, manifest.mappings)
+    deprecated_aliases = used_aliases(profile_data, manifest.mappings)
+    lang_module = manifest.mappings.languages.module_for(language)
 
     index_lines = [
         f"# Instruction index: {profile_data.get('name', resolved_workspace.name)}",
         "",
         f"- Język: {language}",
-        f"- Moduł języka: `{language_module_id(language)}`",
+        f"- Moduł języka: `{lang_module}`",
         f"- Codegen: {codegen}",
         f"- Profil: `{profile_path}`",
         f"- Workspace: `{resolved_workspace}`",
@@ -680,6 +773,20 @@ def resolve_profile(
         missing_note = f" (brak: {', '.join(bundle.missing_modules)})" if bundle.missing_modules else ""
         index_lines.append(f"- `{name}` — {len(bundle.module_ids)} modułów{missing_note}")
 
+    if unknown_decisions:
+        index_lines.extend(["", "## Nierozpoznane decyzje", ""])
+        index_lines.extend(
+            f"- `{slot}: {value}` — manifest nie zna tej wartości; moduł nie został włączony"
+            for slot, value in unknown_decisions
+        )
+
+    if deprecated_aliases:
+        index_lines.extend(["", "## Aliasy do migracji", ""])
+        index_lines.extend(
+            f"- `{alias}` → `{target}` — stara pisownia, działa nadal; zaktualizuj profil"
+            for alias, target in deprecated_aliases
+        )
+
     if overlay_content:
         index_lines.extend(["", "## Overlay", "", "Projekt ma lokalny overlay — użyj `guides://overlay`."])
 
@@ -694,4 +801,7 @@ def resolve_profile(
         bundles=bundles,
         overlay_content=overlay_content,
         index_markdown="\n".join(index_lines),
+        language_module_id=lang_module,
+        unrecognised_decisions=unknown_decisions,
+        deprecated_aliases=deprecated_aliases,
     )

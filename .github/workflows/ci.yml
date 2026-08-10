@@ -25,6 +25,11 @@ jobs:
       - name: Unit tests (+ suity powłoki)
         run: uv run python -m unittest discover -s tests
 
+      # `tests/` jest importowalne w runtime (patrz [tool.ty.environment] w pyproject),
+      # więc type checker musi biec z tą samą konfiguracją co IDE.
+      - name: Typecheck
+        run: uv tool run ty check
+
       - name: Smoke FastMCP import (mcp 1.x pin)
         run: |
           uv run python -c "from mcp.server.fastmcp import FastMCP; import importlib.metadata as m; v=m.version('mcp'); assert v.startswith('1.'), v; print('mcp', v, 'OK')"

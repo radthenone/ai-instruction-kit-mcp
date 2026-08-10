@@ -1,7 +1,7 @@
 # Rejestr modułów instruction-kit
 # Konwencja ID: <warstwa>:<kategoria>:<wariant>  np. infra:database:postgres
 
-version: "3"
+version: "4"
 
 modules:
   # ─── Core ───────────────────────────────────────────
@@ -471,3 +471,96 @@ default_bundles:
     - pattern:capability-overview
     - pattern:capability-provider
     - pattern:providers-and-settings
+
+# ─── Mapowania: Profil → Module ID ──────────────────────
+# ADR-0001: reguły włączania modułów żyją tutaj, nie w resolver.py.
+# Dodanie nowej technologii = plik .md + wpis w `modules` + wpis niżej. Zero Pythona.
+mappings:
+  # Stack rozwija się do listy modułów.
+  stacks:
+    django-drf:
+      - stack:django-drf
+      - stack:django-drf:structure
+      - stack:django-drf:backend-standard
+      - stack:django-drf:backend-instructions
+    expo-router:
+      - stack:expo-router
+      - stack:expo-router:structure
+      - stack:expo-router:frontend-instructions
+
+  capabilities:
+    auth: capability:auth
+    files: capability:files
+    payments: capability:payments
+
+  domains:
+    shop: domain:shop
+    ecommerce: domain:shop
+
+  patterns:
+    capability-provider: pattern:capability-provider
+    capability-overview: pattern:capability-overview
+    providers-and-settings: pattern:providers-and-settings
+    gateway-nginx: pattern:gateway-nginx
+    microservices-auth: pattern:microservices-auth
+    webhooks: pattern:webhooks
+    repo-first: core:repo-first
+
+  # Slot → dozwolona Decyzja → moduł. Slot `auth` jest w `variants` (dokleja wariant
+  # do modułu bazowego zamiast wnosić własny moduł infra).
+  slots:
+    database:
+      postgres: infra:database:postgres
+    cache:
+      redis: infra:cache:redis
+    queue:
+      redis: infra:queue:redis
+      rabbitmq: infra:queue:rabbitmq
+    storage:
+      s3: infra:storage:s3
+      minio: infra:storage:s3
+      aws: infra:storage:s3
+    search:
+      postgres: infra:search:postgres
+      meilisearch: infra:search:meilisearch
+    tasks:
+      celery: infra:tasks:celery
+
+  # Wariant: wstaw moduł zaraz po module bazowym.
+  variants:
+    auth:
+      base: capability:auth
+      default: custom
+      values:
+        allauth: capability:auth:allauth
+        jwt: capability:auth:jwt
+        custom: capability:auth:custom
+
+  # Substytucja: podmień moduł bazowy na wariant.
+  substitutions:
+    codegen:
+      base: arch:api-contract
+      default: orval
+      values:
+        orval: arch:api-contract
+        none: arch:api-contract:none
+        graphql: arch:api-contract:graphql
+
+  # Substytucja sterowana kluczem najwyższego poziomu profilu (`codegen:`),
+  # Wariant — wartością ze `decisions:`. Moduły językowe scalają się do jednego.
+  languages:
+    default: pl
+    values:
+      pl: core:language-pl
+      en: core:language-en
+
+  # ADR-0003: Alias działa dalej, ale raportuje się w indeksie jako do migracji.
+  # Dwie przestrzenie nazw, bo Alias Module ID i Alias nazwy Capability rozwiązują
+  # się w innych momentach: `modules` przy normalizacji ID, `names` przy mapowaniu
+  # sekcji profilu (capabilities / domains / patterns).
+  aliases:
+    modules:
+      capability:files-storage: capability:files
+    names:
+      files-storage: files
+      storage: files

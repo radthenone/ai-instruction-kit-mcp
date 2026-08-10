@@ -16,7 +16,6 @@ from guides.clients import (
 from guides.kit_status import check_kit_updates
 from guides.manifest import find_kit_root, load_manifest
 from guides.resolver import (
-    language_module_id,
     normalize_codegen,
     normalize_language,
     resolve_preset_path,
@@ -142,7 +141,7 @@ def get_language() -> str:
     """
     resolved = _get_resolved()
     lang = resolved.language
-    module_id = language_module_id(lang)
+    module_id = resolved.language_module_id
     if lang == "en":
         prose = (
             "Agent replies, public docstrings, issue/PR bodies, review comments, "
@@ -429,7 +428,8 @@ def main() -> None:
 
     codegen_cli = args.codegen or os.environ.get("GUIDES_CODEGEN")
     if codegen_cli:
-        _codegen_override = normalize_codegen(codegen_cli)
+        # Dozwolone wartości zna manifest (mappings.substitutions.codegen), nie ten plik.
+        _codegen_override = normalize_codegen(codegen_cli, load_manifest(_kit_root))
 
     clients_raw = args.clients if args.clients is not None else os.environ.get("GUIDES_CLIENTS")
     try:
