@@ -5,8 +5,12 @@ __pycache__/
 dist/
 *.egg-info/
 
-# Downloaded agent skills & lockfiles
+# Downloaded agent skills & lockfiles (npx skills add …) — duplikat globalnych
+# skills z ~/.agents/skills/, nie należą do kita.
 .agents/skills/
+# Gwiazdka jest nośna: `.cursor/skills/` (bez niej) wyklucza sam katalog, git do
+# niego nie schodzi i negacja niżej przestaje działać. Nie upraszczać.
 .cursor/skills/*
+# Skill kitowy (bootstrap kopiuje go z templates/cursor/skills/).
 !.cursor/skills/compact/
 skills-lock.json
