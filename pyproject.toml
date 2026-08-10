@@ -16,6 +16,12 @@ guides-mcp = "guides.server:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# `unittest discover -s tests` i pytest wkładają `tests/` na sys.path, więc suity
+# mogą się nawzajem importować (test_shell_suites → test_bash_hook_launcher).
+# Type checker musi widzieć ten sam import root.
+[tool.ty.environment]
+extra-paths = ["tests"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/guides"]
 

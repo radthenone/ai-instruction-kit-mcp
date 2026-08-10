@@ -19,7 +19,10 @@ jobs:
       - name: Sync dependencies
         run: uv sync
 
-      - name: Unit tests
+      # Suity powłoki (tests/*.sh) i standalone tests/test_bash_hook_launcher.py wchodzą
+      # tu przez tests/test_shell_suites.py — jeden seam, żadnej drugiej listy w YAML.
+      # GitHub ustawia CI=true, więc brak basha jest błędem, nie cichym skipem.
+      - name: Unit tests (+ suity powłoki)
         run: uv run python -m unittest discover -s tests
 
       - name: Smoke FastMCP import (mcp 1.x pin)

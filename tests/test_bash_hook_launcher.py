@@ -63,6 +63,33 @@ def expected_gate_push_permission(cwd: Path) -> str:
     return "ask"
 
 
+def is_ci() -> bool:
+    """
+    Czy działamy na CI (GitHub Actions ustawia ``CI=true``)?
+
+    Na CI brak wymaganego narzędzia jest błędem, nie skipem — cichy skip odtworzyłby
+    lukę, przez którą te suity latami nie wykonywały się w pipeline.
+
+    Returns:
+        bool: ``True`` gdy ``CI`` ustawione na coś innego niż ``0`` / ``false``.
+    """
+    value = os.environ.get("CI", "").strip().lower()
+    return value not in ("", "0", "false")
+
+
+def posix_path(path: Path) -> str:
+    """
+    Ścieżka w formie akceptowanej przez bash także na Windows (Git Bash).
+
+    Args:
+        path: Ścieżka do skryptu.
+
+    Returns:
+        str: Ścieżka z ukośnikami ``/``.
+    """
+    return str(path).replace("\\", "/")
+
+
 def resolve_bash() -> str | None:
     """
     Znajdź bash do testów: na Windows preferuj Git Bash, inaczej PATH.
@@ -88,6 +115,9 @@ def resolve_bash() -> str | None:
 def main() -> int:
     bash = resolve_bash()
     if not bash:
+        if is_ci():
+            print("FAIL no bash on CI — hook checks must run", file=sys.stderr)
+            return 1
         print("SKIP no bash on PATH / Git for Windows", file=sys.stderr)
         return 0
 
@@ -103,7 +133,7 @@ def main() -> int:
     for script, payload, expect in cases:
         hook = ROOT / ".cursor" / "hooks" / script
         proc = subprocess.run(
-            [bash, "--noprofile", "--norc", str(hook).replace("\\", "/")],
+            [bash, "--noprofile", "--norc", posix_path(hook)],
             input=json.dumps(payload).encode("utf-8"),
             capture_output=True,
             cwd=str(ROOT),
@@ -188,6 +218,9 @@ def main() -> int:
         finally:
             if noisy.is_file():
                 noisy.unlink()
+    elif is_ci():
+        print("FAIL brak node / invoke-hook.js na CI — check musi się wykonać", file=sys.stderr)
+        failed += 1
     else:
         print("SKIP invoke-hook.js (brak node lub pliku)")
 
