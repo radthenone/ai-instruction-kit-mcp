@@ -108,3 +108,17 @@ Format stack review: `Severity | Location | Finding | Fix`.
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
 Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main/master/dev / reset --hard).
 Bootstrap: `scripts/bootstrap-project.sh`.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`CONTEXT.md` + `docs/adr/`). See `docs/agents/domain.md`.
