@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from guides.manifest import load_manifest
 from guides.resolver import (
     normalize_auth_variant,
     normalize_language,
@@ -14,6 +15,7 @@ from guides.resolver import (
 )
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = load_manifest(KIT_ROOT)
 
 
 class TestResolver(unittest.TestCase):
@@ -152,7 +154,7 @@ class TestResolver(unittest.TestCase):
         from guides.resolver import normalize_module_id
 
         self.assertEqual(
-            normalize_module_id("capability:files-storage"),
+            normalize_module_id("capability:files-storage", MANIFEST),
             "capability:files",
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -180,17 +182,17 @@ class TestResolver(unittest.TestCase):
 
     def test_normalize_auth_variant_default_custom(self) -> None:
         """Brak/nierozpoznana wartość decisions.auth → default custom."""
-        self.assertEqual(normalize_auth_variant(None), "custom")
-        self.assertEqual(normalize_auth_variant("unknown"), "custom")
-        self.assertEqual(normalize_auth_variant("ALLAUTH"), "allauth")
-        self.assertEqual(normalize_auth_variant(" jwt "), "jwt")
-        self.assertEqual(normalize_auth_variant("custom"), "custom")
+        self.assertEqual(normalize_auth_variant(None, MANIFEST), "custom")
+        self.assertEqual(normalize_auth_variant("unknown", MANIFEST), "custom")
+        self.assertEqual(normalize_auth_variant("ALLAUTH", MANIFEST), "allauth")
+        self.assertEqual(normalize_auth_variant(" jwt ", MANIFEST), "jwt")
+        self.assertEqual(normalize_auth_variant("custom", MANIFEST), "custom")
 
     def test_normalize_auth_variant_non_string_does_not_crash(self) -> None:
         """decisions.auth jako YAML bool/int (niecudzysłowione) nie crashuje, default custom."""
         for raw in (True, False, 1, 0, ["allauth"], {"a": 1}):
             with self.subTest(raw=raw):
-                self.assertEqual(normalize_auth_variant(raw), "custom")
+                self.assertEqual(normalize_auth_variant(raw, MANIFEST), "custom")
 
     def test_shop_profile_auth_variant_allauth(self) -> None:
         """shop.yaml ma decisions.auth: allauth — wariant trafia do enabled i do bundle backend."""

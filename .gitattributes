@@ -1,0 +1,19 @@
+# Normalize every recognized text file to LF in the Git index.
+* text=auto
+
+# Executed by Linux CI: must remain LF even on Windows.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Repository documentation and agent instructions.
+*.md   text eol=lf
+
+# Binary assets must never undergo EOL conversion.
+*.png  -text
+*.jpg  -text
+*.jpeg -text
+*.gif  -text
+*.ico  -text
+*.pdf  -text
