@@ -521,7 +521,8 @@ Sama ścieżka `.sh` w `hooks.json` → Cursor na Windows robi `bash --login -i`
 Terminal IDE (Git Bash) bez zmian — to tylko spawn hooków.
 
 Szablon: `templates/cursor/hooks/gate-destructive.sh` (bootstrap → `.cursor/hooks/`).  
-Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh`.
+Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh` — odpalane też przez CI
+(`tests/test_shell_suites.py` wciąga suity powłoki do `unittest discover`).
 
 ## Code review (Bugbot + GitHub)
 
@@ -541,14 +542,15 @@ Bugbot = blocking/security. Stack `/review-*` = konwencje z MCP (`Severity | Loc
 Przy `codegen: orval` w overlay — po zmianie API regeneruj klienta.
 
 
-| Warstwa      | Plik / akcja                                             |
-| ------------ | -------------------------------------------------------- |
-| Lokalnie     | `/review-bugbot`, `/review-security`, `/review-backend`… |
-| Przed push   | `.cursor/hooks/gate-push.sh` + `gate-destructive.sh`     |
-| Na PR        | Bugbot (GitHub integration)                              |
-| Reguły       | `.cursor/BUGBOT.md`                                      |
-| CI (ten kit) | `.github/workflows/ci.yml` — unittest + smoke FastMCP    |
-| Hook regresja | `tests/test_gate_destructive.sh` (force / `+ref` / `-f`) |
+| Warstwa            | Plik / akcja                                                                |
+| ------------------ | --------------------------------------------------------------------------- |
+| Lokalnie           | `/review-bugbot`, `/review-security`, `/review-backend`…                    |
+| Przed push         | `.cursor/hooks/gate-push.sh` + `gate-destructive.sh`                        |
+| Na PR              | Bugbot (GitHub integration)                                                 |
+| Reguły             | `.cursor/BUGBOT.md`                                                         |
+| CI (ten kit)       | `.github/workflows/ci.yml` — unittest (w tym suity powłoki) + smoke FastMCP |
+| Hook regresja      | `tests/test_gate_destructive.sh` (force / `+ref` / `-f`)                    |
+| Suity powłoki w CI | `tests/test_shell_suites.py` — jedyny adapter `*.sh` → `unittest discover`  |
 
 
 
