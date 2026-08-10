@@ -4,4 +4,9 @@ __pycache__/
 .pytest_cache/
 dist/
 *.egg-info/
-TEMP.md
+
+# Downloaded agent skills & lockfiles
+.agents/skills/
+.cursor/skills/*
+!.cursor/skills/compact/
+skills-lock.json
