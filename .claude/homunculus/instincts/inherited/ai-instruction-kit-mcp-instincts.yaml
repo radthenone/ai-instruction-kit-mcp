@@ -1,0 +1,147 @@
+# Instincts generated from https://github.com/radthenone/ai-instruction-kit-mcp
+# Generated: 2026-08-10T13:14:00.216Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: ai-instruction-kit-mcp-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: chore, test, refactor, fix, docs
+
+## Evidence
+
+- 8 commits analyzed
+- Detected conventional commit pattern
+- Examples: test(ci): run shell suites through unittest discover, chore: scaffold mattpocock-skills repo config (tracker, labels, domain docs)
+
+---
+id: ai-instruction-kit-mcp-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Commit Length
+
+## Action
+
+Write moderate-length commit messages (~58 characters)
+
+## Evidence
+
+- Average commit message length: 58 chars
+- Based on 8 commits
+
+---
+id: ai-instruction-kit-mcp-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: ai-instruction-kit-mcp-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: ai-instruction-kit-mcp-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: ai-instruction-kit-mcp-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: ai-instruction-kit-mcp-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/radthenone/ai-instruction-kit-mcp
+---
+
+# Ai Instruction Kit Mcp Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
