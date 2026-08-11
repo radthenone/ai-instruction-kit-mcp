@@ -14,3 +14,4 @@ dist/
 # Skill kitowy (bootstrap kopiuje go z templates/cursor/skills/).
 !.cursor/skills/compact/
 skills-lock.json
+usage/
