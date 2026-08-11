@@ -584,7 +584,7 @@ echo "  + .ai/.kit-bootstrap.json (stamp dla check_kit_status)"
 echo ""
 echo "Gotowe. Zrestartuj IDE w $TARGET."
 echo "Clients: ${CLIENTS_ARG}"
-echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent-*"
+echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent-*, /teacher-*"
 if client_enabled cursor; then
   echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
 fi
