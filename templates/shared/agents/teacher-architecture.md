@@ -68,6 +68,7 @@ Bez eseju. Sekcja = kilka zdań albo lista.
 - **Środowiska i uruchamianie** — Docker Compose jako definicja środowiska, Taskfile jako jedyne wejście do komend (`task up`, `task test`), pyenv/uv i bun jako sposób na powtarzalność wersji. Jeśli nowa osoba nie odpali projektu jedną komendą, architektura ma dziurę.
 - **Migracje i dane** — schemat jest najtrwalszą częścią systemu i najdroższą w zmianie. Backfill osobno, wdrożenie bez downtime, plan cofnięcia.
 - **Auth i tenant** — model tożsamości i izolacji danych to decyzja jednokierunkowa. JWT vs sesje: kto unieważnia i jak szybko.
+- **Strategia typowania** — to decyzja architektoniczna, nie preferencja stylu. Ustal, gdzie typ jest **generowany** z kontraktu (OpenAPI → Orval), gdzie **wnioskowany** ze schematu walidacji (Zod, Pydantic), a gdzie pisany ręcznie — każdy ręcznie przepisany typ to kolejne źródło prawdy do rozjazdu. Po stronie Pythona typuj warstwami (logika domenowa tak, ORM i widoki oszczędnie), nie całym repo naraz; `strict` wszędzie od pierwszego dnia to najczęstszy powód porzucenia typecheckera. Gate w CI (`mypy`/`pyright` + `tsc`) decyduje, czy to żyje, czy jest dekoracją.
 - **Obserwowalność i CI** — logi, błędy, metryki oraz test, który złapie regresję. Architektura, której nie widać w działaniu, jest tylko rysunkiem.
 - **Koszt utrzymania > elegancja** — warstwa abstrakcji dodana „na przyszłość” to dług płacony dziś. Dodaj ją przy drugim lub trzecim realnym przypadku, nie przy pierwszym wyobrażonym.
 

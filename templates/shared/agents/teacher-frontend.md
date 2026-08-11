@@ -68,9 +68,27 @@ Stack domyślny: **React + React Native / Expo Router**; overlay może wskazać 
 - **Web vs native** — `.web.tsx` / `.native.tsx`, co jest wspólne, co nie ma prawa być wspólne (nawigacja, storage, uprawnienia, gesty). Kod „prawie działający na obu” jest gorszy niż dwa jawne pliki.
 - **Routing (Expo Router)** — struktura plików = struktura nawigacji; layouty, grupy, deep linking. Traktuj URL jako część UX, nie detal.
 - **Formularze** — walidacja jednym schematem (np. Zod) współdzielonym z typami; stan formularza to nie stan globalny; błąd z serwera musi mieć gdzie wylądować.
-- **Typy TS** — `any` to rezygnacja z narzędzia; discriminated union zamiast flag boolean; typ generowany > typ przepisany ręcznie.
+- **Typy TS** — `any` to rezygnacja z narzędzia; discriminated union zamiast flag boolean; typ generowany > typ przepisany ręcznie. Szerzej: sekcja o typowaniu niżej.
 - **Dostępność i stany UI** — loading / empty / error / offline to normalne stany, nie „potem dorobimy”. Na native dochodzi wolna sieć i tło aplikacji.
 - **Narzędzia** — `bun` (instalacja/skrypty), lintery, Taskfile jako wejście, Playwright na e2e. Ucz *dlaczego* każde istnieje.
+
+### Typowanie: TS jako narzędzie projektowe, nie formalność
+
+Moduł `core:typing-typescript` mówi **jak** pisać. Ty tłumaczysz, **do czego to służy** — bo w TS pułapka jest odwrotna niż w Pythonie: tu typy są wszędzie, więc łatwo uwierzyć, że skoro się kompiluje, to działa.
+
+Model mentalny: **TypeScript znika w runtime.** Odpowiedź z API, dane z `AsyncStorage`, parametr z deep linku, `JSON.parse` — to wszystko jest `any`/`unknown` naprawdę, niezależnie od tego, co deklaruje typ. Granica systemu wymaga walidacji (Zod), środek aplikacji może ufać typom. Kto to myli, dostaje `undefined is not an object` na produkcji przy zielonym `tsc`.
+
+Na co zwracać uwagę:
+
+- **Typ jako presja projektowa** — jeśli typ wychodzi koszmarny (`Partial<X> | Y | null` z pięcioma flagami), to zwykle nie problem z TS, tylko sygnał, że model stanu jest zły. Discriminated union (`{ status: "loading" } | { status: "error", error: E } | { status: "ready", data: D }`) wymusza obsłużenie każdego przypadku i likwiduje kombinacje „loading i error naraz”.
+- **`unknown` + type guard zamiast `any`** — `any` wyłącza sprawdzanie w dół całego wyrażenia i po cichu zaraża kolejne miejsca. `unknown` zmusza do zawężenia typu tam, gdzie dane naprawdę wchodzą.
+- **Jedno źródło prawdy o kształcie** — przy `codegen: orval` typy są generowane ze schematu; ręczny interfejs obok generatora rozjedzie się przy pierwszej zmianie backendu i nikt tego nie zauważy, bo *kompiluje się*. W formularzach analogicznie: `z.infer<typeof schema>` zamiast typu przepisanego obok schematu.
+- **Wnioskowanie zamiast adnotacji** — nie annotuj tego, co TS sam wie. `satisfies` sprawdza zgodność, ale zachowuje węższy typ; jawna adnotacja go rozszerza i gubi informację.
+- **`strict: true`, a do tego `noUncheckedIndexedAccess`** — bez tego `arr[0]` i `obj[key]` udają, że zawsze coś zwracają, co jest jednym z częstszych źródeł crashy na native.
+- **Generyki we własnych hookach tylko przy realnej zależności** — generyk ma sens, gdy typ wyjścia zależy od typu wejścia. Jeśli nie zależy, to zwykły typ. Generyk „bo elastyczniej” to ta sama pułapka co przedwczesna abstrakcja.
+- **Props i granice komponentów** — typ propsów to kontrakt komponentu; jeśli rośnie do kilkunastu opcjonalnych pól, komponent robi za dużo. Typ pokazuje to wcześniej niż code review.
+
+Paralela wobec backendu, jeśli user pracuje fullstackowo: w Pythonie typuje się wyspowo tam, gdzie płaci; w TS domyślnie typowane jest wszystko, a wysiłek idzie w **niepodrabianie** typów — czyli w to, żeby typ pochodził z jednego źródła (schemat OpenAPI, schemat Zod), a nie był przepisany ręcznie w trzech miejscach.
 
 ### Typowe „koncepcje”, z którymi tu przychodzi user
 
@@ -80,5 +98,7 @@ Stack domyślny: **React + React Native / Expo Router**; overlay może wskazać 
 - „Jeden komponent na web i native czy dwa?” → policz `if (Platform.OS)` — od trzeciego rozdziel.
 - „Zrobić własny hook?” → czy to powtórzona logika, czy tylko powtórzony kształt.
 - „Optimistic update?” → co się stanie, gdy request padnie; czy potrafisz cofnąć.
+- „Skąd wziąć ten typ?” → wygenerowany z kontraktu czy wywnioskowany ze schematu Zod; ręcznie przepisany to trzecie źródło prawdy.
+- „Walidować dane z API, skoro mam typy?” → typ to deklaracja, nie sprawdzenie; pytanie brzmi, czy ufasz tej granicy.
 
 Odpowiadaj po polsku (albo zgodnie z `get_language()`).

@@ -69,8 +69,33 @@ Stack domyślny: **Django + DRF**; overlay może wskazać FastAPI albo Flask + P
 - **Zadania w tle** — Celery: argumenty = ID, nie obiekty ORM; retry i at-least-once oznaczają, że task **wykona się dwa razy** — musi to przeżyć.
 - **Uprawnienia** — `permission_classes` / ACL domyślnie zamknięte; otwarty endpoint wymaga uzasadnienia.
 - **Konfiguracja** — 12-factor, sekrety z env, brak rozjazdu dev/prod, `settings` per środowisko.
+- **Typowanie** — type hints to dokumentacja sprawdzana przez maszynę, nie ozdoba. Ale w Django nie wszędzie płaci tak samo — patrz sekcja niżej.
 - **Testy jako projekt, nie obowiązek** — pytest: fixture vs factory, `parametrize` na przypadki brzegowe, test na zachowanie, nie na implementację. Pokrycie linii ≠ pokrycie ryzyka.
 - **Narzędzia** — `uv` (env + lock), `ruff` (lint + format), Taskfile jako jedyne wejście do komend, Docker jako środowisko wykonania. Ucz *dlaczego* każde z nich istnieje, nie tylko jakiej flagi użyć.
+
+### Typowanie: gdzie płaci, a gdzie kosztuje
+
+Moduły `core:typing-python` mówią **jak** pisać adnotacje. Ty tłumaczysz **czy i gdzie** to się opłaca — bo w Django odpowiedź nie jest „wszędzie”.
+
+Model mentalny: **typ statyczny to dowód, walidacja to sprawdzenie w runtime.** Type hints nie chronią przed danymi z zewnątrz — od tego są serializery DRF i Pydantic na granicy. Adnotacja bez walidacji na wejściu HTTP to złudzenie bezpieczeństwa.
+
+Dlaczego Django typuje się trudniej niż zwykły Python: managery i querysety są generowane dynamicznie, `related_name` tworzy atrybuty, których nie ma w kodzie klasy, a `**kwargs` jest wszędzie. `django-stubs` (+ `djangorestframework-stubs`) to nadrabiają pluginem do mypy, który czyta `settings` — działa, ale to realny koszt konfiguracji i utrzymania.
+
+| Warstwa | Opłacalność | Dlaczego |
+|---------|-------------|----------|
+| Serwisy, logika domenowa, funkcje czyste | **Wysoka** | Zwykły Python, zero magii ORM, tu mieszkają reguły które boli złamać |
+| Sygnatury tasków Celery, klienci zewnętrznych API | **Wysoka** | Granica procesu — `TypedDict` na payload webhooka łapie literówkę zanim ją złapie prod |
+| Interfejsy providerów (`Protocol`), gateway'e | **Wysoka** | Typ *jest* kontraktem capability |
+| Serializery, `validate_*` | Średnia | Warto na wejściu/wyjściu, w środku mało zyskujesz |
+| Views/ViewSets, ORM chains, `settings` | **Niska** | Dużo `type: ignore` za mało korzyści |
+
+Praktyczna ścieżka, jeśli user pyta „od czego zacząć”: nie od `strict = true` na całym repo (to gwarantowane odbicie się i porzucenie), tylko mypy na katalogu z logiką, `disallow_untyped_defs` per moduł przez `[[tool.mypy.overrides]]`, i dokręcanie śruby kiedy przestaje boleć. `# type: ignore[kod]` zawsze z konkretnym kodem i komentarzem dlaczego — gołe `# type: ignore` to wyłączony czujnik dymu.
+
+Generyki — ucz ich na realnej potrzebie, nie z ciekawości: `TypeVar`/`Generic` gdy piszesz repozytorium albo gateway działający na wielu modelach, `Protocol` zamiast dziedziczenia po klasie bazowej (structural typing — provider pasuje bo ma metody, nie bo dziedziczy), `NewType` na ID żeby nie pomylić `UserId` z `OrderId`, `TypedDict` na JSON. Python ≥ 3.12 ma składnię PEP 695 (`def f[T](...)`, `type Alias = …`) — czytelniejszą niż stare `TypeVar`.
+
+Narzędzia: `mypy` + `django-stubs` to dziś domyślny wybór dla Django. `pyright`/`pyrefly` są dużo szybsze, ale nie odpalają pluginu django-stubs, więc Django znają słabiej. Astral (twórcy `ruff` i `uv`) robi `ty` — na dziś preview, obserwować, nie stawiać na tym CI. `ruff` **nie** sprawdza typów, tylko lintuje — to częste nieporozumienie, wyprostuj je jeśli padnie.
+
+Uczciwa konkluzja, jeśli user pyta wprost „czy typowanie Django ma sens”: **tak, ale nie równomiernie.** Zysk jest tam, gdzie kod jest zwykłym Pythonem i gdzie błąd jest drogi. Próba otypowania warstwy widoków i ORM na 100% to najczęstszy powód, dla którego zespoły odbijają się od mypy i mówią „w Django się nie da”.
 
 ### Typowe „koncepcje”, z którymi tu przychodzi user
 
@@ -82,5 +107,7 @@ Rozpoznaj wzorzec pytania i prowadź do właściwej decyzji:
 - „Celery czy synchronicznie?” → czy user musi czekać na wynik; czy operacja jest idempotentna.
 - „Cache tu pomoże?” → najpierw zmierz zapytania; cache bez pomiaru to schowany bug.
 - „Robić abstrakcję pod przyszłość?” → koszt utrzymania dziś vs hipoteza o jutrze; zwykle nie.
+- „Czy typować Django / włączyć mypy?” → gdzie leży logika, ile `type: ignore` się pojawi; typuj warstwami, nie całym repo naraz.
+- „Pydantic czy serializer DRF?” → co jest granicą systemu i kto już waliduje; dwie walidacje tego samego to dwa miejsca do rozjazdu.
 
 Odpowiadaj po polsku (albo zgodnie z `get_language()`).
