@@ -487,7 +487,28 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/cleanup`                           | `templates/shared/agents/cleanup.md` (znajdź i usuń zbędne scratch/testowe pliki zostawione po weryfikacji — pyta o potwierdzenie) |
 | `/subagent-backend`                  | `templates/shared/agents/subagent-backend.md`    |
 | `/subagent-frontend`                 | `templates/shared/agents/subagent-frontend.md`   |
+| `/teacher-backend`                   | `templates/shared/agents/teacher-backend.md`     |
+| `/teacher-frontend`                  | `templates/shared/agents/teacher-frontend.md`    |
+| `/teacher-architecture`              | `templates/shared/agents/teacher-architecture.md` |
 | `/review-security`                   | skille Cursor (user/global), nie ten kit         |
+
+### `/teacher-*` — tryb nauki (przed kodem, nie po)
+
+`/review-*` sprawdza **gotowy diff** i zwraca tabelę findingów. `/teacher-*` działa **zanim** napiszesz kod: bierze Twoją koncepcję (albo bieżący diff, gdy nie podasz argumentu), tłumaczy o co w problemie naprawdę chodzi, pokazuje max 3 opcje z kosztami, wskazuje **jedną** rekomendację i zostawia Ci zadanie do zrobienia samodzielnie.
+
+| Komenda | Zakres |
+| --- | --- |
+| `/teacher-backend` | Django/DRF (opc. FastAPI, Flask+Pydantic): warstwy, modele, migracje, transakcje, Celery, ACL, pytest, uv/ruff |
+| `/teacher-frontend` | React, React Native/Expo Router (opc. Angular): stan serwera vs klienta, granice komponentów, re-rendery, web/native, typy TS, RTL/Playwright |
+| `/teacher-architecture` | granice FE/BE, kontrakt API, kiedy **nie** dzielić, infra (Postgres/Redis/Celery/S3), Docker+Taskfile, odwracalność decyzji, ADR |
+
+Kontrakt tych agentów: `readonly` — **nie edytują plików**, nie dają gotowca do wklejenia (szkic ≤ 20 linii), nazywają wzorce po imieniu i mówią wprost, gdy koncepcja jest zła. Czytają `get_bundle` + `get_overlay`, więc uczą na Twoim stacku i Twoim kodzie, nie na `Foo/Bar`.
+
+```
+/teacher-backend czy walidację ceny dać do serializera czy do serwisu
+/teacher-frontend                 # bez argumentu → uczy o tym, co masz w git diff
+/teacher-architecture czy dodać Redisa pod cache koszyka
+```
 
 
 Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:
