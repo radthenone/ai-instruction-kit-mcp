@@ -14,3 +14,7 @@ dist/
 # Skill kitowy (bootstrap kopiuje go z templates/cursor/skills/).
 !.cursor/skills/compact/
 skills-lock.json
+# Materiały do nauki pracy z agentami — trzymane lokalnie, poza repo.
+# Ukośnik wiodący zakotwicza wzorzec w roocie: bez niego `usage/` łapałby
+# każdy katalog o tej nazwie na dowolnej głębokości drzewa.
+/docs/usage/

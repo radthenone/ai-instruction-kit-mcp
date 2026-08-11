@@ -9,6 +9,7 @@
 | Docs bibliotek | Context7 (user MCP) |
 | Review stacku | **minimalny zestaw** — zob. `code-review` (nie wszystkie `/review-*`) |
 | Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` (cross API+UI) |
+| Nauka / niepewna koncepcja **przed** kodem | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` (readonly — uczą, nie piszą) |
 | Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
 | Branch / PR | `/git-start`, `/git-check`, `/git-commit`, `/git-end` + `git-branch-pr` |
 | Język prozy | MCP `get_language` / `--language pl\|en` |
@@ -19,7 +20,7 @@ Moduły: `--preset` (kategoria, np. `_base` / `shop`) + opcjonalnie `.ai/project
 Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 
 **Docelowy kontrakt** (`--profile` / `--overlays` / `--codegen` / stack CLI): zob.  
-`docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md` — **CLI codegen jeszcze nie**.
+`docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md` — **CLI codegen jeszcze nie**.
 
 **Wszystkie agenty:** `AGENTS.md` + reguła git-branch-pr. Po PR — Autopilot; nie dubluj TDD Matt+Superpowers.
 

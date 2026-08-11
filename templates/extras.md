@@ -1,7 +1,7 @@
 # Overlay zasad (szablon — **docelowy** kontrakt)
 
 > Ten plik jest szablonem pod przyszłe `--overlays`
-> (design: `docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md`).
+> (design: `docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md`).
 > **Dziś** w runtime nadal używaj `.ai/project.md` + `--workspace` (albo skopiuj sekcje stąd).
 
 ## Codegen (Orval — opcjonalnie)

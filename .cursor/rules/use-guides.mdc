@@ -14,6 +14,7 @@ alwaysApply: true
 | Docs bibliotek | Context7 (user MCP) |
 | Review stacku | **minimalny zestaw** (nie wszystkie `/review-*`) — `code-review.mdc` |
 | Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` |
+| Nauka / niepewna koncepcja **przed** kodem | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` (readonly) |
 | Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
 | Branch / PR | `/git-start` … `/git-end` + `git-branch-pr.mdc` |
 | Skrót czatu | **`/compact` tylko w Cursorze** (alias Summarize) |

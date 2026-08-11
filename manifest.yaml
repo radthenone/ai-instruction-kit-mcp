@@ -25,6 +25,11 @@ modules:
     title: Wiedza zewnętrzna
     tags: [core]
 
+  core:engineering-canon:
+    path: modules/core/engineering-canon.md
+    title: Kanon inżynierski — źródła dobrych praktyk
+    tags: [core, teaching]
+
   core:workflow:
     path: modules/core/workflow.md
     title: Workflow AI
