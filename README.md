@@ -10,12 +10,24 @@ Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) 
 | Argumenty MCP (`--preset`, `--language`, `--clients`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
 | Lista kategorii i fork                       | [`profiles/README.md`](profiles/README.md)              |
 | Kanon agentów / reguł (niezależny od IDE)    | [`templates/shared/`](templates/shared/README.md)       |
-| Multi-client design                          | [design](docs/superpowers/specs/2026-08-05-multi-client-templates-design.md) |
+| Multi-client design                          | [design](docs/specs/2026-08-05-multi-client-templates-design.md) |
 | Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji** (`codegen:` tu)  |
 | Zmiana zestawu modułów vs kategoria          | `.ai/project.profile.yaml` + `--profile` (fork)         |
-| Docelowy kontrakt `--profile` / stack / `--overlays` / `--codegen` | [design overlays](docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI stack jeszcze nie**) |
+| Docelowy kontrakt `--profile` / stack / `--overlays` / `--codegen` | [design overlays](docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI stack jeszcze nie**) |
 | Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
 
+
+## Struktura `docs/`
+
+```text
+docs/
+├── adr/     — decyzje architektoniczne (format Nygarda)
+├── agents/  — kontrakt issue trackera, etykiety triage, docs domenowe
+├── specs/   — projekty przed implementacją
+└── plans/   — plany implementacyjne
+```
+
+> `docs/specs/` i `docs/plans/` nazywały się wcześniej `docs/superpowers/{specs,plans}`. Zmiana jest celowa: Superpowers i `mattpocock/skills` to zewnętrzne biblioteki, z których kit **korzysta** — ich nazwa nie powinna strukturyzować drzewa docs tego repo.
 
 ## Konfiguracja projektu — argumenty `guides-mcp`
 

@@ -30,7 +30,7 @@ Tytuły issue/PR/branch: zawsze EN. Proza (body, docstringi, commity, czat): wyb
 Nie twórz profilu o nazwie konkretnego produktu — produkt = overlay w repo aplikacji (`.ai/project.md`).
 
 > Docelowy kontrakt (`--profile` / `--overlays` / stack CLI):  
-> [design](../docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) — **CLI jeszcze nie**.
+> [design](../docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) — **CLI jeszcze nie**.
 
 ## Nowy projekt (zalecane — zero lokalnego profilu)
 

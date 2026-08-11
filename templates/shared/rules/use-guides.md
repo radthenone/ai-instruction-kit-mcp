@@ -20,7 +20,7 @@ Moduły: `--preset` (kategoria, np. `_base` / `shop`) + opcjonalnie `.ai/project
 Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 
 **Docelowy kontrakt** (`--profile` / `--overlays` / `--codegen` / stack CLI): zob.  
-`docs/superpowers/specs/2026-08-05-mcp-profile-architecture-overlays-design.md` — **CLI codegen jeszcze nie**.
+`docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md` — **CLI codegen jeszcze nie**.
 
 **Wszystkie agenty:** `AGENTS.md` + reguła git-branch-pr. Po PR — Autopilot; nie dubluj TDD Matt+Superpowers.
 
