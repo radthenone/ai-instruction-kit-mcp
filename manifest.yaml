@@ -30,6 +30,11 @@ modules:
     title: Kanon inżynierski — źródła dobrych praktyk
     tags: [core, teaching]
 
+  core:agent-ops-canon:
+    path: modules/core/agent-ops-canon.md
+    title: Kanon pracy z agentami — źródła i ocena
+    tags: [core, teaching]
+
   core:workflow:
     path: modules/core/workflow.md
     title: Workflow AI

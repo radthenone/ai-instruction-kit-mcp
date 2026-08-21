@@ -45,6 +45,7 @@ Pełna reguła: `.cursor/rules/git-branch-pr.mdc`.
 - **`/git-start` / `/git-check` / `/git-commit` / `/git-end`** — issue, sync, Conventional commit(s), push+PR.  
 - **`/grill-me`** — tylko przy niejasnym scope / trade-offach (nie przy oczywistym fixie).  
 - **`/teacher-backend` / `/teacher-frontend` / `/teacher-architecture`** — nauka **przed** kodem: koncepcja, „dlaczego tak”, opcje i koszty. Nie edytują plików; nie mylić z `/review-*` (te działają na gotowym diffie).  
+- **`/teacher-agent`** — nauka o samym narzędziu: skille, worktree, delegacja, autonomia (`/goal` vs `/loop`), prompty. Meta, nie stack — pytania o Django/React odsyła do pozostałych `/teacher-*`.  
 - **Superpowers worktree** — opcjonalna izolacja *na już nazwanym* branchu.  
 - **Finishing** — lokalne testy OK → opcja PR (zamiast lub obok `/git-end`).  
 - **Autopilot** — po PR: CI/komentarze aż merge-ready (bez auto-merge).
@@ -91,7 +92,7 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |
-| `/teacher-*` | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` | kit |
+| `/teacher-*` | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture`, `/teacher-agent` | kit |
 | `/grill-me`, `/tdd`, … | proces | mattpocock |
 | Superpowers / Autopilot | worktree, finishing, CI loop | plugin / skills Cursor |
 
