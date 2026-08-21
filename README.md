@@ -502,6 +502,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/teacher-backend`                   | `templates/shared/agents/teacher-backend.md`     |
 | `/teacher-frontend`                  | `templates/shared/agents/teacher-frontend.md`    |
 | `/teacher-architecture`              | `templates/shared/agents/teacher-architecture.md` |
+| `/teacher-agent`                     | `templates/shared/agents/teacher-agent.md`       |
 | `/review-security`                   | skille Cursor (user/global), nie ten kit         |
 
 ### `/teacher-*` — tryb nauki (przed kodem, nie po)
@@ -513,6 +514,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/teacher-backend` | Django/DRF (opc. FastAPI, Flask+Pydantic): warstwy, modele, migracje, transakcje, Celery, ACL, pytest, uv/ruff |
 | `/teacher-frontend` | React, React Native/Expo Router (opc. Angular): stan serwera vs klienta, granice komponentów, re-rendery, web/native, typy TS, RTL/Playwright |
 | `/teacher-architecture` | granice FE/BE, kontrakt API, kiedy **nie** dzielić, infra (Postgres/Redis/Celery/S3), Docker+Taskfile, odwracalność decyzji, ADR |
+| `/teacher-agent` | praca z samymi agentami: skille, worktree i izolacja zadań, delegacja do subagentów, autonomia (`/goal` vs `/loop`), pisanie promptów, jak spiąć `/git-*` i `/review-*` w jeden flow |
 
 Kontrakt tych agentów: `readonly` — **nie edytują plików**, nie dają gotowca do wklejenia (szkic ≤ 20 linii), nazywają wzorce po imieniu i mówią wprost, gdy koncepcja jest zła. Czytają `get_bundle` + `get_overlay`, więc uczą na Twoim stacku i Twoim kodzie, nie na `Foo/Bar`.
 

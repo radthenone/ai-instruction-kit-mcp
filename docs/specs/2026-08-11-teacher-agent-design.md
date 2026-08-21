@@ -1,7 +1,14 @@
 # `/teacher-agent` — nauczyciel obsługi agentów
 
 Data: 2026-08-11
-Status: zaakceptowany, do implementacji
+Status: częściowo zrealizowany (#16)
+
+> **Stan implementacji.** W #16 weszły: `/teacher-agent`, moduł `core:agent-ops-canon`
+> i wpis w manifeście — czyli D1 (zakres wyłącznie meta) i D2 (setup jako punkt
+> wyjścia). **Nie weszły** D3 (zakładanie issue w tle) ani moduł `core:gap-triage`:
+> istnieją wyłącznie po to, żeby karmić `/audit` i komendę nocną, a tych nie ma
+> i nie są zaplanowane. Sekcje o `core:gap-triage` czytaj jako projekt na przyszłość,
+> nie jako opis repo.
 
 ## Problem
 
