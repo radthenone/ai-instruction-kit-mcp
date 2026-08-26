@@ -13,7 +13,15 @@ test -f "$TMP/only-cursor/AGENTS.md"
 test ! -e "$TMP/only-cursor/.mcp.json"
 test ! -e "$TMP/only-cursor/.kiro"
 grep -q '"--clients", "cursor"' "$TMP/only-cursor/.cursor/mcp.json"
-echo "OK  --clients cursor"
+# Guardraile ida ze wspolnego zrodla (templates/shared/guards).
+test -f "$TMP/only-cursor/.cursor/hooks/gate-destructive.sh"
+test -f "$TMP/only-cursor/.cursor/hooks/gate-push.sh"
+test -f "$TMP/only-cursor/.cursor/hooks/invoke-hook.js"
+grep -q -- '--to cursor' "$TMP/only-cursor/.cursor/hooks.json"
+# Cursor ma tylko afterFileEdit (po zapisie), wiec bramki na pliki nie dostaje.
+test ! -e "$TMP/only-cursor/.cursor/hooks/gate-file-writes.mjs"
+test ! -e "$TMP/only-cursor/.claude/hooks"
+echo "OK  --clients cursor (+ guardraile)"
 
 "$BOOT" "$TMP/all" --clients all --from "$ROOT" --skip-agents >/dev/null
 test -f "$TMP/all/.cursor/mcp.json"
@@ -39,6 +47,32 @@ test -d "$TMP/claude-kiro/.claude/agents"
 test -f "$TMP/claude-kiro/.claude/commands/cleanup.md"
 test -d "$TMP/claude-kiro/.kiro/agents"
 test ! -e "$TMP/claude-kiro/.cursor/mcp.json"
-echo "OK  --clients claude,kiro (+ agents)"
+# Claude dostaje te same guardraile co Cursor plus bramke na zapisy plikow.
+test -f "$TMP/claude-kiro/.claude/hooks/gate-destructive.sh"
+test -f "$TMP/claude-kiro/.claude/hooks/gate-push.sh"
+test -f "$TMP/claude-kiro/.claude/hooks/invoke-hook.js"
+test -f "$TMP/claude-kiro/.claude/hooks/gate-file-writes.mjs"
+grep -q 'PreToolUse' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'gate-file-writes.mjs' "$TMP/claude-kiro/.claude/settings.json"
+# Claude nie tlumaczy kontraktu — dialekt polityki jest jego wlasnym.
+if grep -q -- '--to cursor' "$TMP/claude-kiro/.claude/settings.json"; then
+  echo "FAIL .claude/settings.json nie powinien tlumaczyc na kontrakt Cursora" >&2
+  exit 1
+fi
+echo "OK  --clients claude,kiro (+ agents, guardraile)"
+
+# Ta sama polityka u obu klientow: pliki musza byc identyczne ze zrodlem.
+"$BOOT" "$TMP/both" --clients cursor,claude --from "$ROOT" --skip-agents >/dev/null
+cmp -s "$ROOT/templates/shared/guards/gate-destructive.sh" "$TMP/both/.cursor/hooks/gate-destructive.sh"
+cmp -s "$ROOT/templates/shared/guards/gate-destructive.sh" "$TMP/both/.claude/hooks/gate-destructive.sh"
+cmp -s "$TMP/both/.cursor/hooks/invoke-hook.js" "$TMP/both/.claude/hooks/invoke-hook.js"
+echo "OK  --clients cursor,claude (jedno zrodlo polityki)"
+
+# Odznaczenie klienta sprzata jego hooki i wpisy w settings.json.
+"$BOOT" "$TMP/both" --clients cursor --from "$ROOT" --skip-agents >/dev/null
+test ! -e "$TMP/both/.claude/hooks"
+test ! -e "$TMP/both/.claude/settings.json"
+test -f "$TMP/both/.cursor/hooks/gate-destructive.sh"
+echo "OK  prune: claude odznaczony sprzata po sobie"
 
 echo "All bootstrap --clients checks passed."

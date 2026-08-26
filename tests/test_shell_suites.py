@@ -31,6 +31,7 @@ SUITE_TIMEOUT_SECONDS = 600
 
 BASH_SUITES: tuple[str, ...] = (
     "test_gate_destructive.sh",
+    "test_guard_adapter.sh",
     "test_bootstrap_clients.sh",
 )
 
