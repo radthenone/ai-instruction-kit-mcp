@@ -64,6 +64,7 @@ PRUNE_CLIENTS=1
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
+SHARED_GUARDS="$KIT_ROOT/templates/shared/guards"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -190,7 +191,10 @@ prune_client() {
       ;;
     claude)
       rm -f "$TARGET/.mcp.json"
-      rm -rf "$TARGET/.claude/agents" "$TARGET/.claude/commands"
+      rm -rf "$TARGET/.claude/agents" "$TARGET/.claude/commands" "$TARGET/.claude/hooks"
+      if [[ -f "$TARGET/.claude/settings.json" ]]; then
+        "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
+      fi
       rmdir "$TARGET/.claude" 2>/dev/null || true
       ;;
     codex)
@@ -322,16 +326,24 @@ install_bugbot_md_once() {
   fi
 }
 
+# Guardraile maja jedno zrodlo (templates/shared/guards) i trafiaja do katalogu
+# hooków wybranego klienta. Kontrakt tlumaczy invoke-hook.js, wiec pliki sa te same.
+install_guards() {
+  local dest="$1"
+  mkdir -p "$dest"
+  cp "$SHARED_GUARDS/gate-destructive.sh" "$dest/gate-destructive.sh"
+  cp "$SHARED_GUARDS/gate-push.sh" "$dest/gate-push.sh"
+  cp "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
+  chmod +x "$dest/gate-destructive.sh" "$dest/gate-push.sh"
+}
+
 install_cursor() {
   mkdir -p "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.ai"
   fill_mcp "$KIT_ROOT/templates/cursor/mcp.json" "$TARGET/.cursor/mcp.json"
   echo "  + .cursor/mcp.json"
 
   cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
-  cp "$KIT_ROOT/templates/cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-push.sh"
-  cp "$KIT_ROOT/templates/cursor/hooks/gate-destructive.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
-  cp "$KIT_ROOT/templates/cursor/hooks/invoke-hook.js" "$TARGET/.cursor/hooks/invoke-hook.js"
-  chmod +x "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh"
+  install_guards "$TARGET/.cursor/hooks"
   echo "  + .cursor/hooks.json (node invoke-hook → bash)"
 
   cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
@@ -394,6 +406,13 @@ PY
 install_claude() {
   fill_mcp "$KIT_ROOT/templates/claude/mcp.json" "$TARGET/.mcp.json"
   echo "  + .mcp.json (Claude Code)"
+
+  install_guards "$TARGET/.claude/hooks"
+  cp "$SHARED_GUARDS/gate-file-writes.mjs" "$TARGET/.claude/hooks/gate-file-writes.mjs"
+  # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$KIT_ROOT/templates/claude/settings.json"
+  echo "  + .claude/hooks/ + wpisy PreToolUse w .claude/settings.json"
+
   copy_shared_agents "$TARGET/.claude/agents"
   copy_claude_commands "$TARGET/.claude/commands"
 }
