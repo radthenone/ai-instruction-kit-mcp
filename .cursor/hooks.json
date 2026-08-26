@@ -3,12 +3,12 @@
   "hooks": {
     "beforeShellExecution": [
       {
-        "command": "node .cursor/hooks/invoke-hook.js gate-destructive.sh",
-        "matcher": "git\\s+(push|reset|clean|commit)|\\brm\\s+-[a-zA-Z]*r",
+        "command": "node .cursor/hooks/invoke-hook.js gate-destructive.sh --to cursor",
+        "matcher": "git\\s+(push|reset|clean|commit|checkout|restore|stash)|\\brm\\s+-[a-zA-Z]*r|\\bfind\\b.*(-delete|-exec)",
         "failClosed": true
       },
       {
-        "command": "node .cursor/hooks/invoke-hook.js gate-push.sh",
+        "command": "node .cursor/hooks/invoke-hook.js gate-push.sh --to cursor",
         "matcher": "git\\s+push"
       }
     ]
