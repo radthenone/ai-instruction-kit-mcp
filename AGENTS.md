@@ -111,8 +111,9 @@ Format stack review: `Severity | Location | Finding | Fix`.
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
 Guardraile — jedno źródło w `templates/shared/guards/`, instalowane per `--clients`:
 `gate-push.sh` (ask przed push), `gate-destructive.sh` (deny force na main/master/dev,
-`reset --hard`; ask na `checkout --`, `restore`, `stash` i rekursywne kasowanie),
-`gate-file-writes.mjs` (tylko Claude Code — ask poza projektem i przy dużych usunięciach).
+`reset --hard`; ask na `checkout --`, `restore`, `stash`, rekursywne kasowanie
+i zmiany na ścieżkach spoza projektu — odczyt poza projektem zostaje wolny),
+`gate-file-writes.mjs` (tylko Claude Code — ask poza projektem, allow w całym repo).
 Polityka mówi kontraktem Claude Code; `invoke-hook.js --to cursor` tłumaczy dla Cursora.
 Bootstrap: `scripts/bootstrap-project.sh`.
 

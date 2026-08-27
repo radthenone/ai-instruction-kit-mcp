@@ -564,9 +564,9 @@ te same reguły.
 
 | Hook | Zachowanie |
 |------|------------|
-| `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`, rekursywne kasowanie na szerokiej ścieżce (`~`, katalogi domowe POSIX i Windows, `..`). **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, rekursywne kasowanie, `find -delete`, oraz operacje kasujące **niezacommitowaną** pracę: `git checkout -- <ścieżka>`, `git restore`, `git stash` |
+| `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`, rekursywne kasowanie na szerokiej ścieżce (`~`, katalogi domowe POSIX i Windows, `..`). **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, rekursywne kasowanie, `find -delete`, oraz operacje kasujące **niezacommitowaną** pracę: `git checkout -- <ścieżka>`, `git restore`, `git stash`. Dodatkowo **ask** przy komendzie zmieniającej lub kasującej na ścieżce **spoza projektu** (`rm ~/.bashrc`, `mv x ~/`, `sed -i … /etc/…`, `> ~/plik`); czytanie i przeszukiwanie poza projektem zostaje wolne |
 | `gate-push.sh` | **ask** przed zwykłym `git push` (przypomnienie `/review-bugbot`); bypass `SKIP_PUSH_REVIEW=1` |
-| `gate-file-writes.mjs` | **ask** przy zapisie poza katalogiem projektu oraz przy edycji usuwającej ≥ `GUARD_DELETE_LINE_THRESHOLD` linii netto (domyślnie 30). Tylko Claude Code — Cursor ma wyłącznie `afterFileEdit`, czyli zdarzenie **po** zapisie |
+| `gate-file-writes.mjs` | **ask** przy zapisie poza katalogiem projektu; **allow** dla wszystkiego wewnątrz repo, niezależnie od rozmiaru zmiany. Tylko Claude Code — Cursor ma wyłącznie `afterFileEdit`, czyli zdarzenie **po** zapisie |
 
 Git odzyska wszystko, co zacommitowane. Dlatego polityka celuje w dwie rzeczy, których
 nie odzyska: pracę niezacommitowaną i pliki spoza repo.
