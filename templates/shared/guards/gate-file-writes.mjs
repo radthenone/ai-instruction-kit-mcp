@@ -2,26 +2,24 @@
 /**
  * Guardrail na zapisy plikow (PreToolUse: Edit|Write|MultiEdit|NotebookEdit).
  *
- * Polityka:
- *   - wewnatrz repo biezacego projektu  -> allow, chyba ze edycja usuwa duzo linii
- *     netto -> ask, z nazwa pliku i liczba linii
+ * Polityka — rozstrzyga wylacznie o LOKALIZACJI zapisu:
+ *   - wewnatrz repo biezacego projektu  -> allow, zawsze
  *   - poza nim                          -> ask, zawsze (inne repo, katalog domowy,
  *     konfiguracja systemowa: git tego nie odzyska)
  *   - katalog tymczasowy agenta         -> allow (z zalozenia jednorazowy)
  *
- * Hook nie umie ocenic, czy zmiana jest "duza" w sensie znaczeniowym — widzi tylko
- * payload narzedzia. Liczba usunietych linii netto jest mierzalnym przyblizeniem.
- * Prog: GUARD_DELETE_LINE_THRESHOLD (domyslnie 30).
+ * Progu na rozmiar zmiany tu nie ma i nie powinno byc. Hook widzi tylko payload
+ * narzedzia, wiec kazdy prog na liczbe usunietych linii jest zgadywaniem, co
+ * znaczy "duza zmiana" — placi sie za to promptami przy zwyklej pracy w repo,
+ * a w repo od cofania jest git. Poza repo cofac nie ma czym i tam bramka stoi.
  *
  * Kontrakt: Claude Code (PreToolUse). Klienci o innym ksztalcie wyjscia dostaja
  * tlumaczenie w invoke-hook.js — patrz templates/shared/guards/invoke-hook.js.
  * Cursor nie jest tu obslugiwany: ma tylko `afterFileEdit`, czyli zdarzenie PO
  * zapisie, wiec nie da sie zablokowac operacji przed wykonaniem.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
-
-const THRESHOLD = Number(process.env.GUARD_DELETE_LINE_THRESHOLD || 30);
 
 const decide = (permissionDecision, permissionDecisionReason) => {
   process.stdout.write(
@@ -31,8 +29,6 @@ const decide = (permissionDecision, permissionDecisionReason) => {
   );
   process.exit(0);
 };
-
-const lines = (s) => (s ? String(s).split("\n").length : 0);
 
 function repoRoot(from) {
   let dir = from;
@@ -60,7 +56,6 @@ process.stdin.on("end", () => {
   }
 
   try {
-    const tool = payload.tool_name || "";
     const toolInput = payload.tool_input || {};
     const raw = toolInput.file_path || toolInput.notebook_path;
     if (!raw) decide("allow", "brak sciezki w tool_input");
@@ -80,33 +75,7 @@ process.stdin.on("end", () => {
       decide("ask", `poza projektem (${project}): zapis do ${file}. Git tego nie odzyska — potwierdz swiadomie.`);
     }
 
-    // Ile linii netto ubywa po tej edycji?
-    let removed = 0;
-    if (tool === "Edit") {
-      removed = lines(toolInput.old_string) - lines(toolInput.new_string);
-    } else if (tool === "MultiEdit") {
-      for (const edit of toolInput.edits || []) {
-        removed += lines(edit.old_string) - lines(edit.new_string);
-      }
-    } else if (tool === "Write") {
-      if (!existsSync(file) || statSync(file).isDirectory()) {
-        decide("allow", "nowy plik w projekcie");
-      }
-      removed = lines(readFileSync(file, "utf8")) - lines(toolInput.content);
-    } else if (tool === "NotebookEdit") {
-      if (toolInput.edit_mode === "delete") {
-        decide("ask", `usuniecie komorki notebooka: ${file}`);
-      }
-    }
-
-    if (removed >= THRESHOLD) {
-      decide(
-        "ask",
-        `usuwa ${removed} linii netto z ${file} (prog ${THRESHOLD}). Wyjasnij co i dlaczego przed potwierdzeniem.`
-      );
-    }
-
-    decide("allow", "zmiana w projekcie ponizej progu");
+    decide("allow", "zapis w obrebie projektu");
   } catch (err) {
     // Nieoczekiwana awaria nie moze po cichu poszerzyc dostepu.
     decide("ask", `gate-file-writes: blad hooka (${err.message}) — potwierdz recznie`);
