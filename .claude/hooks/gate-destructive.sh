@@ -217,6 +217,74 @@ if has '(^|[ ])find[ ].*(-delete([ ]|$)|-exec[ ]+rm[ ])'; then
   decide ask "find kasujacy pliki"
 fi
 
+# --- zmiany poza projektem --------------------------------------------------
+# W repo cofa git, wiec tam przepuszczamy. Poza repo nie cofa nic: inne
+# repozytorium, katalog domowy, konfiguracja systemowa. Czytanie i szukanie
+# zostaje wolne — pytamy dopiero, gdy komenda ma cos tam zmienic albo skasowac.
+#
+# GRANICA, ktora trzeba znac: to heurystyka na TEKSCIE komendy, nie analiza jej
+# wykonania. Wylapuje jawna sciezke przy typowej komendzie mutujacej. NIE wylapie
+# sciezki schowanej w zmiennej ($TARGET), zapisu z wnetrza python/node, ani
+# `cd /gdzies && rm plik`. Prog zwalniajacy na pomylki, nie mur na zlosliwosc.
+MUTATING='(^|[ ;&|(])(rm|mv|cp|install|ln|dd|shred|truncate|touch|mkdir|rmdir|chmod|chown|chgrp|tee|unlink)([ ]|$)'
+
+norm_path() {
+  # Porownanie ma dzialac tak samo na POSIX i na Windows: backslash -> slash,
+  # male litery, "C:/x" -> "/c/x", bez koncowego slasha.
+  local p="${1//\\//}"
+  p=$(printf '%s' "$p" | tr 'A-Z' 'a-z')
+  if [[ "$p" =~ ^([a-z]):/(.*)$ ]]; then
+    p="/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+  fi
+  [[ "$p" == "/" ]] || p="${p%/}"
+  printf '%s' "$p"
+}
+
+project_root() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || root=""
+  [[ -n "$root" ]] || root="${CLAUDE_PROJECT_DIR:-$PWD}"
+  printf '%s' "$root"
+}
+
+# Zwraca pierwszy argument-sciezke, ktory wychodzi poza projekt (albo nic).
+outside_target() {
+  local root_n home_n tok tok_n
+  root_n=$(norm_path "$(project_root)")
+  home_n=$(norm_path "${HOME:-}")
+  set -f  # bez tego glob rozwinalby "*" z komendy na pliki z cwd
+  for tok in $command; do
+    case "$tok" in
+      -*) continue ;;
+      /*|~*|[A-Za-z]:[\\/]*) ;;
+      *..*) ;;
+      *) continue ;;
+    esac
+    tok="${tok#[\"\']}"
+    tok="${tok%[\"\']}"
+    [[ "$tok" == '~'* ]] && tok="${home_n}${tok#\~}"
+    tok_n=$(norm_path "$tok")
+    # Katalog tymczasowy agenta jest z zalozenia jednorazowy — nie warty promptu.
+    case "$tok_n" in
+      */tmp/claude/*|*/temp/claude/*) continue ;;
+    esac
+    [[ "$tok_n" == "$root_n" || "$tok_n" == "$root_n"/* ]] && continue
+    set +f
+    printf '%s' "$tok"
+    return 0
+  done
+  set +f
+  return 1
+}
+
+if has "$MUTATING" \
+  || has '(^|[ ])sed[ ]+(-[a-zA-Z]*i|--in-place)' \
+  || has '>[ ]*[~/A-Za-z]'; then
+  if outside=$(outside_target); then
+    decide ask "zmiana poza projektem: ${outside} — git tego nie odzyska"
+  fi
+fi
+
 _emitted=1
 trap - EXIT
 emit allow

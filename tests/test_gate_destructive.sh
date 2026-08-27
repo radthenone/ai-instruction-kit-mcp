@@ -93,6 +93,31 @@ run_hook "rm -rf ../.." deny
 run_hook 'rm -rf C:\Users\someone\work' deny
 run_hook 'rm -r D:\Windows\System32' deny
 
+# --- zmiany poza projektem --------------------------------------------------
+# Czytanie i przeszukiwanie poza repo zostaje wolne — git i tak nic nie zmienia.
+run_hook "cat ~/.bashrc" allow
+run_hook "grep -rn TODO /etc" allow
+run_hook "ls /home/user" allow
+run_hook "head -20 ~/.gitconfig" allow
+
+# Zmiana albo kasowanie poza repo: git tego nie odzyska, wiec pytamy.
+run_hook "rm ~/.bashrc" ask
+run_hook "mv README.md ~/backup.md" ask
+run_hook "sed -i s/a/b/ /etc/hosts" ask
+run_hook "echo x > ~/.bashrc" ask
+run_hook "chmod 777 /etc/passwd" ask
+run_hook "tee /home/user/out.txt" ask
+
+# Wewnatrz repo te same komendy przechodza — od cofania jest git.
+run_hook "rm build.log" allow
+run_hook "mv README.md docs/README.md" allow
+run_hook "mkdir docs/new" allow
+run_hook "cp README.md docs/copy.md" allow
+run_hook "sed -i s/a/b/ README.md" allow
+
+# Katalog tymczasowy agenta jest jednorazowy — prompt bylby szumem.
+run_hook "touch /tmp/claude/session/scratch.txt" allow
+
 # --- fail-closed -------------------------------------------------------------
 # Nieoczekiwany exit != 0 bez wczesniejszego emit → ask + exit 0 (zeby failClosed
 # w Cursor nie zablokowal mimo poprawnej decyzji).
