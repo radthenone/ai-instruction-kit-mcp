@@ -165,8 +165,10 @@ Wymagane checks:
 ```text
 templates/cursor/BUGBOT.md
 templates/cursor/hooks.json
-templates/cursor/hooks/gate-push.sh
-templates/cursor/hooks/gate-destructive.sh
+templates/shared/guards/gate-push.sh
+templates/shared/guards/gate-destructive.sh
+templates/shared/guards/gate-file-writes.mjs
+templates/shared/guards/invoke-hook.js
 templates/git-hooks/pre-push
 scripts/bootstrap-project.sh
 ```

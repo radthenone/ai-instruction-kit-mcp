@@ -556,29 +556,48 @@ Po skopiowaniu/wyrenderowaniu **zrestartuj** okno IDE — agenty/komendy ładuj�
 
 
 
-## Cursor Hooks — bezpieczeństwo
+## Guardrails — bezpieczeństwo
+
+Jedno źródło polityki: **`templates/shared/guards/`**. Bootstrap kopiuje je do katalogu
+hooków wybranego klienta (`--clients`), więc Cursor i Claude Code egzekwują dokładnie
+te same reguły.
 
 | Hook | Zachowanie |
 |------|------------|
-| `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`. **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, `rm -rf` |
+| `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`, rekursywne kasowanie na szerokiej ścieżce (`~`, katalogi domowe POSIX i Windows, `..`). **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, rekursywne kasowanie, `find -delete`, oraz operacje kasujące **niezacommitowaną** pracę: `git checkout -- <ścieżka>`, `git restore`, `git stash` |
 | `gate-push.sh` | **ask** przed zwykłym `git push` (przypomnienie `/review-bugbot`); bypass `SKIP_PUSH_REVIEW=1` |
+| `gate-file-writes.mjs` | **ask** przy zapisie poza katalogiem projektu oraz przy edycji usuwającej ≥ `GUARD_DELETE_LINE_THRESHOLD` linii netto (domyślnie 30). Tylko Claude Code — Cursor ma wyłącznie `afterFileEdit`, czyli zdarzenie **po** zapisie |
 
-`gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.  
-`invoke-hook.js` po wypisaniu JSON z `permission` **zawsze kończy exit 0** (niezerowy exit ukrywa payload przy failClosed).
+Git odzyska wszystko, co zacommitowane. Dlatego polityka celuje w dwie rzeczy, których
+nie odzyska: pracę niezacommitowaną i pliki spoza repo.
 
-**Hooks — wykrywanie OS (Bash wszędzie, bez hardcodu Windows w trackowanym JSON):**
+**Jeden dialekt, adapter na brzegu.** Skrypty polityki mówią wyłącznie kontraktem
+Claude Code (`hookSpecificOutput.permissionDecision`). Cursor ma własny kształt
+(`permission`), więc `invoke-hook.js` tłumaczy — i to jedyne miejsce w kicie, które
+wie o różnicy między klientami.
 
-| Plik | Rola |
-|------|------|
-| `templates/cursor/hooks.json` | `node .cursor/hooks/invoke-hook.js <script>` (ten sam na wszystkich OS) |
-| `invoke-hook.js` | Windows → `Git/bin/bash.exe --noprofile --norc`; Linux/macOS → `bash --noprofile --norc`; `windowsHide` |
+| Klient | Wywołanie | Kontrakt |
+|--------|-----------|----------|
+| Claude Code | `node .claude/hooks/invoke-hook.js <script>` | natywny, bez tłumaczenia |
+| Cursor | `node .cursor/hooks/invoke-hook.js <script> --to cursor` | tłumaczony przez adapter |
 
-Sama ścieżka `.sh` w `hooks.json` → Cursor na Windows robi `bash --login -i` i zostawia konsolę.  
-Terminal IDE (Git Bash) bez zmian — to tylko spawn hooków.
+`gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.
+Nieczytelny payload daje **ask**, nie `allow`: skoro nie wiadomo, co przeszłoby przez
+bramkę, decyzję podejmuje człowiek. `invoke-hook.js` po wypisaniu JSON **zawsze kończy
+exit 0** (niezerowy exit ukrywa payload przy failClosed).
 
-Szablon: `templates/cursor/hooks/gate-destructive.sh` (bootstrap → `.cursor/hooks/`).  
-Regresja plus-refspec / `-f`: `bash tests/test_gate_destructive.sh` — odpalane też przez CI
-(`tests/test_shell_suites.py` wciąga suity powłoki do `unittest discover`).
+**Wykrywanie OS** (bez hardcodu Windows w trackowanym JSON): `invoke-hook.js` na
+Linux/macOS woła `bash --noprofile --norc` z PATH; na Windows szuka Git Basha
+(`Git/bin/bash.exe`) i ustawia `windowsHide`. Sama ścieżka `.sh` w konfiguracji hooka →
+na Windows klient robi `bash --login -i` i zostawia otwartą konsolę.
+
+Adapter parsuje payload raz i podaje komendę w `GUARD_COMMAND`, żeby skrypt polityki
+nie startował własnego interpretera przy każdym wywołaniu — przy shimach w stylu
+`pyenv-win` to różnica rzędu sekund na komendę.
+
+Regresja: `bash tests/test_gate_destructive.sh` (polityka) i `bash tests/test_guard_adapter.sh`
+(tłumaczenie kontraktu) — odpalane też przez CI (`tests/test_shell_suites.py` wciąga
+suity powłoki do `unittest discover`).
 
 ## Code review (Bugbot + GitHub)
 
@@ -601,11 +620,11 @@ Przy `codegen: orval` w overlay — po zmianie API regeneruj klienta.
 | Warstwa            | Plik / akcja                                                                |
 | ------------------ | --------------------------------------------------------------------------- |
 | Lokalnie           | `/review-bugbot`, `/review-security`, `/review-backend`…                    |
-| Przed push         | `.cursor/hooks/gate-push.sh` + `gate-destructive.sh`                        |
+| Przed push         | `gate-push.sh` + `gate-destructive.sh` (w katalogu hooków klienta)          |
 | Na PR              | Bugbot (GitHub integration)                                                 |
 | Reguły             | `.cursor/BUGBOT.md`                                                         |
 | CI (ten kit)       | `.github/workflows/ci.yml` — unittest (w tym suity powłoki) + smoke FastMCP |
-| Hook regresja      | `tests/test_gate_destructive.sh` (force / `+ref` / `-f`)                    |
+| Hook regresja      | `tests/test_gate_destructive.sh` (polityka) + `tests/test_guard_adapter.sh` |
 | Suity powłoki w CI | `tests/test_shell_suites.py` — jedyny adapter `*.sh` → `unittest discover`  |
 
 

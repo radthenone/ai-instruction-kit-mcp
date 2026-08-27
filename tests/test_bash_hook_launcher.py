@@ -90,6 +90,24 @@ def posix_path(path: Path) -> str:
     return str(path).replace("\\", "/")
 
 
+def decision_of(payload: dict) -> str:
+    """
+    Wyciągnij decyzję niezależnie od kontraktu klienta.
+
+    Polityka mówi dialektem Claude Code (``hookSpecificOutput.permissionDecision``);
+    ``invoke-hook.js --to cursor`` tłumaczy to na ``permission``. Test ma sprawdzać
+    decyzję, nie kształt, więc rozumie oba.
+
+    Args:
+        payload: Sparsowane wyjście hooka.
+
+    Returns:
+        str: ``allow`` / ``ask`` / ``deny``; pusty string gdy nie ma decyzji.
+    """
+    nested = payload.get("hookSpecificOutput") or {}
+    return str(nested.get("permissionDecision") or payload.get("permission") or "")
+
+
 def resolve_bash() -> str | None:
     """
     Znajdź bash do testów: na Windows preferuj Git Bash, inaczej PATH.
@@ -130,28 +148,39 @@ def main() -> int:
             expected_gate_push_permission(ROOT),
         )
     )
-    for script, payload, expect in cases:
-        hook = ROOT / ".cursor" / "hooks" / script
-        proc = subprocess.run(
-            [bash, "--noprofile", "--norc", posix_path(hook)],
-            input=json.dumps(payload).encode("utf-8"),
-            capture_output=True,
-            cwd=str(ROOT),
-            timeout=45,
-            check=False,
-        )
-        out = proc.stdout.decode("utf-8", "replace").strip()
-        try:
-            perm = str(json.loads(out).get("permission", ""))
-        except json.JSONDecodeError:
-            print(f"FAIL invalid JSON {script}: {out!r} err={proc.stderr!r}")
-            failed += 1
-            continue
-        if perm != expect:
-            print(f"FAIL expected={expect} got={perm} {script} {payload}")
-            failed += 1
-            continue
-        print(f"OK  [{perm}] {script}")
+    # Guardraile maja jedno zrodlo, wiec zainstalowana kopia u kazdego klienta
+    # musi dawac te sama decyzje. Sprawdzamy oba katalogi, nie tylko Cursora.
+    hook_dirs = [d for d in (ROOT / ".cursor" / "hooks", ROOT / ".claude" / "hooks") if d.is_dir()]
+    if not hook_dirs:
+        print("FAIL brak zainstalowanych hooków w .cursor/hooks ani .claude/hooks", file=sys.stderr)
+        return 1
+
+    for hook_dir in hook_dirs:
+        label = hook_dir.parent.name
+        for script, payload, expect in cases:
+            hook = hook_dir / script
+            if not hook.is_file():
+                continue
+            proc = subprocess.run(
+                [bash, "--noprofile", "--norc", posix_path(hook)],
+                input=json.dumps(payload).encode("utf-8"),
+                capture_output=True,
+                cwd=str(ROOT),
+                timeout=45,
+                check=False,
+            )
+            out = proc.stdout.decode("utf-8", "replace").strip()
+            try:
+                perm = decision_of(json.loads(out))
+            except json.JSONDecodeError:
+                print(f"FAIL invalid JSON {label}/{script}: {out!r} err={proc.stderr!r}")
+                failed += 1
+                continue
+            if perm != expect:
+                print(f"FAIL expected={expect} got={perm} {label}/{script} {payload}")
+                failed += 1
+                continue
+            print(f"OK  [{perm}] {label}/{script}")
 
     invoker = ROOT / ".cursor" / "hooks" / "invoke-hook.js"
     if invoker.is_file() and shutil.which("node"):
@@ -165,19 +194,49 @@ def main() -> int:
         )
         out = proc.stdout.decode("utf-8", "replace").strip()
         try:
-            perm = str(json.loads(out).get("permission", ""))
+            body = json.loads(out)
         except json.JSONDecodeError:
             print(f"FAIL invoke-hook invalid JSON: {out!r}")
             failed += 1
         else:
+            perm = decision_of(body)
             if perm != "allow":
                 print(f"FAIL invoke-hook expected=allow got={perm}")
+                failed += 1
+            elif "hookSpecificOutput" not in body:
+                # Bez --to adapter nie tlumaczy: ma oddac dialekt polityki.
+                print(f"FAIL invoke-hook bez --to powinien zwrocic kontrakt Claude: {body!r}")
                 failed += 1
             elif proc.returncode != 0:
                 print(f"FAIL invoke-hook expected exit 0 got={proc.returncode}")
                 failed += 1
             else:
                 print("OK  [allow/exit0] invoke-hook.js gate-destructive.sh")
+
+        # --to cursor musi przetlumaczyc te sama decyzje na kontrakt Cursora.
+        proc = subprocess.run(
+            ["node", str(invoker), "gate-destructive.sh", "--to", "cursor"],
+            input=json.dumps({"command": "git push --force origin main"}).encode("utf-8"),
+            capture_output=True,
+            cwd=str(ROOT),
+            timeout=45,
+            check=False,
+        )
+        out = proc.stdout.decode("utf-8", "replace").strip()
+        try:
+            body = json.loads(out)
+        except json.JSONDecodeError:
+            print(f"FAIL invoke-hook --to cursor invalid JSON: {out!r}")
+            failed += 1
+        else:
+            if body.get("permission") != "deny":
+                print(f"FAIL invoke-hook --to cursor expected=deny got={body.get('permission')}")
+                failed += 1
+            elif "hookSpecificOutput" in body:
+                print(f"FAIL --to cursor nie powinien przepuszczac kontraktu Claude: {body!r}")
+                failed += 1
+            else:
+                print("OK  [deny] invoke-hook.js --to cursor tlumaczy kontrakt")
 
         # emitDeny must produce valid JSON when stderr contains control chars.
         # Exit code must be 0 so Cursor failClosed does not hide the JSON payload.
@@ -190,7 +249,7 @@ def main() -> int:
                 encoding="utf-8",
             )
             proc = subprocess.run(
-                ["node", str(invoker), noisy.name],
+                ["node", str(invoker), noisy.name, "--to", "cursor"],
                 input=b"{}",
                 capture_output=True,
                 cwd=str(ROOT),
