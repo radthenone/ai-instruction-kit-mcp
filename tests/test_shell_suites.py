@@ -27,7 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = ROOT / "tests"
 
 # Bootstrap odpala kilka pełnych instalacji (uvx-free, ale wiele procesów Pythona).
-SUITE_TIMEOUT_SECONDS = 600
+#
+# 300 s to ~2,5× zapas nad najwolniejszą zmierzoną suitą (bootstrap: 121 s na
+# Windows, reszta poniżej 60 s). Poprzednie 600 s znaczyło, że przy zamulonej
+# maszynie suita mieliła dziesięć minut, zanim powiedziała cokolwiek — a i tak
+# kończyła się błędem. Limit ma zamieniać zamulenie w szybki komunikat, nie
+# przykrywać je czekaniem.
+SUITE_TIMEOUT_SECONDS = 300
 
 BASH_SUITES: tuple[str, ...] = (
     "test_gate_destructive.sh",
