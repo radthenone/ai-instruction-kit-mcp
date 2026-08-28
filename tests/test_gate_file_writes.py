@@ -129,6 +129,48 @@ class TestGateFileWrites(unittest.TestCase):
             "ask",
         )
 
+    @unittest.skipUnless(os.name == "nt", "litery dysku istnieją tylko na Windows")
+    def test_drive_letter_case_inside_project_is_allowed(self) -> None:
+        """
+        Windows nie rozróżnia wielkości liter w ścieżkach — bramka też nie może.
+
+        Klient potrafi podać ``m:/projects/...`` tam, gdzie ``cwd`` ma ``M:``.
+        To ten sam plik w tym samym repo; porównanie bajt po bajcie robiło
+        z niego zapis „poza projektem" i pytało przy każdej edycji.
+        """
+        target = self._in_project("README.md")
+        drive, rest = target[0], target[1:]
+        flipped = (drive.lower() if drive.isupper() else drive.upper()) + rest
+        self.assertNotEqual(flipped, target)
+        self.assertEqual(
+            decide(
+                {
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": flipped, "old_string": "a", "new_string": "b"},
+                    "cwd": str(ROOT),
+                }
+            ),
+            "allow",
+        )
+
+    @unittest.skipUnless(os.name != "nt", "POSIX rozróżnia wielkość liter w ścieżkach")
+    def test_case_differing_path_outside_project_asks_on_posix(self) -> None:
+        """
+        Na POSIX ``/Home/x`` to nie ``/home/x`` — złagodzenie porównania nie
+        może przeciekać poza Windows.
+        """
+        outside = "/" + str(ROOT).lstrip("/").upper() + "/README.md"
+        self.assertEqual(
+            decide(
+                {
+                    "tool_name": "Write",
+                    "tool_input": {"file_path": outside, "content": "x"},
+                    "cwd": str(ROOT),
+                }
+            ),
+            "ask",
+        )
+
     def test_missing_path_is_allowed(self) -> None:
         """Payload bez ścieżki nie jest zapisem — nie ma czego bramkować."""
         self.assertEqual(
