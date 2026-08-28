@@ -40,9 +40,17 @@ function repoRoot(from) {
   }
 }
 
+// Windows nie rozroznia wielkosci liter w sciezkach: "m:\repo" i "M:\repo" to
+// ten sam katalog, a klient potrafi podac raz tak, raz tak. Porownanie bajt po
+// bajcie robilo z zapisu we wlasnym repo "zapis poza projektem" i pytalo przy
+// kazdej edycji. Tylko win32 — na POSIX /Home/x naprawde nie jest /home/x,
+// a case-insensitivity macOS zalezy od wolumenu, wiec zakladac jej nie wolno.
+const caseFold = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
+
 const under = (file, root) => {
-  const r = resolve(root);
-  return file === r || file.startsWith(r + sep);
+  const f = caseFold(file);
+  const r = caseFold(resolve(root));
+  return f === r || f.startsWith(r + sep);
 };
 
 let input = "";
