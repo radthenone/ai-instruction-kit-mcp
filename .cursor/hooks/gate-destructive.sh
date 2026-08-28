@@ -87,13 +87,34 @@ if [[ -z "${command}" ]]; then
   exit 0
 fi
 
-normalized=$(printf '%s' "$command" | tr '\n\r\t' '   ')
-# shellcheck disable=SC2001
-normalized=$(printf '%s' "$normalized" | sed 's/  */ /g')
+# Normalizacja bialych znakow bez `tr`/`sed` — te dwa potoki to cztery procesy
+# na kazde wywolanie bramki, czyli ~0,17 s na Windows. Podstawienia parametrow
+# robia to samo bez tworzenia procesu.
+normalized=${command//[$'\n\r\t']/ }
+while [[ "$normalized" == *"  "* ]]; do
+  normalized=${normalized//  / }
+done
 
+# Dopasowanie robi wbudowane [[ =~ ]], nie `printf | grep`.
+#
+# Kazde sprawdzenie wzorca kosztowalo dwa procesy, a polityka robi ich 33 —
+# na Windows tworzenie procesu to ~0,12 s, wiec jedno wywolanie bramki zajmowalo
+# ~2,5 s i suita regresji chodzila 158 s zamiast kilku. Wbudowane dopasowanie
+# nie tworzy procesu wcale.
+#
+# Wzorce to ERE po obu stronach (grep -E i regcomp), wiec skladnia zostaje bez
+# zmian. `nocasematch` zastepuje flage -i i jest wlaczany TYLKO na czas
+# dopasowania — globalnie zmienialby tez `case` nizej (m.in. */tmp/claude/*),
+# czyli poszerzalby polityke przy okazji optymalizacji.
+#
+# Wzorzec MUSI byc nieocytowany: w cudzyslowie [[ =~ ]] traktuje go jak zwykly
+# tekst i bramka przestaje lapac cokolwiek — po cichu, bez bledu.
 has() {
-  printf '%s' "$normalized" | grep -Eqi -- "$1" && return 0
-  return 1
+  local rc
+  shopt -s nocasematch
+  [[ "$normalized" =~ $1 ]] && rc=0 || rc=1
+  shopt -u nocasematch
+  return "$rc"
 }
 
 # True if push targets protected branch ref (main|master|dev), not remote named "dev".
@@ -232,7 +253,7 @@ norm_path() {
   # Porownanie ma dzialac tak samo na POSIX i na Windows: backslash -> slash,
   # male litery, "C:/x" -> "/c/x", bez koncowego slasha.
   local p="${1//\\//}"
-  p=$(printf '%s' "$p" | tr 'A-Z' 'a-z')
+  p=${p,,}   # wbudowane male litery zamiast `printf | tr` — bez procesu
   if [[ "$p" =~ ^([a-z]):/(.*)$ ]]; then
     p="/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
   fi
