@@ -15,10 +15,12 @@ pominęła — pilnuje `is_ci()` po stronie samych suit.
 from __future__ import annotations
 
 import ast
+import io
 import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Jedno źródło prawdy dla wykrywania Git Bash, CI i formy ścieżki dla basha.
 from test_bash_hook_launcher import is_ci, posix_path, resolve_bash
@@ -27,7 +29,17 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = ROOT / "tests"
 
 # Bootstrap odpala kilka pełnych instalacji (uvx-free, ale wiele procesów Pythona).
-SUITE_TIMEOUT_SECONDS = 600
+#
+# Zmierzone czasy pojedynczej suity na Windows: typowo 7-57 s, bootstrap 25-121 s.
+# Ale ta sama maszyna potrafi zamulić tak, że `test_gate_destructive.sh` nie kończy
+# się w 600 s (patrz #24) — przy 41 s w przebiegu obok. Rozrzut jest dwunastokrotny
+# i limit go NIE pokrywa; 300 s leży w środku, świadomie.
+#
+# To jest wybór, nie zapas: zamulenie ma być czerwone i szybkie, a nie ciche przez
+# dziesięć minut. Czerwony z tego limitu znaczy „środowisko stanęło", nie „regresja
+# w kodzie" — komunikat błędu ma to powiedzieć wprost, dlatego `_run_suite` łapie
+# timeout osobno.
+SUITE_TIMEOUT_SECONDS = 300
 
 BASH_SUITES: tuple[str, ...] = (
     "test_gate_destructive.sh",
@@ -80,15 +92,26 @@ class TestExternalSuites(unittest.TestCase):
             argv: Komenda do uruchomienia.
             name: Nazwa pliku suity (do komunikatu błędu).
         """
-        proc = subprocess.run(
-            argv,
-            cwd=str(ROOT),
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=SUITE_TIMEOUT_SECONDS,
-            check=False,
-        )
+        try:
+            proc = subprocess.run(
+                argv,
+                cwd=str(ROOT),
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=SUITE_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # `TimeoutExpired` niesie to, co suita zdążyła wypisać — bez tego bloku
+            # ginie i zostaje sam traceback, z ktorego nie widać, na czym stanęła.
+            self.fail(
+                f"{name} nie skończył się w {SUITE_TIMEOUT_SECONDS} s i został ubity.\n"
+                "To zwykle znaczy, że stanęło środowisko (patrz #24), nie że jest "
+                "regresja — ostatnia linia poniżej mówi, dokąd suita doszła.\n"
+                f"--- stdout (częściowy) ---\n{exc.stdout or '(pusty)'}\n"
+                f"--- stderr (częściowy) ---\n{exc.stderr or '(pusty)'}"
+            )
         if proc.returncode != 0:
             self.fail(
                 f"{name} zakończył się kodem {proc.returncode}\n"
@@ -167,6 +190,49 @@ class TestExternalSuites(unittest.TestCase):
                 f"{undeclared}"
             ),
         )
+
+
+class TestMissingBashPolicy(unittest.TestCase):
+    """
+    Brak basha: lokalnie skip, na CI błąd.
+
+    Gałąź „na CI to błąd" nie wykonuje się nigdy w normalnym przebiegu — CI chodzi
+    na ubuntu, gdzie bash jest zawsze. Deklaracja „cichy skip odtworzyłby lukę"
+    była więc nieudowodniona; te dwa testy podstawiają brak basha i sprawdzają,
+    że decyzja naprawdę zależy od `is_ci()`.
+    """
+
+    def _run_bash_suites(self, *, on_ci: bool) -> unittest.TestResult:
+        """
+        Odpal `test_bash_suites_pass` z podstawionym brakiem basha.
+
+        Args:
+            on_ci: Co ma zwrócić `is_ci()` w trakcie przebiegu.
+
+        Returns:
+            unittest.TestResult: Wynik pojedynczego testu.
+        """
+        module = sys.modules[__name__]
+        suite = unittest.TestSuite([TestExternalSuites("test_bash_suites_pass")])
+        with (
+            mock.patch.object(module, "resolve_bash", return_value=""),
+            mock.patch.object(module, "is_ci", return_value=on_ci),
+        ):
+            return unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(suite)
+
+    def test_missing_bash_locally_skips(self) -> None:
+        """Bez basha lokalnie: skip, nie błąd — goły Windows ma prawo nie mieć Git Bash."""
+        result = self._run_bash_suites(on_ci=False)
+        self.assertEqual(len(result.skipped), 1)
+        self.assertEqual(result.failures, [])
+        self.assertEqual(result.errors, [])
+
+    def test_missing_bash_on_ci_fails(self) -> None:
+        """Bez basha na CI: błąd — cichy skip odtworzyłby lukę, którą ten moduł zamyka."""
+        result = self._run_bash_suites(on_ci=True)
+        self.assertEqual(len(result.failures), 1)
+        self.assertEqual(result.skipped, [])
+        self.assertIn("suity powłoki muszą się wykonać", result.failures[0][1])
 
 
 if __name__ == "__main__":
