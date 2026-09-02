@@ -399,6 +399,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | ------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/compact`    | **Cursor only** — alias UI Summarize w tym projekcie | `/compact`                                                                                                                                         |
 | `/git-*`      | Start / sync issue / commit / PR                   | `/git-start`, `/git-check`, `/git-commit`, `/git-end`                                                                                               |
+| `/create-task` | Pomysł → ocena na tle repo → issue (bez brancha)   | `/create-task`, `/create-task "eksport CSV"`; flagi: `/create-task --help`                                                                          |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
 
@@ -449,6 +450,7 @@ Długo:    [/grill-me] → /git-start → worktree → kod → [/git-check] → 
 
 | Komenda kit  | Co robi                                                                                 |
 | ------------ | --------------------------------------------------------------------------------------- |
+| `/create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; `--dry-run` / `--quick` / `--split` / `--no-assign` / `--parent #N`. **Nie** zakłada brancha |
 | `/git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
 | `/git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
 | `/git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
@@ -484,6 +486,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 
 | Slash                                | Plik szablonu                                    |
 | ------------------------------------ | ------------------------------------------------ |
+| `/create-task`                       | `templates/shared/agents/create-task.md`         |
 | `/git-start`                         | `templates/shared/agents/git-start.md`           |
 | `/git-check`                         | `templates/shared/agents/git-check.md`           |
 | `/git-commit`                        | `templates/shared/agents/git-commit.md`          |

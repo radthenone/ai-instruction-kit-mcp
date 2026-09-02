@@ -50,14 +50,30 @@ def render_kilo(meta: dict[str, str], body: str) -> str:
     return header + body
 
 
+# Antigravity tnie pliki workflow powyżej 12000 znaków.
+ANTIGRAVITY_LIMIT = 12000
+ANTIGRAVITY_TRUNCATED = "\n\n(...przycięto, limit 12000 znaków...)\n"
+
+
 def render_antigravity(meta: dict[str, str], body: str) -> str:
     # Antigravity workflow: .agents/workflows/<name>.md, wywołanie /<name>. Limit 12000 znaków/plik.
     title = meta.get("name", "")
     description = meta.get("description", "")
     header = f"# {title}\n\n{description}\n\n"
     out = header + body
-    if len(out) > 12000:
-        out = out[:11980] + "\n\n(...przycięto, limit 12000 znaków...)\n"
+    if len(out) > ANTIGRAVITY_LIMIT:
+        # Sufiks też liczy się do limitu — bez odjęcia go wynik wychodził
+        # ponad 12000 i przycięcie nie robiło tego, co obiecuje.
+        keep = ANTIGRAVITY_LIMIT - len(ANTIGRAVITY_TRUNCATED)
+        # Przycięcie leci od końca pliku, a tam agenci trzymają sekcję "Zakazy" —
+        # ciche obcięcie zabiera akurat zakazy. Głośny komunikat, bo inaczej
+        # okrojony agent instaluje się bez śladu.
+        print(
+            f"UWAGA: {title} ma {len(out)} znaków (limit antigravity "
+            f"{ANTIGRAVITY_LIMIT}) — przycięto {len(out) - keep} znaków z końca pliku",
+            file=sys.stderr,
+        )
+        out = out[:keep] + ANTIGRAVITY_TRUNCATED
     return out
 
 
