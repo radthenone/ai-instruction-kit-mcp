@@ -17,7 +17,7 @@ skills-lock.json
 # Materiały do nauki pracy z agentami — trzymane lokalnie, poza repo.
 # Ukośnik wiodący zakotwicza wzorzec w roocie: bez niego `usage/` łapałby
 # każdy katalog o tej nazwie na dowolnej głębokości drzewa.
-/docs/usage/
+/.scratch/
 
 # Zawiera lokalną, absolutną ścieżkę do repo (--from) — różni się per maszyna.
 /.mcp.json
