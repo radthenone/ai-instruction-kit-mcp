@@ -11,7 +11,7 @@ Cel: chronione `main` / `master` / `dev` + jasny podział **kto co robi** (kit �
 
 | Warstwa | Narzędzie | Robi | Nie robi |
 |---------|-----------|------|----------|
-| **Kit** | `/git-start`, `/git-check`, `/git-commit`, `/git-end`, ta reguła | Issue + sync + commit(y) + push/PR + `Closes #N` | Worktree, pętli CI |
+| **Kit** | `/create-task`, `/git-start`, `/git-check`, `/git-commit`, `/git-end`, ta reguła | Pomysł → issue + sync + commit(y) + push/PR + `Closes #N` | Worktree, pętli CI |
 | **Matt** | `/grill-me`, `/tdd` | Scope, TDD feature | Gita / PR |
 | **Superpowers** | `using-git-worktrees`, `finishing-a-development-branch` | Izolacja worktree; domknięcie (testy lokalne → opcje merge/PR) | Konwencji `feat/N-slug` (to kit) |
 | **Autopilot** | skill Autopilot (Cursor) | Po PR: konflikty → komentarze → CI red → fix → push, aż merge-ready | Merge bez Ciebie; force na chronione |
@@ -21,7 +21,8 @@ Nie dubluj: **jeden** TDD path (Matt *albo* Superpowers TDD). Git nazewnictwa za
 ## Kanoniczny flow (zalecany)
 
 ```text
-[/grill-me tylko gdy scope niejasny]  →  /git-start  →  [worktree opcjonalnie]
+[/create-task gdy nie ma jeszcze issue]  →  [/grill-me gdy scope niejasny]
+        →  /git-start  →  [worktree opcjonalnie]
         →  implementacja [+/tdd]
         →  [/git-check] → /git-commit
         →  /review-bugbot  (+ minimalny /review-* stack — nie wszystkie)
@@ -44,6 +45,7 @@ Nie dubluj: **jeden** TDD path (Matt *albo* Superpowers TDD). Git nazewnictwa za
 
 | Komenda | Rola |
 |---------|------|
+| `/create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; **`--dry-run`** / **`--quick`** / **`--split`** / **`--no-assign`** / **`--parent #N`** / **`--help`**. Nie zakłada brancha |
 | `/git-start` | `#N` / opis / **puste = auto-diff** / **`--help`** → issue + branch |
 | `/git-check` | Dopasuj tytuł/body issue do realnego diffa; **`--dry-run`** / **`--help`** |
 | `/git-commit` | Conventional Commit(s) z lokalnego diffa; **`--one`** / **`--split`** / **`--dry-run`** |

@@ -57,6 +57,14 @@ def render_antigravity(meta: dict[str, str], body: str) -> str:
     header = f"# {title}\n\n{description}\n\n"
     out = header + body
     if len(out) > 12000:
+        # Przycięcie leci od końca pliku, a tam agenci trzymają sekcję "Zakazy" —
+        # ciche obcięcie zabiera akurat zakazy. Głośny komunikat, bo inaczej
+        # okrojony agent instaluje się bez śladu.
+        print(
+            f"UWAGA: {title} ma {len(out)} znaków (limit antigravity 12000) — "
+            f"przycięto {len(out) - 11980} znaków z końca pliku",
+            file=sys.stderr,
+        )
         out = out[:11980] + "\n\n(...przycięto, limit 12000 znaków...)\n"
     return out
 

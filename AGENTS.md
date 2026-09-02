@@ -90,7 +90,7 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | Prefiks | Przykłady | Źródło |
 |---------|-----------|--------|
 | `/compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
-| `/create-task` | `/create-task "…"`, `--split`, `--dry-run`, `--quick` | kit |
+| `/create-task` | `/create-task "…"`; flagi: `/create-task --help` | kit |
 | `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |
