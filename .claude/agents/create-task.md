@@ -64,10 +64,12 @@ Zanim cokolwiek powiesz, czytaj. Nie pytaj o nic, czego możesz dowiedzieć się
 | Kod dotykany przez pomysł | Czy to już istnieje, czy jest gdzie wpiąć | `grep -r`, `ls` po katalogach |
 | Świeże commity | Czy ktoś tego właśnie nie robi | `git log --oneline -20` |
 
-**Limit: pięć odczytów; żadnego czytania plików w całości poza `AGENTS.md`/`CLAUDE.md`.**
-Bez limitu ta faza zjada kontekst i nie zostaje miejsce na rozmowę. Jeśli po pięciu odczytach
-nie wiesz, gdzie pomysł by wylądował — to samo w sobie jest informacją i ląduje w ocenie.
-Nie relacjonuj odczytów linijka po linijce — streść w jednym zdaniu.
+**Limit: pięć kroków — po jednym na wiersz tabeli, w kolejności od góry.** Krok może objąć
+kilka komend z tego wiersza (np. `cat AGENTS.md` i `ls docs/`), ale żadnego czytania plików
+w całości poza `AGENTS.md`/`CLAUDE.md` i żadnego szóstego kroku. Bez limitu ta faza zjada
+kontekst i nie zostaje miejsce na rozmowę. Jeśli po pięciu krokach nie wiesz, gdzie pomysł by
+wylądował — to samo w sobie jest informacją i ląduje w ocenie. Nie relacjonuj odczytów
+linijka po linijce — streść w jednym zdaniu.
 
 ## FAZA 1 — ocena sensu
 
