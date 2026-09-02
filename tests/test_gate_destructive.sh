@@ -118,6 +118,30 @@ run_hook "sed -i s/a/b/ README.md" allow
 # Katalog tymczasowy agenta jest jednorazowy — prompt bylby szumem.
 run_hook "touch /tmp/claude/session/scratch.txt" allow
 
+# Urzadzenia puste: przekierowanie tam nic nie traci. Regresja — token sklejony
+# (`2>/dev/null`) przechodzil zawsze, bo zaczyna sie od cyfry i wypada z petli
+# po tokenach; rozdzielony spacja byl liczony jako sciezka poza repo i pytal.
+run_hook "cat README.md > /dev/null" allow
+run_hook "cat README.md 2>/dev/null" allow
+run_hook "bash scripts/bootstrap-project.sh > /dev/null 2>&1" allow
+run_hook "echo diag > /dev/stderr" allow
+run_hook "echo diag > /dev/stdout" allow
+# Windowsowy odpowiednik nie wyglada na sciezke, wiec nie wchodzi do petli.
+run_hook "cat README.md > NUL" allow
+# Lista jest zamknieta: reszta /dev/* to nadal zapis poza repo.
+run_hook "echo x > /dev/sda" ask
+run_hook "echo x > /dev/tty" ask
+# ...a wyjatek dotyczy wylacznie CELU przekierowania. Ten sam token w roli
+# zwyklego argumentu niszczy dane (`mv plik /dev/null` kasuje plik bezpowrotnie),
+# wiec tam pytamy dalej. Regresja: pierwsza wersja tego wyjatku dzialala na
+# kazdym tokenie i przepuszczala `mv` oraz `cp` jako `allow`.
+run_hook "mv README.md /dev/null" ask
+run_hook "cp -r docs /dev/stdout" ask
+run_hook "rm /dev/null" ask
+# Operator z deskryptorem i dopisywanie licza sie jako przekierowanie.
+run_hook "cat README.md 2> /dev/null" allow
+run_hook "make build >> /dev/null" allow
+
 # --- fail-closed -------------------------------------------------------------
 # Nieoczekiwany exit != 0 bez wczesniejszego emit → ask + exit 0 (zeby failClosed
 # w Cursor nie zablokowal mimo poprawnej decyzji).

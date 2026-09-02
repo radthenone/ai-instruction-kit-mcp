@@ -270,11 +270,15 @@ project_root() {
 
 # Zwraca pierwszy argument-sciezke, ktory wychodzi poza projekt (albo nic).
 outside_target() {
-  local root_n home_n tok tok_n
+  local root_n home_n tok tok_n prev="" cur=""
   root_n=$(norm_path "$(project_root)")
   home_n=$(norm_path "${HOME:-}")
   set -f  # bez tego glob rozwinalby "*" z komendy na pliki z cwd
   for tok in $command; do
+    # Poprzedni token — potrzebny, zeby odroznic cel przekierowania od zwyklego
+    # argumentu. Przypisanie na gorze petli, bo ponizsze `continue` je omijaja.
+    prev="$cur"
+    cur="$tok"
     case "$tok" in
       -*) continue ;;
       /*|~*|[A-Za-z]:[\\/]*) ;;
@@ -285,9 +289,21 @@ outside_target() {
     tok="${tok%[\"\']}"
     [[ "$tok" == '~'* ]] && tok="${home_n}${tok#\~}"
     tok_n=$(norm_path "$tok")
-    # Katalog tymczasowy agenta jest z zalozenia jednorazowy — nie warty promptu.
     case "$tok_n" in
+      # Katalog tymczasowy agenta jest z zalozenia jednorazowy — nie warty promptu.
       */tmp/claude/*|*/temp/claude/*) continue ;;
+      # Urzadzenia puste nie przechowuja nic, wiec przekierowanie tam nie jest
+      # zmiana, ktora git mialby odzyskiwac. Lista jest zamknieta, nie prefiksem
+      # `/dev/*`: /dev/sda czy /dev/tty to juz zapis, ktory chcemy widziec.
+      #
+      # Wyjatek obowiazuje TYLKO dla celu przekierowania (`>`, `>>`, `2>`).
+      # W roli zwyklego argumentu ten sam token niszczy dane — `mv plik /dev/null`
+      # kasuje plik bezpowrotnie — wiec tam pytamy dalej.
+      /dev/null|/dev/stdout|/dev/stderr)
+        case "$prev" in
+          *'>') continue ;;
+        esac
+        ;;
     esac
     [[ "$tok_n" == "$root_n" || "$tok_n" == "$root_n"/* ]] && continue
     set +f
