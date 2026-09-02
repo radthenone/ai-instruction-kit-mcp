@@ -285,9 +285,13 @@ outside_target() {
     tok="${tok%[\"\']}"
     [[ "$tok" == '~'* ]] && tok="${home_n}${tok#\~}"
     tok_n=$(norm_path "$tok")
-    # Katalog tymczasowy agenta jest z zalozenia jednorazowy — nie warty promptu.
     case "$tok_n" in
+      # Katalog tymczasowy agenta jest z zalozenia jednorazowy — nie warty promptu.
       */tmp/claude/*|*/temp/claude/*) continue ;;
+      # Urzadzenia puste nie przechowuja nic, wiec przekierowanie tam nie jest
+      # zmiana, ktora git mialby odzyskiwac. Lista jest zamknieta, nie prefiksem
+      # `/dev/*`: /dev/sda czy /dev/tty to juz zapis, ktory chcemy widziec.
+      /dev/null|/dev/stdout|/dev/stderr) continue ;;
     esac
     [[ "$tok_n" == "$root_n" || "$tok_n" == "$root_n"/* ]] && continue
     set +f
