@@ -131,6 +131,16 @@ run_hook "cat README.md > NUL" allow
 # Lista jest zamknieta: reszta /dev/* to nadal zapis poza repo.
 run_hook "echo x > /dev/sda" ask
 run_hook "echo x > /dev/tty" ask
+# ...a wyjatek dotyczy wylacznie CELU przekierowania. Ten sam token w roli
+# zwyklego argumentu niszczy dane (`mv plik /dev/null` kasuje plik bezpowrotnie),
+# wiec tam pytamy dalej. Regresja: pierwsza wersja tego wyjatku dzialala na
+# kazdym tokenie i przepuszczala `mv` oraz `cp` jako `allow`.
+run_hook "mv README.md /dev/null" ask
+run_hook "cp -r docs /dev/stdout" ask
+run_hook "rm /dev/null" ask
+# Operator z deskryptorem i dopisywanie licza sie jako przekierowanie.
+run_hook "cat README.md 2> /dev/null" allow
+run_hook "make build >> /dev/null" allow
 
 # --- fail-closed -------------------------------------------------------------
 # Nieoczekiwany exit != 0 bez wczesniejszego emit → ask + exit 0 (zeby failClosed
