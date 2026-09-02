@@ -38,10 +38,11 @@ Konflikt TDD: Matt `/tdd` *albo* Superpowers TDD — nie oba. Domyślnie Matt na
 Pełna reguła: `.cursor/rules/git-branch-pr.mdc`.
 
 ```text
-[/grill-me gdy scope niejasny] → /git-start → [worktree?] → kod [+/tdd]
+[/create-task gdy nie ma issue] → [/grill-me gdy scope niejasny] → /git-start → [worktree?] → kod [+/tdd]
   → [/git-check] → /git-commit → /review-bugbot (+ min. stack) → /git-end | finishing→PR → Autopilot → merge
 ```
 
+- **`/create-task`** — pomysł → ocena na tle repo → karta issue → issue po akceptacji. Przed `/git-start`; nie zakłada brancha.  
 - **`/git-start` / `/git-check` / `/git-commit` / `/git-end`** — issue, sync, Conventional commit(s), push+PR.  
 - **`/grill-me`** — tylko przy niejasnym scope / trade-offach (nie przy oczywistym fixie).  
 - **`/teacher-backend` / `/teacher-frontend` / `/teacher-architecture`** — nauka **przed** kodem: koncepcja, „dlaczego tak”, opcje i koszty. Nie edytują plików; nie mylić z `/review-*` (te działają na gotowym diffie).  
@@ -89,6 +90,7 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | Prefiks | Przykłady | Źródło |
 |---------|-----------|--------|
 | `/compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
+| `/create-task` | `/create-task "…"`, `--split`, `--dry-run`, `--quick` | kit |
 | `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |
