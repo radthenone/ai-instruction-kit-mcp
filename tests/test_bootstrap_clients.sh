@@ -12,6 +12,8 @@ test -f "$TMP/only-cursor/.cursor/mcp.json"
 test -f "$TMP/only-cursor/AGENTS.md"
 test ! -e "$TMP/only-cursor/.mcp.json"
 test ! -e "$TMP/only-cursor/.kiro"
+# Ten przebieg leci z --skip-agents, więc jest zarazem dowodem, że flaga pomija skille.
+test ! -e "$TMP/only-cursor/.cursor/skills/skill-authoring"
 grep -q '"--clients", "cursor"' "$TMP/only-cursor/.cursor/mcp.json"
 # Guardraile ida ze wspolnego zrodla (templates/shared/guards).
 test -f "$TMP/only-cursor/.cursor/hooks/gate-destructive.sh"
@@ -74,5 +76,34 @@ test ! -e "$TMP/both/.claude/hooks"
 test ! -e "$TMP/both/.claude/settings.json"
 test -f "$TMP/both/.cursor/hooks/gate-destructive.sh"
 echo "OK  prune: claude odznaczony sprzata po sobie"
+
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+# Trzy klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
+test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"
+test -f "$TMP/skills/.cursor/skills/skill-authoring/SKILL.md"
+test -f "$TMP/skills/.agents/skills/skill-authoring/SKILL.md"
+# Cursorowy skill spoza shared zostaje na miejscu obok kitowych.
+test -f "$TMP/skills/.cursor/skills/compact/SKILL.md"
+# Reszta dostaje ten sam skill jako komendę w swoim formacie.
+test -f "$TMP/skills/.codex/agents/skill-authoring.toml"
+test -f "$TMP/skills/.github/prompts/skill-authoring.prompt.md"
+test -f "$TMP/skills/.kiro/agents/skill-authoring.md"
+test -f "$TMP/skills/.kilocode/workflows/skill-authoring.md"
+test -f "$TMP/skills/.opencode/command/skill-authoring.md"
+# Składany blok YAML (`description: >-`) musi dojechać jako jedno zdanie, nie ">-".
+grep -q 'description = "Jak napisać skill' "$TMP/skills/.codex/agents/skill-authoring.toml"
+echo "OK  shared skills u wszystkich klientów (3 natywnie, 5 przez degradację)"
+
+# .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
+# kasować po nazwach ze źródła, nie całym katalogiem.
+mkdir -p "$TMP/skills/.agents/skills/obcy-skill"
+echo "nie moj" > "$TMP/skills/.agents/skills/obcy-skill/SKILL.md"
+"$BOOT" "$TMP/skills" --clients claude --from "$ROOT" >/dev/null
+test -f "$TMP/skills/.agents/skills/obcy-skill/SKILL.md"
+test ! -e "$TMP/skills/.agents/skills/skill-authoring"
+test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"
+# Cursor odznaczony w tym samym przebiegu — jego skille znikają razem z resztą.
+test ! -e "$TMP/skills/.cursor/skills"
+echo "OK  prune kasuje kitowe skille, zostawia cudze"
 
 echo "All bootstrap --clients checks passed."

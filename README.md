@@ -15,6 +15,7 @@ Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) 
 | Zmiana zestawu modułów vs kategoria          | `.ai/project.profile.yaml` + `--profile` (fork)         |
 | Docelowy kontrakt `--profile` / stack / `--overlays` / `--codegen` | [design overlays](docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI stack jeszcze nie**) |
 | Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
+| Skille kita (wszyscy klienci)                | `templates/shared/skills/` → sekcja „Skille kita” niżej |
 
 
 ## Struktura `docs/`
@@ -416,6 +417,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/compact`    | **Cursor only** — alias UI Summarize w tym projekcie | `/compact`                                                                                                                                         |
 | `/git-*`      | Start / sync issue / commit / PR                   | `/git-start`, `/git-check`, `/git-commit`, `/git-end`                                                                                               |
 | `/create-task` | Pomysł → ocena na tle repo → issue (bez brancha)   | `/create-task`, `/create-task "eksport CSV"`; flagi: `/create-task --help`                                                                          |
+| `/create-skill` | Pomysł na skill → skill czy agent → issue (bez brancha) | `/create-skill`, `/create-skill "konwencje migracji"`; flagi: `/create-skill --help`                                                            |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
 
@@ -467,6 +469,7 @@ Długo:    [/grill-me] → /git-start → worktree → kod → [/git-check] → 
 | Komenda kit  | Co robi                                                                                 |
 | ------------ | --------------------------------------------------------------------------------------- |
 | `/create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; `--dry-run` / `--quick` / `--split` / `--no-assign` / `--parent #N`. **Nie** zakłada brancha |
+| `/create-skill` | Rozstrzyga skill vs agent, potem karta issue z nazwą, `description` i kryterium odpalenia; `--dry-run` / `--quick` / `--no-assign` / `--parent #N`. **Nie** pisze `SKILL.md` |
 | `/git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
 | `/git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
 | `/git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
@@ -503,6 +506,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | Slash                                | Plik szablonu                                    |
 | ------------------------------------ | ------------------------------------------------ |
 | `/create-task`                       | `templates/shared/agents/create-task.md`         |
+| `/create-skill`                      | `templates/shared/agents/create-skill.md`        |
 | `/git-start`                         | `templates/shared/agents/git-start.md`           |
 | `/git-check`                         | `templates/shared/agents/git-check.md`           |
 | `/git-commit`                        | `templates/shared/agents/git-commit.md`          |
@@ -574,6 +578,36 @@ Po skopiowaniu/wyrenderowaniu **zrestartuj** okno IDE — agenty/komendy ładuj�
 ```
 
 
+
+## Skille kita — wspólne źródło
+
+Skill to wiedza, którą model ładuje **sam**, gdy `description` pasuje do sytuacji —
+w odróżnieniu od agenta (`/nazwa`), którego ktoś musi wywołać. Jedno źródło:
+**`templates/shared/skills/<nazwa>/SKILL.md`** (+ opcjonalne `references/`, `scripts/`,
+`assets/`). Rozkłada je `scripts/install_shared_skills.py`.
+
+| Klient | Gdzie ląduje | Jak działa |
+|--------|--------------|------------|
+| claude | `.claude/skills/` | natywnie, z zasobami |
+| cursor | `.cursor/skills/` | natywnie, z zasobami (obok Cursor-only `/compact`) |
+| antigravity | `.agents/skills/` | natywnie, z zasobami |
+| codex | `.codex/agents/` | degradacja: komenda `/nazwa` |
+| vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
+| kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
+| kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
+| opencode | `.opencode/command/` | degradacja: komenda `/nazwa` |
+
+**Degradacja kosztuje dwie rzeczy:** skill przestaje odpalać się sam (trzeba wpisać
+`/nazwa`) i gubi wszystko poza `SKILL.md`, bo komenda to jeden plik. Instalator mówi
+o gubionych katalogach na stderr. Skill, którego sens leży w `scripts/`, będzie
+w pięciu na osiem klientów wydmuszką — wtedy to prawdopodobnie powinien być agent.
+
+`.claude/skills/` i `.agents/skills/` dzielisz ze skillami spoza kita (`npx skills add`),
+więc odznaczenie klienta kasuje tam **tylko** katalogi o nazwach ze wspólnego źródła,
+nigdy całego katalogu skilli.
+
+Nowy skill zakładasz przez **`/create-skill`** (issue), a piszesz według skilla
+`skill-authoring` — to on trzyma zasady frontmatter, sufity długości i kryteria odpalania.
 
 ## Guardrails — bezpieczeństwo
 

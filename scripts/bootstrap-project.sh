@@ -9,6 +9,8 @@
 # Domyślny preset: _base. Domyślni klienci: all.
 # Kategoria e-commerce: --preset shop
 # Agenci: templates/shared/agents → natywne ścieżki klienta.
+# Skille: templates/shared/skills → katalog skilli klienta (claude/cursor/antigravity)
+#         albo komenda /nazwa u pozostałych (patrz scripts/install_shared_skills.py).
 
 set -euo pipefail
 
@@ -27,7 +29,8 @@ Opcje:
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
   --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
-  --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*)
+  --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*) ani skilli
+                      z templates/shared/skills/
   --with-plugins      Best-effort doinstaluj zewnętrzne pluginy (mattpocock skills przez npx;
                       Superpowers/Autopilot tylko instrukcja — to marketplace pluginów Claude/Cursor,
                       nie da się zainstalować z skryptu). Wymaga npx w PATH (Node.js)
@@ -65,6 +68,7 @@ PRUNE_CLIENTS=1
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
 SHARED_GUARDS="$KIT_ROOT/templates/shared/guards"
+SHARED_SKILLS="$KIT_ROOT/templates/shared/skills"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -192,6 +196,7 @@ prune_client() {
     claude)
       rm -f "$TARGET/.mcp.json"
       rm -rf "$TARGET/.claude/agents" "$TARGET/.claude/commands" "$TARGET/.claude/hooks"
+      prune_shared_skills "$TARGET/.claude/skills"
       if [[ -f "$TARGET/.claude/settings.json" ]]; then
         "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
       fi
@@ -223,6 +228,7 @@ prune_client() {
     antigravity)
       rm -f "$TARGET/.agents/mcp_config.json"
       rm -rf "$TARGET/.agents/workflows"
+      prune_shared_skills "$TARGET/.agents/skills"
       rmdir "$TARGET/.agents" 2>/dev/null || true
       ;;
     opencode)
@@ -308,6 +314,37 @@ copy_shared_agents() {
   echo "  + $dest_dir (shared agents)"
 }
 
+# Skille ze wspólnego źródła. Trzy klienty mają natywny katalog skilli, pozostałe
+# dostają je jako komendę `/nazwa` — mapę i degradację trzyma install_shared_skills.py,
+# tutaj zostaje tylko decyzja "czy w ogóle" i dokąd.
+copy_shared_skills() {
+  local client="$1" dest_dir="$2"
+  if [[ "$SKIP_AGENTS" -ne 0 ]]; then
+    return 0
+  fi
+  # Puste źródło to poprawny stan (kit bez skilli) — inaczej niż przy agentach,
+  # gdzie brak katalogu znaczy uszkodzony kit.
+  if ! compgen -G "$SHARED_SKILLS/*/SKILL.md" >/dev/null; then
+    return 0
+  fi
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" \
+    "$client" "$SHARED_SKILLS" "$dest_dir"
+  echo "  + $dest_dir (shared skills, $client)"
+}
+
+# Kitowe skille w katalogu, który dzielimy z użytkownikiem (.claude/skills,
+# .agents/skills — tam lądują też skille instalowane spoza kita). Kasujemy więc
+# po nazwach ze źródła, nigdy całego katalogu.
+prune_shared_skills() {
+  local dest_dir="$1" skill
+  [[ -d "$dest_dir" ]] || return 0
+  for skill in "$SHARED_SKILLS"/*/; do
+    [[ -d "$skill" ]] || continue
+    rm -rf "$dest_dir/$(basename "$skill")"
+  done
+  rmdir "$dest_dir" 2>/dev/null || true
+}
+
 install_agenty_md_once() {
   if [[ ! -f "$TARGET/AGENTS.md" ]]; then
     cp "$KIT_ROOT/templates/AGENTS.md" "$TARGET/AGENTS.md"
@@ -360,6 +397,8 @@ install_cursor() {
     cp -R "$KIT_ROOT/templates/cursor/skills/." "$TARGET/.cursor/skills/"
     echo "  + .cursor/skills/ (Cursor-only, np. /compact)"
   fi
+
+  copy_shared_skills cursor "$TARGET/.cursor/skills"
 }
 
 copy_claude_commands() {
@@ -415,6 +454,7 @@ install_claude() {
 
   copy_shared_agents "$TARGET/.claude/agents"
   copy_claude_commands "$TARGET/.claude/commands"
+  copy_shared_skills claude "$TARGET/.claude/skills"
 }
 
 install_codex() {
@@ -430,6 +470,7 @@ install_codex() {
       "$TARGET/.codex/agents" "$KIT_ROOT/templates/codex/agents"
     echo "  + .codex/agents/ (curated + auto-rendered)"
   fi
+  copy_shared_skills codex "$TARGET/.codex/agents"
 }
 
 render_agent_commands() {
@@ -455,6 +496,7 @@ install_vscode() {
     echo "  + .github/copilot-instructions.md"
   fi
   render_agent_commands vscode "$TARGET/.github/prompts"
+  copy_shared_skills vscode "$TARGET/.github/prompts"
 }
 
 install_kiro() {
@@ -466,6 +508,7 @@ install_kiro() {
       "$TARGET/.kiro/steering/instruction-kit.md"
   fi
   copy_shared_agents "$TARGET/.kiro/agents"
+  copy_shared_skills kiro "$TARGET/.kiro/agents"
 }
 
 install_kilo() {
@@ -473,6 +516,7 @@ install_kilo() {
   fill_mcp "$KIT_ROOT/templates/kilo/mcp.json" "$TARGET/.kilocode/mcp.json"
   echo "  + .kilocode/mcp.json"
   render_agent_commands kilo "$TARGET/.kilocode/workflows"
+  copy_shared_skills kilo "$TARGET/.kilocode/workflows"
 }
 
 install_antigravity() {
@@ -480,6 +524,7 @@ install_antigravity() {
   fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
   echo "  + .agents/mcp_config.json"
   render_agent_commands antigravity "$TARGET/.agents/workflows"
+  copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 
 install_opencode() {
@@ -487,6 +532,7 @@ install_opencode() {
   fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
   echo "  + opencode.json"
   render_agent_commands opencode "$TARGET/.opencode/command"
+  copy_shared_skills opencode "$TARGET/.opencode/command"
 }
 
 install_plugins() {
