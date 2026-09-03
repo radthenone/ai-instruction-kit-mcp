@@ -71,8 +71,10 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
         return (
             "# Kit status: brak stampu\n\n"
             f"Nie znaleziono `{STAMP_REL_PATH}` w repo aplikacji — projekt nie był "
-            "bootstrapowany wersją kita ze stampem (albo plik usunięty). "
-            "Uruchom `bootstrap-project.sh` żeby go założyć."
+            "bootstrapowany wersją kita ze stampem (albo plik usunięty).\n\n"
+            "Załóż go narzędziem MCP `bootstrap_workspace` — najpierw bez argumentów "
+            "(dry run pokaże listę plików), potem `dry_run=False` żeby zainstalować. "
+            "Alternatywa bez MCP: lokalny klon kita i `bootstrap-project.sh`."
         )
 
     stamp_commit = stamp.get("kit_commit") or ""
@@ -125,8 +127,9 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
         lines.extend(f"- `{f}`" for f in sorted(set(changed_files)))
         lines.append("")
         lines.append(
-            "Uruchom ponownie `bootstrap-project.sh` (te same flagi co poprzednio) "
-            "żeby dostać aktualizację. **Nadpisze** `.claude/agents/`, `.cursor/agents/`, "
+            "Zaktualizuj narzędziem MCP `bootstrap_workspace` (dry run najpierw) albo "
+            "ponownym `bootstrap-project.sh` z tymi samymi flagami co poprzednio. "
+            "**Nadpisze** `.claude/agents/`, `.cursor/agents/`, "
             "`.claude/commands/`, `mcp.json` — jeśli je ręcznie edytowałeś, zrób "
             "`git diff` najpierw."
         )
