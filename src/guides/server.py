@@ -8,6 +8,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from guides.bootstrap import BootstrapError, plan_bootstrap, run_bootstrap
 from guides.clients import (
     expand_clients,
     format_clients_arg,
@@ -30,7 +31,9 @@ mcp = FastMCP(
         "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
         "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
         "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
-        "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian."
+        "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
+        "Pliki kita (hooki, agenci, komendy) instaluje bootstrap_workspace — jedyne narzędzie "
+        "zapisujące, domyślnie dry_run=True."
     ),
 )
 
@@ -41,6 +44,7 @@ _extra_overlays: list[Path] = []
 _language_override: str | None = None
 _codegen_override: str | None = None
 _clients: list[str] = ["all"]
+_preset: str | None = None
 
 
 def _get_profile_path() -> Path:
@@ -237,6 +241,135 @@ def check_kit_status() -> str:
     return check_kit_updates(kit_root=resolved.kit_root, workspace_root=resolved.workspace_root)
 
 
+def _require_workspace() -> Path:
+    """Zwróć root repo aplikacji albo wyjaśnij, czego brakuje (nigdy nie zgaduj cwd)."""
+    if _workspace_root is None:
+        raise BootstrapError(
+            "Brak roota repo aplikacji. Uruchom serwer MCP z `--workspace /sciezka/do/repo` "
+            "albo ustaw GUIDES_WORKSPACE. Bootstrap nie zapisze do bieżącego katalogu "
+            "procesu serwera — to nie musi być twoje repo."
+        )
+    return _workspace_root
+
+
+def _bootstrap_kwargs(
+    clients: str | None,
+    preset: str | None,
+    language: str | None,
+    codegen: str | None,
+) -> dict:
+    """Złóż flagi bootstrapu: jawne argumenty narzędzia > ustawienia startowe serwera."""
+    resolved = _get_resolved()
+    return {
+        "kit_root": resolved.kit_root,
+        "clients": format_clients_arg(parse_clients(clients) if clients else _clients),
+        "preset": preset or _preset or "_base",
+        "language": normalize_language(language) if language else resolved.language,
+        "codegen": (
+            normalize_codegen(codegen, load_manifest(_kit_root)) if codegen else resolved.codegen
+        ),
+        "from_src": str(resolved.kit_root),
+    }
+
+
+@mcp.tool()
+def bootstrap_workspace(
+    clients: str | None = None,
+    preset: str | None = None,
+    language: str | None = None,
+    codegen: str | None = None,
+    with_overlay: bool = False,
+    keep_unselected_clients: bool = False,
+    dry_run: bool = True,
+) -> str:
+    """
+    Zainstaluj pliki kita (hooki, agenci, komendy, mcp.json, stamp) w repo aplikacji.
+
+    Jedyne narzędzie MCP, które **zapisuje na dysk** — reszta serwera jest tylko do
+    odczytu. Bez tego trzeba sklonować kit lokalnie i ręcznie odpalić
+    ``scripts/bootstrap-project.sh``; tu ten sam skrypt uruchamia serwer, który już
+    ma wszystkie szablony pod ręką.
+
+    ``dry_run=True`` jest domyślne i nic nie zapisuje: skrypt leci na kopii kitowej
+    powierzchni repo w katalogu tymczasowym, a wynikiem jest lista plików, które
+    powstałyby, zostałyby nadpisane albo usunięte. Zapis wymaga jawnego
+    ``dry_run=False`` — hooki ``PreToolUse`` łapią ``Bash``/``Edit``/``Write``,
+    a nie nazwy narzędzi MCP, więc ta domyślka jest tu jedyną bramką.
+
+    Args:
+        clients: ``--clients``: all | cursor | claude | codex | vscode | kiro | kilo |
+            antigravity | opencode (po przecinku). Domyślnie: wartość startowa serwera.
+        preset: Kategoria presetu (``_base``, ``shop``). Domyślnie: preset serwera.
+        language: Język prozy ``pl``/``en``. Domyślnie: język bieżącego profilu.
+        codegen: ``orval``/``none``/``graphql``. Domyślnie: codegen bieżącego profilu.
+        with_overlay: Skopiuj szablon ``.ai/project.md``, jeśli repo go nie ma.
+        keep_unselected_clients: Nie usuwaj kitowych plików klientów spoza ``clients``.
+        dry_run: ``True`` (domyślnie) — tylko plan. ``False`` — faktyczny zapis.
+
+    Returns:
+        str: Markdown — plan zmian (dry run) albo raport z instalacji i stampu.
+    """
+    try:
+        workspace = _require_workspace()
+        kwargs = _bootstrap_kwargs(clients, preset, language, codegen)
+        if kwargs["kit_root"].resolve() == workspace.resolve():
+            raise BootstrapError(
+                f"Workspace i kit to ten sam katalog (`{workspace}`). Bootstrap uruchamia się "
+                "w repo aplikacji, nie w repo kita."
+            )
+        kwargs.update(
+            with_overlay=with_overlay,
+            keep_unselected_clients=keep_unselected_clients,
+        )
+        flags = (
+            f"--preset {kwargs['preset']} --language {kwargs['language']} "
+            f"--codegen {kwargs['codegen']} --clients {kwargs['clients']}"
+        )
+        header = [
+            f"- Workspace: `{workspace}`",
+            f"- Kit: `{kwargs['kit_root']}`",
+            f"- Flagi: `{flags}`",
+            "",
+        ]
+
+        if dry_run:
+            plan = plan_bootstrap(workspace_root=workspace, **kwargs)
+            lines = ["# bootstrap_workspace — dry run (nic nie zapisano)", "", *header]
+            for title, paths in (
+                ("Nowe pliki", plan.created),
+                ("Nadpisane", plan.modified),
+                ("Usunięte przy sprzątaniu klientów", plan.deleted),
+            ):
+                if paths:
+                    lines.append(f"## {title} ({len(paths)})")
+                    lines.append("")
+                    lines.extend(f"- `{p}`" for p in paths)
+                    lines.append("")
+            if plan.unchanged:
+                lines.append(f"## Bez zmian ({len(plan.unchanged)})")
+                lines.append("")
+            if not plan.touches_disk:
+                lines.append(
+                    "Repo jest już zbootstrapowane tymi flagami — nic by się nie zmieniło."
+                )
+                lines.append("")
+            lines.append(
+                "Żeby zastosować: wywołaj ponownie z `dry_run=False`. To jedyne narzędzie "
+                "MCP tego serwera, które pisze po repo — hooki kita go nie zatrzymają."
+            )
+            return "\n".join(lines)
+
+        output = run_bootstrap(target=workspace, **kwargs)
+        stamp = workspace / ".ai" / ".kit-bootstrap.json"
+        lines = ["# bootstrap_workspace — zainstalowano", "", *header, "```", output, "```", ""]
+        stamp_state = "zapisany" if stamp.is_file() else "**BRAK — sprawdź wyjście skryptu**"
+        lines.append(f"- Stamp: `{stamp}` — {stamp_state}")
+        lines.append("- Zrestartuj IDE w repo aplikacji, żeby wczytało hooki i komendy.")
+        return "\n".join(lines)
+    except (BootstrapError, ValueError, RuntimeError) as exc:
+        return f"# bootstrap_workspace: błąd\n\n{exc}"
+
+
 @mcp.tool()
 def list_modules() -> str:
     """
@@ -352,7 +485,7 @@ def _register_bundle_resources() -> None:
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
     global _profile_path, _kit_root, _workspace_root, _extra_overlays
-    global _language_override, _codegen_override, _clients
+    global _language_override, _codegen_override, _clients, _preset
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -438,6 +571,7 @@ def main() -> None:
         parser.error(f"--clients: {exc}")
 
     preset = args.preset or os.environ.get("GUIDES_PRESET")
+    _preset = preset
     profile_arg = args.profile
     env_profile = os.environ.get("GUIDES_PROFILE")
 

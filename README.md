@@ -158,6 +158,22 @@ Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--codegen`, `--clients
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
+### Bootstrap bez klona kita — narzędzie MCP `bootstrap_workspace`
+
+Jeśli projekt ma już podłączony serwer MCP `project-guides`, kita nie trzeba klonować ani ręcznie odpalać skryptu — serwer ma szablony pod ręką i uruchamia ten sam `bootstrap-project.sh` u siebie. Poproś agenta o wywołanie narzędzia:
+
+```text
+bootstrap_workspace()                          # dry run — tylko lista plików
+bootstrap_workspace(dry_run=False)             # instalacja
+bootstrap_workspace(clients="claude", with_overlay=True, dry_run=False)
+```
+
+Argumenty (`clients`, `preset`, `language`, `codegen`, `with_overlay`, `keep_unselected_clients`) odpowiadają flagom skryptu; pominięte biorą wartość z parametrów startowych serwera MCP. Cel zapisu to `--workspace` / `GUIDES_WORKSPACE` — **bez niego narzędzie odmawia**, zamiast zapisywać do katalogu, z którego przypadkiem wystartował proces serwera.
+
+`dry_run=True` jest domyślne i nic nie zapisuje: skrypt leci na kopii kitowej powierzchni repo w katalogu tymczasowym, a raport pokazuje pliki nowe, nadpisane i **usunięte** przez sprzątanie klientów spoza `--clients`. Plan pochodzi więc z faktycznego przebiegu skryptu, nie z drugiej listy ścieżek w Pythonie.
+
+> **Uwaga na bramki.** Hooki kita (`PreToolUse`) łapią `Bash`, `PowerShell` i `Edit|Write|MultiEdit|NotebookEdit` — nie nazwy narzędzi MCP. To jedyne zapisujące narzędzie tego serwera i hooki go **nie zatrzymają**; `dry_run=True` jako domyślka plus wymóg jawnego `dry_run=False` są tu całą ochroną. Reszta narzędzi serwera pozostaje tylko do odczytu.
+
 ## MCP w innych klientach (multi-client)
 
 Kanon treści: `templates/shared/{agents,rules}`. Adaptery IDE trzymają tylko format MCP / ścieżki natywne. Bootstrap `--clients` instaluje wybrane pakiety (default `all`).
