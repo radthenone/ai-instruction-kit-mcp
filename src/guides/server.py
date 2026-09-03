@@ -346,7 +346,13 @@ def bootstrap_workspace(
                     lines.extend(f"- `{p}`" for p in paths)
                     lines.append("")
             if plan.unchanged:
-                lines.append(f"## Bez zmian ({len(plan.unchanged)})")
+                # Świadomie licznik, nie sekcja: przy `--clients all` to grubo ponad sto
+                # plików, których bootstrap i tak nie tknie. Nagłówek `##` obiecywałby
+                # wyliczenie, więc raport urywałby się na pustej sekcji.
+                lines.append(
+                    f"Bez zmian: {len(plan.unchanged)} plików kita już zgodnych "
+                    "z tą wersją (nie wyliczam ich)."
+                )
                 lines.append("")
             if not plan.touches_disk:
                 lines.append(

@@ -159,6 +159,20 @@ class TestServerTool(_BootstrapTestCase):
         self.assertTrue((self.workspace / ".ai" / ".kit-bootstrap.json").is_file())
         self.assertTrue((self.workspace / ".claude" / "hooks" / "gate-destructive.sh").is_file())
 
+    def test_report_has_no_empty_sections(self) -> None:
+        """Każdy nagłówek `##` w raporcie musi mieć pod sobą wyliczenie."""
+        server.bootstrap_workspace(dry_run=False)
+        out = server.bootstrap_workspace()
+
+        self.assertIn("Bez zmian:", out)
+        self.assertNotIn("## Bez zmian", out)
+        lines = out.splitlines()
+        for index, line in enumerate(lines):
+            if not line.startswith("## "):
+                continue
+            body = [rest for rest in lines[index + 1 :] if rest.strip()]
+            self.assertTrue(body and body[0].startswith("- `"), msg=f"pusta sekcja: {line}")
+
     def test_missing_workspace_errors_instead_of_writing_cwd(self) -> None:
         """Brak --workspace: błąd, a bieżący katalog procesu zostaje nietknięty."""
         server._workspace_root = None
