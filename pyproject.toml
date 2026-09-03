@@ -18,9 +18,11 @@ build-backend = "hatchling.build"
 
 # `unittest discover -s tests` i pytest wkładają `tests/` na sys.path, więc suity
 # mogą się nawzajem importować (test_shell_suites → test_bash_hook_launcher).
-# Type checker musi widzieć ten sam import root.
+# Python robi to samo dla katalogu uruchamianego skryptu, stąd `scripts/`
+# (install_shared_skills → render_agent_commands). Type checker musi widzieć te
+# same import rooty co runtime.
 [tool.ty.environment]
-extra-paths = ["tests"]
+extra-paths = ["tests", "scripts"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/guides"]

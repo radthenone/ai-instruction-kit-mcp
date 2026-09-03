@@ -6,7 +6,8 @@ Dwie luki, które ten moduł zamyka:
 1. Wpis w `manifest.yaml` może wskazywać na nieistniejący plik — dotąd ujawniało
    się to dopiero przy `get_module()` u użytkownika.
 2. To repo dogfooduje własny kit: `.cursor/agents/`, `.claude/agents/` i
-   `.claude/commands/` to kopie `templates/shared/agents/`. Dodanie agenta bez
+   `.claude/commands/` to kopie `templates/shared/agents/`, a `.claude/skills/`
+   to kopia `templates/shared/skills/`. Dodanie agenta albo skilla bez
    regeneracji kopii przechodziło CI niezauważone.
 
 Parytet kopii sprawdzamy **wywołując prawdziwy bootstrap**, a nie powtarzając tu
@@ -31,6 +32,16 @@ KIT_ROOT = find_kit_root(Path(__file__))
 
 # Katalogi, które bootstrap wypełnia z templates/shared/agents/.
 DOGFOOD_DIRS = (".cursor/agents", ".claude/agents", ".claude/commands")
+
+# Skille ze wspólnego źródła sprawdzamy tylko w `.claude/skills/`. Pozostałe dwa
+# natywne katalogi są w .gitignore z dobrego powodu — `.agents/skills/` i
+# `.cursor/skills/*` to miejsca, gdzie lądują też skille instalowane spoza kita
+# (npx skills add), więc kopii kitowych po prostu tam nie śledzimy.
+#
+# Odwrotności — testu "katalog bez źródła w shared to sierota" — tu nie ma i mieć
+# nie może: `.claude/skills/` dzielimy z tymi samymi obcymi skillami (np. wygenerowany
+# `ai-instruction-kit-mcp`), więc nadmiarowy katalog nie jest dowodem na nic.
+DOGFOOD_SKILL_DIR = ".claude/skills"
 
 # Guardraile mają jedno źródło (templates/shared/guards) i trafiają do katalogu
 # hooków każdego klienta, który potrafi je egzekwować. Kopia w tym repo musi być
@@ -157,6 +168,29 @@ class TestDogfoodCopies(unittest.TestCase):
         """Cursor ma tylko `afterFileEdit` — bramka przed zapisem nie ma tam sensu."""
         self.assertFalse((self.generated / ".cursor/hooks/gate-file-writes.mjs").exists())
         self.assertFalse((KIT_ROOT / ".cursor/hooks/gate-file-writes.mjs").exists())
+
+    def _shared_skills(self) -> list[Path]:
+        return sorted(
+            path.parent for path in (KIT_ROOT / "templates" / "shared" / "skills").glob("*/SKILL.md")
+        )
+
+    def test_skill_copies_match_bootstrap_output(self) -> None:
+        """Każdy shared skill ma w repo kopię identyczną z wygenerowaną."""
+        stale: list[str] = []
+        for skill in self._shared_skills():
+            rel = f"{DOGFOOD_SKILL_DIR}/{skill.name}/SKILL.md"
+            in_repo = KIT_ROOT / rel
+            expected = self.generated / rel
+            self.assertTrue(expected.is_file(), msg=f"bootstrap nie zainstalował {rel}")
+            if not in_repo.is_file():
+                stale.append(f"{rel} — brak kopii w repo")
+            elif in_repo.read_text(encoding="utf-8") != expected.read_text(encoding="utf-8"):
+                stale.append(f"{rel} — kopia rozjechała się ze źródłem")
+        self.assertEqual(
+            stale,
+            [],
+            msg="uruchom bootstrap na tym repo albo zregeneruj kopie: " + "; ".join(stale),
+        )
 
     def test_no_orphan_copies(self) -> None:
         """Kopia bez odpowiednika w shared to pozostałość po usuniętym agencie."""
