@@ -342,6 +342,83 @@ dest.write_text(text, encoding="utf-8")
 PY
 }
 
+# Wstaw (albo odśwież) sekcję kita w .gitignore repo aplikacji.
+#
+# Bootstrap instaluje kilkadziesiąt plików konfiguracji AI, ale to repo konsumenta
+# decyduje, co trafia do gita — a typowy .gitignore ma `.claude/` wpisane hurtem, więc
+# hooki bezpieczeństwa i komendy zostają tylko na maszynie, gdzie odpalono bootstrap.
+#
+# Sekcja jest ograniczona markerami i podmieniana w całości, więc kolejne przebiegi
+# nie duplikują wpisów, a reguły spoza markerów zostają nietknięte. Marker końcowy
+# jest wymagany: bez niego nie wiemy, gdzie kończy się nasza sekcja, więc wtedy
+# dopisujemy nową na końcu, zamiast zgadywać i skasować cudze reguły.
+GITIGNORE_BEGIN="# >>> instruction-kit >>>"
+GITIGNORE_END="# <<< instruction-kit <<<"
+
+sync_gitignore_section() {
+  local target_file="$TARGET/.gitignore"
+  local template="$KIT_ROOT/templates/gitignore-kit.txt"
+  [[ -f "$template" ]] || return 0
+
+  BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
+  SHARED_SKILLS="$SHARED_SKILLS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
+  TEMPLATE="$template" DEST="$target_file" "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+begin = os.environ["BEGIN_MARK"]
+end = os.environ["END_MARK"]
+dest = Path(os.environ["DEST"])
+body = Path(os.environ["TEMPLATE"]).read_text(encoding="utf-8").strip("\n")
+
+
+def skill_allow(dest_prefix: str, *source_dirs: str) -> str:
+    """Wyjątki `!` dla skilli kita — po nazwie, żeby nie wciągnąć cudzych.
+
+    Katalog skilli u konsumenta miesza dwa źródła: te z kita (pliki) i dowiązania do
+    `.agents/skills/` z `npx skills add` (ignorowane). Wersjonujemy tylko pierwsze.
+    """
+    names: list[str] = []
+    for source in source_dirs:
+        root = Path(source)
+        if not root.is_dir():
+            continue
+        names.extend(sorted(p.name for p in root.iterdir() if p.is_dir()))
+    lines: list[str] = []
+    for name in sorted(set(names)):
+        lines.append(f"!{dest_prefix}/{name}/")
+        lines.append(f"!{dest_prefix}/{name}/**")
+    return "\n".join(lines) if lines else f"# (kit nie dostarcza skilli dla {dest_prefix})"
+
+
+shared = os.environ["SHARED_SKILLS"]
+body = body.replace("@KIT_SKILLS_CLAUDE@", skill_allow(".claude/skills", shared))
+body = body.replace(
+    "@KIT_SKILLS_CURSOR@",
+    skill_allow(".cursor/skills", shared, os.environ["CURSOR_SKILLS"]),
+)
+
+section = f"{begin}\n{body}\n{end}\n"
+
+existing = dest.read_text(encoding="utf-8") if dest.is_file() else ""
+
+if begin in existing and end in existing:
+    head, _, rest = existing.partition(begin)
+    _, _, tail = rest.partition(end)
+    updated = f"{head}{section}{tail.lstrip(chr(10))}"
+    action = "zaktualizowano"
+else:
+    prefix = existing if not existing or existing.endswith("\n") else existing + "\n"
+    separator = "\n" if prefix.strip() else ""
+    updated = f"{prefix}{separator}{section}"
+    action = "dodano"
+
+if updated != existing:
+    dest.write_text(updated, encoding="utf-8")
+    print(f"  + .gitignore ({action} sekcję instruction-kit)")
+PY
+}
+
 copy_shared_agents() {
   local dest_dir="$1"
   if [[ "$SKIP_AGENTS" -ne 0 ]]; then
@@ -670,6 +747,8 @@ if [[ "$WITH_OVERLAY" -eq 1 ]]; then
     echo "  + .ai/project.md"
   fi
 fi
+
+sync_gitignore_section
 
 if [[ "$WITH_PLUGINS" -eq 1 ]]; then
   install_plugins

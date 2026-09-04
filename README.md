@@ -160,6 +160,29 @@ Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--codegen`, `--clients
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
+### `.gitignore` — co z tego wersjonować
+
+Bootstrap wstawia do `.gitignore` repo aplikacji sekcję między markerami
+`# >>> instruction-kit >>>` i `# <<< instruction-kit <<<`. Przy kolejnych przebiegach
+podmienia ją w całości, więc wpisy się nie duplikują, a reguły spoza markerów zostają
+nietknięte. Źródło: `templates/gitignore-kit.txt`.
+
+Zasada: **konfiguracja AI jest częścią repo.** Hooki bezpieczeństwa, agenci i komendy mają
+działać u każdego, kto sklonuje projekt — nie tylko na maszynie, gdzie odpalono bootstrap.
+Poza gitem zostaje lokalny stan klienta i to, co i tak żyje globalnie:
+
+| Wersjonowane | Ignorowane |
+| --- | --- |
+| `.claude/{agents,commands,hooks,skills}/`, `.claude/settings.json` | `.claude/settings.local.json` (uprawnienia per maszyna) |
+| `.codex/config.toml`, `.codex/skills/` | reszta `.codex/` (stan sesji) |
+| `.vscode/mcp.json`, `.github/prompts/`, `.github/copilot-instructions.md` | — |
+| `.mcp.json`, `AGENTS.md`, `BUGBOT.md`, `.ai/` | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
+
+Typowy `.gitignore` ma `.claude/` wpisane hurtem — wtedy hooki i komendy nigdy nie trafiają
+do repo, a bootstrap trzeba powtarzać na każdej maszynie. Reguły kita są w formie „ignoruj
+katalog, odwróć dla plików kita", bo git nie wchodzi do zignorowanego katalogu i sam wyjątek
+na plik by nie wystarczył.
+
 ### Bootstrap bez klona kita — narzędzie MCP `bootstrap_workspace`
 
 Jeśli projekt ma już podłączony serwer MCP `project-guides`, kita nie trzeba klonować ani ręcznie odpalać skryptu — serwer ma szablony pod ręką i uruchamia ten sam `bootstrap-project.sh` u siebie. Poproś agenta o wywołanie narzędzia:
