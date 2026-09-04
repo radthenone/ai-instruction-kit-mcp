@@ -71,11 +71,12 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 
 | Flaga              | Wymagana? | Rola                                                                                                                                               | Gdzie / jak zmieniać                                     |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
+| `--from SOURCE`    | przy `uvx` | Źródło zdalne kita: `git+https://…`. Dla lokalnego klonu bootstrap generuje zamiast tego `uv run --directory <ścieżka>` — patrz „Lokalny klon" niżej | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
 | `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
 | `--codegen orval\|none\|graphql` | nie | Generator klienta API — patrz sekcja "Codegen" niżej. Domyślnie: `orval` | mcp.json / bootstrap `--codegen`; env `GUIDES_CODEGEN`; tool `get_codegen` |
 | `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
+| `--kit-root PATH`  | nie       | Klon kita, z którego serwer czyta `manifest.yaml` / `modules/` / `profiles/`. Bez niej root jest wykrywany automatycznie — a przy `uvx --from <katalog>` wykrywa się kopia z cache `uv` zamiast klonu | mcp.json — bootstrap dodaje sam przy źródle lokalnym; env `GUIDES_KIT_ROOT` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
 | `--profile PATH`   | nie       | Lokalny fork YAML zamiast `--preset`                                                                                                               | mcp.json + plik w aplikacji                              |
@@ -391,8 +392,38 @@ Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
 | `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie |
-| `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny |
-| `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je live z `--from` przy każdym `get_bundle`/`get_overlay`, więc zawsze aktualne bez re-bootstrapu |
+| `AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
+| `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
+
+### Lokalny klon: `uv run --directory`, nie `uvx --from`
+
+`uvx --from <katalog>` **nie** czyta kita z tego katalogu w czasie działania. uv buduje koło,
+w którym `manifest.yaml`, `modules/` i `profiles/` lądują jako `guides/_data`
+(`force-include` w `pyproject.toml`), i cache'uje je pod **wersję pakietu**. Wersja nie rośnie
+przy zwykłej edycji modułu ani kodu serwera, więc klient dostaje kopię sprzed builda.
+Do tego `find_kit_root()` woli `_data` od repo, więc `check_kit_status` traci historię gita.
+
+Objaw: poprawiasz `modules/…`, restartujesz klienta, a `get_bundle` wciąż zwraca starą treść.
+Bez komunikatu błędu. To samo dotyczy poprawek w `src/guides/` — serwer nadal biegnie na
+starym kodzie.
+
+Dlatego przy źródle lokalnym bootstrap generuje:
+
+```json
+"command": "uv",
+"args": ["run", "--directory", "/sciezka/do/klona", "guides-mcp", …,
+         "--kit-root", "/sciezka/do/klona", …]
+```
+
+Pakiet ma układ `src/`, więc `uv run` instaluje go jako editable — `_data` w ogóle nie
+powstaje, a kod i moduły czytane są wprost z klonu. `--kit-root` nie jest wtedy konieczny,
+ale zostaje: nazywa klon wprost, zamiast pozwalać serwerowi go wnioskować.
+
+Przy źródle zdalnym (`git+https://…`) nic się nie zmienia — zostaje `uvx --from`, bo klonu
+nie ma, a `_data` z koła jest jedyną i aktualną kopią.
+
+Projekty zbootstrapowane przed tą zmianą mają w `mcp.json` stare `uvx --from` — odpal
+bootstrap ponownie z tymi samymi flagami.
 
 Skąd wiedzieć **kiedy** re-bootstrapować (bez ciągłego czytania plików kita — tanie, jedno porównanie commitów):
 

@@ -103,6 +103,55 @@ class TestRealRun(_BootstrapTestCase):
             settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
             self.assertIn("PreToolUse", settings)
 
+    def test_local_source_uses_uv_run_not_uvx(self) -> None:
+        """Lokalny klon: `uv run --directory` czyta kod i moduły z dysku.
+
+        `uvx --from <katalog>` cache'uje koło pod wersję pakietu, więc edycja modułu
+        (albo kodu serwera) nie dociera do klienta, dopóki wersja nie wzrośnie.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            run_bootstrap(
+                target=workspace,
+                kit_root=KIT_ROOT,
+                clients="claude,codex,vscode,opencode",
+                from_src=str(KIT_ROOT),
+            )
+
+            for rel in (
+                ".mcp.json",
+                ".codex/config.toml",
+                ".vscode/mcp.json",
+                "opencode.json",
+            ):
+                with self.subTest(config=rel):
+                    text = (workspace / rel).read_text(encoding="utf-8")
+                    self.assertIn('"uv"', text)
+                    self.assertNotIn('"uvx"', text)
+                    self.assertIn('"run", "--directory"', text)
+                    self.assertNotIn('"--from"', text)
+                    self.assertIn("--kit-root", text)
+
+    def test_remote_source_keeps_uvx(self) -> None:
+        """Przy źródle zdalnym klonu nie ma — `uvx` jest poprawny, a `--kit-root` wskazywałby w pustkę."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            run_bootstrap(
+                target=workspace,
+                kit_root=KIT_ROOT,
+                clients="claude",
+                from_src="git+https://example.com/kit.git",
+            )
+
+            text = (workspace / ".mcp.json").read_text(encoding="utf-8")
+            self.assertIn('"uvx"', text)
+            self.assertIn('"--from"', text)
+            self.assertNotIn("--kit-root", text)
+
     def test_missing_script_is_an_error(self) -> None:
         """Kit bez skryptu bootstrapu — jasny błąd zamiast cichego nic."""
         with tempfile.TemporaryDirectory() as tmp:
