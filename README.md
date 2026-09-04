@@ -2,6 +2,98 @@
 
 Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) + opcjonalnie overlay / fork.
 
+## Szybki start — instalacja i update
+
+Jedna komenda robi oba. Bootstrap jest idempotentny: pliki generowane (agenci, komendy,
+hooki, `mcp.json`) nadpisuje świeżą kopią, a pliki z Twoją treścią (`AGENTS.md`,
+`.ai/project.md`, `BUGBOT.md`) zostawia w spokoju.
+
+**Wymagania:** `uv` w `PATH`, `bash` (Windows: Git for Windows), `node` (dla hooków),
+opcjonalnie `npx` (skille zewnętrzne).
+
+### 1. Instalacja / update w projekcie
+
+Ustaw dwie ścieżki i uruchom — reszta bloków korzysta z tych zmiennych:
+
+```bash
+KIT=/m/projects/ai-instruction-kit-mcp      # klon tego repo
+APP=/m/projects/moja-appka                  # repo aplikacji
+
+bash --noprofile --norc "$KIT/scripts/bootstrap-project.sh" "$APP" \
+  --from "$KIT" \
+  --clients claude,codex,vscode \
+  --preset shop \
+  --language pl \
+  --codegen orval \
+  --with-overlay
+```
+
+| Flaga | Kiedy zmienić |
+| --- | --- |
+| `--clients` | `claude` \| `codex` \| `vscode` (= GitHub Copilot) \| `cursor` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` \| `all`. Pliki klientów **spoza** listy są sprzątane — `--keep-unselected-clients` to wyłącza |
+| `--preset` | `_base` (fundament stacku) albo `shop` (e-commerce). Lista: `profiles/` |
+| `--language` | `pl` \| `en` — język prozy. Tytuły issue/PR/branch zawsze EN |
+| `--codegen` | `orval` (default) \| `none` \| `graphql` |
+| `--with-overlay` | Zakłada `.ai/project.md` z szablonu, **jeśli go jeszcze nie ma**. Przy update bez efektu — bezpieczne zostawić na stałe |
+| `--with-plugins` | Dokłada `npx skills@latest add mattpocock/skills` i wypisuje kroki do Superpowers |
+
+### 2. Po instalacji (kroki, których skrypt nie zrobi za Ciebie)
+
+```bash
+# a) hook pre-push — skrypt kopiuje go do git-hooks/, ale nie do .git/
+cp "$APP/git-hooks/pre-push" "$APP/.git/hooks/pre-push"
+chmod +x "$APP/.git/hooks/pre-push"
+```
+
+```text
+# b) Superpowers — plugin marketplace Claude Code, nie da się ze skryptu.
+#    Wpisz w Claude Code:
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+```
+
+**c) Zrestartuj IDE / CLI.** MCP i komendy ładują się przy starcie — bez restartu
+zobaczysz stan sprzed bootstrapu.
+
+### 3. Weryfikacja
+
+```bash
+# MCP odpowiada i widzi właściwy kit
+#   w Claude Code: poproś o wywołanie narzędzia check_kit_status
+#   oczekiwane: "Kit status: aktualny"
+
+# hooki działają (powinno wypisać "deny")
+printf '%s' '{"tool_input":{"command":"git reset --hard HEAD"}}' \
+  | node "$APP/.claude/hooks/invoke-hook.js" gate-destructive.sh
+
+# konfiguracja AI wchodzi do repo, lokalny stan nie
+git -C "$APP" status --short -uall .claude .codex .github/prompts
+```
+
+### 4. Kiedy aktualizować
+
+Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrapie
+(`.ai/.kit-bootstrap.json`) z aktualnym `HEAD` i mówi, co się zmieniło. Rozdziela dwie
+rzeczy: pliki, które **re-bootstrap wciągnie sam**, i te wymagające **ręcznego
+przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` — kopiowane
+tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany, powtórz komendę z kroku 1
+z tymi samymi flagami.
+
+### 5. Zanim odpalisz update na repo z pracą w toku
+
+Bootstrap nadpisuje `.claude/{agents,commands,hooks}/`, `.codex/`, `.github/prompts/`,
+`copilot-instructions.md` i pliki MCP. Jeśli edytowałeś je ręcznie — `git diff` najpierw.
+Nie chcesz oglądać planu na sucho? Z poziomu agenta:
+
+```text
+bootstrap_workspace()               # dry run — lista plików nowych/nadpisanych/usuniętych
+bootstrap_workspace(dry_run=False)  # instalacja
+```
+
+**Gdzie żyje konfiguracja AI po instalacji:** wszystko poza `.claude/settings.local.json`
+i `.agents/skills/` idzie do repo — bootstrap wstawia do `.gitignore` sekcję między
+markerami `# >>> instruction-kit >>>`. Szczegóły: sekcja „`.gitignore`" niżej.
+
 **Gdzie czytać / zmieniać konfigurację:**
 
 
@@ -71,11 +163,12 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 
 | Flaga              | Wymagana? | Rola                                                                                                                                               | Gdzie / jak zmieniać                                     |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `--from SOURCE`    | tak (uvx) | Źródło kita: `git+https://…` albo absolutna ścieżka lokalna                                                                                        | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
+| `--from SOURCE`    | przy `uvx` | Źródło zdalne kita: `git+https://…`. Dla lokalnego klonu bootstrap generuje zamiast tego `uv run --directory <ścieżka>` — patrz „Lokalny klon" niżej | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
 | `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
 | `--codegen orval\|none\|graphql` | nie | Generator klienta API — patrz sekcja "Codegen" niżej. Domyślnie: `orval` | mcp.json / bootstrap `--codegen`; env `GUIDES_CODEGEN`; tool `get_codegen` |
 | `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
+| `--kit-root PATH`  | nie       | Klon kita, z którego serwer czyta `manifest.yaml` / `modules/` / `profiles/`. Bez niej root jest wykrywany automatycznie — a przy `uvx --from <katalog>` wykrywa się kopia z cache `uv` zamiast klonu | mcp.json — bootstrap dodaje sam przy źródle lokalnym; env `GUIDES_KIT_ROOT` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
 | `--profile PATH`   | nie       | Lokalny fork YAML zamiast `--preset`                                                                                                               | mcp.json + plik w aplikacji                              |
@@ -87,7 +180,7 @@ Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w 
 
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
-**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` (default) \| `none` \| `graphql`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → `arch:api-contract:graphql` zamiast REST). Docelowo flaga MCP `--codegen` — zob. design overlays.
+**Codegen (Orval):** flaga `--codegen orval` (default) \| `none` \| `graphql`, do tego env `GUIDES_CODEGEN` i MCP tool `get_codegen`. Priorytet: `--codegen` / `GUIDES_CODEGEN` → `codegen:` w YAML profilu → `orval`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
 
 **Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
 
@@ -158,6 +251,29 @@ Szkic (nie działa jeszcze):
 Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--codegen`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
+
+### `.gitignore` — co z tego wersjonować
+
+Bootstrap wstawia do `.gitignore` repo aplikacji sekcję między markerami
+`# >>> instruction-kit >>>` i `# <<< instruction-kit <<<`. Przy kolejnych przebiegach
+podmienia ją w całości, więc wpisy się nie duplikują, a reguły spoza markerów zostają
+nietknięte. Źródło: `templates/gitignore-kit.txt`.
+
+Zasada: **konfiguracja AI jest częścią repo.** Hooki bezpieczeństwa, agenci i komendy mają
+działać u każdego, kto sklonuje projekt — nie tylko na maszynie, gdzie odpalono bootstrap.
+Poza gitem zostaje lokalny stan klienta i to, co i tak żyje globalnie:
+
+| Wersjonowane | Ignorowane |
+| --- | --- |
+| `.claude/{agents,commands,hooks,skills}/`, `.claude/settings.json` | `.claude/settings.local.json` (uprawnienia per maszyna) |
+| `.codex/config.toml`, `.codex/skills/` | reszta `.codex/` (stan sesji) |
+| `.vscode/mcp.json`, `.github/prompts/`, `.github/copilot-instructions.md` | — |
+| `.mcp.json`, `AGENTS.md`, `BUGBOT.md`, `.ai/` | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
+
+Typowy `.gitignore` ma `.claude/` wpisane hurtem — wtedy hooki i komendy nigdy nie trafiają
+do repo, a bootstrap trzeba powtarzać na każdej maszynie. Reguły kita są w formie „ignoruj
+katalog, odwróć dla plików kita", bo git nie wchodzi do zignorowanego katalogu i sam wyjątek
+na plik by nie wystarczył.
 
 ### Bootstrap bez klona kita — narzędzie MCP `bootstrap_workspace`
 
@@ -237,7 +353,6 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 | Brak | Status | Obejście |
 | --- | --- | --- |
 | `--tag` / facety wariantów presetu | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
-| `--codegen` (Orval) jako flaga MCP | Design, dziś tylko `.ai/project.md: codegen:` | Ustaw ręcznie w overlay |
 | `--profile` + `--preset` jednocześnie | Niedozwolone | Wybierz jedno; fork = `--profile` |
 | `/review-security` jako plik kita | Nie istnieje w `templates/shared/agents/` | To skill user/global (Cursor) — dodaj we własnym środowisku, kit go nie dostarcza |
 | `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
@@ -391,8 +506,38 @@ Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
 | `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie |
-| `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny |
-| `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je live z `--from` przy każdym `get_bundle`/`get_overlay`, więc zawsze aktualne bez re-bootstrapu |
+| `AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
+| `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
+
+### Lokalny klon: `uv run --directory`, nie `uvx --from`
+
+`uvx --from <katalog>` **nie** czyta kita z tego katalogu w czasie działania. uv buduje koło,
+w którym `manifest.yaml`, `modules/` i `profiles/` lądują jako `guides/_data`
+(`force-include` w `pyproject.toml`), i cache'uje je pod **wersję pakietu**. Wersja nie rośnie
+przy zwykłej edycji modułu ani kodu serwera, więc klient dostaje kopię sprzed builda.
+Do tego `find_kit_root()` woli `_data` od repo, więc `check_kit_status` traci historię gita.
+
+Objaw: poprawiasz `modules/…`, restartujesz klienta, a `get_bundle` wciąż zwraca starą treść.
+Bez komunikatu błędu. To samo dotyczy poprawek w `src/guides/` — serwer nadal biegnie na
+starym kodzie.
+
+Dlatego przy źródle lokalnym bootstrap generuje:
+
+```json
+"command": "uv",
+"args": ["run", "--directory", "/sciezka/do/klona", "guides-mcp", …,
+         "--kit-root", "/sciezka/do/klona", …]
+```
+
+Pakiet ma układ `src/`, więc `uv run` instaluje go jako editable — `_data` w ogóle nie
+powstaje, a kod i moduły czytane są wprost z klonu. `--kit-root` nie jest wtedy konieczny,
+ale zostaje: nazywa klon wprost, zamiast pozwalać serwerowi go wnioskować.
+
+Przy źródle zdalnym (`git+https://…`) nic się nie zmienia — zostaje `uvx --from`, bo klonu
+nie ma, a `_data` z koła jest jedyną i aktualną kopią.
+
+Projekty zbootstrapowane przed tą zmianą mają w `mcp.json` stare `uvx --from` — odpal
+bootstrap ponownie z tymi samymi flagami.
 
 Skąd wiedzieć **kiedy** re-bootstrapować (bez ciągłego czytania plików kita — tanie, jedno porównanie commitów):
 

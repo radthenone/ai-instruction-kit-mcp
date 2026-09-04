@@ -20,6 +20,7 @@ from guides import server
 from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
+KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:
@@ -102,6 +103,99 @@ class TestRealRun(_BootstrapTestCase):
             self.assertTrue((workspace / ".ai" / ".kit-bootstrap.json").is_file())
             settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
             self.assertIn("PreToolUse", settings)
+
+    def test_local_source_uses_uv_run_not_uvx(self) -> None:
+        """Lokalny klon: `uv run --directory` czyta kod i moduły z dysku.
+
+        `uvx --from <katalog>` cache'uje koło pod wersję pakietu, więc edycja modułu
+        (albo kodu serwera) nie dociera do klienta, dopóki wersja nie wzrośnie.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            run_bootstrap(
+                target=workspace,
+                kit_root=KIT_ROOT,
+                clients="claude,codex,vscode,opencode",
+                from_src=str(KIT_ROOT),
+            )
+
+            for rel in (
+                ".mcp.json",
+                ".codex/config.toml",
+                ".vscode/mcp.json",
+                "opencode.json",
+            ):
+                with self.subTest(config=rel):
+                    text = (workspace / rel).read_text(encoding="utf-8")
+                    self.assertIn('"uv"', text)
+                    self.assertNotIn('"uvx"', text)
+                    self.assertIn('"run", "--directory"', text)
+                    self.assertNotIn('"--from"', text)
+                    self.assertIn("--kit-root", text)
+
+    def test_remote_source_keeps_uvx(self) -> None:
+        """Przy źródle zdalnym klonu nie ma — `uvx` jest poprawny, a `--kit-root` wskazywałby w pustkę."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            run_bootstrap(
+                target=workspace,
+                kit_root=KIT_ROOT,
+                clients="claude",
+                from_src="git+https://example.com/kit.git",
+            )
+
+            text = (workspace / ".mcp.json").read_text(encoding="utf-8")
+            self.assertIn('"uvx"', text)
+            self.assertIn('"--from"', text)
+            self.assertNotIn("--kit-root", text)
+
+    def test_gitignore_section_is_added_and_idempotent(self) -> None:
+        """Sekcja kita wchodzi raz, nie duplikuje się i nie depcze reguł projektu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            gitignore = workspace / ".gitignore"
+            gitignore.write_text("node_modules/\n.env\n", encoding="utf-8")
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            first = gitignore.read_text(encoding="utf-8")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            second = gitignore.read_text(encoding="utf-8")
+
+            self.assertEqual(first, second, "druga instalacja zmieniła .gitignore")
+            self.assertEqual(second.count("# >>> instruction-kit >>>"), 1)
+            self.assertIn("node_modules/", second)
+            self.assertIn(".claude/settings.local.json", second)
+            self.assertIn(".agents/skills/", second)
+
+    def test_gitignore_allows_kit_skills_by_name_only(self) -> None:
+        """Katalog skilli miesza pliki kita z dowiązaniami do ignorowanego `.agents/skills/`.
+
+        Whitelist musi wymieniać skille kita po nazwie — `!.claude/skills/**` wciągnąłby
+        też te dowiązania, a w repo byłyby linkami donikąd (ze ścieżką absolutną maszyny).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            gitignore = (workspace / ".gitignore").read_text(encoding="utf-8")
+
+            self.assertIn(".claude/skills/*", gitignore)
+            self.assertNotIn("!.claude/skills/**", gitignore)
+            self.assertIn("@KIT_SKILLS_CLAUDE@", KIT_SKILLS_TEMPLATE)
+            self.assertNotIn("@KIT_SKILLS_CLAUDE@", gitignore)
+
+            for name in sorted(
+                p.name for p in (KIT_ROOT / "templates" / "shared" / "skills").iterdir()
+                if p.is_dir()
+            ):
+                with self.subTest(skill=name):
+                    self.assertIn(f"!.claude/skills/{name}/", gitignore)
 
     def test_missing_script_is_an_error(self) -> None:
         """Kit bez skryptu bootstrapu — jasny błąd zamiast cichego nic."""

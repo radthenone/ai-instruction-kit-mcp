@@ -296,7 +296,126 @@ text = re.sub(
 if os.environ.get("WORKSPACE_REPL"):
     # Codex placeholder path
     text = text.replace("/ABSOLUTNA/SCIEZKA/DO/PROJEKTU", os.environ["WORKSPACE_REPL"])
+
+# Zrodlo lokalne: `uv run --directory`, nie `uvx --from`.
+#
+# `uvx --from <katalog>` nie czyta kita z tego katalogu w czasie dzialania. uv buduje
+# kolo, w ktorym `manifest.yaml`, `modules/` i `profiles/` laduja jako `guides/_data`
+# (force-include w pyproject.toml), i cache'uje je pod WERSJE pakietu. Wersja nie rosnie
+# przy zwyklej edycji modulu ani kodu serwera, wiec klient dostaje kopie sprzed builda —
+# poprawiasz modul, restartujesz IDE, a `get_bundle` zwraca stara tresc. Bez bledu.
+# Do tego `find_kit_root` woli `_data` od repo, wiec `check_kit_status` traci historie
+# gita i nie ma czego porownac ze stampem.
+#
+# `uv run --directory <katalog>` instaluje pakiet z ukladem `src/` jako editable: `_data`
+# w ogole nie powstaje, kod i moduly czytane sa wprost z klonu. Jedna zmiana naprawia
+# jednoczesnie zamrozone moduly i zamrozony kod serwera.
+#
+# `--kit-root` dokladamy mimo to — nie jest juz konieczny, ale nazywa klon wprost, wiec
+# konfiguracja mowi wprost, skad kit jest czytany, zamiast polegac na wnioskowaniu.
+#
+# Przy zrodle zdalnym (`git+https://…`) nic nie zmieniamy: klonu nie ma, `uvx` jest
+# poprawnym wyborem, a `_data` z kola to jedyna i aktualna kopia.
+from_src = os.environ["FROM_SRC"]
+if Path(from_src).is_dir():
+    # `uvx` występuje w szablonie raz — jako komenda (JSON `"command": "uvx"`,
+    # TOML `command = "uvx"`, opencode jako pierwszy element tablicy `command`).
+    text = text.replace('"uvx"', '"uv"', 1)
+    # `--from X` i `run --directory X` znaczą to samo dla obu poleceń: "weź pakiet stąd".
+    text = re.sub(
+        r'"--from",(\s*)"' + re.escape(from_src) + r'"',
+        lambda m: f'"run", "--directory",{m.group(1)}"{from_src}"',
+        text,
+        count=1,
+    )
+    if "--kit-root" not in text:
+        # Wciecie i styl (JSON vs TOML, spacje po przecinku) biora sie z dopasowanej
+        # linii, wiec wynik wyglada jak reszta pliku, ktorykolwiek klient go dostaje.
+        text = re.sub(
+            r'(^([ \t]*)"--clients",[^\n]*\n)',
+            lambda m: f'{m.group(1)}{m.group(2)}"--kit-root", "{from_src}",\n',
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
 dest.write_text(text, encoding="utf-8")
+PY
+}
+
+# Wstaw (albo odśwież) sekcję kita w .gitignore repo aplikacji.
+#
+# Bootstrap instaluje kilkadziesiąt plików konfiguracji AI, ale to repo konsumenta
+# decyduje, co trafia do gita — a typowy .gitignore ma `.claude/` wpisane hurtem, więc
+# hooki bezpieczeństwa i komendy zostają tylko na maszynie, gdzie odpalono bootstrap.
+#
+# Sekcja jest ograniczona markerami i podmieniana w całości, więc kolejne przebiegi
+# nie duplikują wpisów, a reguły spoza markerów zostają nietknięte. Marker końcowy
+# jest wymagany: bez niego nie wiemy, gdzie kończy się nasza sekcja, więc wtedy
+# dopisujemy nową na końcu, zamiast zgadywać i skasować cudze reguły.
+GITIGNORE_BEGIN="# >>> instruction-kit >>>"
+GITIGNORE_END="# <<< instruction-kit <<<"
+
+sync_gitignore_section() {
+  local target_file="$TARGET/.gitignore"
+  local template="$KIT_ROOT/templates/gitignore-kit.txt"
+  [[ -f "$template" ]] || return 0
+
+  BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
+  SHARED_SKILLS="$SHARED_SKILLS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
+  TEMPLATE="$template" DEST="$target_file" "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+begin = os.environ["BEGIN_MARK"]
+end = os.environ["END_MARK"]
+dest = Path(os.environ["DEST"])
+body = Path(os.environ["TEMPLATE"]).read_text(encoding="utf-8").strip("\n")
+
+
+def skill_allow(dest_prefix: str, *source_dirs: str) -> str:
+    """Wyjątki `!` dla skilli kita — po nazwie, żeby nie wciągnąć cudzych.
+
+    Katalog skilli u konsumenta miesza dwa źródła: te z kita (pliki) i dowiązania do
+    `.agents/skills/` z `npx skills add` (ignorowane). Wersjonujemy tylko pierwsze.
+    """
+    names: list[str] = []
+    for source in source_dirs:
+        root = Path(source)
+        if not root.is_dir():
+            continue
+        names.extend(sorted(p.name for p in root.iterdir() if p.is_dir()))
+    lines: list[str] = []
+    for name in sorted(set(names)):
+        lines.append(f"!{dest_prefix}/{name}/")
+        lines.append(f"!{dest_prefix}/{name}/**")
+    return "\n".join(lines) if lines else f"# (kit nie dostarcza skilli dla {dest_prefix})"
+
+
+shared = os.environ["SHARED_SKILLS"]
+body = body.replace("@KIT_SKILLS_CLAUDE@", skill_allow(".claude/skills", shared))
+body = body.replace(
+    "@KIT_SKILLS_CURSOR@",
+    skill_allow(".cursor/skills", shared, os.environ["CURSOR_SKILLS"]),
+)
+
+section = f"{begin}\n{body}\n{end}\n"
+
+existing = dest.read_text(encoding="utf-8") if dest.is_file() else ""
+
+if begin in existing and end in existing:
+    head, _, rest = existing.partition(begin)
+    _, _, tail = rest.partition(end)
+    updated = f"{head}{section}{tail.lstrip(chr(10))}"
+    action = "zaktualizowano"
+else:
+    prefix = existing if not existing or existing.endswith("\n") else existing + "\n"
+    separator = "\n" if prefix.strip() else ""
+    updated = f"{prefix}{separator}{section}"
+    action = "dodano"
+
+if updated != existing:
+    dest.write_text(updated, encoding="utf-8")
+    print(f"  + .gitignore ({action} sekcję instruction-kit)")
 PY
 }
 
@@ -628,6 +747,8 @@ if [[ "$WITH_OVERLAY" -eq 1 ]]; then
     echo "  + .ai/project.md"
   fi
 fi
+
+sync_gitignore_section
 
 if [[ "$WITH_PLUGINS" -eq 1 ]]; then
   install_plugins

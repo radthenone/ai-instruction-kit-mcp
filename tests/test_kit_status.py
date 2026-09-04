@@ -28,6 +28,7 @@ def _init_kit_repo(kit_root: Path) -> None:
     agents_dir = kit_root / "templates" / "shared" / "agents"
     agents_dir.mkdir(parents=True)
     (agents_dir / "git-start.md").write_text("v1\n", encoding="utf-8")
+    (kit_root / "templates" / "AGENTS.md").write_text("agents v1\n", encoding="utf-8")
     (kit_root / "unrelated.md").write_text("noise\n", encoding="utf-8")
     _git(kit_root, "add", "-A")
     _git(kit_root, "commit", "-q", "-m", "initial")
@@ -122,6 +123,66 @@ class TestKitStatus(unittest.TestCase):
             self.assertIn("ZMIENIŁ SIĘ", out)
             self.assertIn("re-bootstrap niepotrzebny", out)
             self.assertNotIn("unrelated.md", out)
+
+    def test_manual_file_is_not_promised_as_overwritten(self) -> None:
+        """AGENTS.md bootstrap kopiuje tylko gdy brak — status nie może obiecać nadpisania."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit_root = Path(tmp) / "kit"
+            workspace = Path(tmp) / "workspace"
+            _init_kit_repo(kit_root)
+            _write_stamp(workspace, kit_commit=_head(kit_root))
+
+            (kit_root / "templates" / "AGENTS.md").write_text("agents v2\n", encoding="utf-8")
+            _git(kit_root, "add", "-A")
+            _git(kit_root, "commit", "-q", "-m", "update AGENTS template")
+
+            out = check_kit_updates(kit_root, workspace)
+            self.assertIn("templates/AGENTS.md", out)
+            self.assertIn("NIE nadpisze", out)
+            self.assertNotIn("Re-bootstrap wciągnie sam", out)
+
+    def test_overwritten_and_manual_reported_separately(self) -> None:
+        """Zmiana w obu kategoriach naraz — każda ląduje pod swoim nagłówkiem."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit_root = Path(tmp) / "kit"
+            workspace = Path(tmp) / "workspace"
+            _init_kit_repo(kit_root)
+            _write_stamp(workspace, kit_commit=_head(kit_root))
+
+            (kit_root / "templates" / "shared" / "agents" / "git-start.md").write_text(
+                "v2\n", encoding="utf-8"
+            )
+            (kit_root / "templates" / "AGENTS.md").write_text("agents v2\n", encoding="utf-8")
+            _git(kit_root, "add", "-A")
+            _git(kit_root, "commit", "-q", "-m", "update both")
+
+            out = check_kit_updates(kit_root, workspace)
+            self.assertIn("Re-bootstrap wciągnie sam", out)
+            self.assertIn("NIE nadpisze", out)
+            overwritten_at = out.index("Re-bootstrap wciągnie sam")
+            manual_at = out.index("NIE nadpisze")
+            self.assertLess(overwritten_at, manual_at)
+            # git-start jest nadpisywany, AGENTS.md nie — każdy pod swoją sekcją.
+            self.assertLess(out.index("git-start.md"), manual_at)
+            self.assertGreater(out.index("templates/AGENTS.md"), manual_at)
+
+    def test_guard_change_is_reported(self) -> None:
+        """Hooki bezpieczeństwa też są kopiowane — ich zmiana musi być widoczna."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit_root = Path(tmp) / "kit"
+            workspace = Path(tmp) / "workspace"
+            _init_kit_repo(kit_root)
+            _write_stamp(workspace, kit_commit=_head(kit_root))
+
+            guards = kit_root / "templates" / "shared" / "guards"
+            guards.mkdir(parents=True)
+            (guards / "gate-destructive.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            _git(kit_root, "add", "-A")
+            _git(kit_root, "commit", "-q", "-m", "add guard")
+
+            out = check_kit_updates(kit_root, workspace)
+            self.assertIn("templates/shared/guards/gate-destructive.sh", out)
+            self.assertIn("Re-bootstrap wciągnie sam", out)
 
     def test_net_zero_change_shows_no_tracked_diff(self) -> None:
         """Commit + revert netto się znoszą — diff --name-only nic nie pokaże."""
