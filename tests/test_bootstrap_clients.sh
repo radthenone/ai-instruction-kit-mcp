@@ -43,6 +43,15 @@ test -f "$TMP/opencode/.opencode/command/cleanup.md"
 grep -q '"--clients", "opencode"' "$TMP/opencode/opencode.json"
 echo "OK  --clients opencode (+ rendered commands)"
 
+"$BOOT" "$TMP/codex" --clients codex --from "$ROOT" >/dev/null
+test -f "$TMP/codex/.codex/config.toml"
+# Codex nie ma custom prompts (.codex/agents) — agenty i skille lądują w .codex/skills.
+test -f "$TMP/codex/.codex/skills/git-start/SKILL.md"
+test -f "$TMP/codex/.codex/skills/create-task/SKILL.md"
+test -f "$TMP/codex/.codex/skills/skill-authoring/SKILL.md"
+test ! -e "$TMP/codex/.codex/agents"
+echo "OK  --clients codex (+ agenty jako skille)"
+
 "$BOOT" "$TMP/claude-kiro" --clients claude,kiro --from "$ROOT" >/dev/null
 test -f "$TMP/claude-kiro/.mcp.json"
 test -d "$TMP/claude-kiro/.claude/agents"
@@ -78,21 +87,20 @@ test -f "$TMP/both/.cursor/hooks/gate-destructive.sh"
 echo "OK  prune: claude odznaczony sprzata po sobie"
 
 "$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
-# Trzy klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
+# Cztery klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
 test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"
 test -f "$TMP/skills/.cursor/skills/skill-authoring/SKILL.md"
 test -f "$TMP/skills/.agents/skills/skill-authoring/SKILL.md"
 # Cursorowy skill spoza shared zostaje na miejscu obok kitowych.
 test -f "$TMP/skills/.cursor/skills/compact/SKILL.md"
+# Codex czyta skille natywnie jak claude/cursor — katalog z zasobami.
+test -f "$TMP/skills/.codex/skills/skill-authoring/SKILL.md"
 # Reszta dostaje ten sam skill jako komendę w swoim formacie.
-test -f "$TMP/skills/.codex/agents/skill-authoring.toml"
 test -f "$TMP/skills/.github/prompts/skill-authoring.prompt.md"
 test -f "$TMP/skills/.kiro/agents/skill-authoring.md"
 test -f "$TMP/skills/.kilocode/workflows/skill-authoring.md"
 test -f "$TMP/skills/.opencode/command/skill-authoring.md"
-# Składany blok YAML (`description: >-`) musi dojechać jako jedno zdanie, nie ">-".
-grep -q 'description = "Jak napisać skill' "$TMP/skills/.codex/agents/skill-authoring.toml"
-echo "OK  shared skills u wszystkich klientów (3 natywnie, 5 przez degradację)"
+echo "OK  shared skills u wszystkich klientów (4 natywnie, 4 przez degradację)"
 
 # .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
 # kasować po nazwach ze źródła, nie całym katalogiem.

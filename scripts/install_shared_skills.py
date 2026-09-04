@@ -5,7 +5,7 @@ Zainstaluj templates/shared/skills/*/SKILL.md do katalogu klienta.
 Użycie:
     install_shared_skills.py CLIENT SRC_DIR DEST_DIR
 
-Trzy klienty czytają skille natywnie (`<nazwa>/SKILL.md` w katalogu skilli) —
+Cztery klienty czytają skille natywnie (`<nazwa>/SKILL.md` w katalogu skilli) —
 dla nich instalacja to kopia całego katalogu razem z `scripts/`, `references/`
 i `assets/`. Reszta nie ma formatu skilla, więc skill degraduje się do komendy
 `/nazwa` w formacie danego klienta: nadal jest dostępny, ale trzeba go wywołać
@@ -26,13 +26,12 @@ from render_agent_commands import DEST_SUFFIX, RENDERERS
 
 # Klienci z natywnym katalogiem skilli. Dokąd dokładnie trafiają, decyduje
 # bootstrap — tutaj liczy się tylko to, że dostają katalog, a nie jeden plik.
-NATIVE_CLIENTS = {"claude", "cursor", "antigravity"}
+NATIVE_CLIENTS = {"claude", "cursor", "antigravity", "codex"}
 
 # Klient bez natywnych skilli → format renderera z render_agent_commands.
 # `kiro` czyta surowe pliki agentów, więc nie ma dla niego renderera — kopiujemy
 # SKILL.md bez zmian, tak samo jak robi to copy_shared_agents().
 DEGRADED_CLIENTS = {
-    "codex": "codex",
     "vscode": "vscode",
     "kilo": "kilo",
     "opencode": "opencode",

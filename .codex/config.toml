@@ -15,3 +15,12 @@ args = [
   "--clients", "claude,codex",
   "--workspace", "M:/projects/ai-instruction-kit-mcp",
 ]
+
+[mcp_servers.project-guides.tools.get_overlay]
+approval_mode = "approve"
+
+[mcp_servers.project-guides.tools.get_module]
+approval_mode = "approve"
+
+[mcp_servers.project-guides.tools.check_kit_status]
+approval_mode = "approve"

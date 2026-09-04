@@ -204,7 +204,7 @@ prune_client() {
       ;;
     codex)
       rm -f "$TARGET/.codex/config.toml"
-      rm -rf "$TARGET/.codex/agents"
+      rm -rf "$TARGET/.codex/agents" "$TARGET/.codex/skills"
       rmdir "$TARGET/.codex" 2>/dev/null || true
       ;;
     vscode)
@@ -457,20 +457,25 @@ install_claude() {
   copy_shared_skills claude "$TARGET/.claude/skills"
 }
 
+# Agenci z templates/shared/agents/*.md → skille Codexa w .codex/skills/<nazwa>/.
+# Codex nie ma formatu TOML-agentów od wycofania custom prompts; natywny format
+# to katalog skilla z SKILL.md. Curated TOML-e z templates/codex/agents/ są
+# przestarzałe — źródłem prawdy pozostaje templates/shared/agents/.
+install_codex_agents() {
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.codex/skills"
+  echo "  + .codex/skills/ (agenty jako natywne skille Codexa)"
+}
+
 install_codex() {
-  mkdir -p "$TARGET/.codex/agents"
   fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$TARGET"
   echo "  + .codex/config.toml"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
-    if [[ -d "$KIT_ROOT/templates/codex/agents" ]]; then
-      cp "$KIT_ROOT/templates/codex/agents/"*.toml "$TARGET/.codex/agents/" 2>/dev/null || true
-    fi
-    # Reszta shared agentów bez ręcznego .toml: auto-render (curated ma pierwszeństwo).
-    "$PYTHON_BIN" "$KIT_ROOT/scripts/render_agent_commands.py" codex "$SHARED_AGENTS" \
-      "$TARGET/.codex/agents" "$KIT_ROOT/templates/codex/agents"
-    echo "  + .codex/agents/ (curated + auto-rendered)"
+    # Codex czyta skille natywnie (.agents/skills i .codex/skills) — agenci i
+    # skille z kita lądują jako katalogi SKILL.md, nie jako TOML-prompts
+    # (custom prompts zostały wycofane w Codex CLI).
+    install_codex_agents
+    copy_shared_skills codex "$TARGET/.codex/skills"
   fi
-  copy_shared_skills codex "$TARGET/.codex/agents"
 }
 
 render_agent_commands() {

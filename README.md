@@ -552,7 +552,7 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
 
 - **Cursor**: `.cursor/agents/` — natywne slash commands, działa 1:1.
 - **Claude Code**: `.claude/agents/` (subagenty, wywołanie przez Task/Agent tool) **oraz** `.claude/commands/` (prawdziwe slash commands `/git-start` itd. — `$ARGUMENTS` wstrzyknięty automatycznie przy kopiowaniu).
-- **Codex**: `templates/codex/agents/*.toml` (ręczny, curated) → `.codex/agents/`; agenci bez ręcznego TOML są auto-renderowani z `templates/shared/agents/*.md` (`scripts/render_agent_commands.py codex`) — pełna lista `/git-*`, `/review-*`, `/subagent-*` trafia do `.codex/agents/`, curated ma pierwszeństwo nad auto.
+- **Codex**: agenty instalowane jako natywne skille w `.codex/skills/<nazwa>/` (renderowane z `templates/shared/agents/*.md` przez `scripts/install_shared_skills.py`). Custom prompts (`.codex/agents/*.toml`) zostały wycofane w Codex CLI — Codex sam ładuje SKILL.md, gdy `description` pasuje do sytuacji.
 - **Kiro**: `.kiro/agents/` — kopiowane 1:1, format niezweryfikowany na żywym Kiro.
 - **VS Code/Copilot**: `scripts/render_agent_commands.py vscode` → `.github/prompts/*.prompt.md` (wywołanie `/nazwa` w Copilot Chat).
 - **Kilo**: `scripts/render_agent_commands.py kilo` → `.kilocode/workflows/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
@@ -591,7 +591,7 @@ w odróżnieniu od agenta (`/nazwa`), którego ktoś musi wywołać. Jedno źró
 | claude | `.claude/skills/` | natywnie, z zasobami |
 | cursor | `.cursor/skills/` | natywnie, z zasobami (obok Cursor-only `/compact`) |
 | antigravity | `.agents/skills/` | natywnie, z zasobami |
-| codex | `.codex/agents/` | degradacja: komenda `/nazwa` |
+| codex | `.codex/skills/` | natywnie, z zasobami |
 | vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
 | kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
 | kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
