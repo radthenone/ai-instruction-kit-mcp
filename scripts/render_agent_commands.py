@@ -3,12 +3,9 @@
 Renderuj templates/shared/agents/*.md do natywnego formatu slash-command klienta.
 
 Użycie:
-    render_agent_commands.py FORMAT SRC_DIR DEST_DIR [CURATED_DIR]
+    render_agent_commands.py FORMAT SRC_DIR DEST_DIR
 
-FORMAT: vscode | kilo | antigravity | opencode | codex
-
-CURATED_DIR (tylko codex): katalog z ręcznie napisanymi *.toml — jeśli agent tam
-istnieje, auto-render go pomija (curated ma pierwszeństwo nad wygenerowanym).
+FORMAT: vscode | kilo | antigravity | opencode
 """
 
 from __future__ import annotations
@@ -85,43 +82,24 @@ def render_opencode(meta: dict[str, str], body: str) -> str:
     return front + body
 
 
-def _toml_literal(text: str) -> str:
-    # TOML multi-line literal string ('''...'''): brak przetwarzania escape'ów,
-    # bezpieczne dla backslashy w regexach (np. \s*= w regułach sekretów).
-    # Jedyne ograniczenie: treść nie może zawierać sekwencji "'''".
-    return text.replace("'''", "'' '")
-
-
-def render_codex(meta: dict[str, str], body: str) -> str:
-    # Auto-wygenerowany Codex custom prompt (TOML) — fallback dla agentów bez ręcznego pliku.
-    name = meta.get("name", "").replace("-", "_")
-    description = meta.get("description", "").replace('"', "'")
-    out = f'name = "{name}"\ndescription = "{description}"\n\n'
-    out += f"developer_instructions = '''\n{_toml_literal(body)}\n'''\n"
-    return out
-
-
 RENDERERS = {
     "vscode": render_vscode,
     "kilo": render_kilo,
     "antigravity": render_antigravity,
     "opencode": render_opencode,
-    "codex": render_codex,
 }
 
-# GitHub Copilot rozpoznaje tylko *.prompt.md; Codex tylko *.toml; reszta zostaje przy *.md.
+# GitHub Copilot rozpoznaje tylko *.prompt.md; reszta zostaje przy *.md.
 DEST_SUFFIX = {
     "vscode": ".prompt.md",
-    "codex": ".toml",
 }
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) not in (4, 5):
+    if len(argv) != 4:
         print(__doc__, file=sys.stderr)
         return 1
     fmt, src_dir, dest_dir = argv[1], Path(argv[2]), Path(argv[3])
-    curated_dir = Path(argv[4]) if len(argv) == 5 else None
     renderer = RENDERERS.get(fmt)
     if renderer is None:
         print(f"Nieznany format: {fmt} (dozwolone: {', '.join(RENDERERS)})", file=sys.stderr)
@@ -131,8 +109,6 @@ def main(argv: list[str]) -> int:
     suffix = DEST_SUFFIX.get(fmt)
     for src in sorted(src_dir.glob("*.md")):
         dest_name = src.stem + suffix if suffix else src.name
-        if curated_dir is not None and (curated_dir / dest_name).is_file():
-            continue  # curated wersja skopiowana osobno (patrz install_codex)
         text = src.read_text(encoding="utf-8")
         meta, body = parse_frontmatter(text)
         out = renderer(meta, body)

@@ -123,14 +123,14 @@ projektu. Skill opisany zdaniem musi dać się z tego zdania w całości przewid
 ## Co się stanie z twoim skillem u innych klientów
 
 `scripts/install_shared_skills.py` rozkłada `templates/shared/skills/` na osiem
-klientów. Trzy czytają skille natywnie, pięć nie ma takiego formatu:
+klientów. Cztery czytają skille natywnie, cztery nie mają takiego formatu:
 
 | Klient | Gdzie ląduje | Jak działa |
 | --- | --- | --- |
 | claude | `.claude/skills/` | natywnie, z zasobami |
 | cursor | `.cursor/skills/` | natywnie, z zasobami |
 | antigravity | `.agents/skills/` | natywnie, z zasobami |
-| codex | `.codex/agents/` | degradacja: komenda `/nazwa` |
+| codex | `.codex/skills/` | natywnie, z zasobami |
 | vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
 | kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
 | kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
@@ -138,8 +138,8 @@ klientów. Trzy czytają skille natywnie, pięć nie ma takiego formatu:
 
 Degradacja ma dwa skutki, z którymi trzeba pisać: skill przestaje odpalać się sam
 (ktoś musi wpisać `/nazwa`) i **gubi wszystko poza `SKILL.md`** — komenda to jeden
-plik. Skill, którego sens leży w `scripts/`, będzie w pięciu na osiem klientów
-wydmuszką. Jeśli tak wychodzi, przemyśl, czy to nie powinien być agent.
+plik. Skill, którego sens leży w `scripts/`, będzie w połowie klientów wydmuszką.
+Jeśli tak wychodzi, przemyśl, czy to nie powinien być agent.
 
 Instalator ostrzega o gubionych katalogach na stderr. Traktuj to ostrzeżenie jako
 sygnał projektowy, nie szum.

@@ -112,12 +112,10 @@ class TestInstall(unittest.TestCase):
         self.assertTrue((self.dest / "katalog.md").is_file())
         self.assertFalse((self.dest / "co-innego.md").exists())
 
-    def test_degraded_codex_writes_toml(self) -> None:
-        skill = write_skill(self.src, "s", "name: s\ndescription: >-\n  jeden\n  dwa\n")
-        install_degraded(skill, self.dest, "codex")
-        out = (self.dest / "s.toml").read_text(encoding="utf-8")
-        self.assertIn('description = "jeden dwa"', out)
-        self.assertIn("tresc", out)
+    def test_codex_is_native_client(self) -> None:
+        """Codex czyta skille natywnie — katalog, nie TOML-komenda."""
+        self.assertIn("codex", NATIVE_CLIENTS)
+        self.assertNotIn("codex", DEGRADED_CLIENTS)
 
     def test_degraded_kiro_copies_raw(self) -> None:
         """kiro czyta surowe pliki agentów — bez renderera, bajt w bajt."""
