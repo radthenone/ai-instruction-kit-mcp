@@ -2,6 +2,98 @@
 
 Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) + opcjonalnie overlay / fork.
 
+## Szybki start — instalacja i update
+
+Jedna komenda robi oba. Bootstrap jest idempotentny: pliki generowane (agenci, komendy,
+hooki, `mcp.json`) nadpisuje świeżą kopią, a pliki z Twoją treścią (`AGENTS.md`,
+`.ai/project.md`, `BUGBOT.md`) zostawia w spokoju.
+
+**Wymagania:** `uv` w `PATH`, `bash` (Windows: Git for Windows), `node` (dla hooków),
+opcjonalnie `npx` (skille zewnętrzne).
+
+### 1. Instalacja / update w projekcie
+
+Ustaw dwie ścieżki i uruchom — reszta bloków korzysta z tych zmiennych:
+
+```bash
+KIT=/m/projects/ai-instruction-kit-mcp      # klon tego repo
+APP=/m/projects/moja-appka                  # repo aplikacji
+
+bash --noprofile --norc "$KIT/scripts/bootstrap-project.sh" "$APP" \
+  --from "$KIT" \
+  --clients claude,codex,vscode \
+  --preset shop \
+  --language pl \
+  --codegen orval \
+  --with-overlay
+```
+
+| Flaga | Kiedy zmienić |
+| --- | --- |
+| `--clients` | `claude` \| `codex` \| `vscode` (= GitHub Copilot) \| `cursor` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` \| `all`. Pliki klientów **spoza** listy są sprzątane — `--keep-unselected-clients` to wyłącza |
+| `--preset` | `_base` (fundament stacku) albo `shop` (e-commerce). Lista: `profiles/` |
+| `--language` | `pl` \| `en` — język prozy. Tytuły issue/PR/branch zawsze EN |
+| `--codegen` | `orval` (default) \| `none` \| `graphql` |
+| `--with-overlay` | Zakłada `.ai/project.md` z szablonu, **jeśli go jeszcze nie ma**. Przy update bez efektu — bezpieczne zostawić na stałe |
+| `--with-plugins` | Dokłada `npx skills@latest add mattpocock/skills` i wypisuje kroki do Superpowers |
+
+### 2. Po instalacji (kroki, których skrypt nie zrobi za Ciebie)
+
+```bash
+# a) hook pre-push — skrypt kopiuje go do git-hooks/, ale nie do .git/
+cp "$APP/git-hooks/pre-push" "$APP/.git/hooks/pre-push"
+chmod +x "$APP/.git/hooks/pre-push"
+```
+
+```text
+# b) Superpowers — plugin marketplace Claude Code, nie da się ze skryptu.
+#    Wpisz w Claude Code:
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+```
+
+**c) Zrestartuj IDE / CLI.** MCP i komendy ładują się przy starcie — bez restartu
+zobaczysz stan sprzed bootstrapu.
+
+### 3. Weryfikacja
+
+```bash
+# MCP odpowiada i widzi właściwy kit
+#   w Claude Code: poproś o wywołanie narzędzia check_kit_status
+#   oczekiwane: "Kit status: aktualny"
+
+# hooki działają (powinno wypisać "deny")
+printf '%s' '{"tool_input":{"command":"git reset --hard HEAD"}}' \
+  | node "$APP/.claude/hooks/invoke-hook.js" gate-destructive.sh
+
+# konfiguracja AI wchodzi do repo, lokalny stan nie
+git -C "$APP" status --short -uall .claude .codex .github/prompts
+```
+
+### 4. Kiedy aktualizować
+
+Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrapie
+(`.ai/.kit-bootstrap.json`) z aktualnym `HEAD` i mówi, co się zmieniło. Rozdziela dwie
+rzeczy: pliki, które **re-bootstrap wciągnie sam**, i te wymagające **ręcznego
+przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` — kopiowane
+tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany, powtórz komendę z kroku 1
+z tymi samymi flagami.
+
+### 5. Zanim odpalisz update na repo z pracą w toku
+
+Bootstrap nadpisuje `.claude/{agents,commands,hooks}/`, `.codex/`, `.github/prompts/`,
+`copilot-instructions.md` i pliki MCP. Jeśli edytowałeś je ręcznie — `git diff` najpierw.
+Nie chcesz oglądać planu na sucho? Z poziomu agenta:
+
+```text
+bootstrap_workspace()               # dry run — lista plików nowych/nadpisanych/usuniętych
+bootstrap_workspace(dry_run=False)  # instalacja
+```
+
+**Gdzie żyje konfiguracja AI po instalacji:** wszystko poza `.claude/settings.local.json`
+i `.agents/skills/` idzie do repo — bootstrap wstawia do `.gitignore` sekcję między
+markerami `# >>> instruction-kit >>>`. Szczegóły: sekcja „`.gitignore`" niżej.
+
 **Gdzie czytać / zmieniać konfigurację:**
 
 
@@ -88,7 +180,7 @@ Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w 
 
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
-**Codegen (Orval) — dziś w overlay, nie w CLI:** w `.ai/project.md` / `templates/extras.md` ustaw `codegen: orval` (default) \| `none` \| `graphql`. Reviewery FE/BE honorują to (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → `arch:api-contract:graphql` zamiast REST). Docelowo flaga MCP `--codegen` — zob. design overlays.
+**Codegen (Orval):** flaga `--codegen orval` (default) \| `none` \| `graphql`, do tego env `GUIDES_CODEGEN` i MCP tool `get_codegen`. Priorytet: `--codegen` / `GUIDES_CODEGEN` → `codegen:` w YAML profilu → `orval`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
 
 **Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
 
@@ -261,7 +353,6 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 | Brak | Status | Obejście |
 | --- | --- | --- |
 | `--tag` / facety wariantów presetu | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
-| `--codegen` (Orval) jako flaga MCP | Design, dziś tylko `.ai/project.md: codegen:` | Ustaw ręcznie w overlay |
 | `--profile` + `--preset` jednocześnie | Niedozwolone | Wybierz jedno; fork = `--profile` |
 | `/review-security` jako plik kita | Nie istnieje w `templates/shared/agents/` | To skill user/global (Cursor) — dodaj we własnym środowisku, kit go nie dostarcza |
 | `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
