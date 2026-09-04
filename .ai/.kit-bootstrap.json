@@ -1,0 +1,9 @@
+{
+  "kit_commit": "86a86acb3d23196cba2f056538c9580eb11bb509",
+  "kit_from": "/m/projects/ai-instruction-kit-mcp",
+  "bootstrapped_at": "2026-09-04T12:06:19Z",
+  "preset": "_base",
+  "language": "pl",
+  "codegen": "orval",
+  "clients": "claude,codex"
+}
