@@ -31,12 +31,14 @@ packages = ["src/guides"]
 "manifest.yaml" = "guides/_data/manifest.yaml"
 "modules" = "guides/_data/modules"
 "profiles" = "guides/_data/profiles"
+"scripts/bootstrap-project.sh" = "guides/_data/scripts/bootstrap-project.sh"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "manifest.yaml",
     "modules/**",
     "profiles/**",
+    "scripts/bootstrap-project.sh",
     "src/**",
     "README.md",
 ]

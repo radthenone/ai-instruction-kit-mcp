@@ -180,6 +180,12 @@ def run_bootstrap(**kwargs) -> str:
             text=True,
             timeout=_TIMEOUT_SECONDS,
             check=False,
+            # Skrypt (i kazdy proces, ktory sam odpali) nie dostaje stdin serwera MCP.
+            # Ten potok nigdy nie konczy sie EOF-em, wiec cokolwiek probowaloby z niego
+            # czytac — prompt gita, `read` w shellu — wisialoby az do timeoutu zamiast
+            # zwrocic blad. Bootstrap jest nieinteraktywny, wiec pusty stdin to jedyne
+            # poprawne wejscie. Patrz ten sam mechanizm w `guides.kit_status._git`.
+            stdin=subprocess.DEVNULL,
         )
     except FileNotFoundError as exc:
         raise BootstrapError(
