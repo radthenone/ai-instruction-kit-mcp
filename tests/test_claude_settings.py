@@ -55,10 +55,27 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
 
     def test_install_on_missing_file_creates_it(self) -> None:
         run("install", str(self.target), str(TEMPLATE))
-        events = self.load()["hooks"]["PreToolUse"]
-        commands = [h["command"] for e in events for h in e["hooks"]]
-        self.assertTrue(any("gate-destructive.sh" in c for c in commands))
-        self.assertTrue(any("gate-file-writes.mjs" in c for c in commands))
+        hooks = self.load()["hooks"]
+        commands = [h["command"] for event in hooks.values() for e in event for h in e["hooks"]]
+        for name in ("git-guard.mjs", "bash-guard.mjs", "sensitive-files-guard.mjs", "linters-guard.mjs", "rtk-check.mjs"):
+            self.assertTrue(any(name in c for c in commands), name)
+        self.assertIn("PostToolUse", hooks)
+        self.assertIn("SessionStart", hooks)
+
+    def test_install_prunes_guards_v1_entries(self) -> None:
+        """Workspace bootstrapowany przed Guards v2 ma stare wpisy — reinstalacja je zabiera."""
+        legacy = {
+            "hooks": {
+                "PreToolUse": [
+                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "node invoke-hook.js gate-destructive.sh"}]},
+                    {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "node gate-file-writes.mjs"}]},
+                ]
+            }
+        }
+        self.target.write_text(json.dumps(legacy), encoding="utf-8")
+        run("install", str(self.target), str(TEMPLATE))
+        commands = [h["command"] for event in self.load()["hooks"].values() for e in event for h in e["hooks"]]
+        self.assertFalse(any("gate-" in c for c in commands), commands)
 
     def test_install_preserves_unrelated_user_config(self) -> None:
         self.write_user_settings()
@@ -67,7 +84,9 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
 
         self.assertEqual(data["permissions"], USER_SETTINGS["permissions"])
         self.assertEqual(data["env"], USER_SETTINGS["env"])
-        self.assertEqual(data["hooks"]["SessionStart"], USER_SETTINGS["hooks"]["SessionStart"])
+        # Kit doklada swoj SessionStart (rtk-check) obok wpisu uzytkownika, nie zamiast.
+        self.assertEqual(data["hooks"]["SessionStart"][0], USER_SETTINGS["hooks"]["SessionStart"][0])
+        self.assertTrue(any("rtk-check.mjs" in h["command"] for e in data["hooks"]["SessionStart"] for h in e["hooks"]))
 
         user_commands = [
             h["command"] for e in data["hooks"]["PreToolUse"] for h in e["hooks"]

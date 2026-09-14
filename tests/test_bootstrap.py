@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_bash_hook_launcher import is_ci, resolve_bash
+from _shell import is_ci, resolve_bash
 
 from guides import server
 from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
@@ -67,7 +67,7 @@ class TestDryRun(_BootstrapTestCase):
             )
             self.assertEqual(_snapshot(workspace), before)
 
-            self.assertIn(".claude/hooks/gate-destructive.sh", plan.created)
+            self.assertIn(".claude/hooks/git-guard.mjs", plan.created)
             self.assertIn(".claude/settings.json", plan.created)
             self.assertIn(".ai/.kit-bootstrap.json", plan.created)
             self.assertEqual(plan.modified, [])
@@ -99,7 +99,7 @@ class TestRealRun(_BootstrapTestCase):
 
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
 
-            self.assertTrue((workspace / ".claude" / "hooks" / "gate-destructive.sh").is_file())
+            self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
             self.assertTrue((workspace / ".ai" / ".kit-bootstrap.json").is_file())
             settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
             self.assertIn("PreToolUse", settings)
@@ -251,7 +251,7 @@ class TestServerTool(_BootstrapTestCase):
         out = server.bootstrap_workspace(dry_run=False)
         self.assertIn("zainstalowano", out)
         self.assertTrue((self.workspace / ".ai" / ".kit-bootstrap.json").is_file())
-        self.assertTrue((self.workspace / ".claude" / "hooks" / "gate-destructive.sh").is_file())
+        self.assertTrue((self.workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
 
     def test_report_has_no_empty_sections(self) -> None:
         """Każdy nagłówek `##` w raporcie musi mieć pod sobą wyliczenie."""

@@ -24,7 +24,7 @@ import unittest
 from pathlib import Path
 
 # Jedno źródło wykrywania Git Basha — to samo, którego używa test_shell_suites.
-from test_bash_hook_launcher import is_ci, posix_path, resolve_bash
+from _shell import is_ci, posix_path, resolve_bash
 
 from guides.manifest import find_kit_root, load_manifest
 
@@ -48,13 +48,15 @@ DOGFOOD_SKILL_DIR = ".claude/skills"
 # identyczna ze źródłem — inaczej Cursor i Claude rozjeżdżają się na polityce,
 # co jest dokładnie tą luką, dla której guardraile trafiły do shared.
 GUARD_COPIES: tuple[tuple[str, str], ...] = (
-    (".cursor/hooks", "gate-destructive.sh"),
-    (".cursor/hooks", "gate-push.sh"),
+    (".cursor/hooks", "git-guard.mjs"),
+    (".cursor/hooks", "sensitive-files-guard.mjs"),
     (".cursor/hooks", "invoke-hook.js"),
-    (".claude/hooks", "gate-destructive.sh"),
-    (".claude/hooks", "gate-push.sh"),
+    (".claude/hooks", "git-guard.mjs"),
+    (".claude/hooks", "sensitive-files-guard.mjs"),
     (".claude/hooks", "invoke-hook.js"),
-    (".claude/hooks", "gate-file-writes.mjs"),
+    (".claude/hooks", "bash-guard.mjs"),
+    (".claude/hooks", "linters-guard.mjs"),
+    (".claude/hooks", "rtk-check.mjs"),
 )
 
 
@@ -164,10 +166,18 @@ class TestDogfoodCopies(unittest.TestCase):
         ]
         self.assertEqual(stale, [], msg=f"kopie niezgodne z bootstrapem: {stale}")
 
-    def test_cursor_does_not_get_file_write_guard(self) -> None:
-        """Cursor ma tylko `afterFileEdit` — bramka przed zapisem nie ma tam sensu."""
-        self.assertFalse((self.generated / ".cursor/hooks/gate-file-writes.mjs").exists())
-        self.assertFalse((KIT_ROOT / ".cursor/hooks/gate-file-writes.mjs").exists())
+    def test_cursor_does_not_get_claude_only_guards(self) -> None:
+        """bash-guard, linters-guard i rtk-check sa tylko dla Claude Code (#63)."""
+        for name in ("bash-guard.mjs", "linters-guard.mjs", "rtk-check.mjs"):
+            self.assertFalse((self.generated / ".cursor/hooks" / name).exists(), name)
+            self.assertFalse((KIT_ROOT / ".cursor/hooks" / name).exists(), name)
+
+    def test_no_legacy_guards_left(self) -> None:
+        """Guards v1 (gate-*) nie moga wrocic ani do szablonow, ani do kopii w repo."""
+        for rel in (".claude/hooks", ".cursor/hooks", "templates/shared/guards"):
+            for name in ("gate-destructive.sh", "gate-push.sh", "gate-file-writes.mjs"):
+                self.assertFalse((KIT_ROOT / rel / name).exists(), f"{rel}/{name}")
+                self.assertFalse((self.generated / rel / name).exists(), f"{rel}/{name}")
 
     def _shared_skills(self) -> list[Path]:
         return sorted(
