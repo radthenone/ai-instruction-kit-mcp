@@ -163,7 +163,7 @@ Dobierz kontrolę do zakresu zmiany. Dla drobnej poprawki lokalnej wystarczy cel
 Przed `git push` na branch z featurem:
 
 1. Uruchom `/review-bugbot` (lub `/review-security` przy auth/płatnościach); opcjonalnie `/review-backend` / `/review-frontend`.
-2. Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main / reset --hard).
+2. Guardy: `git-guard.mjs` (deny force/push na main/master/dev, `reset --hard`, `clean -f`) — nigdy nie pytają, tylko allow/deny.
 2. Napraw findings o severity high/medium, jeśli są uzasadnione.
 3. Push — Bugbot na PR może pominąć review, jeśli diff był już lokalnie przejrzany (ten sam patch).
 

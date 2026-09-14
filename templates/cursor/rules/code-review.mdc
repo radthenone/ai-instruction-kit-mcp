@@ -23,5 +23,5 @@ Przed `git push` — **minimalny zestaw**, nie wszystkie `/review-*`:
 Bugbot = blocking/security. Stack `/review-*` = konwencje MCP (bez dublowania).  
 Orval: gdy `codegen: orval` w overlay — po zmianie API regeneruj i commituj klienta.
 
-Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force main/master/dev / reset --hard).  
-Bypass: `SKIP_PUSH_REVIEW=1 git push`. Reguły: `.cursor/BUGBOT.md`.
+Guardy (zero `ask`): `git-guard.mjs` (deny force/push main/master/dev, `reset --hard`, `clean -f`, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile).
+Reguły: `.cursor/BUGBOT.md`.

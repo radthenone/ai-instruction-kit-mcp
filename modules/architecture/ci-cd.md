@@ -151,7 +151,7 @@ Pełny workflow: moduł `core:code-review` (bundle `devops` lub `architecture`).
 
 Skrót:
 
-1. Lokalnie przed pushem: `/review-bugbot` w Cursor (hook `.cursor/hooks/gate-push.sh` przypomina).
+1. Lokalnie przed pushem: `/review-bugbot` w Cursor (`/git-end` przypomina; `git-guard.mjs` blokuje push na main/master/dev).
 2. Po pushu: Bugbot na PR (automatycznie lub `cursor review` w komentarzu).
 3. Reguły zespołowe: `.cursor/BUGBOT.md` + dashboard Bugbota.
 

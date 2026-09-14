@@ -64,7 +64,7 @@ zobaczysz stan sprzed bootstrapu.
 
 # hooki działają (powinno wypisać "deny")
 printf '%s' '{"tool_input":{"command":"git reset --hard HEAD"}}' \
-  | node "$APP/.claude/hooks/invoke-hook.js" gate-destructive.sh
+  | node "$APP/.claude/hooks/git-guard.mjs"
 
 # konfiguracja AI wchodzi do repo, lokalny stan nie
 git -C "$APP" status --short -uall .claude .codex .github/prompts
@@ -491,7 +491,7 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 | `.cursor/rules/code-review.mdc`     | Review przed pushem                                                     | tak                  |
 | `.cursor/rules/git-branch-pr.mdc`   | `/git-start`+`/git-check`+`/git-commit`+`/git-end`, issue#, chronione main/master/dev | tak                  |
 | `.cursor/BUGBOT.md`                 | Reguły Bugbota                                                          | tak                  |
-| `.cursor/hooks.json` + `hooks/invoke-hook.js` + `hooks/*.sh` | Review + blokady destrukcyjne (node → bash wg OS) | tak                  |
+| `.cursor/hooks.json` + `hooks/invoke-hook.js` + `hooks/*.mjs` | Guardy: git-guard + sensitive-files (adapter → node) | tak                  |
 | `AGENTS.md`                         | Cienki — odsyła do MCP                                                  | tak                  |
 | `.cursor/agents/*.md`               | Subagenty `/review-*`, `/subagent-*`, `/git-*`                          | zalecany             |
 | `.cursor/skills/compact/`           | **Tylko Cursor:** `/compact` = alias UI Summarize (nie Claude/Codex)    | zalecany (Cursor)    |
@@ -760,14 +760,19 @@ Jedno źródło polityki: **`templates/shared/guards/`**. Bootstrap kopiuje je d
 hooków wybranego klienta (`--clients`), więc Cursor i Claude Code egzekwują dokładnie
 te same reguły.
 
-| Hook | Zachowanie |
-|------|------------|
-| `gate-destructive.sh` | **deny** force na `main`/`master`/`dev`: `--force` / `-f` / `--force-with-lease` **oraz** plus-refspec (`git push origin +main`, `+main:main`, …); także `git reset --hard`, agresywny `git clean -f`, rekursywne kasowanie na szerokiej ścieżce (`~`, katalogi domowe POSIX i Windows, `..`). **ask** force/`+ref` na feature, zwykły push na chronione, `commit --no-verify`, rekursywne kasowanie, `find -delete`, oraz operacje kasujące **niezacommitowaną** pracę: `git checkout -- <ścieżka>`, `git restore`, `git stash`. Dodatkowo **ask** przy komendzie zmieniającej lub kasującej na ścieżce **spoza projektu** (`rm ~/.bashrc`, `mv x ~/`, `sed -i … /etc/…`, `> ~/plik`); czytanie i przeszukiwanie poza projektem zostaje wolne |
-| `gate-push.sh` | **ask** przed zwykłym `git push` (przypomnienie `/review-bugbot`); bypass `SKIP_PUSH_REVIEW=1` |
-| `gate-file-writes.mjs` | **ask** przy zapisie poza katalogiem projektu; **allow** dla wszystkiego wewnątrz repo, niezależnie od rozmiaru zmiany. Tylko Claude Code — Cursor ma wyłącznie `afterFileEdit`, czyli zdarzenie **po** zapisie |
+| Guard | Klient | Zachowanie |
+|-------|--------|------------|
+| `git-guard.mjs` | Claude, Cursor | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
+| `sensitive-files-guard.mjs` | Claude, Cursor | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
+| `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
+| `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
 
-Git odzyska wszystko, co zacommitowane. Dlatego polityka celuje w dwie rzeczy, których
-nie odzyska: pracę niezacommitowaną i pliki spoza repo.
+**Zero `ask`** (ADR 0006): Guard odpowiada `allow` albo `deny`. W auto mode `ask` z hooka
+blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. Model dostaje
+`permissionDecisionReason` i sam dobiera bezpieczną alternatywę. Git odzyska wszystko
+w repo; poza repo pilnujemy tylko katalogów systemowych i sekretów — resztę gate'uje
+natywna permission klienta (`cwd` + `additionalDirectories`).
 
 **Jeden dialekt, adapter na brzegu.** Skrypty polityki mówią wyłącznie kontraktem
 Claude Code (`hookSpecificOutput.permissionDecision`). Cursor ma własny kształt
@@ -776,26 +781,22 @@ wie o różnicy między klientami.
 
 | Klient | Wywołanie | Kontrakt |
 |--------|-----------|----------|
-| Claude Code | `node .claude/hooks/invoke-hook.js <script>` | natywny, bez tłumaczenia |
-| Cursor | `node .cursor/hooks/invoke-hook.js <script> --to cursor` | tłumaczony przez adapter |
+| Claude Code | `node .claude/hooks/<guard>.mjs` | natywny, bez adaptera |
+| Cursor | `node .cursor/hooks/invoke-hook.js <guard>.mjs --to cursor [--tool Read\|Write]` | tłumaczony przez adapter |
 
-`gate-destructive` ma `failClosed: true` — padnięty skrypt (brak JSON) blokuje akcję.
-Nieczytelny payload daje **ask**, nie `allow`: skoro nie wiadomo, co przeszłoby przez
-bramkę, decyzję podejmuje człowiek. `invoke-hook.js` po wypisaniu JSON **zawsze kończy
-exit 0** (niezerowy exit ukrywa payload przy failClosed).
+Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
+(`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
+`--tool` dopisuje `tool_name`, którego payload Cursora nie niesie. Wszystkie wpisy mają
+`failClosed: true` — padnięty Guard (brak JSON) blokuje akcję, a nieczytelny payload
+daje **deny**. `invoke-hook.js` po wypisaniu JSON **zawsze kończy exit 0** (niezerowy
+exit ukrywa payload przy failClosed).
 
-**Wykrywanie OS** (bez hardcodu Windows w trackowanym JSON): `invoke-hook.js` na
-Linux/macOS woła `bash --noprofile --norc` z PATH; na Windows szuka Git Basha
-(`Git/bin/bash.exe`) i ustawia `windowsHide`. Sama ścieżka `.sh` w konfiguracji hooka →
-na Windows klient robi `bash --login -i` i zostawia otwartą konsolę.
+Guardy są w `.mjs` i idą przez `node` — bez basha, więc bez wykrywania Git Basha na
+Windows i bez otwartych okien konsoli.
 
-Adapter parsuje payload raz i podaje komendę w `GUARD_COMMAND`, żeby skrypt polityki
-nie startował własnego interpretera przy każdym wywołaniu — przy shimach w stylu
-`pyenv-win` to różnica rzędu sekund na komendę.
-
-Regresja: `bash tests/test_gate_destructive.sh` (polityka) i `bash tests/test_guard_adapter.sh`
-(tłumaczenie kontraktu) — odpalane też przez CI (`tests/test_shell_suites.py` wciąga
-suity powłoki do `unittest discover`).
+Regresja: `uv run python -m unittest tests.test_guards` (tabela allow/deny każdego Guarda)
+i `bash tests/test_guard_adapter.sh` (tłumaczenie kontraktu) — odpalane też przez CI
+(`tests/test_shell_suites.py` wciąga suity powłoki do `unittest discover`).
 
 ## Code review (Bugbot + GitHub)
 
@@ -818,7 +819,7 @@ Przy `codegen: orval` w overlay — po zmianie API regeneruj klienta.
 | Warstwa            | Plik / akcja                                                                |
 | ------------------ | --------------------------------------------------------------------------- |
 | Lokalnie           | `/review-bugbot`, `/review-security`, `/review-backend`…                    |
-| Przed push         | `gate-push.sh` + `gate-destructive.sh` (w katalogu hooków klienta)          |
+| Przed push         | `git-guard.mjs` (deny na main/master/dev) — review przypomina `/git-end`     |
 | Na PR              | Bugbot (GitHub integration)                                                 |
 | Reguły             | `.cursor/BUGBOT.md`                                                         |
 | CI (ten kit)       | `.github/workflows/ci.yml` — unittest (w tym suity powłoki) + smoke FastMCP |
