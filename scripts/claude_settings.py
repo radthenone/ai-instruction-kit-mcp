@@ -7,9 +7,11 @@ Użycie:
     claude_settings.py prune   TARGET_SETTINGS
 
 `.claude/settings.json` należy do użytkownika — trzyma jego `permissions`, `env`,
-własne hooki. Kit dokłada tam wyłącznie swoje wpisy `PreToolUse` i tylko je zabiera
-przy prune. Rozpoznaje je po ścieżce komendy (`GUARD_MARKERS`), więc reinstalacja
-podmienia stare wpisy zamiast je duplikować.
+własne hooki. Kit dokłada tam wyłącznie swoje wpisy hooków (PreToolUse, PostToolUse,
+SessionStart) i tylko je zabiera przy prune. Rozpoznaje je po ścieżce komendy
+(`GUARD_MARKERS`), więc reinstalacja podmienia stare wpisy zamiast je duplikować.
+Markery starych Guardów (`gate-*`, `invoke-hook.js`) zostają, żeby reinstalacja
+sprzątała wpisy z Workspace'ów bootstrapowanych przed Guards v2.
 """
 
 from __future__ import annotations
@@ -19,7 +21,18 @@ import sys
 from pathlib import Path
 
 # Wpis należy do kita, jeśli jego komenda odwołuje się do któregoś z tych plików.
-GUARD_MARKERS: tuple[str, ...] = ("invoke-hook.js", "gate-file-writes.mjs")
+GUARD_MARKERS: tuple[str, ...] = (
+    "git-guard.mjs",
+    "bash-guard.mjs",
+    "sensitive-files-guard.mjs",
+    "linters-guard.mjs",
+    "rtk-check.mjs",
+    # Guards v1 — tylko do prune przy reinstalacji.
+    "invoke-hook.js",
+    "gate-file-writes.mjs",
+    "gate-push.sh",
+    "gate-destructive.sh",
+)
 
 
 def is_kit_entry(entry: dict) -> bool:
