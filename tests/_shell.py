@@ -8,6 +8,7 @@ importują go `test_bootstrap.py`, `test_generated_artifacts.py`, `test_shell_su
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 
