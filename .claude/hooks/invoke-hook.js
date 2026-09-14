@@ -2,21 +2,21 @@
 /**
  * Adapter kontraktu hooka dla Cursora.
  *
- * Guardy w templates/shared/guards/*.mjs mowia jednym dialektem — kontraktem
- * Claude Code (`hookSpecificOutput.permissionDecision`). Claude Code wola je
+ * Guardy w templates/shared/guards/*.mjs mówią jednym dialektem — kontraktem
+ * Claude Code (`hookSpecificOutput.permissionDecision`). Claude Code woła je
  * wprost (`node .claude/hooks/git-guard.mjs`). Ten plik jest jedynym miejscem,
- * ktore wie, ze Cursor ma wlasny ksztalt wejscia i wyjscia:
+ * które wie, że Cursor ma własny kształt wejścia i wyjścia:
  *
  *   node .cursor/hooks/invoke-hook.js git-guard.mjs --to cursor
  *   node .cursor/hooks/invoke-hook.js sensitive-files-guard.mjs --to cursor --tool Read
  *
- * Wejscie: Cursor `beforeShellExecution` daje `.command`, `beforeReadFile` daje
- * `.file_path` + `.content` bez nazwy narzedzia — `--tool` dopisuje `tool_name`,
- * zeby Guard odroznil odczyt od zapisu. `preToolUse` juz niesie `tool_name`.
+ * Wejście: Cursor `beforeShellExecution` daje `.command`, `beforeReadFile` daje
+ * `.file_path` + `.content` bez nazwy narzędzia — `--tool` dopisuje `tool_name`,
+ * żeby Guard odróżnił odczyt od zapisu. `preToolUse` już niesie `tool_name`.
  *
- * Wyjscie: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
+ * Wyjście: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
  * exit 0 — przy failClosed: true niezerowy kod ukrywa payload (Cursor traktuje to
- * jak awarie hooka). Awaria adaptera = deny (fail-closed).
+ * jak awarię hooka). Awaria adaptera = deny (fail-closed).
  */
 "use strict";
 
@@ -93,7 +93,7 @@ if (stdin.charCodeAt(0) === 0xfeff) {
   stdin = stdin.slice(1);
 }
 
-// `--tool` uzupelnia payload Cursora o to, co Claude Code daje z natury.
+// `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.
 if (toolName) {
   try {
     const payload = JSON.parse(stdin || "{}");
@@ -112,7 +112,7 @@ const result = spawnSync(process.execPath, [hookPath, ...scriptArgs], {
 });
 
 if (result.error) {
-  emitDeny(result.error.message || "nie mozna uruchomic node");
+  emitDeny(result.error.message || "nie można uruchomić node");
 }
 
 const out = (result.stdout || "").trim();

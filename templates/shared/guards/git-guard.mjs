@@ -3,26 +3,26 @@
  * Guard: destrukcyjne komendy gita i shella (PreToolUse: Bash).
  *
  * Polityka zna tylko dwie odpowiedzi — allow albo deny. Nigdy `ask`: w auto mode
- * `ask` z hooka blokuje tak samo jak prompt, wiec bramka, ktora pyta, nie jest
- * automatyczna. Co nie jest na liscie deny, przechodzi. ADR 0006.
+ * `ask` z hooka blokuje tak samo jak prompt, więc bramka, która pyta, nie jest
+ * automatyczna. Co nie jest na liście deny, przechodzi. ADR 0006.
  *
  * Deny:
  *   - git reset --hard
- *   - git clean z flaga -f
+ *   - git clean z flagą -f
  *   - force push na main/master/dev (--force, --force-with-lease, -f, +refspec)
  *   - git push (bez force) na main/master/dev — workflow to PR
  *   - git branch -D
  *   - git checkout .  /  git checkout -- <cokolwiek>
- *   - rekursywne rm na szerokiej sciezce (~, /, .., katalog domowy, goly dysk)
+ *   - rekursywne rm na szerokiej ścieżce (~, /, .., katalog domowy, goły dysk)
  *   - mutacja, sed -i albo redirect z celem w katalogu systemowym
  *     (~/.ssh, C:\Windows, Program Files, /etc, ~/.claude/settings*.json)
  *
- * Allow (swiadomie): git stash, git restore, git commit --no-verify, find -delete,
- * rm -rf wewnatrz repo, kazda inna mutacja poza repo — git odzyska to, co w repo,
- * a poza repo pilnujemy tylko katalogow systemowych i sekretow (sensitive-files-guard).
+ * Allow (świadomie): git stash, git restore, git commit --no-verify, find -delete,
+ * rm -rf wewnątrz repo, każda inna mutacja poza repo — git odzyska to, co w repo,
+ * a poza repo pilnujemy tylko katalogów systemowych i sekretów (sensitive-files-guard).
  *
  * Kontrakt: Claude Code (`hookSpecificOutput.permissionDecision`). Cursor dostaje
- * tlumaczenie z invoke-hook.js --to cursor. Wejscie: `.tool_input.command` albo `.command`.
+ * tłumaczenie z invoke-hook.js --to cursor. Wejście: `.tool_input.command` albo `.command`.
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -50,19 +50,19 @@ let payload;
 try {
   payload = JSON.parse(raw || "{}");
 } catch {
-  // Nieczytelny payload: nie wiemy, co bysmy przepuscili. Fail-closed.
+  // Nieczytelny payload: nie wiemy, co byśmy przepuścili. Fail-closed.
   deny("nieczytelny payload hooka");
 }
 
 const command = String(payload.command || (payload.tool_input || {}).command || "");
 if (!command.trim()) allow();
 
-// Jedna spacja miedzy tokenami — wzorce nizej zakladaja `[ ]`, nie `\s+`.
+// Jedna spacja między tokenami — wzorce niżej zakładają `[ ]`, nie `\s+`.
 const cmd = command.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim();
 const has = (re) => new RegExp(re, "i").test(cmd);
 
-// Granica tokenu komendy: poczatek, spacja albo separator shella. `rtk git push`
-// tez lapie — prefiks rtk jest przed `git`, nie w srodku.
+// Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
+// też łapie — prefiks rtk jest przed `git`, nie w środku.
 const B = "(^|[ ;&|(])";
 
 // --- git push ----------------------------------------------------------------
@@ -81,7 +81,7 @@ function targetsProtectedRef() {
     // `git push main` / `git push <remote-or-url> main` — ostatni refspec.
     "git[ ]+push([ ]+-[^ ]+)*[ ]+\\+?(main|master)[ ]*$",
     "git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[ ]+\\+?(main|master)[ ]*$",
-    // `dev` jako ostatni refspec tylko po origin/upstream albo URL — gole
+    // `dev` jako ostatni refspec tylko po origin/upstream albo URL — gołe
     // `git push dev` to remote o nazwie dev, nie branch.
     "git[ ]+push([ ]+-[^ ]+)*[ ]+(origin|upstream)[ ]+\\+?dev[ ]*$",
     "git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[/:][^ ]*[ ]+\\+?dev[ ]*$",
@@ -94,24 +94,24 @@ const isForcePush =
   isPush &&
   (has("--force([ =]|$)|--force-with-lease") ||
     has("(^|[ ])-f([ ]|$)") ||
-    // Plus-refspec musi byc osobnym tokenem — URL git+https:// nie jest force.
+    // Plus-refspec musi być osobnym tokenem — URL git+https:// nie jest force.
     has("(^|[ ])\\+[A-Za-z0-9_./:@-]+"));
 
 if (isPush && targetsProtectedRef()) {
-  deny(isForcePush ? "force push na main/master/dev" : "push na main/master/dev — otworz PR z feature brancha");
+  deny(isForcePush ? "force push na main/master/dev" : "push na main/master/dev — otwórz PR z feature brancha");
 }
 
 // --- git: nieodwracalne ---------------------------------------------------------
 
-if (has(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, uzyj git stash albo nowego brancha");
+if (has(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
 if (has(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
-// Wielkosc litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
-if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(cmd)) deny("git branch -D — uzyj -d (tylko zmergowane)");
+// Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
+if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(cmd)) deny("git branch -D — użyj -d (tylko zmergowane)");
 if (has(`${B}git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`)) {
-  deny("git checkout . / checkout -- <sciezka> — kasuje niezacommitowane zmiany; uzyj git stash");
+  deny("git checkout . / checkout -- <ścieżka> — kasuje niezacommitowane zmiany; użyj git stash");
 }
 
-// --- rm rekursywne na szerokiej sciezce -------------------------------------------
+// --- rm rekursywne na szerokiej ścieżce -------------------------------------------
 
 function broadPath() {
   return (
@@ -122,7 +122,7 @@ function broadPath() {
   );
 }
 if (has(`${B}rm[ ]+-[a-zA-Z]*r`) && broadPath()) {
-  deny("rekursywne kasowanie na szerokiej sciezce (katalog domowy, dysk, ..)");
+  deny("rekursywne kasowanie na szerokiej ścieżce (katalog domowy, dysk, ..)");
 }
 
 // --- mutacje w katalogach systemowych -----------------------------------------------
@@ -157,7 +157,7 @@ if (mutates) {
 
   for (const tok of cmd.split(" ")) {
     if (tok.startsWith("-")) continue;
-    // Tylko tokeny wygladajace na sciezke — reszta to argumenty, nie cele.
+    // Tylko tokeny wyglądające na ścieżkę — reszta to argumenty, nie cele.
     if (!/^["']?([~/]|[A-Za-z]:[\\/]|\$\{?HOME)/.test(tok)) continue;
     const t = norm(tok);
     if (protectedPrefixes.some((p) => t === p || t.startsWith(p + "/"))) {

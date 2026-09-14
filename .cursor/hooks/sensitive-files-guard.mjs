@@ -2,19 +2,19 @@
 /**
  * Guard: sekrety i pliki generowane (PreToolUse: Read|Edit|Write|MultiEdit|NotebookEdit).
  *
- * Sekrety — deny na odczyt i zapis (agent nie wciaga ich do kontekstu i nie nadpisuje):
+ * Sekrety — deny na odczyt i zapis (agent nie wciąga ich do kontekstu i nie nadpisuje):
  *   .env, .env.* (poza .env.example / .env.sample / .env.template)
  *   *.pem *.key *.p12 *.pfx
  *   id_rsa* id_ed25519* id_ecdsa*
  *   .netrc  credentials.json
- *   .git/objects/  .git/refs/  .git/hooks/   (HEAD i config zostaja czytelne)
+ *   .git/objects/  .git/refs/  .git/hooks/   (HEAD i config zostają czytelne)
  *
  * Lockfile — deny tylko na zapis; odczyt wolny, a `npm install` / `uv sync` przez
- * Bash regeneruja je legalnie:
+ * Bash regenerują je legalnie:
  *   package-lock.json pnpm-lock.yaml yarn.lock bun.lockb
  *   uv.lock poetry.lock Pipfile.lock Cargo.lock
  *
- * Zero `ask` — ADR 0006. Reszta plikow przechodzi; zapisy poza repo pilnuje
+ * Zero `ask` — ADR 0006. Reszta plików przechodzi; zapisy poza repo pilnuje
  * natywna permission klienta (cwd + additionalDirectories), nie ten Guard.
  *
  * Kontrakt: Claude Code (`tool_name`, `tool_input.file_path|notebook_path`).
@@ -50,7 +50,7 @@ try {
 
 const toolInput = payload.tool_input || {};
 const file = String(toolInput.file_path || toolInput.notebook_path || payload.file_path || "");
-if (!file) emit("allow", "sensitive-files-guard: brak sciezki");
+if (!file) emit("allow", "sensitive-files-guard: brak ścieżki");
 
 // Read = odczyt. Cursor `beforeReadFile` nie ma tool_name, ale niesie `content`.
 const toolName = String(payload.tool_name || "");
@@ -74,7 +74,7 @@ const isSecret =
   GIT_INTERNAL.test(posix);
 
 if (isSecret) {
-  emit("deny", `sensitive-files-guard: ${name} to sekret — ani odczyt, ani zapis; popros uzytkownika`);
+  emit("deny", `sensitive-files-guard: ${name} to sekret — ani odczyt, ani zapis; poproś użytkownika`);
 }
 
 const LOCKFILES = new Set([
@@ -89,7 +89,7 @@ const LOCKFILES = new Set([
 ]);
 
 if (!isRead && LOCKFILES.has(lower)) {
-  emit("deny", `sensitive-files-guard: ${name} jest generowany — nie edytuj recznie, uruchom menedzer pakietow`);
+  emit("deny", `sensitive-files-guard: ${name} jest generowany — nie edytuj ręcznie, uruchom menedżer pakietów`);
 }
 
 emit("allow", "sensitive-files-guard: ok");

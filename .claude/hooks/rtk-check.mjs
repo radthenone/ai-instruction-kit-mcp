@@ -3,12 +3,12 @@
  * Guard: czy rtk jest skonfigurowane (SessionStart: startup|resume, tylko Claude Code).
  *
  * Sprawdza dwie rzeczy: `rtk --version` w PATH i wpis `rtk hook claude` w
- * ~/.claude/settings.json. Brak ktorejkolwiek → wypisuje modelowi instrukcje
- * dla uzytkownika. Nic wiecej: kit NIE pisze do ~/.claude i NIE odpala `rtk init`
- * — globalna instalacja to decyzja uzytkownika, rtk ma na to wlasny instalator.
+ * ~/.claude/settings.json. Brak którejkolwiek → wypisuje modelowi instrukcję
+ * dla użytkownika. Nic więcej: kit NIE pisze do ~/.claude i NIE odpala `rtk init`
+ * — globalna instalacja to decyzja użytkownika, rtk ma na to własny instalator.
  *
  * Wszystko ok → cisza (brak outputu, brak kontekstu).
- * Testy podaja GUARD_HOME (katalog domowy) i GUARD_RTK_BIN (nazwa binarki).
+ * Testy podają GUARD_HOME (katalog domowy) i GUARD_RTK_BIN (nazwa binarki).
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";

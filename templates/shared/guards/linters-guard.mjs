@@ -2,13 +2,13 @@
 /**
  * Guard: format + lint edytowanego pliku (PostToolUse: Edit|Write|MultiEdit|NotebookEdit).
  *
- * Najpierw format (naprawia, co sie da automatycznie), potem lint (zglasza reszte).
- * Wynik lintu wraca do modelu jako `additionalContext`, wiec kolejny krok agenta
- * widzi bledy i sam je naprawia. To feedback, nie bramka: PostToolUse nie cofnie
- * zapisu, wiec exit zawsze 0 i nigdy nie blokujemy narzedzia.
+ * Najpierw format (naprawia, co się da automatycznie), potem lint (zgłasza resztę).
+ * Wynik lintu wraca do modelu jako `additionalContext`, więc kolejny krok agenta
+ * widzi błędy i sam je naprawia. To feedback, nie bramka: PostToolUse nie cofnie
+ * zapisu, więc exit zawsze 0 i nigdy nie blokujemy narzędzia.
  *
- * Opt-in per repo: narzedzie odpala sie tylko, gdy w repo jest jego config
- * i binarka jest dostepna. Bez configu — cisza. Tylko edytowany plik.
+ * Opt-in per repo: narzędzie odpala się tylko, gdy w repo jest jego config
+ * i binarka jest dostępna. Bez configu — cisza. Tylko edytowany plik.
  *
  *   .py                          ruff format  → ruff check     ruff.toml / .ruff.toml / [tool.ruff]
  *   .ts .tsx .js .jsx .mjs .cjs  prettier     → eslint         .prettierrc* / prettier.config.* ; eslint.config.* / .eslintrc*
@@ -19,8 +19,8 @@
  *   Dockerfile*                               → hadolint       .hadolint.yaml / .hadolint.yml
  *   .ipynb                       pomijamy
  *
- * Binarka: node_modules/.bin → .venv/Scripts | .venv/bin → PATH. Brak → pomin cicho.
- * Stdout skrocony do `plik:linia: komunikat`, max 30 linii. Timeout 20 s lacznie.
+ * Binarka: node_modules/.bin → .venv/Scripts | .venv/bin → PATH. Brak → pomiń cicho.
+ * Stdout skrócony do `plik:linia: komunikat`, max 30 linii. Timeout 20 s łącznie.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -67,7 +67,7 @@ function hasRuff(root) {
   return anyExists(root, ["ruff.toml", ".ruff.toml"]) || read(join(root, "pyproject.toml")).includes("[tool.ruff");
 }
 
-// Binarka: lokalna z repo przed globalna z PATH. Zwraca [cmd, prefixArgs] albo null.
+// Binarka: lokalna z repo przed globalną z PATH. Zwraca [cmd, prefixArgs] albo null.
 function bin(root, name) {
   const win = process.platform === "win32";
   const candidates = [
@@ -94,14 +94,14 @@ function run(root, name, args) {
       shell: process.platform === "win32",
     });
   } catch (err) {
-    // ENOENT = brak binarki → pomin. Kod != 0 = lint znalazl problemy → wyjscie jest wynikiem.
+    // ENOENT = brak binarki → pomiń. Kod != 0 = lint znalazł problemy → wyjście jest wynikiem.
     if (err && err.code === "ENOENT") return null;
     if (err && (err.stdout || err.stderr)) return `${err.stdout || ""}${err.stderr || ""}`;
     return null;
   }
 }
 
-// `plik:linia: komunikat` — tylko linie z lokalizacja, zeby model dostal to, co da sie naprawic.
+// `plik:linia: komunikat` — tylko linie z lokalizacją, żeby model dostał to, co da się naprawić.
 function condense(text, file) {
   const rel = relative(process.cwd(), file) || basename(file);
   const out = [];
@@ -172,12 +172,12 @@ process.stdin.on("end", () => {
     if (!ran.length || !problems.length) return;
 
     const shown = problems.slice(0, MAX_LINES);
-    const more = problems.length > shown.length ? `\n… i ${problems.length - shown.length} wiecej` : "";
-    const context = `linters-guard: ${problems.length} problem(ow) w ${relative(root, file)} (${ran.join(", ")}):\n${shown.join("\n")}${more}`;
+    const more = problems.length > shown.length ? `\n… i ${problems.length - shown.length} więcej` : "";
+    const context = `linters-guard: ${problems.length} problem(ów) w ${relative(root, file)} (${ran.join(", ")}):\n${shown.join("\n")}${more}`;
     process.stdout.write(
       JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } }) + "\n"
     );
   } catch {
-    // Feedback jest best-effort — awaria hooka nie moze przerwac sesji.
+    // Feedback jest best-effort — awaria hooka nie może przerwać sesji.
   }
 });

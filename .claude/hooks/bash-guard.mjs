@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * Guard: na Windows agent uzywa Git Basha, nie PowerShella (PreToolUse: Bash).
+ * Guard: na Windows agent używa Git Basha, nie PowerShella (PreToolUse: Bash).
  *
- * Deny, gdy komenda z narzedzia Bash odpala `pwsh`, `powershell`, `powershell.exe`,
+ * Deny, gdy komenda z narzędzia Bash odpala `pwsh`, `powershell`, `powershell.exe`,
  * `cmd`, `cmd.exe` — jako pierwszy token albo po separatorze (`;`, `&&`, `||`, `|`).
- * Bez wyjatku na `-File`: skrypt .ps1 tez ma isc przez Git Basha albo wcale.
+ * Bez wyjątku na `-File`: skrypt .ps1 też ma iść przez Git Basha albo wcale.
  *
- * Tylko win32. Na innych platformach zawsze allow — tam pwsh to swiadomy wybor,
- * nie domyslna powloka, i nie ma czego pilnowac.
+ * Tylko win32. Na innych platformach zawsze allow — tam pwsh to świadomy wybór,
+ * nie domyślna powłoka, i nie ma czego pilnować.
  *
- * Narzedzie `PowerShell` (osobne od Bash) NIE jest blokowane — decyzja z #60.
- * Model po odmowie moze siegnac po nie wprost; uzytkownik to akceptuje.
+ * Narzędzie `PowerShell` (osobne od Bash) NIE jest blokowane — decyzja z #60.
+ * Model po odmowie może sięgnąć po nie wprost; użytkownik to akceptuje.
  *
- * Kontrakt: Claude Code. Wejscie: `.tool_input.command` albo `.command`.
- * Testy podaja GUARD_PLATFORM, zeby sprawdzic polityke na kazdym OS.
+ * Kontrakt: Claude Code. Wejście: `.tool_input.command` albo `.command`.
+ * Testy podają GUARD_PLATFORM, żeby sprawdzić politykę na każdym OS.
  */
 import { readFileSync } from "node:fs";
 
@@ -47,12 +47,12 @@ try {
 const command = String(payload.command || (payload.tool_input || {}).command || "");
 const cmd = command.replace(/[\r\n\t]+/g, " ").trim();
 
-// Token komendy: na poczatku albo po separatorze shella, opcjonalnie ze sciezka
+// Token komendy: na początku albo po separatorze shella, opcjonalnie ze ścieżką
 // (`/c/Program Files/PowerShell/7/pwsh.exe`) i z rozszerzeniem .exe.
 const SHELLS = /(^|[;&|(]\s*|\s(?:&&|\|\||;|\|)\s*)(?:"[^"]*[\\/])?(?:(?:[^\s"]|\\ )*[\\/])?(pwsh|powershell|cmd)(\.exe)?"?(\s|$)/i;
 
 if (SHELLS.test(cmd)) {
-  emit("deny", "bash-guard: na Windows uzywaj Git Basha — pwsh/powershell/cmd z narzedzia Bash sa zablokowane");
+  emit("deny", "bash-guard: na Windows używaj Git Basha — pwsh/powershell/cmd z narzędzia Bash są zablokowane");
 }
 
 emit("allow", "bash-guard: ok");
