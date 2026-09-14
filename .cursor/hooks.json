@@ -3,13 +3,22 @@
   "hooks": {
     "beforeShellExecution": [
       {
-        "command": "node .cursor/hooks/invoke-hook.js gate-destructive.sh --to cursor",
-        "matcher": "git\\s+(push|reset|clean|commit|checkout|restore|stash)|\\brm\\s+-[a-zA-Z]*r|\\bfind\\b.*(-delete|-exec)",
+        "command": "node .cursor/hooks/invoke-hook.js git-guard.mjs --to cursor",
+        "matcher": "git\\s+(push|reset|clean|branch|checkout)|\\brm\\s+-[a-zA-Z]*r|\\b(mv|cp|install|ln|dd|shred|truncate|touch|mkdir|rmdir|chmod|chown|chgrp|tee|unlink|sed)\\b|>",
         "failClosed": true
-      },
+      }
+    ],
+    "beforeReadFile": [
       {
-        "command": "node .cursor/hooks/invoke-hook.js gate-push.sh --to cursor",
-        "matcher": "git\\s+push"
+        "command": "node .cursor/hooks/invoke-hook.js sensitive-files-guard.mjs --to cursor --tool Read",
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/invoke-hook.js sensitive-files-guard.mjs --to cursor --tool Write",
+        "matcher": "Write",
+        "failClosed": true
       }
     ]
   }

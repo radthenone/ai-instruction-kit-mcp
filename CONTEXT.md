@@ -90,6 +90,10 @@ _Avoid_: install, setup, sync
 An AI coding tool that consumes the Kit — Cursor, Claude Code, Codex, VS Code, Kiro, Kilo, Antigravity, opencode. Determines only where Bootstrap writes files; never changes Bundle content.
 _Avoid_: IDE, editor, agent, tool
 
+**Guard**:
+A hook script the Bootstrap installs into a Workspace so a Client refuses or reports an agent action — a destructive git command, a write to a secret, a lint failure. One policy source in the Kit, translated per Client; a Guard either allows or denies, it never asks the human.
+_Avoid_: guardrail, gate, hook, blocker
+
 **Bootstrap Stamp**:
 The record a Bootstrap leaves in a Workspace of which Kit commit produced the copied files, so drift can be detected without reading any instruction text.
 _Avoid_: lockfile, manifest, version file

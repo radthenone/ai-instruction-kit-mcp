@@ -100,5 +100,5 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
 Format stack review: `Severity | Location | Finding | Fix`.  
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
-Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main/master/dev / reset --hard).
+Guardy (zero `ask`): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na main/master/dev, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile).
 Bootstrap: `scripts/bootstrap-project.sh`.

@@ -186,6 +186,7 @@ prune_client() {
   case "$id" in
     cursor)
       rm -f "$TARGET/.cursor/mcp.json" "$TARGET/.cursor/hooks.json" \
+        "$TARGET/.cursor/hooks/git-guard.mjs" "$TARGET/.cursor/hooks/sensitive-files-guard.mjs" \
         "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh" \
         "$TARGET/.cursor/hooks/invoke-hook.js" \
         "$TARGET/.cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/code-review.mdc" \
@@ -487,10 +488,12 @@ install_bugbot_md_once() {
 install_guards() {
   local dest="$1"
   mkdir -p "$dest"
-  cp "$SHARED_GUARDS/gate-destructive.sh" "$dest/gate-destructive.sh"
-  cp "$SHARED_GUARDS/gate-push.sh" "$dest/gate-push.sh"
+  # Guards v1 (gate-*) kasowane po nazwie — reinstalacja na Workspace sprzed v2
+  # ma zostawic wylacznie nowy zestaw.
+  rm -f "$dest/gate-destructive.sh" "$dest/gate-push.sh" "$dest/gate-file-writes.mjs"
+  cp "$SHARED_GUARDS/git-guard.mjs" "$dest/git-guard.mjs"
+  cp "$SHARED_GUARDS/sensitive-files-guard.mjs" "$dest/sensitive-files-guard.mjs"
   cp "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
-  chmod +x "$dest/gate-destructive.sh" "$dest/gate-push.sh"
 }
 
 install_cursor() {
@@ -500,7 +503,7 @@ install_cursor() {
 
   cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
   install_guards "$TARGET/.cursor/hooks"
-  echo "  + .cursor/hooks.json (node invoke-hook → bash)"
+  echo "  + .cursor/hooks.json (node invoke-hook → guardy .mjs)"
 
   cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
@@ -566,10 +569,14 @@ install_claude() {
   echo "  + .mcp.json (Claude Code)"
 
   install_guards "$TARGET/.claude/hooks"
-  cp "$SHARED_GUARDS/gate-file-writes.mjs" "$TARGET/.claude/hooks/gate-file-writes.mjs"
+  # Tylko Claude Code: Cursor nie ma narzedzia Bash w tym sensie (bash-guard),
+  # nie zwraca kontekstu z afterFileEdit (linters-guard) ani nie ma SessionStart.
+  cp "$SHARED_GUARDS/bash-guard.mjs" "$TARGET/.claude/hooks/bash-guard.mjs"
+  cp "$SHARED_GUARDS/linters-guard.mjs" "$TARGET/.claude/hooks/linters-guard.mjs"
+  cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$KIT_ROOT/templates/claude/settings.json"
-  echo "  + .claude/hooks/ + wpisy PreToolUse w .claude/settings.json"
+  echo "  + .claude/hooks/ + wpisy hookow kita w .claude/settings.json"
 
   copy_shared_agents "$TARGET/.claude/agents"
   copy_claude_commands "$TARGET/.claude/commands"

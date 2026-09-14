@@ -34,9 +34,9 @@ Kolejność:
 
 Gdy overlay ma `codegen: orval` (lub REST FE bez wpisu): po zmianie API regeneruj klienta i commituj. Przy `manual`/`none` nie wymagaj Orval.
 
-Hooki:
+Guardy (allow/deny, nigdy ask — ADR 0006):
 
-- `gate-push.sh` — ask przed push (`SKIP_PUSH_REVIEW=1` świadomie).
-- `gate-destructive.sh` — deny force na main/master/dev, `reset --hard`.
+- `git-guard.mjs` — deny force i push na main/master/dev, `reset --hard`, `clean -f`, `branch -D`, `checkout .`.
+- `sensitive-files-guard.mjs` — deny odczyt/zapis sekretów, deny ręczna edycja lockfile.
 
 Reguły Bugbota: `.cursor/BUGBOT.md`. Workflow: MCP `get_bundle` → `devops` / `core:code-review`.

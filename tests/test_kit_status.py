@@ -176,12 +176,12 @@ class TestKitStatus(unittest.TestCase):
 
             guards = kit_root / "templates" / "shared" / "guards"
             guards.mkdir(parents=True)
-            (guards / "gate-destructive.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            (guards / "git-guard.mjs").write_text("#!/usr/bin/env node\n", encoding="utf-8")
             _git(kit_root, "add", "-A")
             _git(kit_root, "commit", "-q", "-m", "add guard")
 
             out = check_kit_updates(kit_root, workspace)
-            self.assertIn("templates/shared/guards/gate-destructive.sh", out)
+            self.assertIn("templates/shared/guards/git-guard.mjs", out)
             self.assertIn("Re-bootstrap wciągnie sam", out)
 
     def test_net_zero_change_shows_no_tracked_diff(self) -> None:

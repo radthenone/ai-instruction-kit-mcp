@@ -1,7 +1,7 @@
 """
 Adapter: wciąga zewnętrzne suity (bash / standalone python) do `unittest discover`.
 
-`tests/*.sh` oraz `tests/test_bash_hook_launcher.py` nie definiują klas `TestCase`,
+`tests/*.sh` nie definiują klas `TestCase`,
 więc `unittest discover` je pomijał — CI nigdy ich nie uruchamiał, mimo że README
 opisuje je jako suitę regresji. Ten moduł jest jedynym miejscem, przez które
 zewnętrzna suita wchodzi do zwykłego przebiegu testów.
@@ -23,7 +23,7 @@ from pathlib import Path
 from unittest import mock
 
 # Jedno źródło prawdy dla wykrywania Git Bash, CI i formy ścieżki dla basha.
-from test_bash_hook_launcher import is_ci, posix_path, resolve_bash
+from _shell import is_ci, posix_path, resolve_bash
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = ROOT / "tests"
@@ -31,7 +31,7 @@ TESTS_DIR = ROOT / "tests"
 # Bootstrap odpala kilka pełnych instalacji (uvx-free, ale wiele procesów Pythona).
 #
 # Zmierzone czasy pojedynczej suity na Windows: typowo 7-57 s, bootstrap 25-121 s.
-# Ale ta sama maszyna potrafi zamulić tak, że `test_gate_destructive.sh` nie kończy
+# Ale ta sama maszyna potrafi zamulić tak, że `test_guard_adapter.sh` nie kończy
 # się w 600 s (patrz #24) — przy 41 s w przebiegu obok. Rozrzut jest dwunastokrotny
 # i limit go NIE pokrywa; 300 s leży w środku, świadomie.
 #
@@ -42,14 +42,13 @@ TESTS_DIR = ROOT / "tests"
 SUITE_TIMEOUT_SECONDS = 300
 
 BASH_SUITES: tuple[str, ...] = (
-    "test_gate_destructive.sh",
     "test_guard_adapter.sh",
     "test_bootstrap_clients.sh",
 )
 
 # Skrypty `python` z własnym `main()` zamiast `TestCase` — uruchamiane jako podproces,
 # żeby nie zależeć od tego, czy ich moduł da się bezpiecznie zaimportować.
-STANDALONE_PY_SUITES: tuple[str, ...] = ("test_bash_hook_launcher.py",)
+STANDALONE_PY_SUITES: tuple[str, ...] = ()
 
 # Ten moduł sam jest oparty na TestCase, więc nie może być swoją własną suitą.
 _SELF = Path(__file__).name

@@ -15,15 +15,18 @@ test ! -e "$TMP/only-cursor/.kiro"
 # Ten przebieg leci z --skip-agents, więc jest zarazem dowodem, że flaga pomija skille.
 test ! -e "$TMP/only-cursor/.cursor/skills/skill-authoring"
 grep -q '"--clients", "cursor"' "$TMP/only-cursor/.cursor/mcp.json"
-# Guardraile ida ze wspolnego zrodla (templates/shared/guards).
-test -f "$TMP/only-cursor/.cursor/hooks/gate-destructive.sh"
-test -f "$TMP/only-cursor/.cursor/hooks/gate-push.sh"
+# Guardy ida ze wspolnego zrodla (templates/shared/guards).
+test -f "$TMP/only-cursor/.cursor/hooks/git-guard.mjs"
+test -f "$TMP/only-cursor/.cursor/hooks/sensitive-files-guard.mjs"
 test -f "$TMP/only-cursor/.cursor/hooks/invoke-hook.js"
 grep -q -- '--to cursor' "$TMP/only-cursor/.cursor/hooks.json"
-# Cursor ma tylko afterFileEdit (po zapisie), wiec bramki na pliki nie dostaje.
-test ! -e "$TMP/only-cursor/.cursor/hooks/gate-file-writes.mjs"
+grep -q -- '--tool Read' "$TMP/only-cursor/.cursor/hooks.json"
+# Guardy tylko dla Claude nie trafiaja do Cursora (#63).
+test ! -e "$TMP/only-cursor/.cursor/hooks/bash-guard.mjs"
+test ! -e "$TMP/only-cursor/.cursor/hooks/linters-guard.mjs"
+test ! -e "$TMP/only-cursor/.cursor/hooks/rtk-check.mjs"
 test ! -e "$TMP/only-cursor/.claude/hooks"
-echo "OK  --clients cursor (+ guardraile)"
+echo "OK  --clients cursor (+ guardy)"
 
 "$BOOT" "$TMP/all" --clients all --from "$ROOT" --skip-agents >/dev/null
 test -f "$TMP/all/.cursor/mcp.json"
@@ -58,32 +61,48 @@ test -d "$TMP/claude-kiro/.claude/agents"
 test -f "$TMP/claude-kiro/.claude/commands/cleanup.md"
 test -d "$TMP/claude-kiro/.kiro/agents"
 test ! -e "$TMP/claude-kiro/.cursor/mcp.json"
-# Claude dostaje te same guardraile co Cursor plus bramke na zapisy plikow.
-test -f "$TMP/claude-kiro/.claude/hooks/gate-destructive.sh"
-test -f "$TMP/claude-kiro/.claude/hooks/gate-push.sh"
+# Claude dostaje te same Guardy co Cursor plus bash-guard, linters-guard, rtk-check.
+test -f "$TMP/claude-kiro/.claude/hooks/git-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/sensitive-files-guard.mjs"
 test -f "$TMP/claude-kiro/.claude/hooks/invoke-hook.js"
-test -f "$TMP/claude-kiro/.claude/hooks/gate-file-writes.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/bash-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/linters-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/rtk-check.mjs"
 grep -q 'PreToolUse' "$TMP/claude-kiro/.claude/settings.json"
-grep -q 'gate-file-writes.mjs' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'PostToolUse' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'SessionStart' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'sensitive-files-guard.mjs' "$TMP/claude-kiro/.claude/settings.json"
+if grep -q 'gate-' "$TMP/claude-kiro/.claude/settings.json"; then
+  echo "FAIL .claude/settings.json nie powinien zawierac Guards v1" >&2
+  exit 1
+fi
 # Claude nie tlumaczy kontraktu — dialekt polityki jest jego wlasnym.
 if grep -q -- '--to cursor' "$TMP/claude-kiro/.claude/settings.json"; then
   echo "FAIL .claude/settings.json nie powinien tlumaczyc na kontrakt Cursora" >&2
   exit 1
 fi
-echo "OK  --clients claude,kiro (+ agents, guardraile)"
+echo "OK  --clients claude,kiro (+ agents, guardy)"
 
 # Ta sama polityka u obu klientow: pliki musza byc identyczne ze zrodlem.
 "$BOOT" "$TMP/both" --clients cursor,claude --from "$ROOT" --skip-agents >/dev/null
-cmp -s "$ROOT/templates/shared/guards/gate-destructive.sh" "$TMP/both/.cursor/hooks/gate-destructive.sh"
-cmp -s "$ROOT/templates/shared/guards/gate-destructive.sh" "$TMP/both/.claude/hooks/gate-destructive.sh"
+cmp -s "$ROOT/templates/shared/guards/git-guard.mjs" "$TMP/both/.cursor/hooks/git-guard.mjs"
+cmp -s "$ROOT/templates/shared/guards/git-guard.mjs" "$TMP/both/.claude/hooks/git-guard.mjs"
 cmp -s "$TMP/both/.cursor/hooks/invoke-hook.js" "$TMP/both/.claude/hooks/invoke-hook.js"
 echo "OK  --clients cursor,claude (jedno zrodlo polityki)"
+
+# Reinstalacja na Workspace z Guards v1 sprzata stare pliki i wpisy.
+printf '#!/bin/sh\n' > "$TMP/both/.claude/hooks/gate-destructive.sh"
+printf '#!/bin/sh\n' > "$TMP/both/.cursor/hooks/gate-push.sh"
+"$BOOT" "$TMP/both" --clients cursor,claude --from "$ROOT" --skip-agents >/dev/null
+test ! -e "$TMP/both/.claude/hooks/gate-destructive.sh"
+test ! -e "$TMP/both/.cursor/hooks/gate-push.sh"
+echo "OK  reinstalacja kasuje Guards v1"
 
 # Odznaczenie klienta sprzata jego hooki i wpisy w settings.json.
 "$BOOT" "$TMP/both" --clients cursor --from "$ROOT" --skip-agents >/dev/null
 test ! -e "$TMP/both/.claude/hooks"
 test ! -e "$TMP/both/.claude/settings.json"
-test -f "$TMP/both/.cursor/hooks/gate-destructive.sh"
+test -f "$TMP/both/.cursor/hooks/git-guard.mjs"
 echo "OK  prune: claude odznaczony sprzata po sobie"
 
 "$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null

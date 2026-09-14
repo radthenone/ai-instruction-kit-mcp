@@ -113,11 +113,13 @@ Zostawiłeś coś mimo to (albo dołączasz do sesji z już istniejącym syfem) 
 Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
 Format stack review: `Severity | Location | Finding | Fix`.  
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
-Guardraile — jedno źródło w `templates/shared/guards/`, instalowane per `--clients`:
-`gate-push.sh` (ask przed push), `gate-destructive.sh` (deny force na main/master/dev,
-`reset --hard`; ask na `checkout --`, `restore`, `stash`, rekursywne kasowanie
-i zmiany na ścieżkach spoza projektu — odczyt poza projektem zostaje wolny),
-`gate-file-writes.mjs` (tylko Claude Code — ask poza projektem, allow w całym repo).
+Guardy — jedno źródło w `templates/shared/guards/`, instalowane per `--clients`, **zero
+`ask`** (ADR 0006): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na
+main/master/dev, `branch -D`, `checkout .`/`--`, rekursywne `rm` na szerokiej ścieżce,
+mutacje w katalogach systemowych), `sensitive-files-guard.mjs` (deny odczyt/zapis
+sekretów, deny ręczna edycja lockfile), tylko Claude: `bash-guard.mjs` (Windows: Git Bash,
+nie pwsh/cmd), `linters-guard.mjs` (format+lint po edycji, wynik do modelu),
+`rtk-check.mjs` (SessionStart: przypomnienie o `rtk init -g`).
 Polityka mówi kontraktem Claude Code; `invoke-hook.js --to cursor` tłumaczy dla Cursora.
 Bootstrap: `scripts/bootstrap-project.sh`.
 
