@@ -267,7 +267,7 @@ Poza gitem zostaje lokalny stan klienta i to, co i tak żyje globalnie:
 | --- | --- |
 | `.claude/{agents,commands,hooks,skills}/`, `.claude/settings.json` | `.claude/settings.local.json` (uprawnienia per maszyna) |
 | `.codex/config.toml`, `.codex/skills/` | reszta `.codex/` (stan sesji) |
-| `.vscode/mcp.json`, `.github/prompts/`, `.github/copilot-instructions.md` | — |
+| `.vscode/mcp.json`, `.github/prompts/`, `.github/copilot-instructions.md`, `.github/hooks/rtk-rewrite.json` | — |
 | `.mcp.json`, `AGENTS.md`, `BUGBOT.md`, `.ai/` | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
 
 Typowy `.gitignore` ma `.claude/` wpisane hurtem — wtedy hooki i komendy nigdy nie trafiają
@@ -336,7 +336,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Cursor | `cursor` | Cursor IDE | Ustaw `--from` w `.cursor/mcp.json` jeśli nie `uvx`-owalny git remote. Hooki (`gate-*`) działają od razu — wymagają `bash` w PATH (Windows: Git Bash) |
 | Claude Code | `claude` | `claude` CLI albo desktop app | `.mcp.json` w root — Claude Code czyta go automatycznie po `cd` do repo. `.claude/commands/*.md` = prawdziwe `/nazwa`, `.claude/agents/*.md` = subagenty (Task tool) |
 | Codex CLI | `codex` | `codex` CLI | `.codex/config.toml` wymaga absolutnej ścieżki w `--workspace` (brak `${workspaceFolder}`) — bootstrap wypełnia sam z `TARGET` |
-| GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | VS Code + rozszerzenie GitHub Copilot Chat | `.vscode/mcp.json` (`servers`, nie `mcpServers`) + `.github/prompts/*.prompt.md` (Copilot Chat `/nazwa`) + `.github/copilot-instructions.md`. Wymaga w VS Code ustawienia `chat.promptFiles: true` (część wersji ma to domyślnie) |
+| GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | VS Code + rozszerzenie GitHub Copilot Chat | `.vscode/mcp.json` (`servers`, nie `mcpServers`) + `.github/prompts/*.prompt.md` (Copilot Chat `/nazwa`) + `.github/copilot-instructions.md` + `.github/hooks/rtk-rewrite.json` (`rtk hook copilot` — jedyny klient bez trybu globalnego rtk, więc hook idzie z kita). Wymaga w VS Code ustawienia `chat.promptFiles: true` (część wersji ma to domyślnie) |
 | Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
 | Kilo Code | `kilo` | rozszerzenie Kilo Code | `.kilocode/mcp.json` + `.kilocode/workflows/*.md` (`/nazwa`, `$ARGUMENTS` wspierane) |
 | Google Antigravity | `antigravity` | Antigravity IDE | `.agents/mcp_config.json` + `.agents/workflows/*.md` (`/nazwa`; limit 12 000 znaków/plik — kit przycina) |
@@ -767,6 +767,7 @@ te same reguły.
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
+| `rtk-rewrite.json` | Copilot | `.github/hooks/`: PreToolUse → `rtk hook copilot` przepisuje komendy bash na `rtk <cmd>`. Copilot nie ma globalnego trybu rtk, stąd per-repo z kita. Pozostali klienci (Claude, Cursor, Codex, OpenCode) mają rtk globalnie per maszyna — instrukcja w `modules/core/tooling-rtk.md` |
 
 **Zero `ask`** (ADR 0006): Guard odpowiada `allow` albo `deny`. W auto mode `ask` z hooka
 blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. Model dostaje
