@@ -209,7 +209,9 @@ prune_client() {
       rmdir "$TARGET/.codex" 2>/dev/null || true
       ;;
     vscode)
-      rm -f "$TARGET/.vscode/mcp.json" "$TARGET/.github/copilot-instructions.md"
+      rm -f "$TARGET/.vscode/mcp.json" "$TARGET/.github/copilot-instructions.md" \
+        "$TARGET/.github/hooks/rtk-rewrite.json"
+      rmdir "$TARGET/.github/hooks" 2>/dev/null || true
       if [[ -d "$TARGET/.github/prompts" ]]; then
         rm -f "$TARGET/.github/prompts/"*.prompt.md 2>/dev/null || true
         rmdir "$TARGET/.github/prompts" 2>/dev/null || true
@@ -625,6 +627,15 @@ install_vscode() {
     cp "$KIT_ROOT/templates/vscode/github/copilot-instructions.md" \
       "$TARGET/.github/copilot-instructions.md"
     echo "  + .github/copilot-instructions.md"
+  fi
+  # rtk dla Copilota istnieje tylko per-repo (`rtk init --copilot` nie ma trybu globalnego),
+  # a bootstrap nadpisuje copilot-instructions.md — więc hook idzie z kita, nie z `rtk init`.
+  # No-op bez `rtk` w PATH: hook nie odpali, Copilot przepuszcza komendę bez zmian.
+  if [[ -f "$KIT_ROOT/templates/vscode/github/hooks/rtk-rewrite.json" ]]; then
+    mkdir -p "$TARGET/.github/hooks"
+    cp "$KIT_ROOT/templates/vscode/github/hooks/rtk-rewrite.json" \
+      "$TARGET/.github/hooks/rtk-rewrite.json"
+    echo "  + .github/hooks/rtk-rewrite.json (rtk hook copilot)"
   fi
   render_agent_commands vscode "$TARGET/.github/prompts"
   copy_shared_skills vscode "$TARGET/.github/prompts"

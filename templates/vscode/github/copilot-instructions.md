@@ -8,3 +8,5 @@ Before feature work: use MCP `project-guides` → `get_bundle` for the area you 
 Git: protected `main` / `master` / `dev` — work on a feature branch, push, then PR. Prefer Conventional Commits.
 
 Before push: run local review (`/review-bugbot` in Cursor, or equivalent review agents). Do not force-push to protected branches.
+
+Shell: `.github/hooks/rtk-rewrite.json` rewrites bash commands to `rtk <cmd>` automatically when `rtk` is in PATH — do not add the prefix yourself, do not treat a missing `rtk` as an error. Meta commands stay direct: `rtk gain`, `rtk discover`, `rtk proxy <cmd>`.

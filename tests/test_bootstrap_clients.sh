@@ -105,6 +105,21 @@ test ! -e "$TMP/both/.claude/settings.json"
 test -f "$TMP/both/.cursor/hooks/git-guard.mjs"
 echo "OK  prune: claude odznaczony sprzata po sobie"
 
+# Copilot: rtk nie ma trybu globalnego, wiec hook idzie z kita per-repo (#67).
+"$BOOT" "$TMP/vscode" --clients vscode --from "$ROOT" --skip-agents >/dev/null
+test -f "$TMP/vscode/.github/hooks/rtk-rewrite.json"
+cmp -s "$ROOT/templates/vscode/github/hooks/rtk-rewrite.json" "$TMP/vscode/.github/hooks/rtk-rewrite.json"
+grep -q 'rtk hook copilot' "$TMP/vscode/.github/hooks/rtk-rewrite.json"
+grep -q 'rtk-rewrite.json' "$TMP/vscode/.github/copilot-instructions.md"
+# Odznaczenie vscode sprzata hook i pusty katalog, nie rusza reszty .github.
+mkdir -p "$TMP/vscode/.github/workflows"
+echo "name: ci" > "$TMP/vscode/.github/workflows/ci.yml"
+"$BOOT" "$TMP/vscode" --clients cursor --from "$ROOT" --skip-agents >/dev/null
+test ! -e "$TMP/vscode/.github/hooks"
+test ! -e "$TMP/vscode/.github/copilot-instructions.md"
+test -f "$TMP/vscode/.github/workflows/ci.yml"
+echo "OK  --clients vscode (+ rtk hook copilot, prune)"
+
 "$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
 # Cztery klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
 test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"

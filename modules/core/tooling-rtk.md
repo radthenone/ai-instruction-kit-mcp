@@ -32,6 +32,47 @@ domyslnego shella klienta na danej maszynie:
 - Nie myl z narzędziem o tej samej nazwie (`reachingforthejack/rtk` — Rust Type Kit) —
   jeśli `rtk --version` / `rtk gain` nie działa, to zły binarny `rtk`, pomiń prefiksowanie.
 
+## RTK — hook zamiast ręcznego prefiksu
+
+Ręczny prefiks to fallback. Docelowo klient ma hook `PreToolUse`, który przepisuje
+komendę na `rtk <cmd>` poza modelem (0 tokenów, model widzi już przefiltrowany output).
+Gdy hook jest, **nie dopisuj prefiksu sam** — hook na komendzie już zaczynającej się od
+`rtk` robi passthrough, więc podwójne `rtk rtk …` nie powstanie, ale to zbędny szum.
+
+| Klient | Zakres | Jak włączyć (raz, per maszyna) |
+|--------|--------|--------------------------------|
+| Claude Code | globalny | `rtk init -g --auto-patch` → `rtk hook claude` w `~/.claude/settings.json` |
+| Cursor | globalny | `rtk init -g --agent cursor` → `rtk hook cursor` w `~/.cursor/hooks.json` |
+| OpenCode | globalny | `rtk init -g --opencode` → plugin `~/.config/opencode/plugins/rtk.ts` |
+| Codex | globalny | ręcznie `~/.codex/hooks.json` (niżej) + trust w `/hooks` w TUI Codexa |
+| GitHub Copilot | **tylko per-repo** | bootstrap kita kopiuje `.github/hooks/rtk-rewrite.json` (`rtk hook copilot`) |
+
+Codex nie ma `rtk hook codex`, ale jego kontrakt `PreToolUse` (`permissionDecision` +
+`updatedInput`) jest identyczny z Claude, więc `rtk hook claude` działa bez zmian:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "rtk hook claude", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Codex wymaga zaufania hookowi przed pierwszym uruchomieniem (`/hooks` w TUI, trust jest
+per hash definicji). Bez trustu hook jest pomijany, komendy idą bez `rtk`.
+
+Copilot: `rtk init --copilot` pisze tylko per-repo i dopisuje sekcję do
+`.github/copilot-instructions.md`, którą bootstrap kita nadpisuje — dlatego hook Copilota
+idzie z szablonu kita, nie z `rtk init`. Nie dokładaj `.codex/hooks.json` do projektu, gdy
+masz global: Codex zmergowałby oba i wymagał trustu w każdym repo.
+
 Zasada ogólna (nie zależy od presetu/domeny) — dotyczy każdego projektu bootstrapowanego
 tym kitem, niezależnie od `--preset`.
 
