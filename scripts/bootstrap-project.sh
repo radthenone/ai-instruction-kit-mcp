@@ -358,6 +358,23 @@ PY
 GITIGNORE_BEGIN="# >>> instruction-kit >>>"
 GITIGNORE_END="# <<< instruction-kit <<<"
 
+# Pliki, które bootstrap renderuje ze ścieżką TEJ maszyny: `fill_mcp` wstawia do konfigów
+# MCP lokalny klon kita (`uv run --directory`, `--kit-root`) i absolutny `--workspace`,
+# stamp zapisuje `kit_from`. Zacommitowane z jednej maszyny psują serwer MCP na każdej
+# innej, więc idą do .gitignore (sekcja kita) i są sprawdzane w indeksie po instalacji.
+# Ścieżki względem $TARGET, w składni .gitignore (wiodący `/` = tylko root repo).
+MACHINE_FILES=(
+  "/.mcp.json"
+  "/.cursor/mcp.json"
+  "/.vscode/mcp.json"
+  "/.codex/config.toml"
+  "/.kiro/settings/mcp.json"
+  "/.kilocode/mcp.json"
+  "/.agents/mcp_config.json"
+  "/opencode.json"
+  "/.ai/.kit-bootstrap.json"
+)
+
 sync_gitignore_section() {
   local target_file="$TARGET/.gitignore"
   local template="$KIT_ROOT/templates/gitignore-kit.txt"
@@ -365,6 +382,7 @@ sync_gitignore_section() {
 
   BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
   SHARED_SKILLS="$SHARED_SKILLS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
+  MACHINE_FILES="$(printf '%s\n' "${MACHINE_FILES[@]}")" \
   TEMPLATE="$template" DEST="$target_file" "$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
@@ -400,6 +418,7 @@ body = body.replace(
     "@KIT_SKILLS_CURSOR@",
     skill_allow(".cursor/skills", shared, os.environ["CURSOR_SKILLS"]),
 )
+body = body.replace("@KIT_MACHINE_FILES@", os.environ["MACHINE_FILES"].strip())
 
 section = f"{begin}\n{body}\n{end}\n"
 
@@ -420,6 +439,21 @@ if updated != existing:
     dest.write_text(updated, encoding="utf-8")
     print(f"  + .gitignore ({action} sekcję instruction-kit)")
 PY
+}
+
+# Wpis w .gitignore nie odśledza pliku, który już siedzi w indeksie — repo zbootstrapowane
+# zanim konfigi MCP trafiły do MACHINE_FILES mają je zacommitowane. Podajemy gotową
+# komendę, ale indeksu nie ruszamy: co wypada z repo, decyduje użytkownik, nie instalator.
+warn_tracked_machine_files() {
+  git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local tracked
+  tracked="$(git -C "$TARGET" ls-files -- "${MACHINE_FILES[@]#/}" 2>/dev/null | tr '\n' ' ')"
+  tracked="${tracked% }"
+  [[ -n "$tracked" ]] || return 0
+  echo ""
+  echo "UWAGA: pliki per maszyna są wciąż śledzone przez git (zacommitowane przed tą wersją kita)."
+  echo "Na innych maszynach psują serwer MCP. Odśledź je (zostają na dysku) i zacommituj:"
+  echo "  git -C \"$TARGET\" rm --cached $tracked"
 }
 
 copy_shared_agents() {
@@ -789,6 +823,8 @@ cat > "$TARGET/.ai/.kit-bootstrap.json" <<JSON
 }
 JSON
 echo "  + .ai/.kit-bootstrap.json (stamp dla check_kit_status)"
+
+warn_tracked_machine_files
 
 echo ""
 echo "Gotowe. Zrestartuj IDE w $TARGET."
