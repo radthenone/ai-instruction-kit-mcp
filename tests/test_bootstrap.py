@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -196,6 +197,99 @@ class TestRealRun(_BootstrapTestCase):
             ):
                 with self.subTest(skill=name):
                     self.assertIn(f"!.claude/skills/{name}/", gitignore)
+
+    # Konfigi MCP, które bootstrap renderuje ze ścieżką maszyny (`uv run --directory`,
+    # `--kit-root`, absolutny `--workspace`) — po jednym na klienta.
+    MCP_CONFIGS = (
+        ".mcp.json",
+        ".cursor/mcp.json",
+        ".vscode/mcp.json",
+        ".codex/config.toml",
+        ".kiro/settings/mcp.json",
+        ".kilocode/mcp.json",
+        ".agents/mcp_config.json",
+        "opencode.json",
+    )
+
+    @staticmethod
+    def _git(cwd: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
+        )
+        return result.stdout.strip()
+
+    def _git_repo(self, workspace: Path) -> None:
+        workspace.mkdir()
+        self._git(workspace, "init", "-q")
+        self._git(workspace, "config", "user.email", "test@test.local")
+        self._git(workspace, "config", "user.name", "test")
+
+    def test_gitignore_keeps_machine_specific_files_out_of_git(self) -> None:
+        """Konfigi MCP i stamp są per maszyna — bootstrap renderuje w nich ścieżkę klona.
+
+        Zacommitowane z jednej maszyny psują serwer MCP na każdej innej (issue #69:
+        `uv run --directory M:/…` na Linuksie → CONNECTION_CLOSED). Reszta konfiguracji
+        AI (hooki, agenci, skille, settings.json) ma zostać wersjonowana jak dotąd.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._git_repo(workspace)
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="all")
+
+            for rel in (*self.MCP_CONFIGS, ".ai/.kit-bootstrap.json"):
+                with self.subTest(ignored=rel):
+                    self.assertTrue(
+                        (workspace / rel).is_file(), f"{rel} nie został wygenerowany"
+                    )
+                    self.assertEqual(
+                        self._git(workspace, "check-ignore", rel), rel, f"{rel} nie jest ignorowany"
+                    )
+
+            for rel in (
+                ".ai/project.md",
+                ".claude/settings.json",
+                ".claude/hooks/git-guard.mjs",
+                ".codex/skills/skill-authoring/SKILL.md",
+                ".cursor/hooks.json",
+                ".github/copilot-instructions.md",
+            ):
+                with self.subTest(versioned=rel):
+                    self.assertEqual(
+                        self._git(workspace, "check-ignore", rel), "", f"{rel} jest ignorowany"
+                    )
+
+    def test_bootstrap_warns_about_tracked_mcp_configs(self) -> None:
+        """Wpis w .gitignore nie odśledza pliku, który już siedzi w indeksie.
+
+        Repo zbootstrapowane przed #69 mają konfigi MCP zacommitowane — bootstrap ma to
+        wykryć i podać gotową komendę, ale nie ruszać indeksu gita za użytkownika.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._git_repo(workspace)
+            (workspace / ".vscode").mkdir()
+            (workspace / ".mcp.json").write_text("{}\n", encoding="utf-8")
+            (workspace / ".vscode" / "mcp.json").write_text("{}\n", encoding="utf-8")
+            self._git(workspace, "add", ".mcp.json", ".vscode/mcp.json")
+            self._git(workspace, "commit", "-q", "-m", "old bootstrap")
+
+            out = run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,vscode")
+
+            self.assertIn(" rm --cached .mcp.json .vscode/mcp.json", out)
+            self.assertEqual(
+                self._git(workspace, "ls-files", ".mcp.json"), ".mcp.json",
+                "bootstrap sam odśledził plik — to decyzja użytkownika",
+            )
+
+    def test_bootstrap_is_quiet_when_nothing_machine_specific_is_tracked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._git_repo(workspace)
+
+            out = run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+
+            self.assertNotIn("git rm --cached", out)
 
     def test_missing_script_is_an_error(self) -> None:
         """Kit bez skryptu bootstrapu — jasny błąd zamiast cichego nic."""

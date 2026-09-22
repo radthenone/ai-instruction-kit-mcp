@@ -261,14 +261,30 @@ nietknięte. Źródło: `templates/gitignore-kit.txt`.
 
 Zasada: **konfiguracja AI jest częścią repo.** Hooki bezpieczeństwa, agenci i komendy mają
 działać u każdego, kto sklonuje projekt — nie tylko na maszynie, gdzie odpalono bootstrap.
-Poza gitem zostaje lokalny stan klienta i to, co i tak żyje globalnie:
+Poza gitem zostaje lokalny stan klienta, to, co i tak żyje globalnie, oraz pliki, które
+bootstrap renderuje **ze ścieżką tej maszyny**:
 
 | Wersjonowane | Ignorowane |
 | --- | --- |
 | `.claude/{agents,commands,hooks,skills}/`, `.claude/settings.json` | `.claude/settings.local.json` (uprawnienia per maszyna) |
-| `.codex/config.toml`, `.codex/skills/` | reszta `.codex/` (stan sesji) |
-| `.vscode/mcp.json`, `.github/prompts/`, `.github/copilot-instructions.md`, `.github/hooks/rtk-rewrite.json` | — |
-| `.mcp.json`, `AGENTS.md`, `BUGBOT.md`, `.ai/` | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
+| `.codex/skills/` | `.codex/config.toml` (MCP), reszta `.codex/` (stan sesji) |
+| `.github/prompts/`, `.github/copilot-instructions.md`, `.github/hooks/rtk-rewrite.json` | `.vscode/mcp.json` (MCP) |
+| `AGENTS.md`, `BUGBOT.md`, `.ai/project.md` | `.mcp.json`, `.cursor/mcp.json`, `.kiro/settings/mcp.json`, `.kilocode/mcp.json`, `.agents/mcp_config.json`, `opencode.json` (MCP), `.ai/.kit-bootstrap.json` (stamp) |
+| — | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
+
+**Konfigi MCP i stamp są per maszyna, nie per repo.** Przy `--from <lokalny klon>` bootstrap
+wpisuje do nich absolutną ścieżkę klona (`uv run --directory`, `--kit-root`), a dla Codex
+i opencode absolutny `--workspace`. Zacommitowane z Windowsa (`M:/projects/…`) na Linuksie
+dają `CONNECTION_CLOSED` bez czytelnego powodu. Każdy odbiornik — PC, laptop, serwer —
+odpala bootstrap u siebie; stamp pamięta flagi poprzedniego przebiegu (`.ai/.kit-bootstrap.json`),
+więc na nowej maszynie wystarczy ten sam `bootstrap-project.sh --from <klon>` z tymi flagami.
+
+Repo zbootstrapowane wcześniej mają te pliki w indeksie — sam wpis w `.gitignore` ich nie
+odśledzi. Bootstrap wykrywa to i wypisuje gotową komendę (pliki zostają na dysku):
+
+```bash
+git -C "$APP" rm --cached .mcp.json .vscode/mcp.json .codex/config.toml .ai/.kit-bootstrap.json
+```
 
 Typowy `.gitignore` ma `.claude/` wpisane hurtem — wtedy hooki i komendy nigdy nie trafiają
 do repo, a bootstrap trzeba powtarzać na każdej maszynie. Reguły kita są w formie „ignoruj
@@ -482,8 +498,8 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 
 | Plik                                | Rola                                                                    | Wymagany?            |
 | ----------------------------------- | ----------------------------------------------------------------------- | -------------------- |
-| `.cursor/mcp.json`                  | uvx → `--preset` + `--language` + `--clients` + `--workspace` | tak (Cursor)        |
-| `.mcp.json` / `.codex/` / `.vscode/` / … | MCP per klient z `--clients`                            | wg wybranego klienta |
+| `.cursor/mcp.json`                  | uvx → `--preset` + `--language` + `--clients` + `--workspace`; **per maszyna, poza gitem** | tak (Cursor)        |
+| `.mcp.json` / `.codex/` / `.vscode/` / … | MCP per klient z `--clients`; **per maszyna, poza gitem**  | wg wybranego klienta |
 | `.ai/project.md`                    | Overlay — Taskfile, Docker, porty, **`codegen:`**           | zalecany             |
 
 | `.ai/project.profile.yaml`          | Lokalne nadpisania presetu                                              | **nie** (tylko fork) |
@@ -505,7 +521,7 @@ Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
-| `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie |
+| `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie. `mcp.json`/`config.toml` i stamp dodatkowo **nie są wersjonowane** (ścieżka maszyny) — patrz „`.gitignore` — co z tego wersjonować” |
 | `AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
 | `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
 

@@ -2,7 +2,8 @@
 #
 # Zasada: konfiguracja AI jest częścią repo — hooki bezpieczeństwa, agenci i komendy
 # mają działać u każdego, kto klonuje projekt, nie tylko na maszynie, gdzie odpalono
-# bootstrap. Lokalny stan klienta (sesje, cache, ustawienia prywatne) zostaje poza gitem.
+# bootstrap. Poza gitem zostaje lokalny stan klienta (sesje, cache, ustawienia prywatne)
+# i to, co bootstrap renderuje ze ścieżką tej maszyny (konfigi MCP, stamp) — patrz niżej.
 #
 # Reguły są w formie "ignoruj katalog, odwróć dla plików kita", bo klienci AI trzymają
 # w tych samych katalogach dane sesji. Git nie wejdzie do zignorowanego katalogu, więc
@@ -29,20 +30,18 @@
 
 # --- Codex CLI ---------------------------------------------------------------
 .codex/*
-!.codex/config.toml
 !.codex/skills/
 !.codex/skills/**
 
 # --- GitHub Copilot (VS Code) ------------------------------------------------
-# .vscode bywa ignorowane globalnie — te trzy wpisy to konfiguracja kita, nie stan IDE.
-!.vscode/mcp.json
+# Pliki kita pod .github/ — instrukcje i prompty Copilota, nie stan IDE (MCP Copilota
+# to .vscode/mcp.json, per maszyna — sekcja niżej).
 !.github/copilot-instructions.md
 !.github/prompts/
 !.github/prompts/**
 
 # --- Cursor ------------------------------------------------------------------
 .cursor/*
-!.cursor/mcp.json
 !.cursor/hooks.json
 !.cursor/BUGBOT.md
 !.cursor/agents/
@@ -54,6 +53,13 @@
 !.cursor/skills/
 .cursor/skills/*
 @KIT_SKILLS_CURSOR@
+
+# --- Per maszyna: konfigi MCP i stamp ----------------------------------------
+# Bootstrap renderuje w nich ścieżkę lokalnego klona kita (`uv run --directory`,
+# `--kit-root`) i absolutny `--workspace`. Zacommitowane z jednej maszyny psują serwer
+# MCP na każdej innej (Windows `M:/…` na Linuksie → CONNECTION_CLOSED). Odtwarza je
+# `bootstrap-project.sh` na danej maszynie — nie kopiuj ich z repo.
+@KIT_MACHINE_FILES@
 
 # --- Skille spoza kita (npx skills add …) ------------------------------------
 # Instalowane globalnie w ~/.agents/skills/ i linkowane do projektu. Kopia w repo
