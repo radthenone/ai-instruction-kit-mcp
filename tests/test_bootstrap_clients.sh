@@ -136,6 +136,18 @@ test -f "$TMP/skills/.kilocode/workflows/skill-authoring.md"
 test -f "$TMP/skills/.opencode/command/skill-authoring.md"
 echo "OK  shared skills u wszystkich klientów (4 natywnie, 4 przez degradację)"
 
+# night-run (#71): model pod /goal wywołuje go sam, więc musi trafić do każdego klienta,
+# a frontmatter nie może mieć readonly ani disable-model-invocation.
+for p in .cursor/agents/night-run.md .claude/commands/night-run.md \
+         .codex/skills/night-run/SKILL.md .github/prompts/night-run.prompt.md \
+         .kiro/agents/night-run.md .kilocode/workflows/night-run.md \
+         .agents/workflows/night-run.md .opencode/command/night-run.md; do
+  test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
+done
+keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$ROOT/templates/shared/agents/night-run.md" | tr '\n' ' ')"
+test "$keys" = "name: description: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
+echo "OK  night-run u wszystkich klientów, frontmatter tylko name + description"
+
 # .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
 # kasować po nazwach ze źródła, nie całym katalogiem.
 mkdir -p "$TMP/skills/.agents/skills/obcy-skill"
