@@ -382,7 +382,7 @@ sync_gitignore_section() {
 
   BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
   SHARED_SKILLS="$SHARED_SKILLS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
-  MACHINE_FILES="$(printf '%s\n' "${MACHINE_FILES[@]}")" \
+  MACHINE_FILES="$(printf '%s\n' "${MACHINE_FILES[@]#/}")" \
   TEMPLATE="$template" DEST="$target_file" "$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
@@ -418,7 +418,10 @@ body = body.replace(
     "@KIT_SKILLS_CURSOR@",
     skill_allow(".cursor/skills", shared, os.environ["CURSOR_SKILLS"]),
 )
-body = body.replace("@KIT_MACHINE_FILES@", os.environ["MACHINE_FILES"].strip())
+# Wiodący `/` doklejamy dopiero tutaj: w env Git Bash (MSYS) zamieniłby pierwszą
+# linię `/.mcp.json` na `C:/Program Files/Git/.mcp.json`.
+machine_files = "\n".join("/" + line for line in os.environ["MACHINE_FILES"].splitlines())
+body = body.replace("@KIT_MACHINE_FILES@", machine_files)
 
 section = f"{begin}\n{body}\n{end}\n"
 
