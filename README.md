@@ -581,6 +581,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/create-skill` | Pomysł na skill → skill czy agent → issue (bez brancha) | `/create-skill`, `/create-skill "konwencje migracji"`; flagi: `/create-skill --help`                                                            |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
+| `/night-run`  | Nocna praca na liście issue pod `/goal`              | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
 
 
 
@@ -707,6 +708,26 @@ Kontrakt tych agentów: `readonly` — **nie edytują plików**, nie dają gotow
 /teacher-frontend                 # bez argumentu → uczy o tym, co masz w git diff
 /teacher-architecture czy dodać Redisa pod cache koszyka
 ```
+
+### `/night-run` — lista issue przez noc
+
+Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/goal` pilnuje pętli, a `/night-run` daje procedurę: na każdy ticket `/git-start` → (plan przy dużym tickecie) → `/tdd` → weryfikacja → `/git-commit` → `/review-bugbot` + minimalny stack → `/git-end` → CI → merge → zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
+
+Agent działa w **głównej sesji** (w Claude przez Skill, nie jako subagent) — łańcuch sam uruchamia subagentów. Niczego nie dopisujesz do overlay:
+
+- **Gałąź bazowa:** `dev`, jeśli `origin/dev` istnieje i nie jest w tyle za gałęzią domyślną; inaczej gałąź domyślna repo. Porzucony `dev` nie przejmie nocy.
+- **Bramki jakości:** kroki `run:` z `.github/workflows/*.yml` + sekcja kontroli z `.ai/project.md` (i `codegen:`), odpalone lokalnie przed PR. Brak obu → default Django/React/Expo (ruff, pytest `not integration`, `makemigrations --check`, `tsc`, regeneracja klienta Orval).
+- Wybrana baza, bramki i każde założenie trafiają do `NIGHT-RUN REPORT`.
+
+Sędzia `/goal` widzi tylko transkrypt, więc warunek żąda dowodów w rozmowie:
+
+```text
+/goal Wykonaj issue #150–#157 wg /night-run. Koniec, gdy w transkrypcie jest
+NIGHT-RUN REPORT, w którym każdy ticket ma: MERGED (wynik gh pr view --json state)
+albo needs-human (link do komentarza), albo jest wpis "night-run halted".
+```
+
+Uwagi dopisujesz za warunkiem („#155 bez PDF”, „bez merge, same PR-y”) — polecenia z celu mają pierwszeństwo przed procedurą.
 
 
 Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:

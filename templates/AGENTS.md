@@ -92,6 +92,7 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |
 | `/teacher-*` | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` | kit |
+| `/night-run` | `/goal Wykonaj #A–#C wg /night-run …` — nocna praca na liście issue | kit |
 | `/grill-me`, `/tdd`, … | proces | mattpocock |
 | Superpowers / Autopilot | worktree, finishing, CI loop | plugin / skills Cursor |
 
