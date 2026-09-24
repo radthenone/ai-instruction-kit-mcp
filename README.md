@@ -730,7 +730,24 @@ NIGHT-RUN REPORT, w którym każdy ticket ma: MERGED (wynik gh pr view --json st
 albo needs-human (link do komentarza), albo jest wpis "night-run halted".
 ```
 
-Uwagi dopisujesz za warunkiem („#155 bez PDF”, „bez merge, same PR-y”, „model: sonnet”) — polecenia z celu mają pierwszeństwo przed procedurą.
+Uwagi dopisujesz za warunkiem („#155 bez PDF”, „bez merge, same PR-y”, „model: sonnet”) — polecenia z celu mają pierwszeństwo przed procedurą. W Claude `model:` przyjmuje tylko aliasy (`sonnet`, `opus`, `haiku`, `fable`); konkretną wersję modelu wybierasz dla całej sesji: `claude --model <id>`.
+
+#### Pomiar kosztu ticketu na różnych modelach
+
+Tańszy token nie znaczy tańszy ticket: mocniejszy model może zrobić mniej tur i mniej poprawek, a koszt nocy to głównie ponowne czytanie kontekstu (cache_read). Porównanie robisz tak:
+
+1. Wybierz **jeden** ticket średniej wielkości (kilka kryteriów akceptacji, jedna aplikacja backendu), bez decyzji o pieniądzach i zgodach, żeby needs-human nie zepsuł porównania. Zapisz commit bazowy: `git rev-parse origin/<BASE>`.
+2. Na każdy model osobny worktree z tego commitu i osobna sesja z dokładnym id modelu:
+   ```bash
+   git worktree add ../measure-<model> <commit>
+   cd ../measure-<model> && claude -p --model <id> "/night-run #<N>, bez merge"
+   ```
+3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `git worktree remove ../measure-<model>`.
+4. Metryki: snippet z sekcji „Pomiar kosztu ticketu” w agencie, uruchomiony na transkryptach sesji i jej subagentów (`~/.claude/projects/<projekt>/<sesja>.jsonl` i `…/<sesja>/subagents/*.jsonl`). Koszt liczysz **osobno** dla input, cache_creation, cache_read i output według aktualnego cennika, nie jedną stawką.
+5. Jakość: CI zielone za pierwszym razem (t/n), liczba rund poprawek, potwierdzone findingi review, needs-human (t/n).
+6. Limit: ile ticketów mieści się w jednym oknie limitu sesji. Okno nie jest publiczne, więc szacujesz: zużycie na ticket w stosunku do zużycia skumulowanego w chwili HTTP 429 we wcześniejszym przebiegu.
+
+Wynik (tabela + rekomendacja modelu domyślnego) trafia do issue pomiaru; zmiana domyślnego modelu to jedna linijka w agencie.
 
 
 Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:
