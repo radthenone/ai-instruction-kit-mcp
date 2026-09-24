@@ -711,13 +711,16 @@ Kontrakt tych agentów: `readonly` — **nie edytują plików**, nie dają gotow
 
 ### `/night-run` — lista issue przez noc
 
-Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/goal` pilnuje pętli, a `/night-run` daje procedurę: na każdy ticket `/git-start` → (plan przy dużym tickecie) → `/tdd` → weryfikacja → `/git-commit` → `/review-bugbot` + minimalny stack → `/git-end` → CI → merge → zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
+Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/goal` pilnuje pętli, a `/night-run` daje procedurę: na każdy ticket `/git-start` → test-first → szybkie bramki → `/git-commit` → review na diffie → `/git-end` → CI → merge → jeden raport na PR i zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
 
-Agent działa w **głównej sesji** (w Claude przez Skill, nie jako subagent) — łańcuch sam uruchamia subagentów. Niczego nie dopisujesz do overlay:
+Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako subagent). Sam nie czyta kodu: na ticket odpala świeżego subagenta ticketu, a review robi osobny świeży subagent na samym `git diff`. Dzięki temu żaden kontekst nie puchnie do 200k, a każda tura nie czyta go od nowa. Niczego nie dopisujesz do overlay:
 
 - **Gałąź bazowa:** `dev`, jeśli `origin/dev` istnieje i nie jest w tyle za gałęzią domyślną; inaczej gałąź domyślna repo. Porzucony `dev` nie przejmie nocy.
-- **Bramki jakości:** kroki `run:` z `.github/workflows/*.yml` + sekcja kontroli z `.ai/project.md` (i `codegen:`), odpalone lokalnie przed PR. Brak obu → default Django/React/Expo (ruff, pytest `not integration`, `makemigrations --check`, `tsc`, regeneracja klienta Orval).
-- Wybrana baza, bramki i każde założenie trafiają do `NIGHT-RUN REPORT`.
+- **Plik kontekstu nocy** (`/tmp/night-run-<repo>-<data>/context.md`): mapa aplikacji, konwencje, pułapki toolchainu z pamięci projektu i overlay. Po każdym tickecie orkiestrator dopisuje, co doszło (modele, serwisy, endpointy). Subagent czyta ten plik zamiast AGENTS.md, BUGBOT.md i wszystkich ADR-ów.
+- **Bramki jakości:** kroki `run:` z `.github/workflows/*.yml` + sekcja kontroli z `.ai/project.md` (i `codegen:`). Lokalnie tylko szybkie (lint, typecheck, `makemigrations --check`, testy dotknięte ticketem); pełny zestaw testów tylko w CI.
+- **Model subagenta ticketu:** `model: <nazwa>` w tekście celu; brak → model sesji.
+- **Koszt:** po każdym tickecie snippet `python3` liczy z transkryptów subagentów tury, tokeny (input / cache_creation / cache_read / output), maks. kontekst i czas. Wynik trafia do `NIGHT-RUN REPORT`.
+- Wybrana baza, bramki, model i każde założenie trafiają do `NIGHT-RUN REPORT`.
 
 Sędzia `/goal` widzi tylko transkrypt, więc warunek żąda dowodów w rozmowie:
 
@@ -727,7 +730,7 @@ NIGHT-RUN REPORT, w którym każdy ticket ma: MERGED (wynik gh pr view --json st
 albo needs-human (link do komentarza), albo jest wpis "night-run halted".
 ```
 
-Uwagi dopisujesz za warunkiem („#155 bez PDF”, „bez merge, same PR-y”) — polecenia z celu mają pierwszeństwo przed procedurą.
+Uwagi dopisujesz za warunkiem („#155 bez PDF”, „bez merge, same PR-y”, „model: sonnet”) — polecenia z celu mają pierwszeństwo przed procedurą.
 
 
 Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:
