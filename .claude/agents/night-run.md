@@ -21,8 +21,8 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 - Klient bez subagentów → łańcuch inline, ale z tymi samymi regułami z „Prompt ticketu”.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
   „#155 pomiń PDF”, inny próg dużego ticketu).
-- **Model subagenta ticketu** (`MODEL`) z tekstu celu, np. „model: sonnet”; w Claude to
-  parametr `model` narzędzia Agent. Brak w celu → model sesji. Wpisz go do NIGHT-RUN REPORT.
+- **Model ticketu** (`MODEL`) z celu, np. „model: sonnet”; w Claude parametr `model` Agenta
+  (tylko aliasy: sonnet/opus/haiku/fable). Brak → model sesji. Wpisz do NIGHT-RUN REPORT.
 - **Zero pytań do człowieka.** Nie używasz narzędzi pytających; niepewność → needs-human
   albo decyzja odwracalna (niżej).
 - **Nie uruchamiasz** `superpowers:brainstorming`, `superpowers:finishing-a-development-branch`
