@@ -725,7 +725,7 @@ Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako 
 Sędzia `/goal` widzi tylko transkrypt, więc warunek żąda dowodów w rozmowie:
 
 ```text
-/goal Wykonaj issue #150–#157 wg /night-run. Koniec, gdy w transkrypcie jest
+/goal Wykonaj issue #150–#157 wg /night-run, model: sonnet. Koniec, gdy w transkrypcie jest
 NIGHT-RUN REPORT, w którym każdy ticket ma: MERGED (wynik gh pr view --json state)
 albo needs-human (link do komentarza), albo jest wpis "night-run halted".
 ```

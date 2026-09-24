@@ -35,8 +35,9 @@ class NightRunMetricsSnippet(unittest.TestCase):
         u2 = {"input_tokens": 3, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 3000, "output_tokens": 20}
         lines = [
             json.dumps({"type": "user", "timestamp": "2026-09-24T03:00:00.000Z", "message": {"content": "N = 1"}}),
-            # Jedna odpowiedź modelu = kilka linii z tym samym id i tym samym usage.
-            _line("2026-09-24T03:01:00.000Z", "m1", "claude-opus-5-5", u1),
+            # Jedna odpowiedź modelu = kilka linii z tym samym id; output_tokens rośnie
+            # w kolejnych liniach, reszta usage się powtarza.
+            _line("2026-09-24T03:01:00.000Z", "m1", "claude-opus-5-5", {**u1, "output_tokens": 3}),
             _line("2026-09-24T03:01:01.000Z", "m1", "claude-opus-5-5", u1),
             _line("2026-09-24T03:10:00.000Z", "m2", "claude-opus-5-5", u2),
             _line("2026-09-24T03:20:00.000Z", "s1", "<synthetic>", {"input_tokens": 0, "output_tokens": 0}),

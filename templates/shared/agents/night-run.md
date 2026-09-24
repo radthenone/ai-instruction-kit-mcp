@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Autonomiczna nocna praca na liście issue pod /goal — na każdy ticket git-start → tdd → review → PR → merge, needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run.
+description: Autonomiczna nocna praca na liście issue pod /goal — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) i review na diffie, needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run.
 ---
 
 ## Reguły wspólne
@@ -10,11 +10,8 @@ Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` 
 # /night-run — lista issue bez człowieka
 
 Przerabiasz listę issue z celu (`/goal`) albo argumentów, jeden po drugim, aż każde jest
-**zmergowane** albo ma komentarz **needs-human**. Człowiek śpi: nie zadajesz pytań, nie
-czekasz na odpowiedź. Wszystko, co wymaga decyzji człowieka, ląduje w komentarzu na issue,
-a Ty idziesz dalej.
-
-Issue są wygrillowane za dnia — projekt jest w treści issue. Twoja rola to wykonanie.
+**zmergowane** albo ma komentarz **needs-human**. Człowiek śpi. Issue są wygrillowane za
+dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 
 ## Zasady nadrzędne
 
@@ -31,8 +28,8 @@ Issue są wygrillowane za dnia — projekt jest w treści issue. Twoja rola to w
 - **Nie uruchamiasz** `superpowers:brainstorming`, `superpowers:finishing-a-development-branch`
   ani żadnego skilla z `disable-model-invocation` (np. `grill-with-docs`, `to-spec`,
   `to-tickets`, `implement`) — każdy z nich staje na akceptacji człowieka.
-- Nic projektowego nie jest tu na sztywno. Czego nie da się wyczytać z repo, przyjmujesz
-  jako rozsądny default dla Django/React/Expo i **zapisujesz w raporcie jako założenie**.
+- Czego nie da się wyczytać z repo → rozsądny default Django/React/Expo, **w raporcie jako
+  założenie**.
 
 ## Start nocy (raz)
 
@@ -52,8 +49,7 @@ if git rev-parse -q --verify origin/dev >/dev/null \
 fi
 ```
 
-Wybraną `BASE` i powód („dev aktywny” / „dev w tyle za <default>” / „brak dev”) wpisujesz
-do NIGHT-RUN REPORT.
+`BASE` i powód („dev aktywny” / „dev w tyle” / „brak dev”) → NIGHT-RUN REPORT.
 
 ### 2. Bramki jakości
 
@@ -70,7 +66,7 @@ Zapisz jako założenie. Lokalnie idą tylko te **szybkie**; pełny zestaw test�
 
 Ostatni przebieg CI na bazie:
 `gh run list --branch $BASE --limit 1 --json conclusion,headSha`. Czerwony → **halt**
-(przypadek C). Brak CI → bramki szybkie raz na czystym `origin/$BASE`.
+(przypadek C). Brak CI → bramki szybkie na `origin/$BASE` odpala krótki subagent.
 
 ### 4. Kolejność
 
@@ -93,14 +89,12 @@ ticket dostaje needs-human „zablokowany przez #X spoza listy”.
 
 ## Łańcuch na ticket — dokładnie ten
 
-Ty (orkiestrator) robisz tylko kroki z tej listy. Wszystko, co dotyka kodu, robi subagent.
-
 1. **Subagent ticketu** (świeży, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
    dosłownie. Wraca z hand-backiem i niewypchniętym branchem. Zapisz jego id.
 2. **Subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` +
-   potwierdzony/niepewny. Nie edytuj.”
+   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id (do pomiaru).
 3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z
    findingami: potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
    potwierdzeniem review dla `/git-end`. Dalej kroki 6–8 promptu.
@@ -126,8 +120,9 @@ Kroki:
 4. Lokalnie tylko testy dotknięte ticketem + bramki szybkie z <CTX>. Pełny zestaw: CI.
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
-6. Poprawki z review, `/git-end` (opis PR: testy, założenia jako Q z odpowiedzią, niepewne
-   findingi), `gh pr checks <PR> --watch` w tle. Czerwone → napraw, maks. 2 próby.
+6. Poprawki z review, `/git-end` — review już zrobione, bramka review potwierdzona, nie
+   czekaj. Opis PR: testy, założenia jako Q z odpowiedzią, niepewne findingi.
+   `gh pr checks <PR> --watch` w tle. Czerwone → napraw, maks. 2 próby.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
@@ -137,20 +132,21 @@ Reguły:
   `grep -n` + `sed -n X,Yp`, wiele odczytów w jednej komendzie. Nigdy `cat` całego pliku.
 - Bez skilli procesowych (writing-plans, tdd, verification, review-*). Wolno `/git-*`.
 - Nie oddajesz wyniku, dopóki działa praca w tle (testy, `--watch`). Czekaj na passed/failed.
-- Zero pytań do człowieka. Needs-human albo halt → hand-back z Q1/Q2.
+- Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
+  (komentarz na issue daje orkiestrator).
 
 Hand-back (bez streszczania pracy): stan (do review / MERGED / needs-human / halt); branch,
-PR; testy unit/x, integration-db/y, integration/z, e2e/w (z komend); dodane modele,
-serwisy, endpointy, migracje; założenia.
+PR, link `Final report`; testy unit/x, integration-db/y, integration/z, e2e/w (z komend);
+dodane modele, serwisy, endpointy, migracje; założenia.
 ```
 
 ## Testy — piramida po zależności, nie po warstwie
 
 | Poziom | Test | 
 | --- | --- |
-| unit | nie dotyka bazy (logika czysta, mapowania, value objecty) |
-| integration-db | `django_db` — serwisy z ORM, modele, endpointy, webhooki |
-| integration | żywe usługi (Postgres, Redis, MinIO…) — istniejący marker `integration` |
+| unit | bez bazy (logika czysta, mapowania) |
+| integration-db | `django_db` — ORM, modele, endpointy, webhooki |
+| integration | żywe usługi (Postgres, Redis…) — marker `integration` |
 | e2e | Playwright (lub inny runner e2e w repo) |
 
 - Zewnętrzne API płatności i podobne zawsze atrapą.
@@ -161,10 +157,8 @@ serwisy, endpointy, migracje; założenia.
 
 ## Zakazy
 
-- Nie skipujesz, nie usuwasz i nie osłabiasz testów, żeby CI było zielone.
-- Nie `--no-verify`.
-- Nie pushujesz bezpośrednio na `BASE` ani inną chronioną gałąź — na nią tylko merge PR po
-  zielonym CI.
+Nie skipujesz, nie usuwasz i nie osłabiasz testów. Nie `--no-verify`. Na `BASE` i inne
+chronione gałęzie tylko merge PR po zielonym CI, nigdy push.
 
 ## Gdy ticket napotka problem
 
@@ -185,12 +179,10 @@ model/pole/serwis/endpoint, z którego korzysta inny — treść issue + „Prze
 
 ### Trzy przypadki
 
-- **A — tylko ten ticket:** raport na issue, branch wypchnięty albo porzucony (bez merge),
-  następny ticket.
-- **B — część listy:** raport na issue + na każdym zależnym
-  `needs-human: czeka na odpowiedzi z #N`; wykonujesz tylko tickety spoza zasięgu.
-- **C — wszystko:** `night-run halted: <powód>` na pierwszym issue z listy, NIGHT-RUN REPORT,
-  koniec pracy.
+- **A — tylko ten ticket:** raport na issue, bez merge, następny ticket.
+- **B — część listy:** raport na issue + na każdym zależnym `needs-human: czeka na
+  odpowiedzi z #N`; robisz tylko tickety spoza zasięgu.
+- **C — wszystko:** `night-run halted: <powód>` na pierwszym issue, NIGHT-RUN REPORT, koniec.
 
 ### Decyzja odwracalna — nie blokuj
 
@@ -226,11 +218,12 @@ import json, sys, datetime as dt
 K = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
 for p in sys.argv[1:]:
     use, ts, mod = {}, [], set()
-    for line in open(p):
+    for line in filter(str.strip, open(p)):
         d = json.loads(line); m = d.get("message") or {}
         if d.get("timestamp"): ts.append(dt.datetime.fromisoformat(d["timestamp"].replace("Z", "+00:00")))
         if d.get("type") == "assistant" and m.get("usage") and m.get("model") != "<synthetic>":
-            use[m["id"]] = m["usage"]; mod.add(m.get("model") or "?")
+            u = use.setdefault(m.get("id"), {}); mod.add(m.get("model") or "?")
+            for k in K: u[k] = max(u.get(k, 0), m["usage"].get(k, 0))
     tot = [sum(u.get(k, 0) for u in use.values()) for k in K]
     ctx = max((sum(u.get(k, 0) for k in K[:3]) for u in use.values()), default=0)
     mins = (max(ts) - min(ts)).total_seconds() / 60 if ts else 0
@@ -239,8 +232,8 @@ for p in sys.argv[1:]:
 ' ~/.claude/projects/*/*/subagents/agent-{<id1>,<id2>}.jsonl
 ```
 
-Tura = unikalne `message.id` (odpowiedź zajmuje kilka linii pliku). Inny klient → koszt
-„brak transkryptu”.
+Tura = unikalne `message.id` (odpowiedź zajmuje kilka linii, `output_tokens` rośnie — bierz
+maks.). Czas = wall-clock z oczekiwaniem na review. Inny klient → „brak transkryptu”.
 
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
