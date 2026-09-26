@@ -760,6 +760,7 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
 - **Kilo**: `scripts/render_agent_commands.py kilo` → `.kilocode/workflows/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
 - **Antigravity**: `scripts/render_agent_commands.py antigravity` → `.agents/workflows/*.md` (wywołanie `/nazwa`; limit 12 000 znaków/plik, kit przycina jeśli trzeba).
 - **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/command/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
+  Do tego `/goal` i `/loop` jak w Claude Code: `templates/opencode/command/{goal,loop}.md` + plugin `.opencode/plugins/kit-loop.js`, który na `session.idle` wysyła kolejną turę. Stop: `<promise>DONE</promise>` w odpowiedzi, Esc, `/goal clear` / `/loop stop`, limit tur (goal 25, loop 10, `max=N`); `/loop 5m <zadanie>` powtarza co interwał.
 
 Formaty VS Code/Kilo/Antigravity/opencode oparte o publiczną dokumentację tych klientów (sierpień 2026) — nie testowane na żywych instalacjach; jeśli coś nie zadziała, zgłoś różnicę i popraw `scripts/render_agent_commands.py`.
 
