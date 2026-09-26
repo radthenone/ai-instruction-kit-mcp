@@ -19,6 +19,8 @@ _OVERWRITTEN_GLOBS: tuple[str, ...] = (
     "templates/*/mcp_config.json",
     "templates/codex/config.toml",
     "templates/opencode/opencode.json",
+    "templates/opencode/command/*.md",
+    "templates/opencode/plugins/*.js",
     "templates/vscode/github/copilot-instructions.md",
     "templates/cursor/rules/*.mdc",
     "scripts/bootstrap-project.sh",

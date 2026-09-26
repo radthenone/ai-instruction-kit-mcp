@@ -44,7 +44,10 @@ echo "OK  --clients all"
 test -f "$TMP/opencode/opencode.json"
 test -f "$TMP/opencode/.opencode/command/cleanup.md"
 grep -q '"--clients", "opencode"' "$TMP/opencode/opencode.json"
-echo "OK  --clients opencode (+ rendered commands)"
+test -f "$TMP/opencode/.opencode/command/goal.md"
+test -f "$TMP/opencode/.opencode/command/loop.md"
+test -f "$TMP/opencode/.opencode/plugins/kit-loop.js"
+echo "OK  --clients opencode (+ rendered commands, /goal /loop + plugin)"
 
 "$BOOT" "$TMP/codex" --clients codex --from "$ROOT" >/dev/null
 test -f "$TMP/codex/.codex/config.toml"

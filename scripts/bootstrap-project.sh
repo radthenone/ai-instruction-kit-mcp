@@ -712,6 +712,12 @@ install_opencode() {
   echo "  + opencode.json"
   render_agent_commands opencode "$TARGET/.opencode/command"
   copy_shared_skills opencode "$TARGET/.opencode/command"
+  # /goal i /loop jak w Claude Code: komendy + plugin, który na session.idle
+  # wznawia turę (sam markdown kończy się z końcem tury).
+  mkdir -p "$TARGET/.opencode/command" "$TARGET/.opencode/plugins"
+  cp "$KIT_ROOT/templates/opencode/command/"*.md "$TARGET/.opencode/command/"
+  cp "$KIT_ROOT/templates/opencode/plugins/kit-loop.js" "$TARGET/.opencode/plugins/kit-loop.js"
+  echo "  + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
 }
 
 install_plugins() {
