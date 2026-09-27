@@ -21,8 +21,10 @@
 gh issue create --title "Add cart coupon" --body "## Summary ..."
 gh issue develop 42 --name feat/42-add-cart-coupon --base dev --checkout
 # brudne drzewo → zamiast issue develop:
-git checkout -b feat/42-add-cart-coupon origin/dev
+git checkout --no-track -b feat/42-add-cart-coupon origin/dev
 ```
+
+`--no-track`, bo inaczej branch śledzi `origin/dev` i Sync w IDE wypycha go prosto na `dev`.
 
 **Do zapamiętania:**
 
