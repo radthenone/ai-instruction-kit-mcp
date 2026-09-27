@@ -3,7 +3,7 @@
 // `session.idle` i wysyła kolejną turę, dopóki cel nie jest osiągnięty.
 //
 // Przerwania: Esc (abort tury → błąd na ostatniej wiadomości), `/goal clear`,
-// `/loop stop`, `<promise>DONE</promise>` w odpowiedzi, limit tur (`max=N`).
+// `/loop stop`, `<promise>DONE</promise>` jako ostatnia linia, limit tur (`max=N`).
 // Stan tylko w pamięci — restart opencode kasuje aktywne pętle.
 
 const DONE = "<promise>DONE</promise>"
@@ -73,7 +73,8 @@ export const KitLoop = async ({ client }) => {
       // Esc w TUI przerywa turę — wiadomość dostaje MessageAbortedError.
       if (last.info.error) return stop(id, last.info.error.name ?? "błąd tury")
       const text = last.parts.filter((p) => p.type === "text").map((p) => p.text).join("")
-      if (text.includes(DONE)) return stop(id, "cel osiągnięty")
+      // Tylko ostatnia linia — wzmianka o znaczniku w treści nie kończy pętli.
+      if (text.trim().split("\n").at(-1).trim() === DONE) return stop(id, "cel osiągnięty")
       if (s.turn >= s.max) return stop(id, `limit ${s.max} tur`)
 
       s.turn += 1
