@@ -41,6 +41,16 @@ reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "ok\\n<prom
 await idle(); await idle()
 assert.equal(prompts.length, 0)
 
+// DONE liczy się tylko jako ostatnia linia — wzmianka w treści nie kończy pętli
+await run("goal", "cel")
+reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "nie wypisuję jeszcze <promise>DONE</promise>, testy czerwone" }] }
+await idle()
+assert.equal(prompts.length, 1)
+reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "ok\\n  <promise>DONE</promise>  \\n" }] }
+await idle()
+assert.equal(prompts.length, 1)
+prompts.length = 0
+
 // Esc (abort) kończy pętlę
 reply = { info: { role: "assistant", error: { name: "MessageAbortedError" } }, parts: [] }
 await run("loop", "zadanie")
@@ -76,6 +86,14 @@ class KitLoopPluginTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("ok", result.stdout)
+
+
+class LoopCommandTest(unittest.TestCase):
+    def test_loop_never_waits_for_user(self) -> None:
+        # Plugin uzbraja pętlę dla każdego /loop poza stop — pytanie i czekanie
+        # na odpowiedź przegrywa z kolejną turą „Kontynuuj”.
+        text = (PLUGIN.parents[1] / "command/loop.md").read_text(encoding="utf-8")
+        self.assertNotIn("czekaj", text)
 
 
 if __name__ == "__main__":

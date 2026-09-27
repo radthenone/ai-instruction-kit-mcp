@@ -16,8 +16,9 @@ albo limit iteracji (default 10, `max=N`).
 - `stop` → „Pętla zatrzymana.” — plugin już ją zatrzymał. Koniec.
 - Inaczej z argumentów (bez interwału i `max=N`) wywiedź **zadanie** i
   **warunek końca** (jeden, sprawdzalny). Przy interwale warunek jest opcjonalny
-  (np. „sprawdzaj CI co 5 min”); bez interwału i bez warunku — zapytaj jednym
-  zdaniem i czekaj.
+  (np. „sprawdzaj CI co 5 min”); bez interwału i bez warunku przyjmij
+  „zadanie wykonane i potwierdzone dowodem” i działaj — nie pytaj: plugin
+  wyśle następną turę, zanim użytkownik odpowie.
 
 ## Każda iteracja
 
