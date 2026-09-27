@@ -127,7 +127,9 @@ Kroki:
 6. Poprawki z review, `/git-end` — review już zrobione, bramka review potwierdzona, nie
    czekaj. Opis PR: testy, założenia jako Q z odpowiedzią, niepewne findingi.
    CI: `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`, bo checki
-   rejestrują się z opóźnieniem). `EXIT` ≠ 0 → napraw, maks. 2 próby.
+   rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → to nie błąd:
+   powtórz raz po minucie; nadal brak → brak CI na tę bazę, merge po bramkach szybkich,
+   zapis w `Final report`. Inne `EXIT` ≠ 0 → napraw, maks. 2 próby.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
