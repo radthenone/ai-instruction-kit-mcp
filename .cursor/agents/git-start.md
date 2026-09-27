@@ -38,7 +38,7 @@ gh issue create --title "Add cart coupon" --body "## Summary\n…"
 # numer z URL, np. …/issues/42
 gh issue develop 42 --name feat/42-add-cart-coupon --base dev --checkout
 # albo przy brudnym tree:
-git checkout -b feat/42-add-cart-coupon origin/dev   # lub main/master
+git checkout --no-track -b feat/42-add-cart-coupon origin/dev   # lub main/master
 ```
 
 ## Ręcznie — gotowe issue
@@ -83,10 +83,14 @@ Normalne przy przenoszeniu pracy z chronionej gałęzi. Po utworzeniu issue:
 2. Branch **od bazy integracyjnej**, z zabraniem lokalnych zmian:
 
 ```bash
-git checkout -b "<typ>/<N>-<slug>" "origin/${baza}" 2>/dev/null \
-  || git checkout -b "<typ>/<N>-<slug>" "${baza}" 2>/dev/null \
-  || git checkout -b "<typ>/<N>-<slug>"
+git checkout --no-track -b "<typ>/<N>-<slug>" "origin/${baza}" 2>/dev/null \
+  || git checkout --no-track -b "<typ>/<N>-<slug>" "${baza}" 2>/dev/null \
+  || git checkout --no-track -b "<typ>/<N>-<slug>"
 ```
+
+`--no-track` obowiązkowo: bez niego branch dostaje upstream `origin/${baza}` i push/Sync
+w IDE wysyła go prosto na gałąź integracyjną z pominięciem PR. Upstream ustawia `/git-end`
+(`git push -u origin HEAD`) na gałąź o tej samej nazwie.
 
 W raporcie zapisz faktyczną bazę (jeśli padło do HEAD — zaznacz ostrzeżenie). Bez `stash` / reset bez zgody.
 
