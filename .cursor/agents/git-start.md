@@ -120,8 +120,12 @@ brancha (krok 2–3), nie tylko w raporcie.
 
 **B) Utwórz:**
 
+Najpierw etykieta i tablica (sekcja „Etykieta i tablica” niżej). Flagę dodajesz tylko,
+gdy jest dopasowanie.
+
 ```bash
-URL=$(gh issue create --title "<title EN>" --body "…")
+URL=$(gh issue create --title "<title EN>" --body "…" \
+  [--label "<type: …>"] [--project "<title tablicy>"])
 # Numer TYLKO z create — nie używaj `gh issue list --limit 1`
 N=$(printf '%s' "$URL" | grep -Eo '[0-9]+$')
 ```
@@ -129,6 +133,36 @@ N=$(printf '%s' "$URL" | grep -Eo '[0-9]+$')
 Albo (gdy CLI wspiera): `gh issue create … --json number,url -q .number`.
 
 **C) `no-issue`:** `<typ>/<slug>`.
+
+#### Etykieta i tablica
+
+Oba kroki to odczyty i **nigdy** nie przerywają tworzenia issue — najwyżej pole zostaje puste.
+
+**Etykieta — jedna, tylko z istniejących:**
+
+```bash
+gh label list --limit 100 --json name -q '.[].name'
+```
+
+Typ → `type: <typ>`, z wyjątkami: `feat` → `type: feature`, `perf` → `type: performance`,
+`hotfix` → `type: fix`, `ci` / `build` / `release` → `type: chore`. Nazwa jest na liście →
+`--label "<nazwa>"`. Nie ma → najbliższa istniejąca tylko wtedy, gdy znaczy to samo, i powiedz,
+że mapowanie jest przybliżone; inaczej bez `--label`. Nie zakładaj etykiety (`gh label create`)
+bez osobnej zgody.
+
+**Tablica (GitHub Project) — ta o nazwie repo:**
+
+```bash
+REPO=$(gh repo view --json name -q .name)
+OWNER=$(gh repo view --json owner -q .owner.login)
+gh project list --owner "$OWNER" --limit 100 --format json \
+  --jq ".projects[] | select(.title | ascii_downcase == (\"$REPO\" | ascii_downcase)) | .title"
+```
+
+Porównanie bez wielkości liter, poza tym identyczne — bez dopasowywania „podobnych”. Jeden
+wynik → `--project "<title>"`. Zero → pomiń, nie twórz tablicy. Więcej niż jeden → zapytaj
+użytkownika. Komenda pada na braku scope `project` → pomiń krok i jedna linijka:
+`gh auth refresh -s project`. Pól tablicy (status, iteracja) nie ustawiasz.
 
 ### 2–3. Branch
 
@@ -151,6 +185,7 @@ feature branchu, bez próby powrotu.
 ## /git-start OK
 - Tryb: auto-diff | user-opis | #N | help
 - Issue: #N — title — url
+- Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
 - Branch: …
 - Base: … (wanted / actual)
 - Powrót po `/git-end`: `$PREV_BRANCH` (zapisane w `branch.<nazwa>.startedFrom`)
