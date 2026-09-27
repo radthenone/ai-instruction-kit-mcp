@@ -811,6 +811,16 @@ fi
 
 sync_gitignore_section
 
+# Końce linii: bez `* ... eol=lf` Windows z core.autocrlf=true trzyma CRLF na dysku
+# i ten sam branch jest czysty na Linuksie, a "zmieniony" na Windowsie.
+# Własnego .gitattributes projektu nie ruszamy — tylko ostrzeżenie.
+if [[ ! -f "$TARGET/.gitattributes" ]]; then
+  cp "$KIT_ROOT/templates/gitattributes.txt" "$TARGET/.gitattributes"
+  echo "  + .gitattributes (LF, CRLF tylko dla .bat/.cmd/.ps1)"
+elif ! grep -qE '^\*[[:space:]].*eol=lf' "$TARGET/.gitattributes"; then
+  echo "  ! .gitattributes bez reguły LF — dopisz na górze: * text=auto eol=lf" >&2
+fi
+
 if [[ "$WITH_PLUGINS" -eq 1 ]]; then
   install_plugins
 fi
