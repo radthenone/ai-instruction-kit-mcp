@@ -112,7 +112,7 @@ def main(argv: list[str]) -> int:
         text = src.read_text(encoding="utf-8")
         meta, body = parse_frontmatter(text)
         out = renderer(meta, body)
-        (dest_dir / dest_name).write_text(out, encoding="utf-8")
+        (dest_dir / dest_name).write_text(out, encoding="utf-8", newline="\n")
     return 0
 
 

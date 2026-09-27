@@ -115,7 +115,7 @@ def write(path: Path, settings: dict) -> None:
         path.unlink(missing_ok=True)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
 def main(argv: list[str]) -> int:
