@@ -341,7 +341,7 @@ if Path(from_src).is_dir():
             count=1,
             flags=re.MULTILINE,
         )
-dest.write_text(text, encoding="utf-8")
+dest.write_text(text, encoding="utf-8", newline="\n")
 PY
 }
 
@@ -439,7 +439,7 @@ else:
     action = "dodano"
 
 if updated != existing:
-    dest.write_text(updated, encoding="utf-8")
+    dest.write_text(updated, encoding="utf-8", newline="\n")
     print(f"  + .gitignore ({action} sekcję instruction-kit)")
 PY
 }
@@ -598,7 +598,7 @@ for src in sorted(src_dir.glob("*.md")):
     out = "---\n" + "".join(fm_lines) + "argument-hint: [args]\n---\n\n"
     out += "Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS\n\n"
     out += "".join(body)
-    (dest_dir / src.name).write_text(out, encoding="utf-8")
+    (dest_dir / src.name).write_text(out, encoding="utf-8", newline="\n")
 PY
   echo "  + $dest_dir (Claude slash commands, \$ARGUMENTS wired)"
 }

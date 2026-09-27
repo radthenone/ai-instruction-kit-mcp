@@ -110,7 +110,7 @@ def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None) -> None:
 
     if fmt is None:
         # kiro: surowa kopia, nazwa pliku od skilla (SKILL.md wszędzie ta sama).
-        (dest_dir / f"{skill_dir.name}.md").write_text(text, encoding="utf-8")
+        (dest_dir / f"{skill_dir.name}.md").write_text(text, encoding="utf-8", newline="\n")
         return
 
     meta, body = parse_frontmatter(text)
@@ -119,7 +119,7 @@ def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None) -> None:
     meta = {**meta, "name": skill_dir.name}
     out = RENDERERS[fmt](meta, body)
     suffix = DEST_SUFFIX.get(fmt, ".md")
-    (dest_dir / f"{skill_dir.name}{suffix}").write_text(out, encoding="utf-8")
+    (dest_dir / f"{skill_dir.name}{suffix}").write_text(out, encoding="utf-8", newline="\n")
 
 
 def main(argv: list[str]) -> int:
