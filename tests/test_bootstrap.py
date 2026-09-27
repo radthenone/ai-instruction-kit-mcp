@@ -154,6 +154,20 @@ class TestRealRun(_BootstrapTestCase):
             self.assertIn('"--from"', text)
             self.assertNotIn("--kit-root", text)
 
+    def test_gitattributes_installed_only_when_missing(self) -> None:
+        """Brak pliku → szablon z LF; własny plik projektu zostaje nietknięty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fresh = Path(tmp) / "fresh"
+            fresh.mkdir()
+            run_bootstrap(target=fresh, kit_root=KIT_ROOT, clients="claude")
+            self.assertIn("* text=auto eol=lf", (fresh / ".gitattributes").read_text(encoding="utf-8"))
+
+            own = Path(tmp) / "own"
+            own.mkdir()
+            (own / ".gitattributes").write_bytes(b"*.png binary\n")
+            run_bootstrap(target=own, kit_root=KIT_ROOT, clients="claude")
+            self.assertEqual((own / ".gitattributes").read_bytes(), b"*.png binary\n")
+
     def test_gitignore_section_is_added_and_idempotent(self) -> None:
         """Sekcja kita wchodzi raz, nie duplikuje się i nie depcze reguł projektu."""
         with tempfile.TemporaryDirectory() as tmp:
