@@ -102,7 +102,8 @@ Wywołanie: skill Autopilot / „doprowadź ten PR do green”.
 
 ## Chronione branche
 
-`main`, `master`, `dev` — tylko przez PR. Baza: `dev` jeśli jest, inaczej `main`/`master`.
+`main`, `master`, `dev` — tylko przez PR. Baza: linia `base: <gałąź>` w `.ai/project.md`; bez niej `dev` tylko gdy nie jest w tyle za
+default branchem, inaczej default branch (blok w `/git-start`).
 
 ## Nazewnictwo
 

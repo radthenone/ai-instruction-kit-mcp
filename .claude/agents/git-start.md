@@ -79,7 +79,7 @@ Wywnioskuj typ, tytuł EN, slug, body. Zero zmian i zero opisu → dopytaj.
 
 Normalne przy przenoszeniu pracy z chronionej gałęzi. Po utworzeniu issue:
 
-1. Ustal `baza` (`dev` jeśli `origin/dev` lub lokalny `dev`, inaczej `main`/`master`).  
+1. Ustal `baza` = `BASE` z kroku 0.  
 2. Branch **od bazy integracyjnej**, z zabraniem lokalnych zmian:
 
 ```bash
@@ -103,13 +103,33 @@ Kebab-case ASCII, 3–6 słów.
 ### 0. Kontekst
 
 ```bash
-git fetch --all --prune 2>/dev/null || true
 git status -sb
-gh repo view --json nameWithOwner,defaultBranchRef -q .
 PREV_BRANCH=$(git branch --show-current)
 ```
 
-Baza: `dev` jeśli istnieje, inaczej default branch. Zapamiętaj `PREV_BRANCH` — to branch na
+Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
+w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
+Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
+
+```bash
+git fetch --all --prune
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+BASE=$(sed -n 's/^base:[[:space:]]*\([^[:space:]]*\).*/\1/p' .ai/project.md 2>/dev/null | head -1)
+if [ -z "$BASE" ]; then
+  BASE=$DEFAULT
+  if git rev-parse -q --verify origin/dev >/dev/null \
+     && ! { git merge-base --is-ancestor origin/dev "origin/$DEFAULT" \
+            && [ "$(git rev-parse origin/dev)" != "$(git rev-parse "origin/$DEFAULT")" ]; }; then
+    BASE=dev
+  fi
+fi
+LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefName' \
+  | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
+[ -n "$LAST" ] && [ "$LAST" != "$BASE" ] && echo "uwaga: baza $BASE, ostatnie scalone PR-y szły do $LAST"
+```
+
+Zapamiętaj `PREV_BRANCH` — to branch na
 którym stał user przed `/git-start` (najczęściej `main`/`master`/`dev`, czasem inny feature
 branch w toku). `/git-end` ma na niego wrócić po push+PR — zapisz go od razu w konfigu nowego
 brancha (krok 2–3), nie tylko w raporcie.

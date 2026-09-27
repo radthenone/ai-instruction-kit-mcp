@@ -12,6 +12,12 @@ Domyślnie `orval`. Przy `orval`: po zmianie API → uruchom komendę regeneracj
 
 Task regeneracji klienta w tym repo: `<uzupełnij, np. task orval:generate>`.
 
+## Git
+
+Baza PR-ów — opcjonalnie. Bez tej linii agenci biorą `dev`, gdy nie jest w tyle za default
+branchem, inaczej default branch. Wymuszenie: dopisz w osobnej linii np. `base: dev`
+(sama linia, od początku wiersza).
+
 ## Struktura
 
 - `backend/` — Django + DRF
