@@ -24,7 +24,11 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
   „#155 pomiń PDF”, inny próg dużego ticketu).
 - **Model ticketu** (`MODEL`) z celu, np. „model: sonnet”; w Claude parametr `model` Agenta
-  (tylko aliasy: sonnet/opus/haiku/fable). Brak → model sesji. Wpisz do NIGHT-RUN REPORT.
+  (tylko aliasy: sonnet/opus/haiku/fable). Brak → model sesji. Cel oddaje wybór Tobie
+  („gdzie uważasz”) → model sesji; tańszy tylko dla ticketu mechanicznego (≤2 kryteria
+  akceptacji, 1 aplikacja, bez pieniędzy, płatności i współbieżności). Tańszy model robi
+  ~2× więcej tur, a każda tura czyta cały kontekst — na większym tickecie wychodzi drożej.
+  Model i powód per ticket → NIGHT-RUN REPORT.
 - **Zero pytań do człowieka.** Nie używasz narzędzi pytających; niepewność → needs-human
   albo decyzja odwracalna (niżej).
 - **Nie uruchamiasz** `superpowers:brainstorming`, `superpowers:finishing-a-development-branch`
@@ -124,16 +128,26 @@ Kroki:
 --- po wznowieniu ---
 6. Poprawki z review, `/git-end` — review już zrobione, bramka review potwierdzona, nie
    czekaj. Opis PR: testy, założenia jako Q z odpowiedzią, niepewne findingi.
-   `gh pr checks <PR> --watch` w tle. Czerwone → napraw, maks. 2 próby.
+   CI: `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`, bo checki
+   rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → to nie błąd:
+   powtórz raz po minucie; nadal brak → brak CI na tę bazę, merge po bramkach szybkich,
+   zapis w `Final report`. Inne `EXIT` ≠ 0 → napraw, maks. 2 próby.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
 
 Reguły:
 - Plik > ~150 linii czytasz zakresami: `codegraph explore` (gdy jest `.codegraph/`) albo
-  `grep -n` + `sed -n X,Yp`, wiele odczytów w jednej komendzie. Nigdy `cat` całego pliku.
+  `grep -n` + `sed -n X,Yp`, wiele odczytów w jednej komendzie. Nigdy całego pliku: ani
+  `cat` / `xargs cat`, ani Read bez `offset`/`limit`.
 - Bez skilli procesowych (writing-plans, tdd, verification, review-*). Wolno `/git-*`.
-- Nie oddajesz wyniku, dopóki działa praca w tle (testy, `--watch`). Czekaj na passed/failed.
+- Praca w tle (CI, dłuższy `pytest`): od razu w tle (w Claude `run_in_background`), jeden
+  wzorzec, bez pipe (`| tee` gubi exit code): `<cmd> > <log> 2>&1; echo "EXIT=$?" >> <log>`.
+  Koniec = powiadomienie o zakończeniu zadania albo linia `EXIT=` w logu; wynik = jej
+  wartość. Nie czekasz na tekst narzędzia (`passed`, `All checks…`) ani na stan procesu
+  (`ps`, `pgrep`, `kill -0`) — taka pętla wisi bez końca albo staje na prośbie o zgodę.
+  Nie oddajesz wyniku, dopóki praca w tle trwa; przed hand-backiem żadne Twoje zadanie
+  w tle nie działa, zbędne kończysz.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
@@ -245,7 +259,7 @@ Warunek `/goal` sprawdza transkrypt, więc raport i dowody muszą paść w rozmo
 ## NIGHT-RUN REPORT
 Baza: <BASE> — <powód>
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
-Model ticketu: <MODEL>
+Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 
 | Ticket | Stan | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- |
