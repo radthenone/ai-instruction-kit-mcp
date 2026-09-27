@@ -79,7 +79,30 @@ git push -u origin HEAD
 
 ### 3. PR
 
-Target: `dev` jeśli na remote, inaczej default (`main`/`master`).
+Target = `BASE`:
+
+Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
+w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
+Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
+
+```bash
+git fetch --all --prune
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+BASE=$(sed -n 's/^base:[[:space:]]*\([^[:space:]]*\).*/\1/p' .ai/project.md 2>/dev/null | head -1)
+if [ -z "$BASE" ]; then
+  BASE=$DEFAULT
+  if git rev-parse -q --verify origin/dev >/dev/null \
+     && ! { git merge-base --is-ancestor origin/dev "origin/$DEFAULT" \
+            && [ "$(git rev-parse origin/dev)" != "$(git rev-parse "origin/$DEFAULT")" ]; }; then
+    BASE=dev
+  fi
+fi
+LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefName' \
+  | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
+[ -n "$LAST" ] && [ "$LAST" != "$BASE" ] && echo "uwaga: baza $BASE, ostatnie scalone PR-y szły do $LAST"
+```
+
 
 Etykieta i tablica — odczyty, **nigdy** nie przerywają tworzenia PR; flagę dodajesz tylko,
 gdy jest dopasowanie:
