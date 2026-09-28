@@ -67,7 +67,11 @@ const B = "(^|[ ;&|(])";
 
 // --- git push ----------------------------------------------------------------
 
-function targetsProtectedRef() {
+// Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
+// `rm -f` obok pusha na feature branch to nie push na master ani force.
+const segments = cmd.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
+
+function targetsProtectedRef(has) {
   const checks = [
     "origin[ ]+\\+?(main|master|dev)([ ]|$|:)",
     "origin/\\+?(main|master|dev)([ ]|$|:)",
@@ -89,15 +93,14 @@ function targetsProtectedRef() {
   return checks.some(has);
 }
 
-const isPush = has(`${B}git[ ]+push([ ]|$)`);
-const isForcePush =
-  isPush &&
-  (has("--force([ =]|$)|--force-with-lease") ||
-    has("(^|[ ])-f([ ]|$)") ||
+for (const seg of segments) {
+  const hasIn = (re) => new RegExp(re, "i").test(seg);
+  if (!hasIn(`${B}git[ ]+push([ ]|$)`) || !targetsProtectedRef(hasIn)) continue;
+  const isForcePush =
+    hasIn("--force([ =]|$)|--force-with-lease") ||
+    hasIn("(^|[ ])-f([ ]|$)") ||
     // Plus-refspec musi być osobnym tokenem — URL git+https:// nie jest force.
-    has("(^|[ ])\\+[A-Za-z0-9_./:@-]+"));
-
-if (isPush && targetsProtectedRef()) {
+    hasIn("(^|[ ])\\+[A-Za-z0-9_./:@-]+");
   deny(isForcePush ? "force push na main/master/dev" : "push na main/master/dev — otwórz PR z feature brancha");
 }
 
