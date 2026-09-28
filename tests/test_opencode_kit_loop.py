@@ -20,12 +20,14 @@ assert.equal(mod.default.id, "kit-loop")
 let reply = { type: "assistant", content: [{ type: "text", text: "krok" }] }
 const prompts = []
 let onPrompt
+let ctxCalls = 0
 const queue = []
 let wake
 const ctx = {
   session: {
     hook: async (name, fn) => { assert.equal(name, "prompt"); onPrompt = fn },
-    context: async () => ({ data: [{ type: "user", content: [] }, reply] }),
+    // 2.0.18 zwraca gołą tablicę; wrapper HTTP — `{ data }`. Test na zmianę oba.
+    context: async () => (ctxCalls++ % 2 ? [{ type: "user", content: [] }, reply] : { data: [{ type: "user", content: [] }, reply] }),
     prompt: async (req) => { assert.equal(req.sessionID, "s"); prompts.push(req.text) },
   },
   event: {
@@ -41,7 +43,7 @@ const dispose = await mod.default.setup(ctx)
 const tick = () => new Promise((r) => setTimeout(r, 5))
 const say = async (text) => { await onPrompt({ sessionID: "s", prompt: { text } }); await tick() }
 const run = (command, args) => say(`/${command} ${args}`)
-const idle = async () => { queue.push({ type: "session.idle", data: { sessionID: "s" } }); wake?.(); await tick() }
+const idle = async () => { queue.push({ type: "session.execution.succeeded", data: { sessionID: "s" } }); wake?.(); await tick() }
 
 // goal: wznawia do limitu max=N, potem stop
 await run("goal", "max=2 zielone testy")
@@ -92,11 +94,24 @@ await idle()
 assert.equal(prompts.length, 1)
 prompts.length = 0
 
-// Esc (abort) kończy pętlę
+// błąd na ostatniej wiadomości kończy pętlę
 reply = { type: "assistant", error: { name: "MessageAbortedError" }, content: [] }
 await run("loop", "zadanie")
 await idle()
 assert.equal(prompts.length, 0)
+
+// Esc = session.execution.interrupted — pętla stoi, późniejszy succeeded nic nie wysyła
+reply = { type: "assistant", content: [{ type: "text", text: "krok" }] }
+await run("loop", "zadanie")
+queue.push({ type: "session.execution.interrupted", data: { sessionID: "s", reason: "user" } }); wake?.(); await tick()
+await idle()
+assert.equal(prompts.length, 0)
+
+// session.idle z V1 nie budzi pętli
+await run("loop", "zadanie")
+queue.push({ type: "session.idle", data: { sessionID: "s" } }); wake?.(); await tick()
+assert.equal(prompts.length, 0)
+await run("loop", "stop")
 
 // /loop stop kończy pętlę; bez komendy idle nic nie robi
 reply = { type: "assistant", content: [{ type: "text", text: "krok" }] }
