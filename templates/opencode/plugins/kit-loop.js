@@ -1,8 +1,9 @@
 // Pętla /goal i /loop dla opencode V2 — odpowiednik tych komend z Claude Code.
 // Sam markdown komendy kończy się z końcem tury; ten plugin budzi sesję na
-// `session.idle` i wysyła kolejną turę, dopóki cel nie jest osiągnięty.
+// `session.execution.succeeded` i wysyła kolejną turę, dopóki cel nie jest osiągnięty.
+// V2 nie emituje `session.idle` przez `ctx.event.subscribe` (sprawdzone na 2.0.18).
 //
-// Przerwania: Esc (abort tury → błąd na ostatniej wiadomości), `/goal clear`,
+// Przerwania: Esc (`session.execution.interrupted`), błąd tury (`.failed`), `/goal clear`,
 // `/loop stop`, `<promise>DONE</promise>` jako ostatnia linia, limit tur (`max=N`).
 // Stan tylko w pamięci — restart opencode kasuje aktywne pętle.
 
@@ -41,7 +42,8 @@ const nextPrompt = (s) =>
 // Działa dla surowej formy (`/goal <args>`) i dla rozwiniętego markdowna
 // (`# /goal ...` + linia `Argumenty użytkownika ...: <args>`).
 function detectCommand(text) {
-  const trimmed = text.trim()
+  // `opencode run "/goal …"` oddaje tekst w cudzysłowach.
+  const trimmed = text.trim().replace(/^"([\s\S]*)"$/, "$1")
   // `(?:\s|$)` zamiast `\b` — `/goal-setting` to nie `/goal`.
   let m = /^\/(goal|loop)(?:\s|$)([\s\S]*)$/.exec(trimmed)
   if (m) return { command: m[1], raw: m[2].trim() }
@@ -123,9 +125,13 @@ export default {
 
     void (async () => {
       for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        if (event.type !== "session.idle") continue
         const id = event.data?.sessionID
         if (!id) continue
+        if (event.type === "session.execution.interrupted" || event.type === "session.execution.failed") {
+          stopLoop(id, event.type)
+          continue
+        }
+        if (event.type !== "session.execution.succeeded") continue
         // Wyjątek nie może zostawić pętli w `loops` bez kolejnej tury — zatrzymaj ją jawnie.
         await onIdle(id).catch((err) => stopLoop(id, `idle: ${err?.message ?? err}`))
       }
