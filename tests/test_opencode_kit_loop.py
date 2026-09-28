@@ -62,8 +62,21 @@ await idle(); await idle()
 assert.equal(prompts.length, 1)
 assert.match(prompts[0], /\\[\\/goal tura 1\\/1\\] Kontynuuj: z markdowna/)
 
-// DONE kończy pętlę
+// puste argumenty w markdownie (samo /goal, /loop) = status, nie uzbraja pętli
 prompts.length = 0
+for (const name of ["goal", "loop"]) {
+  const text = readFileSync(new URL(`../command/${name}.md`, pathToFileURL(process.argv[1])), "utf8")
+  await say(text.replace("$ARGUMENTS", ""))
+  await idle()
+}
+assert.equal(prompts.length, 0)
+
+// /goal-setting to nie /goal
+await say("/goal-setting ustaw coś")
+await idle()
+assert.equal(prompts.length, 0)
+
+// DONE kończy pętlę
 await run("goal", "cel")
 reply = { type: "assistant", content: [{ type: "text", text: "ok\\n<promise>DONE</promise>" }] }
 await idle(); await idle()
@@ -99,6 +112,13 @@ assert.equal(prompts.length, 0)
 await run("loop", "stop")
 await new Promise((r) => setTimeout(r, 1100))
 assert.equal(prompts.length, 0)
+
+// drugi idle w trakcie odliczania nie dubluje tury
+await run("loop", "1s max=3 sprawdz CI")
+await idle(); await idle()
+await new Promise((r) => setTimeout(r, 1100))
+assert.equal(prompts.length, 1)
+await run("loop", "stop")
 
 dispose()
 wake?.()

@@ -42,14 +42,13 @@ const nextPrompt = (s) =>
 // (`# /goal ...` + linia `Argumenty użytkownika ...: <args>`).
 function detectCommand(text) {
   const trimmed = text.trim()
-  let m = /^\/goal\b([\s\S]*)$/.exec(trimmed)
-  if (m) return { command: "goal", raw: (m[1] ?? "").trim() }
-  m = /^\/loop\b([\s\S]*)$/.exec(trimmed)
-  if (m) return { command: "loop", raw: (m[1] ?? "").trim() }
+  // `(?:\s|$)` zamiast `\b` — `/goal-setting` to nie `/goal`.
+  let m = /^\/(goal|loop)(?:\s|$)([\s\S]*)$/.exec(trimmed)
+  if (m) return { command: m[1], raw: m[2].trim() }
   // Rozwinięty markdown komendy — pierwsza linia nagłówka + linia z argumentami.
   m = /^#\s*\/(goal|loop)\b/m.exec(text)
   if (m) {
-    const argsLine = /^Argumenty użytkownika.*?:\s*(.*)$/m.exec(text)
+    const argsLine = /^Argumenty użytkownika.*?:[ \t]*(.*)$/m.exec(text)
     return { command: m[1], raw: (argsLine?.[1] ?? "").replace(/\$ARGUMENTS/g, "").trim() }
   }
   return null
