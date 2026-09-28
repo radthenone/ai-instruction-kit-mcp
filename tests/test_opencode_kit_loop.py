@@ -1,4 +1,4 @@
-"""Plugin opencode /goal /loop: fake client w Node, symulacja zdarzeń sesji."""
+"""Plugin opencode V2 /goal /loop: fake ctx w Node, symulacja promptów i zdarzeń sesji."""
 
 from __future__ import annotations
 
@@ -11,22 +11,37 @@ PLUGIN = Path(__file__).resolve().parents[1] / "templates/opencode/plugins/kit-l
 
 SCRIPT = """
 import { pathToFileURL } from "node:url"
+import { readFileSync } from "node:fs"
 import assert from "node:assert/strict"
 const mod = await import(pathToFileURL(process.argv[1]).href)
-assert.deepEqual(Object.keys(mod), ["KitLoop"], "każdy eksport opencode ładuje jako plugin")
+assert.deepEqual(Object.keys(mod), ["default"], "opencode V2 ładuje default export { id, setup }")
+assert.equal(mod.default.id, "kit-loop")
 
-let reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "krok" }] }
+let reply = { type: "assistant", content: [{ type: "text", text: "krok" }] }
 const prompts = []
-const client = {
-  tui: { showToast: async () => {} },
+let onPrompt
+const queue = []
+let wake
+const ctx = {
   session: {
-    messages: async () => ({ data: [reply] }),
-    prompt: async (req) => { prompts.push(req.body.parts[0].text) },
+    hook: async (name, fn) => { assert.equal(name, "prompt"); onPrompt = fn },
+    context: async () => ({ data: [{ type: "user", content: [] }, reply] }),
+    prompt: async (req) => { assert.equal(req.sessionID, "s"); prompts.push(req.text) },
+  },
+  event: {
+    subscribe: async function* ({ signal }) {
+      while (!signal.aborted) {
+        if (queue.length) yield queue.shift()
+        else await new Promise((r) => (wake = r))
+      }
+    },
   },
 }
-const hooks = await mod.KitLoop({ client })
-const run = (command, args) => hooks["command.execute.before"]({ command, sessionID: "s", arguments: args }, { parts: [] })
-const idle = () => hooks.event({ event: { type: "session.idle", properties: { sessionID: "s" } } })
+const dispose = await mod.default.setup(ctx)
+const tick = () => new Promise((r) => setTimeout(r, 5))
+const say = async (text) => { await onPrompt({ sessionID: "s", prompt: { text } }); await tick() }
+const run = (command, args) => say(`/${command} ${args}`)
+const idle = async () => { queue.push({ type: "session.idle", data: { sessionID: "s" } }); wake?.(); await tick() }
 
 // goal: wznawia do limitu max=N, potem stop
 await run("goal", "max=2 zielone testy")
@@ -34,31 +49,44 @@ await idle(); await idle(); await idle(); await idle()
 assert.equal(prompts.length, 2)
 assert.match(prompts[0], /\\[\\/goal tura 1\\/2\\] Kontynuuj: zielone testy/)
 
+// zwykły prompt nie uzbraja pętli
+prompts.length = 0
+await say("napraw bug")
+await idle()
+assert.equal(prompts.length, 0)
+
+// rozwinięty markdown komendy (tak opencode wysyła /goal) też uzbraja pętlę
+const md = readFileSync(new URL("../command/goal.md", pathToFileURL(process.argv[1])), "utf8")
+await say(md.replace("$ARGUMENTS", "max=1 z markdowna"))
+await idle(); await idle()
+assert.equal(prompts.length, 1)
+assert.match(prompts[0], /\\[\\/goal tura 1\\/1\\] Kontynuuj: z markdowna/)
+
 // DONE kończy pętlę
 prompts.length = 0
 await run("goal", "cel")
-reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "ok\\n<promise>DONE</promise>" }] }
+reply = { type: "assistant", content: [{ type: "text", text: "ok\\n<promise>DONE</promise>" }] }
 await idle(); await idle()
 assert.equal(prompts.length, 0)
 
 // DONE liczy się tylko jako ostatnia linia — wzmianka w treści nie kończy pętli
 await run("goal", "cel")
-reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "nie wypisuję jeszcze <promise>DONE</promise>, testy czerwone" }] }
+reply = { type: "assistant", content: [{ type: "text", text: "nie wypisuję jeszcze <promise>DONE</promise>, testy czerwone" }] }
 await idle()
 assert.equal(prompts.length, 1)
-reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "ok\\n  <promise>DONE</promise>  \\n" }] }
+reply = { type: "assistant", content: [{ type: "text", text: "ok\\n  <promise>DONE</promise>  \\n" }] }
 await idle()
 assert.equal(prompts.length, 1)
 prompts.length = 0
 
 // Esc (abort) kończy pętlę
-reply = { info: { role: "assistant", error: { name: "MessageAbortedError" } }, parts: [] }
+reply = { type: "assistant", error: { name: "MessageAbortedError" }, content: [] }
 await run("loop", "zadanie")
 await idle()
 assert.equal(prompts.length, 0)
 
 // /loop stop kończy pętlę; bez komendy idle nic nie robi
-reply = { info: { role: "assistant" }, parts: [{ type: "text", text: "krok" }] }
+reply = { type: "assistant", content: [{ type: "text", text: "krok" }] }
 await run("loop", "zadanie")
 await run("loop", "stop")
 await idle()
@@ -71,6 +99,9 @@ assert.equal(prompts.length, 0)
 await run("loop", "stop")
 await new Promise((r) => setTimeout(r, 1100))
 assert.equal(prompts.length, 0)
+
+dispose()
+wake?.()
 console.log("ok")
 """
 
