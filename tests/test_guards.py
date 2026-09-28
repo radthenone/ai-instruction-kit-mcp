@@ -38,6 +38,13 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git push dev", "allow"),
     ("git push git+https://example.com/repo.git feat/x", "allow"),
     ("rtk git push origin main", "deny"),
+    # Reguły push patrzą tylko na segment z `git push`, nie na całą komendę.
+    ("git merge-base --is-ancestor origin/dev x && git push -u origin HEAD", "allow"),
+    ("git show origin/master:a.js > b && git push -u origin fix/x", "allow"),
+    ("rm -f x; git push origin +main", "deny"),
+    ("rm -f x; git push origin master", "deny"),
+    ("git fetch && git push -f origin master", "deny"),
+    ("git push origin feat/x 2>&1 | tail -3", "allow"),
     ("git reset --hard", "deny"),
     ("git reset --hard HEAD~1", "deny"),
     ("git reset --soft HEAD~1", "allow"),
