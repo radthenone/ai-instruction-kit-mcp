@@ -51,6 +51,13 @@ await idle(); await idle(); await idle(); await idle()
 assert.equal(prompts.length, 2)
 assert.match(prompts[0], /\\[\\/goal tura 1\\/2\\] Kontynuuj: zielone testy/)
 
+// `opencode run "/goal …"` — tekst w cudzysłowach też uzbraja pętlę
+prompts.length = 0
+await say('"/goal max=1 z run"')
+await idle(); await idle()
+assert.equal(prompts.length, 1)
+assert.match(prompts[0], /Kontynuuj: z run/)
+
 // zwykły prompt nie uzbraja pętli
 prompts.length = 0
 await say("napraw bug")

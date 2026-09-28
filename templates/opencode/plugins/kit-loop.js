@@ -42,7 +42,8 @@ const nextPrompt = (s) =>
 // Działa dla surowej formy (`/goal <args>`) i dla rozwiniętego markdowna
 // (`# /goal ...` + linia `Argumenty użytkownika ...: <args>`).
 function detectCommand(text) {
-  const trimmed = text.trim()
+  // `opencode run "/goal …"` oddaje tekst w cudzysłowach.
+  const trimmed = text.trim().replace(/^"([\s\S]*)"$/, "$1")
   // `(?:\s|$)` zamiast `\b` — `/goal-setting` to nie `/goal`.
   let m = /^\/(goal|loop)(?:\s|$)([\s\S]*)$/.exec(trimmed)
   if (m) return { command: m[1], raw: m[2].trim() }
