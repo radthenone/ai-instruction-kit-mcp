@@ -81,6 +81,18 @@ class TestTierResolution(unittest.TestCase):
             tmp.cleanup()
         self.assertIn(MIGRATION_NOTICE, resolved.bundles["backend"].content)
 
+    def test_legacy_stacks_keep_codegen_and_contract(self) -> None:
+        """Legacy `stacks:` backend + klient — codegen z profilu, nie wymuszone `none`."""
+        tmp, workspace = _workspace(
+            "name: t\ncodegen: orval\nstacks:\n  django-drf: '1'\n  expo-router: '1'\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+        self.assertEqual(resolved.codegen, "orval")
+        self.assertIn("core:typing-python", resolved.enabled_module_ids)
+
     def test_explicit_none_tiers_is_core_only_without_notice(self) -> None:
         """Profil z samymi `none` — core, ale bez ostrzeżenia (profil istnieje)."""
         tmp, workspace = _workspace("name: t\nbackend: none\nweb: none\nmobile: none\n")

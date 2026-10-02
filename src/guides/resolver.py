@@ -565,6 +565,31 @@ def _routed_module_ids(
     return _merge_unique(core_ids, selected)
 
 
+def _filled_tiers(
+    tiers: dict[str, str],
+    profile_data: dict[str, Any],
+    mappings: Mappings,
+) -> set[str]:
+    """
+    Tiery z wybranym Stackiem — także te wypełnione przez legacy ``stacks:``.
+
+    Legacy Stack liczy się do Tieru, którego moduły zawiera w ``mappings.tiers``
+    (np. ``django-drf`` → backend, ``expo-router`` → web i mobile).
+    """
+    filled = {tier for tier in TIER_ORDER if tiers.get(tier, TIER_NONE) != TIER_NONE}
+    stacks: dict[str, Any] = profile_data.get("stacks", {}) or {}
+    for stack_name, stack_modules in mappings.stacks.items():
+        if not stacks.get(stack_name):
+            continue
+        for tier in TIER_ORDER:
+            tier_modules = {
+                mid for mids in mappings.tiers.get(tier, {}).values() for mid in mids
+            }
+            if tier_modules & set(stack_modules):
+                filled.add(tier)
+    return filled
+
+
 def _collect_module_ids(
     profile_data: dict[str, Any],
     manifest: Manifest,
@@ -628,11 +653,9 @@ def _collect_module_ids(
 
     # Warunki na stałych osiach Tierów (backend/web/mobile — zbiór zamknięty
     # z CONTEXT, nie otwarte technologie; te żyją w mappings.tiers — ADR-0001).
-    has_backend = tiers.get("backend", TIER_NONE) != TIER_NONE
-    has_client = (
-        tiers.get("web", TIER_NONE) != TIER_NONE
-        or tiers.get("mobile", TIER_NONE) != TIER_NONE
-    )
+    filled = _filled_tiers(tiers, profile_data, mappings)
+    has_backend = "backend" in filled
+    has_client = "web" in filled or "mobile" in filled
     if has_backend:
         module_ids.append("core:typing-python")
     if has_client:
@@ -865,9 +888,8 @@ def resolve_profile(
         else str(profile_data.get("language", "pl"))
     )
     tiers, _ = profile_tiers(profile_data, manifest.mappings)
-    has_backend = tiers["backend"] != TIER_NONE
-    has_client = tiers["web"] != TIER_NONE or tiers["mobile"] != TIER_NONE
-    if has_backend and has_client:
+    filled = _filled_tiers(tiers, profile_data, manifest.mappings)
+    if "backend" in filled and ("web" in filled or "mobile" in filled):
         codegen = normalize_codegen(
             codegen_override
             if codegen_override is not None
