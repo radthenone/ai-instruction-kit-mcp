@@ -15,12 +15,12 @@ from guides.clients import (
     parse_clients,
 )
 from guides.kit_status import check_kit_updates
-from guides.manifest import find_kit_root, load_manifest
+from guides.manifest import load_manifest
 from guides.resolver import (
+    MIGRATION_NOTICE,
     normalize_codegen,
     normalize_language,
-    resolve_preset_path,
-    resolve_profile,
+    resolve_workspace_profile,
 )
 
 mcp = FastMCP(
@@ -37,7 +37,6 @@ mcp = FastMCP(
     ),
 )
 
-_profile_path: Path | None = None
 _kit_root: Path | None = None
 _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
@@ -45,29 +44,18 @@ _language_override: str | None = None
 _codegen_override: str | None = None
 _clients: list[str] = ["all"]
 _preset: str | None = None
-
-
-def _get_profile_path() -> Path:
-    """Zwróć ścieżkę profilu — z CLI, presetu lub env GUIDES_PROFILE."""
-    if _profile_path is not None:
-        return _profile_path
-    env_path = os.environ.get("GUIDES_PROFILE")
-    if env_path:
-        return Path(env_path).resolve()
-    raise RuntimeError(
-        "Brak profilu projektu. Uruchom z --profile / --preset albo ustaw GUIDES_PROFILE."
-    )
+_legacy_config: bool = False
 
 
 def _get_resolved():
-    """Rozwiąż profil (cache per request — profil rzadko się zmienia w sesji)."""
-    return resolve_profile(
-        _get_profile_path(),
+    """Rozwiąż profil workspace'u (brak profilu = sam core + ostrzeżenie)."""
+    return resolve_workspace_profile(
+        _workspace_root or Path.cwd().resolve(),
         kit_root=_kit_root,
-        workspace_root=_workspace_root,
         extra_overlays=_extra_overlays or None,
         language_override=_language_override,
         codegen_override=_codegen_override,
+        notice=MIGRATION_NOTICE if _legacy_config else "",
     )
 
 
@@ -106,7 +94,7 @@ def get_bundle(name: str) -> str:
 
     content = bundle.content
     if resolved.overlay_content and name in (
-        "backend", "frontend", "architecture", "shop", "payments", "infra", "devops", "full"
+        "backend", "frontend", "architecture", "payments", "infra", "devops", "full"
     ):
         content += f"\n\n---\n\n{resolved.overlay_content}"
     return content
@@ -213,7 +201,8 @@ def get_codegen() -> str:
         f"# Codegen: `{codegen}`",
         "",
         f"- Override CLI/env: `{_codegen_override or '—'}` "
-        f"(GUIDES_CODEGEN / `--codegen` wygrywa z `codegen:` w profilu; domyślnie `orval`)",
+        f"(GUIDES_CODEGEN / `--codegen` wygrywa z `codegen:` w profilu; "
+        f"bez pary backend + klient (web/mobile) efektywny codegen to `none`)",
         "",
         detail,
         "",
@@ -299,7 +288,7 @@ def bootstrap_workspace(
     Args:
         clients: ``--clients``: all | cursor | claude | codex | vscode | kiro | kilo |
             antigravity | opencode (po przecinku). Domyślnie: wartość startowa serwera.
-        preset: Kategoria presetu (``_base``, ``shop``). Domyślnie: preset serwera.
+        preset: DEPRECATED — przekazywane do ``bootstrap-project.sh`` (do czasu B).
         language: Język prozy ``pl``/``en``. Domyślnie: język bieżącego profilu.
         codegen: ``orval``/``none``/``graphql``. Domyślnie: codegen bieżącego profilu.
         with_overlay: Skopiuj szablon ``.ai/project.md``, jeśli repo go nie ma.
@@ -436,30 +425,6 @@ def get_clients() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
-def list_presets() -> str:
-    """
-    Lista dostępnych presetów w instruction-kit (``profiles/*.yaml``).
-
-    Returns:
-        str: Markdown z kategoriami (``_base``, ``shop``, …).
-    """
-    root = _kit_root or find_kit_root()
-    profiles_dir = root / "profiles"
-    lines = ["# Presety instruction-kit", ""]
-    if not profiles_dir.is_dir():
-        return "\n".join([*lines, "_Brak katalogu profiles._"])
-    for path in sorted(profiles_dir.glob("*.yaml")):
-        if path.stem == "_base":
-            note = " — fundament stacku (default)"
-        elif path.stem == "shop":
-            note = " — kategoria e-commerce"
-        else:
-            note = " — kategoria"
-        lines.append(f"- `{path.stem}` — `{path.name}`{note}")
-    return "\n".join(lines)
-
-
 @mcp.resource("guides://index")
 def resource_index() -> str:
     """Resource: indeks profilu projektu."""
@@ -490,24 +455,24 @@ def _register_bundle_resources() -> None:
 
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
-    global _profile_path, _kit_root, _workspace_root, _extra_overlays
-    global _language_override, _codegen_override, _clients, _preset
+    global _kit_root, _workspace_root, _extra_overlays
+    global _language_override, _codegen_override, _clients, _preset, _legacy_config
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
+        "--workspace",
+        required=False,
+        help="Root repo aplikacji (profil .ai/project.profile.yaml + overlay .ai/project.md)",
+    )
+    parser.add_argument(
         "--profile",
         required=False,
-        help="Ścieżka do .ai/project.profile.yaml (lokalne nadpisania presetu)",
+        help="DEPRECATED — ignorowane (profil zawsze .ai/project.profile.yaml w --workspace)",
     )
     parser.add_argument(
         "--preset",
         required=False,
-        help="Nazwa kategorii z kita (np. shop; default bootstrapu: _base)",
-    )
-    parser.add_argument(
-        "--workspace",
-        required=False,
-        help="Root repo aplikacji (overlay .ai/project.md); domyślnie cwd przy --preset",
+        help="DEPRECATED — ignorowane (Tiery z profilu zamiast presetów; serwer startuje na corze)",
     )
     parser.add_argument(
         "--overlay",
@@ -528,7 +493,7 @@ def main() -> None:
         help=(
             "Generator klienta API: orval (schema → frontend/src/api/generated + mutatory) "
             "| none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast REST). "
-            "Domyślnie: codegen: w profilu albo orval"
+            "Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`"
         ),
     )
     parser.add_argument(
@@ -578,27 +543,15 @@ def main() -> None:
 
     preset = args.preset or os.environ.get("GUIDES_PRESET")
     _preset = preset
-    profile_arg = args.profile
-    env_profile = os.environ.get("GUIDES_PROFILE")
+    _legacy_config = bool(
+        args.preset
+        or args.profile
+        or os.environ.get("GUIDES_PRESET")
+        or os.environ.get("GUIDES_PROFILE")
+    )
 
-    if profile_arg and preset:
-        parser.error("Podaj albo --profile, albo --preset — nie oba naraz")
-
-    if profile_arg:
-        _profile_path = Path(profile_arg).resolve()
-    elif preset:
-        kit = _kit_root or find_kit_root()
-        _kit_root = kit
-        _profile_path = resolve_preset_path(preset, kit)
-        if _workspace_root is None:
-            _workspace_root = Path.cwd().resolve()
-    elif env_profile:
-        _profile_path = Path(env_profile).resolve()
-
-    if _profile_path is None:
-        parser.error(
-            "Wymagany --profile PATH, --preset NAME albo GUIDES_PROFILE / GUIDES_PRESET"
-        )
+    if _workspace_root is None:
+        _workspace_root = Path.cwd().resolve()
 
     _register_bundle_resources()
     mcp.run()

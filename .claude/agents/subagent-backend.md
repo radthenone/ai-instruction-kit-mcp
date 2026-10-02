@@ -21,7 +21,7 @@ Zwykły review jak `/review-backend` (MCP checklist + `codegen:`).
 ### Checklista MCP
 
 1. `get_bundle("backend")`
-2. `get_overlay()` — w tym `codegen:`
+2. `get_overlay()` + `codegen:` z profilu (MCP `get_codegen`)
 3. BUGBOT.md — bez overlapu
 
 ### Format odpowiedzi (zawsze dwie sekcje)

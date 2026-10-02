@@ -76,6 +76,15 @@ _EMPTY_RULE = VariantRule(base="", default="", values={})
 
 
 @dataclass(frozen=True)
+class BundleRule:
+    """Selektor zawartości bundle'a: Tiery + tagi modułów (``*`` = wszystko)."""
+
+    tiers: tuple[str, ...]
+    tags: tuple[str, ...]
+    exclude_tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Mappings:
     """
     Reguły przekładu Profilu na Module ID (ADR-0001).
@@ -84,6 +93,7 @@ class Mappings:
     """
 
     stacks: dict[str, list[str]]
+    tiers: dict[str, dict[str, list[str]]]
     capabilities: dict[str, str]
     domains: dict[str, str]
     patterns: dict[str, str]
@@ -116,6 +126,9 @@ class Mappings:
         found: set[str] = set()
         for modules in self.stacks.values():
             found.update(modules)
+        for tier_values in self.tiers.values():
+            for modules in tier_values.values():
+                found.update(modules)
         for simple in (self.capabilities, self.domains, self.patterns):
             found.update(simple.values())
         for slot in self.slots.values():
@@ -158,7 +171,7 @@ class Manifest:
 
     kit_root: Path
     modules: dict[str, ModuleInfo]
-    default_bundles: dict[str, list[str]]
+    bundles: dict[str, BundleRule]
     mappings: Mappings
 
 
@@ -222,15 +235,26 @@ def load_manifest(kit_root: Path | None = None) -> Manifest:
             tags=tuple(meta.get("tags", [])),
         )
 
-    default_bundles: dict[str, list[str]] = {
-        name: list(module_ids)
-        for name, module_ids in raw.get("default_bundles", {}).items()
-    }
+    bundles: dict[str, BundleRule] = {}
+    for name, rule in raw.get("bundles", {}).items():
+        rule = rule or {}
+        bundles[str(name)] = BundleRule(
+            tiers=tuple(str(t) for t in rule.get("tiers", [])),
+            tags=tuple(str(t) for t in rule.get("tags", [])),
+            exclude_tags=tuple(str(t) for t in rule.get("exclude_tags", [])),
+        )
+    if not bundles:
+        bundles = {
+            name: BundleRule(tiers=(), tags=())
+            for name in (
+                "backend", "frontend", "architecture", "infra", "devops", "payments", "full",
+            )
+        }
 
     return Manifest(
         kit_root=root,
         modules=modules,
-        default_bundles=default_bundles,
+        bundles=bundles,
         mappings=_load_mappings(raw.get("mappings", {})),
     )
 
@@ -266,6 +290,13 @@ def _load_mappings(raw: dict[str, Any]) -> Mappings:
         stacks={
             str(name): [str(mid) for mid in modules]
             for name, modules in raw.get("stacks", {}).items()
+        },
+        tiers={
+            str(tier): {
+                str(stack): [str(mid) for mid in (modules or [])]
+                for stack, modules in (values or {}).items()
+            }
+            for tier, values in raw.get("tiers", {}).items()
         },
         capabilities={str(k): str(v) for k, v in raw.get("capabilities", {}).items()},
         domains={str(k): str(v) for k, v in raw.get("domains", {}).items()},

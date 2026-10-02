@@ -39,7 +39,7 @@ Jesteś reviewerem backendu (Django/DRF lub stack z overlay).
 ### Checklista MCP (przed oceną)
 
 1. `get_bundle("backend")` — checklista z bundle, nie z pamięci.
-2. `get_overlay()` — Taskfile, ścieżki; odczytaj `codegen:` (`orval` \| `manual` \| `none`).
+2. `get_overlay()` — Taskfile, ścieżki; `codegen:` z profilu (MCP `get_codegen`).
 3. `.cursor/BUGBOT.md` — tylko żeby uniknąć overlapu.
 
 ### Sprawdzaj w diffie (domena BE)

@@ -2,12 +2,13 @@
 # Bootstrap instruction-kit w repo aplikacji (multi-client).
 #
 # Użycie:
-#   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--from PATH|URL] [--preset shop]
+#   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--from PATH|URL]
 #   ./scripts/bootstrap-project.sh ../app --clients cursor
 #   ./scripts/bootstrap-project.sh ../app --clients all
 #
-# Domyślny preset: _base. Domyślni klienci: all.
-# Kategoria e-commerce: --preset shop
+# Profil z Tierami (`.ai/project.profile.yaml`) zapisywany zawsze; `--preset`
+# i `--with-profile` przyjmowane dla kompatybilności (preset ignorowany — do czasu B).
+# Domyślni klienci: all.
 # Agenci: templates/shared/agents → natywne ścieżki klienta.
 # Skille: templates/shared/skills → katalog skilli klienta (claude/cursor/antigravity)
 #         albo komenda /nazwa u pozostałych (patrz scripts/install_shared_skills.py).
@@ -19,7 +20,7 @@ usage() {
 Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 
 Opcje:
-  --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
+  --preset NAME       DEPRECATED — ignorowane (Tiery z `.ai/project.profile.yaml`)
   --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
   --codegen NAME      Generator klienta API: orval (schema → frontend/src/api/generated
                       + mutatory) | none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast
@@ -27,7 +28,7 @@ Opcje:
   --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity | opencode
                       (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
-  --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
+  --with-profile      DEPRECATED — profil z Tierami zapisywany zawsze (flaga bez efektu)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
   --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*) ani skilli
                       z templates/shared/skills/
@@ -45,11 +46,11 @@ Przykład (tylko Cursor):
     --from /m/projects/ai-instruction-kit-mcp \
     --with-overlay
 
-Przykład (kategoria shop, wszyscy klienci):
-  ./scripts/bootstrap-project.sh ../moj-sklep \
-    --preset shop \
+Przykład (profil z Tierami, wszyscy klienci):
+  ./scripts/bootstrap-project.sh ../moj-projekt \
     --clients all \
     --from /m/projects/ai-instruction-kit-mcp
+  # potem w ../moj-projekt/.ai/project.profile.yaml wybierz Stacki (backend/web/mobile)
 EOF
 }
 
@@ -250,7 +251,9 @@ prune_unselected_clients() {
   done
 }
 
-# Wypełnij szablon MCP (JSON/TOML): from, preset, language, clients, opcjonalnie workspace.
+# Wypełnij szablon MCP (JSON/TOML): from, language, clients, opcjonalnie workspace.
+# Bez --preset: Tiery czyta serwer z `.ai/project.profile.yaml` w --workspace.
+# Linię `--preset` usuwamy, gdyby starszy szablon ją jeszcze miał.
 fill_mcp() {
   local src="$1" dest="$2" workspace_repl="${3:-}"
   mkdir -p "$(dirname "$dest")"
@@ -269,9 +272,10 @@ text = text.replace(
     os.environ["FROM_SRC"],
 )
 text = re.sub(
-    r'("--preset",\s*")[^"]*(")',
-    rf'\g<1>{os.environ["PRESET"]}\2',
+    r'^[ \t]*"--preset",[^\n]*\n',
+    "",
     text,
+    flags=re.MULTILINE,
 )
 text = re.sub(
     r'("--language",\s*")[^"]*(")',
@@ -288,7 +292,7 @@ text = re.sub(
     rf'\g<1>{os.environ["CLIENTS_ARG"]}\2',
     text,
 )
-# TOML: "--preset", "_base" style already covered; also bare strings in toml lists
+# TOML: linie `"--preset", ...` usuwa powyższy regex; tu tylko bare strings w listach
 text = re.sub(
     r'("--workspace",\s*")[^"]*(")',
     lambda m: m.group(0)
@@ -303,7 +307,7 @@ if os.environ.get("WORKSPACE_REPL"):
 # Zrodlo lokalne: `uv run --directory`, nie `uvx --from`.
 #
 # `uvx --from <katalog>` nie czyta kita z tego katalogu w czasie dzialania. uv buduje
-# kolo, w ktorym `manifest.yaml`, `modules/` i `profiles/` laduja jako `guides/_data`
+# kolo, w ktorym `manifest.yaml` i `modules/` laduja jako `guides/_data`
 # (force-include w pyproject.toml), i cache'uje je pod WERSJE pakietu. Wersja nie rosnie
 # przy zwyklej edycji modulu ani kodu serwera, wiec klient dostaje kopie sprzed builda —
 # poprawiasz modul, restartujesz IDE, a `get_bundle` zwraca stara tresc. Bez bledu.
@@ -794,12 +798,10 @@ elif [[ "$NEED_GIT_HOOK" -eq 1 ]] && client_enabled cursor; then
   fi
 fi
 
-if [[ "$WITH_PROFILE" -eq 1 ]]; then
-  if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
-    sed "s/my-project/$(basename "$TARGET")/; s|profiles/_base.yaml|profiles/${PRESET}.yaml|" \
-      "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
-    echo "  + .ai/project.profile.yaml (extends profiles/${PRESET}.yaml)"
-  fi
+if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
+  sed "s/my-project/$(basename "$TARGET")/" \
+    "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
+  echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
 fi
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
@@ -852,4 +854,4 @@ echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent
 if client_enabled cursor; then
   echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
 fi
-echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --codegen ${CODEGEN} --clients ${CLIENTS_ARG} --workspace …"
+echo "MCP: --language ${LANGUAGE} --codegen ${CODEGEN} --clients ${CLIENTS_ARG} --workspace …"

@@ -321,16 +321,16 @@ class TestServerTool(_BootstrapTestCase):
     def setUp(self) -> None:
         super().setUp()
         self._saved = (
-            server._profile_path,
             server._kit_root,
             server._workspace_root,
             server._clients,
             server._preset,
+            server._legacy_config,
         )
-        server._profile_path = KIT_ROOT / "profiles" / "_base.yaml"
         server._kit_root = KIT_ROOT
         server._clients = ["claude"]
-        server._preset = "_base"
+        server._preset = None
+        server._legacy_config = False
         self._tmp = tempfile.mkdtemp(prefix="guides-tool-test-")
         self.addCleanup(shutil.rmtree, self._tmp, True)
         self.workspace = Path(self._tmp) / "app"
@@ -339,11 +339,11 @@ class TestServerTool(_BootstrapTestCase):
 
     def tearDown(self) -> None:
         (
-            server._profile_path,
             server._kit_root,
             server._workspace_root,
             server._clients,
             server._preset,
+            server._legacy_config,
         ) = self._saved
 
     def test_default_call_is_dry_run(self) -> None:
