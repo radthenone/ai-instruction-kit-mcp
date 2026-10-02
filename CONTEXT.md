@@ -1,6 +1,6 @@
 # Instruction Kit
 
-A central repository of project instructions, served to AI coding clients over MCP. A consuming repo picks a Preset, adds an Overlay, and its agents read the resulting Bundles live — the instruction text is never copied into the consuming repo, so it cannot go stale.
+A central repository of project instructions, served to AI coding clients over MCP. A consuming repo records its choices in a Profile, adds an Overlay, and its agents read the resulting Bundles live — the instruction text is never copied into the consuming repo, so it cannot go stale.
 
 ## Language
 
@@ -29,12 +29,12 @@ _Avoid_: local rules, project config, extras
 ### Configuration
 
 **Profile**:
-The full set of choices that determines which Instruction Modules a repo gets: its Stacks, Capabilities, Domains, Patterns and Decisions.
-_Avoid_: config, settings
+The full set of choices that determines which Instruction Modules a repo gets: its Language, Clients, the Stack in each Tier, Capabilities, Patterns and Decisions. Lives in the Workspace and is committed with it; the Kit ships no ready-made Profiles. A Profile that chooses nothing gets the core modules only.
+_Avoid_: config, settings, preset
 
-**Preset**:
-A Profile shipped by the Kit as a reusable starting point — `_base` for the shared stack foundation, `shop` for e-commerce. A repo names a Preset instead of writing its own Profile.
-_Avoid_: template, category, flavour
+**Tier**:
+A layer of the consuming product — `backend`, `web` or `mobile` — holding exactly one Stack or none. Distinct from a Slot: a Tier decides which family of instructions applies, a Slot picks one infrastructure technology inside it.
+_Avoid_: axis, side, layer, frontend
 
 **Decision**:
 A choice of one concrete technology for one Slot, recorded in a Profile: `queue: rabbitmq`.
@@ -49,7 +49,7 @@ A cross-cutting feature a product either has or hasn't — authentication, file 
 _Avoid_: feature, module
 
 **Variant**:
-A more specific Instruction Module that accompanies a general one when a Decision narrows it — `capability:auth:jwt` alongside `capability:auth`. The general module stays.
+A more specific Instruction Module that accompanies a general one when a Decision narrows it — `capability:auth:jwt` alongside `capability:auth`. The general module stays. A Stack always carries one Variant: the bare Stack name means its current approach (`react`), an older one is named explicitly after `@` (`react@legacy`).
 _Avoid_: flavour, subtype, specialisation
 
 **Substitution**:
@@ -57,7 +57,7 @@ A Instruction Module that replaces a general one outright when a choice narrows 
 _Avoid_: override, replacement, swap
 
 **Stack**:
-A named technology foundation a Profile switches on — `django-drf`, `expo-router` — expanding to several Instruction Modules at once.
+A named technology foundation chosen for one Tier — `django`, `react`, `expo` — expanding to several Instruction Modules at once.
 _Avoid_: framework, platform, tech
 
 **Pattern**:
@@ -83,8 +83,8 @@ The root of the consuming repo — where the Overlay and the Bootstrap Stamp liv
 _Avoid_: project dir, target, cwd
 
 **Bootstrap**:
-The one-time installation of Kit files into a Workspace: client configuration, agent definitions and slash commands. Distinct from serving instructions, which happens live over MCP and copies nothing.
-_Avoid_: install, setup, sync
+Writing Kit files into a Workspace as its Profile dictates: client configuration, agent definitions, slash commands and Guards. Repeatable — rerun whenever the Profile or the Kit changes; never touches the Overlay. Distinct from serving instructions, which happens live over MCP and copies nothing.
+_Avoid_: setup, deploy
 
 **Client**:
 An AI coding tool that consumes the Kit — Cursor, Claude Code, Codex, VS Code, Kiro, Kilo, Antigravity, opencode. Determines only where Bootstrap writes files; never changes Bundle content.
