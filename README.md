@@ -1,6 +1,6 @@
 # Instruction Kit — MCP z instrukcjami projektów
 
-Centralne repo MD + serwer MCP. Projekty wybierają **kategorię** (`--preset`) + opcjonalnie overlay / fork.
+Centralne repo MD + serwer MCP. Projekty wybierają Stack **per Tier** (`backend`/`web`/`mobile` w `.ai/project.profile.yaml`) + overlay.
 
 ## Szybki start — instalacja i update
 
@@ -22,16 +22,17 @@ APP=/m/projects/moja-appka                  # repo aplikacji
 bash --noprofile --norc "$KIT/scripts/bootstrap-project.sh" "$APP" \
   --from "$KIT" \
   --clients claude,codex,vscode \
-  --preset shop \
   --language pl \
   --codegen orval \
   --with-overlay
 ```
 
+Potem w `$APP/.ai/project.profile.yaml` wybierz Stacki (`backend`/`web`/`mobile` — puste = sam core).
+
 | Flaga | Kiedy zmienić |
 | --- | --- |
 | `--clients` | `claude` \| `codex` \| `vscode` (= GitHub Copilot) \| `cursor` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` \| `all`. Pliki klientów **spoza** listy są sprzątane — `--keep-unselected-clients` to wyłącza |
-| `--preset` | `_base` (fundament stacku) albo `shop` (e-commerce). Lista: `profiles/` |
+| Stack per Tier | `backend`/`web`/`mobile` w `.ai/project.profile.yaml` (puste Tiery = sam core) |
 | `--language` | `pl` \| `en` — język prozy. Tytuły issue/PR/branch zawsze EN |
 | `--codegen` | `orval` (default) \| `none` \| `graphql` |
 | `--with-overlay` | Zakłada `.ai/project.md` z szablonu, **jeśli go jeszcze nie ma**. Przy update bez efektu — bezpieczne zostawić na stałe |
@@ -99,12 +100,12 @@ markerami `# >>> instruction-kit >>>`. Szczegóły: sekcja „`.gitignore`" niż
 
 | Co                                           | Gdzie pisać                                             |
 | -------------------------------------------- | ------------------------------------------------------- |
-| Argumenty MCP (`--preset`, `--language`, `--clients`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
-| Lista kategorii i fork                       | [`profiles/README.md`](profiles/README.md)              |
+| Argumenty MCP (`--language`, `--clients`, `--workspace`, …) | ten README (sekcja niżej) + szablony `templates/*/mcp*` |
+| Stack per Tier i fork                       | [profil z Tierami](#profil-z-tierami-backendwebmobile)              |
 | Kanon agentów / reguł (niezależny od IDE)    | [`templates/shared/`](templates/shared/README.md)       |
 | Multi-client design                          | [design](docs/specs/2026-08-05-multi-client-templates-design.md) |
-| Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji** (`codegen:` tu)  |
-| Zmiana zestawu modułów vs kategoria          | `.ai/project.profile.yaml` + `--profile` (fork)         |
+| Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji** (Taskfile, porty, Docker)  |
+| Inny zestaw modułów niż Tiery              | `include:` w `.ai/project.profile.yaml` (routing wg tagów)         |
 | Docelowy kontrakt `--profile` / stack / `--overlays` / `--codegen` | [design overlays](docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI stack jeszcze nie**) |
 | Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
 | Skille kita (wszyscy klienci)                | `templates/shared/skills/` → sekcja „Skille kita” niżej |
@@ -131,14 +132,15 @@ Wszystkie flagi serwera MCP wpisujesz w `args` klienta (Cursor: `.cursor/mcp.jso
 
 | Warstwa                           | Mechanizm                                             | Przykład                 |
 | --------------------------------- | ----------------------------------------------------- | ------------------------ |
-| Fundament stacku                  | `--preset _base` (default bootstrapu)                 | Django+Expo, typing      |
-| Kategoria domeny                  | `--preset shop`                                       | auth + shop + payments   |
-| Powtarzalny wariant kategorii     | `--tag` / facety (**planowane**, niezaimplementowane) | `physical`, `digital`    |
-| Fakty jednego repo                | `.ai/project.md` + `--workspace`                      | jubiler, porty, Taskfile |
-| Inny zestaw modułów niż kategoria | `--profile` + lokalny YAML                            | queue: rabbitmq          |
+| Stack backendu                    | Tier `backend` w profilu                              | `django`, `fastapi`, `flask`, `none` |
+| Stack webu                        | Tier `web` w profilu                                  | `react`, `angular`, `expo`, `none` |
+| Stack mobile                      | Tier `mobile` w profilu                               | `expo`, `react-native`, `none` |
+| Powtarzalny wariant               | `--tag` / facety (**planowane**, niezaimplementowane) | `physical`, `digital`    |
+| Fakty jednego repo                | `.ai/project.md` + `--workspace`                      | porty, Taskfile          |
+| Inny zestaw modułów niż Tiery     | `include:` w profilu (routing wg tagów)               | `capability:payments`    |
 
 
-Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
+Nie mieszaj: nazwa produktu ≠ Stack; porty ≠ tag.
 
 ### Flagi (aktualne)
 
@@ -150,7 +152,6 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
       "args": [
         "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
         "guides-mcp",
-        "--preset", "_base",
         "--language", "pl",
         "--clients", "all",
         "--workspace", "${workspaceFolder}"
@@ -164,49 +165,53 @@ Nie mieszaj: nazwa produktu ≠ preset; porty ≠ tag.
 | Flaga              | Wymagana? | Rola                                                                                                                                               | Gdzie / jak zmieniać                                     |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `--from SOURCE`    | przy `uvx` | Źródło zdalne kita: `git+https://…`. Dla lokalnego klonu bootstrap generuje zamiast tego `uv run --directory <ścieżka>` — patrz „Lokalny klon" niżej | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
-| `--preset NAME`    | tak       | Kategoria z `profiles/NAME.yaml` (`_base`, `shop`, …) — bez aliasów produktowych (używaj `shop`)                                                   | mcp.json; lista: MCP `list_presets` / `profiles/`        |
+| `--preset NAME`    | nie (deprecated) | Ignorowane — Tiery czyta serwer z profilu w `--workspace` | usuń z mcp.json |
 | `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
 | `--codegen orval\|none\|graphql` | nie | Generator klienta API — patrz sekcja "Codegen" niżej. Domyślnie: `orval` | mcp.json / bootstrap `--codegen`; env `GUIDES_CODEGEN`; tool `get_codegen` |
 | `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
-| `--kit-root PATH`  | nie       | Klon kita, z którego serwer czyta `manifest.yaml` / `modules/` / `profiles/`. Bez niej root jest wykrywany automatycznie — a przy `uvx --from <katalog>` wykrywa się kopia z cache `uv` zamiast klonu | mcp.json — bootstrap dodaje sam przy źródle lokalnym; env `GUIDES_KIT_ROOT` |
-| `--workspace PATH` | zalecane  | Root aplikacji — stąd auto `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
+| `--kit-root PATH`  | nie       | Klon kita, z którego serwer czyta `manifest.yaml` / `modules/`. Bez niej root jest wykrywany automatycznie — a przy `uvx --from <katalog>` wykrywa się kopia z cache `uv` zamiast klonu | mcp.json — bootstrap dodaje sam przy źródle lokalnym; env `GUIDES_KIT_ROOT` |
+| `--workspace PATH` | zalecane  | Root aplikacji — stąd profil `.ai/project.profile.yaml` i overlay `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
-| `--profile PATH`   | nie       | Lokalny fork YAML zamiast `--preset`                                                                                                               | mcp.json + plik w aplikacji                              |
+| `--profile PATH`   | nie (deprecated) | Ignorowane — profil zawsze `.ai/project.profile.yaml` w `--workspace`                                                                                                               | mcp.json + plik w aplikacji                              |
 
 
-Albo `--profile`, albo `--preset` — nie oba naraz. Bootstrap bez `--preset` w CLI i tak zapisuje `_base` w mcp.json. Bootstrap zapisuje też `--language` (domyślnie `pl`) oraz `--clients` (domyślnie `all`).
+Flagi `--preset` / `--profile` są ignorowane (do usunięcia w B razem z migracją `kit-ai reload`). Bootstrap zapisuje `--language` (domyślnie `pl`) oraz `--clients` (domyślnie `all`).
 
 **Język:** MCP tool `get_language`. Priorytet: `--language` / `GUIDES_LANGUAGE` → `language:` w YAML profilu → `pl`. Moduł w bundle: `core:language-pl` albo `core:language-en`.
 
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
-**Codegen (Orval):** flaga `--codegen orval` (default) \| `none` \| `graphql`, do tego env `GUIDES_CODEGEN` i MCP tool `get_codegen`. Priorytet: `--codegen` / `GUIDES_CODEGEN` → `codegen:` w YAML profilu → `orval`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
+**Codegen (Orval):** `codegen:` w `.ai/project.profile.yaml` (`orval` \| `none` \| `graphql`), do tego flaga `--codegen`, env `GUIDES_CODEGEN` i MCP tool `get_codegen`. Priorytet: `--codegen` / `GUIDES_CODEGEN` → `codegen:` w profilu → `orval`. Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
 
-**Sklep:** `"--preset", "shop"`. Szczegóły produktu tylko w `.ai/project.md`.
-
-**Fork kategorii** (inny zestaw capabilities / `decisions`):
+## Profil z Tierami (backend/web/mobile)
 
 ```yaml
 # .ai/project.profile.yaml w repo aplikacji
-name: moj-fork
-extends: profiles/shop.yaml
+name: moja-appka
+language: pl
+
+backend: django      # none | django | django-html | fastapi | flask
+web: react            # none | react | react@legacy | angular | angular@rxjs | expo
+mobile: none           # none | expo | react-native
+
+codegen: orval        # orval | none | graphql (bez pary backend + klient: zawsze none)
+
+capabilities:
+  - auth
+  - payments
+
 decisions:
-  queue: rabbitmq
+  database: postgres
+  auth: jwt
 ```
 
-W mcp.json zamień `--preset` na:
-
-```text
-"--profile", "${workspaceFolder}/.ai/project.profile.yaml"
-```
-
-Szczegóły: `[profiles/README.md](profiles/README.md)`.
+Bundle liczone są z Tierów: `get_bundle backend` zawiera Stack z Tieru `backend`, pusty profil daje sam core. Nierozpoznana wartość Tieru nie wywraca serwera — ląduje w „Nierozpoznanych decyzjach" w `get_index` (ADR-0004). Stare klucze `stacks:` / `patterns:` czytane są nadal.
 
 ### Tagi / facety (planowane — jeszcze nie w CLI)
 
 Gdy wiele projektów dzieli **ten sam** powtarzalny wariant instrukcji (np. sklep fizyczny vs cyfrowy), zamiast mnożyć presety `shop-jewelry` / `shop-tokens`:
 
-1. W `profiles/shop.yaml` zdefiniować dozwolone facety (np. `fulfillment: [physical, digital]`).
+1. W `manifest.yaml` → `mappings.tiers.<tier>` dopisać dozwolone Stacki (np. `fulfillment` nie — Tiery to backend/web/mobile; nowy wymiar trafia do `decisions` albo `capabilities`).
 2. W mcp.json dodać np. `"--tag", "physical"` albo `"--facet", "fulfillment=physical"` (docelowa składnia przy implementacji).
 3. Resolver dołoży wtedy dodatkowe MD z `modules/` — bez lokalnego forka, jeśli zestawy capabilities są te same.
 
@@ -218,7 +223,6 @@ Szkic (nie działa jeszcze):
 "args": [
   "--from", "…",
   "guides-mcp",
-  "--preset", "shop",
   "--tag", "physical",
   "--tag", "b2c",
   "--workspace", "${workspaceFolder}"
@@ -230,7 +234,7 @@ Szkic (nie działa jeszcze):
 ### Bootstrap
 
 ```bash
-# Generyczny — default _base + --language pl (nie podawaj --preset)
+# Generyczny — profil z Tierami + --language pl
 ./scripts/bootstrap-project.sh /sciezka/do/projektu \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp \
   --with-overlay
@@ -240,15 +244,14 @@ Szkic (nie działa jeszcze):
   --clients cursor \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 
-# Kategoria e-commerce, proza EN, wszyscy klienci AI
+# Proza EN, wszyscy klienci AI (Stacki potem w .ai/project.profile.yaml)
 ./scripts/bootstrap-project.sh /sciezka/do/moj-sklep \
-  --preset shop \
   --language en \
   --clients all \
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Zapisuje m.in. MCP per klient (`--preset`, `--language`, `--codegen`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
+Zapisuje m.in. MCP per klient (`--language`, `--codegen`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
@@ -358,7 +361,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Google Antigravity | `antigravity` | Antigravity IDE | `.agents/mcp_config.json` + `.agents/workflows/*.md` (`/nazwa`; limit 12 000 znaków/plik — kit przycina) |
 | opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/command/*.md` (`/nazwa`, `$ARGUMENTS`) |
 
-Wiele klientów naraz: `--clients cursor,claude` albo `--clients all`. Każdy klient dostaje **ten sam** `--preset`/`--language`/`--workspace` — różni się tylko format pliku MCP i ścieżka komend.
+Wiele klientów naraz: `--clients cursor,claude` albo `--clients all`. Każdy klient dostaje **ten sam** `--language`/`--workspace` — różni się tylko format pliku MCP i ścieżka komend.
 
 Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy starcie), potem sprawdź że MCP wstał (np. `get_bundle` / lista narzędzi w kliencie).
 
@@ -368,8 +371,8 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 
 | Brak | Status | Obejście |
 | --- | --- | --- |
-| `--tag` / facety wariantów presetu | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
-| `--profile` + `--preset` jednocześnie | Niedozwolone | Wybierz jedno; fork = `--profile` |
+| `--tag` / facety wariantów | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
+| `--profile` / `--preset` | Deprecated (ignorowane) | Profil zawsze `.ai/project.profile.yaml` w `--workspace`; migracja przez `kit-ai reload` (B) |
 | `/review-security` jako plik kita | Nie istnieje w `templates/shared/agents/` | To skill user/global (Cursor) — dodaj we własnym środowisku, kit go nie dostarcza |
 | `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
 | Natywna weryfikacja formatu VS Code/Kilo/Antigravity/opencode | Oparta o dokumentację (sierpień 2026), **nie testowana na żywych klientach** | Jeśli `/nazwa` nie działa w Twoim kliencie, zgłoś i popraw `scripts/render_agent_commands.py` |
@@ -411,14 +414,9 @@ modules/
     django-drf/      (+ django/, fastapi/, flask/ layouts)
     expo-router/
     frontend/        warianty Expo/React (macierz web/mobile — design)
-  capabilities/      auth (+ allauth/jwt/custom warianty), files, payments, …
-  domains/           shop
+  capabilities/      auth (+ allauth/jwt/custom warianty), files, payments (+ expo-stripe gdy Tier expo), …
   patterns/          capability-provider, providers-and-settings, gateway, webhooks, …
   infra/             database, cache, queue, storage, tasks, search
-profiles/
-  _base.yaml         fundament stacku (default)
-  shop.yaml          kategoria e-commerce
-  *.yaml             kolejne kategorie (blog, …) — nie nazwy produktów
 templates/
   shared/            kanon agents + rules (źródło prawdy)
   cursor|claude|…    adaptery MCP / format IDE
@@ -460,7 +458,7 @@ decisions:
 
 Inny mechanizm niż infra: nie tworzy osobnego bundle'a — dokleja się zaraz po
 `capability:auth` wszędzie tam, gdzie ten moduł już jest wypisany w bundle
-(`capabilities: [auth]` albo ręcznie w `bundles.backend`/`bundles.frontend`).
+(`capabilities: [auth]` albo `include:` z ID modułu — routing wg tagów).
 W manifeście to `mappings.variants.auth` (Wariant = wstaw po module bazowym),
 w odróżnieniu od `mappings.substitutions.codegen` (Substytucja = podmień moduł bazowy).
 
@@ -479,9 +477,8 @@ zmianę architektury, sprawdź `docs/adr/` — część rzeczy już rozstrzygni�
 
 | Bundle         | Zastosowanie                                |
 | -------------- | ------------------------------------------- |
-| `backend`      | Django, DRF, capabilities BE                |
-| `frontend`     | Expo, UI/UX                                 |
-| `shop`         | products, orders, cart                      |
+| `backend`      | Stack z Tieru backend, capabilities BE      |
+| `frontend`     | Stacki z Tierów web i mobile, UI/UX         |
 | `payments`     | Stripe, webhooks                            |
 | `architecture` | monorepo, kontrakt API, capability-provider |
 | `infra`        | postgres, redis, queue, s3, celery          |
@@ -498,11 +495,11 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 
 | Plik                                | Rola                                                                    | Wymagany?            |
 | ----------------------------------- | ----------------------------------------------------------------------- | -------------------- |
-| `.cursor/mcp.json`                  | uvx → `--preset` + `--language` + `--clients` + `--workspace`; **per maszyna, poza gitem** | tak (Cursor)        |
+| `.cursor/mcp.json`                  | uvx → `--language` + `--clients` + `--workspace`; **per maszyna, poza gitem** | tak (Cursor)        |
 | `.mcp.json` / `.codex/` / `.vscode/` / … | MCP per klient z `--clients`; **per maszyna, poza gitem**  | wg wybranego klienta |
-| `.ai/project.md`                    | Overlay — Taskfile, Docker, porty, **`codegen:`**           | zalecany             |
+| `.ai/project.md`                    | Overlay — Taskfile, Docker, porty           | zalecany             |
 
-| `.ai/project.profile.yaml`          | Lokalne nadpisania presetu                                              | **nie** (tylko fork) |
+| `.ai/project.profile.yaml`          | Tiery (backend/web/mobile) + `codegen:` — jedyna konfiguracja kita                                              | **tak** |
 | `.cursor/rules/use-guides.mdc`      | Bootstrap MCP                                                           | tak                  |
 | `.cursor/rules/code-review.mdc`     | Review przed pushem                                                     | tak                  |
 | `.cursor/rules/git-branch-pr.mdc`   | `/git-start`+`/git-check`+`/git-commit`+`/git-end`, issue#, chronione main/master/dev | tak                  |
@@ -513,7 +510,7 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 | `.cursor/skills/compact/`           | **Tylko Cursor:** `/compact` = alias UI Summarize (nie Claude/Codex)    | zalecany (Cursor)    |
 
 
-W projekcie docelowym **nie** duplikuj `modules/` — wystarczy preset + opcjonalny overlay.
+W projekcie docelowym **nie** duplikuj `modules/` — wystarczy profil z Tierami + opcjonalny overlay.
 
 ## Update kita w projekcie
 
@@ -528,7 +525,7 @@ Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 ### Lokalny klon: `uv run --directory`, nie `uvx --from`
 
 `uvx --from <katalog>` **nie** czyta kita z tego katalogu w czasie działania. uv buduje koło,
-w którym `manifest.yaml`, `modules/` i `profiles/` lądują jako `guides/_data`
+w którym `manifest.yaml` i `modules/` lądują jako `guides/_data`
 (`force-include` w `pyproject.toml`), i cache'uje je pod **wersję pakietu**. Wersja nie rośnie
 przy zwykłej edycji modułu ani kodu serwera, więc klient dostaje kopię sprzed builda.
 Do tego `find_kit_root()` woli `_data` od repo, więc `check_kit_status` traci historię gita.

@@ -279,12 +279,6 @@ modules:
     title: Stripe — Expo mobile (PaymentSheet)
     tags: [capability, payments, mobile, expo]
 
-  # ─── Domains ────────────────────────────────────────
-  domain:shop:
-    path: modules/domains/shop.md
-    title: Shop — katalog, koszyk, zamówienia
-    tags: [domain, ecommerce]
-
   # ─── Patterns ───────────────────────────────────────
   pattern:capability-overview:
     path: modules/patterns/capability-overview.md
@@ -362,131 +356,37 @@ modules:
     title: Celery (async tasks)
     tags: [infra, tasks]
 
-default_bundles:
+bundles:
+  # Selektory wg tagów modułu + Tierów (zamiast sztywnych list — ADR-0001).
+  # `full` bierze wszystko; `tags: ["*"]` = każdy moduł z profilu.
   backend:
-    - core:repo-first
-    - core:language-pl
-    - core:external-knowledge
-    - core:typing-python
-    - stack:django-drf
-    - stack:django-drf:structure
-    - stack:django-drf:backend-standard
-    - stack:django-drf:backend-instructions
-    - stack:django-drf:testing
-    - arch:security
-    - arch:api-errors
-    - arch:observability
-    - arch:configuration
-    - arch:i18n
-    - pattern:capability-overview
-    - pattern:capability-provider
-    - pattern:providers-and-settings
-
+    tiers: [backend]
+    tags: [backend, capability]
+    exclude_tags: [mobile]
   frontend:
-    - core:repo-first
-    - core:language-pl
-    - core:external-knowledge
-    - core:typing-typescript
-    - arch:platforms
-    - stack:expo-router
-    - stack:expo-router:structure
-    - stack:expo-router:frontend-instructions
-    - stack:expo-router:mobile-native
-    - stack:expo-router:web-target
-    - stack:expo-router:testing
-    - arch:ui-ux-expo
-    - arch:api-errors
-    - arch:i18n
-    - arch:security
-    - pattern:capability-overview
-
+    tiers: [web, mobile]
+    tags: [frontend, mobile, web, capability]
   architecture:
-    - core:repo-first
-    - core:workflow
-    - core:code-review
-    - arch:platforms
-    - arch:monorepo-layout
-    - arch:api-contract
-    - arch:fe-be-separation
-    - pattern:capability-overview
-    - pattern:capability-provider
-    - pattern:providers-and-settings
-    - arch:ci-cd
-    - arch:testing
-    - arch:security
-    - arch:api-errors
-    - arch:observability
-    - arch:configuration
-    - arch:migrations
-    - arch:i18n
-
-  shop:
-    - domain:shop
-    - capability:files
-
-  payments:
-    - capability:payments
-    - capability:payments:expo-stripe
-    - stack:expo-router:web-target
-    - pattern:providers-and-settings
-
+    tiers: []
+    tags: [architecture]
   infra:
-    []
-
+    tiers: []
+    tags: [infra]
   devops:
-    - arch:ci-cd
-    - arch:testing
-    - arch:security
-    - arch:observability
-    - arch:configuration
-    - core:code-review
-
+    tiers: []
+    tags: [devops, infra]
+  payments:
+    tiers: []
+    tags: [payments]
   full:
-    - core:repo-first
-    - core:language-pl
-    - core:external-knowledge
-    - core:workflow
-    - core:code-review
-    - core:typing-typescript
-    - core:typing-python
-    - arch:platforms
-    - arch:monorepo-layout
-    - arch:api-contract
-    - arch:fe-be-separation
-    - arch:ui-ux-expo
-    - arch:ci-cd
-    - arch:testing
-    - arch:security
-    - arch:api-errors
-    - arch:observability
-    - arch:configuration
-    - arch:migrations
-    - arch:i18n
-    - stack:django-drf
-    - stack:django-drf:structure
-    - stack:django-drf:backend-standard
-    - stack:django-drf:backend-instructions
-    - stack:django-drf:testing
-    - stack:expo-router
-    - stack:expo-router:structure
-    - stack:expo-router:frontend-instructions
-    - stack:expo-router:mobile-native
-    - stack:expo-router:web-target
-    - stack:expo-router:testing
-    - capability:auth
-    - capability:files
-    - capability:payments
-    - capability:payments:expo-stripe
-    - domain:shop
-    - pattern:capability-overview
-    - pattern:capability-provider
-    - pattern:providers-and-settings
+    tiers: [backend, web, mobile]
+    tags: ["*"]
 
 # ─── Mapowania: Profil → Module ID ──────────────────────
 # ADR-0001: reguły włączania modułów żyją tutaj, nie w resolver.py.
 # Dodanie nowej technologii = plik .md + wpis w `modules` + wpis niżej. Zero Pythona.
 mappings:
-  # Stack rozwija się do listy modułów.
+  # Legacy `stacks:` z profilu (extends _base) — Tiery są w `tiers:` niżej.
   stacks:
     django-drf:
       - stack:django-drf
@@ -498,14 +398,50 @@ mappings:
       - stack:expo-router:structure
       - stack:expo-router:frontend-instructions
 
+  # Tier → Stack → moduły. Klucz `none` = pusty Tier (brak klucza = none).
+  # Nowy Stack (treść F) = pliki .md + wpisy tutaj. Zero Pythona.
+  tiers:
+    backend:
+      django:
+        - stack:django-drf
+        - stack:django-drf:structure
+        - stack:django-drf:backend-standard
+        - stack:django-drf:backend-instructions
+      django-html:
+        - stack:django:layout
+      fastapi:
+        - stack:fastapi:layout
+      flask:
+        - stack:flask:layout
+    web:
+      react:
+        - stack:frontend:react-web
+      react@legacy:
+        - stack:frontend:react-web
+      angular: []
+      angular@rxjs: []
+      expo:
+        - stack:expo-router
+        - stack:expo-router:structure
+        - stack:expo-router:frontend-instructions
+        - stack:expo-router:web-target
+        - stack:expo-router:testing
+    mobile:
+      expo:
+        - stack:expo-router
+        - stack:expo-router:structure
+        - stack:expo-router:frontend-instructions
+        - stack:expo-router:mobile-native
+        - stack:expo-router:testing
+      react-native:
+        - stack:frontend:react-native-split
+
   capabilities:
     auth: capability:auth
     files: capability:files
     payments: capability:payments
 
-  domains:
-    shop: domain:shop
-    ecommerce: domain:shop
+  domains: {}
 
   patterns:
     capability-provider: pattern:capability-provider

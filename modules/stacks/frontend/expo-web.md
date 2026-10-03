@@ -1,6 +1,6 @@
 # Frontend — Expo web only
 
-`--frontend expo` bez `--mobile`.
+Tier web: `expo`, Tier mobile: `none`.
 
 ```text
 frontend/

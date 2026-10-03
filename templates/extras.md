@@ -4,9 +4,9 @@
 > (design: `docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md`).
 > **Dziś** w runtime nadal używaj `.ai/project.md` + `--workspace` (albo skopiuj sekcje stąd).
 
-## Codegen (Orval — opcjonalnie)
+## Codegen (Orval — w profilu projektu)
 
-Ustaw **jedną** wartość — reviewery FE/BE i CI api-contract z niej korzystają:
+Ustaw **jedną** wartość w `.ai/project.profile.yaml` — reviewery FE/BE i CI api-contract z niej korzystają:
 
 ```text
 codegen: orval
@@ -18,7 +18,7 @@ codegen: orval
 | `none` | REST bez Orval — generyczny klient innym narzędziem albo ręczny fetch/typy |
 | `graphql` | GraphQL zamiast REST — patrz `arch:api-contract:graphql` |
 
-Docelowo to samo jako flaga MCP: `--codegen orval|none|graphql` (jeszcze nie w CLI).
+MCP `get_codegen` czyta ją z profilu (flaga `--codegen` wygrywa; bez pary backend + klient efektywny codegen to `none`).
 
 Gdy `orval`: po zmianie serializera/viewsetu/schema → `task ovral:generate` (lub task z Taskfile poniżej) → commit wygenerowanych plików.
 
@@ -27,7 +27,7 @@ Gdy `orval`: po zmianie serializera/viewsetu/schema → `task ovral:generate` (l
 Fakty produktu i lokalne nadpisania reguł kita:
 
 - Porty, Taskfile, Docker
-- Odstępstwa od kategorii (`--profile shop`) świadomie zaakceptowane
+- Odstępstwa od Tierów świadomie zaakceptowane
 
 W mcp.json (po implementacji):
 

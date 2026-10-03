@@ -36,7 +36,7 @@ Jesteś reviewerem frontendu (Expo Router / React / RN — wg overlay).
 ### Checklista MCP (przed oceną)
 
 1. `get_bundle("frontend")` — reguły z bundle.
-2. `get_overlay()` — odczytaj **`codegen:`**:
+2. `get_overlay()` + `codegen:` z profilu (MCP `get_codegen`):
    - `orval` (lub brak wpisu przy REST API) → po zmianie kontraktu API wymagaj regeneracji + commit klienta;
    - `manual` → ręczny klient musi być zaktualizowany świadomie;
    - `none` → brak generowanego klienta; nie wymagaj Orval.

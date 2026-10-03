@@ -10,7 +10,8 @@ alwaysApply: true
 | Zadanie | Źródło |
 |---------|--------|
 | Backend / frontend / arch / infra | MCP `project-guides` → `get_bundle` |
-| Porty, Taskfile, Docker, codegen | MCP `get_overlay` / `.ai/project.md` (`codegen: orval\|manual\|none`) |
+| Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
+| codegen | MCP `get_codegen` / `codegen:` w `.ai/project.profile.yaml` |
 | Docs bibliotek | Context7 (user MCP) |
 | Review stacku | **minimalny zestaw** (nie wszystkie `/review-*`) — `code-review.mdc` |
 | Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` |
@@ -22,7 +23,7 @@ alwaysApply: true
 | Worktree / finisz | Superpowers (opc.) na branchu z `/git-start` |
 | PR → CI green | Autopilot po `/git-end` |
 
-Moduły: `--preset` + opcjonalnie `.ai/project.md`.  
+Moduły: Tiery z `.ai/project.profile.yaml` + overlay `.ai/project.md`.  
 Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 
 **Wszystkie agenty:** `AGENTS.md` + `git-branch-pr.mdc`. Po PR — Autopilot; nie dubluj TDD.

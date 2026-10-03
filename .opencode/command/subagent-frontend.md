@@ -21,7 +21,7 @@ Zwykły review jak `/review-frontend`.
 ### Checklista MCP
 
 1. `get_bundle("frontend")`
-2. `get_overlay()` — **`codegen: orval|manual|none`**
+2. `get_overlay()` + `codegen:` z profilu (MCP `get_codegen`)
 3. BUGBOT.md — bez overlapu
 
 ### Format odpowiedzi (zawsze dwie sekcje)

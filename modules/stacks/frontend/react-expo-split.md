@@ -1,6 +1,6 @@
 # Frontend — React web + Expo mobile (split)
 
-`--frontend react` + `--mobile expo`.
+Tier web: `react`, Tier mobile: `expo` — dwa katalogi, współdzielone typy.
 
 ```text
 frontend/

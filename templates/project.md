@@ -6,7 +6,7 @@
 
 ## Codegen
 
-Źródło prawdy: MCP `get_codegen` / flaga `--codegen orval|none|graphql` w `.mcp.json` (nie ten plik).
+Źródło prawdy: MCP `get_codegen` / klucz `codegen: orval|none|graphql` w `.ai/project.profile.yaml` (nie ten plik).
 Domyślnie `orval`. Przy `orval`: po zmianie API → uruchom komendę regeneracji klienta
 (nazwa taska specyficzna dla tego repo — uzupełnij niżej) → commit klienta.
 
