@@ -1,9 +1,11 @@
 # Profil projektu — jedyne miejsce konfiguracji kita (Tiery zamiast presetów).
 # Jeden Tier = jeden Stack albo `none`. Puste Tiery = sam core.
 # Wariant starszego podejścia: `react@legacy`, `angular@rxjs`.
+# Po zmianie: `kit-ai reload` odświeża pliki kita (agenci, mcp.json, hooki).
 
 name: my-project
 language: pl
+clients: all
 
 backend: none
 web: none

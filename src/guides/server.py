@@ -8,7 +8,9 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from guides.bootstrap import BootstrapError, plan_bootstrap, run_bootstrap
+from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
+from guides.cli import SetupError, kit_source
+from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
     format_clients_arg,
@@ -18,7 +20,6 @@ from guides.kit_status import check_kit_updates
 from guides.manifest import load_manifest
 from guides.resolver import (
     MIGRATION_NOTICE,
-    normalize_codegen,
     normalize_language,
     resolve_workspace_profile,
 )
@@ -32,8 +33,8 @@ mcp = FastMCP(
         "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
         "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
         "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
-        "Pliki kita (hooki, agenci, komendy) instaluje bootstrap_workspace — jedyne narzędzie "
-        "zapisujące, domyślnie dry_run=True."
+        "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace — "
+        "jedyne narzędzia zapisujące, domyślnie dry_run=True."
     ),
 )
 
@@ -41,9 +42,7 @@ _kit_root: Path | None = None
 _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
 _language_override: str | None = None
-_codegen_override: str | None = None
 _clients: list[str] = ["all"]
-_preset: str | None = None
 _legacy_config: bool = False
 
 
@@ -54,7 +53,6 @@ def _get_resolved():
         kit_root=_kit_root,
         extra_overlays=_extra_overlays or None,
         language_override=_language_override,
-        codegen_override=_codegen_override,
         notice=MIGRATION_NOTICE if _legacy_config else "",
     )
 
@@ -170,7 +168,7 @@ def get_language() -> str:
 @mcp.tool()
 def get_codegen() -> str:
     """
-    Aktualny wybór generatora klienta API (``--codegen`` / `codegen:` w profilu).
+    Aktualny wybór generatora klienta API (`codegen:` w profilu — jedyne źródło, ADR-0007).
 
     Returns:
         str: Markdown — ``orval`` (schema → `frontend/src/api/generated` + mutatory),
@@ -200,9 +198,8 @@ def get_codegen() -> str:
     lines = [
         f"# Codegen: `{codegen}`",
         "",
-        f"- Override CLI/env: `{_codegen_override or '—'}` "
-        f"(GUIDES_CODEGEN / `--codegen` wygrywa z `codegen:` w profilu; "
-        f"bez pary backend + klient (web/mobile) efektywny codegen to `none`)",
+        "- Źródło: `codegen:` w `.ai/project.profile.yaml` (bez pary backend + klient "
+        "(web/mobile) efektywny codegen to `none`)",
         "",
         detail,
         "",
@@ -241,32 +238,94 @@ def _require_workspace() -> Path:
     return _workspace_root
 
 
-def _bootstrap_kwargs(
-    clients: str | None,
-    preset: str | None,
-    language: str | None,
-    codegen: str | None,
-) -> dict:
+def _bootstrap_kwargs(clients: str | None, language: str | None) -> dict:
     """Złóż flagi bootstrapu: jawne argumenty narzędzia > ustawienia startowe serwera."""
     resolved = _get_resolved()
     return {
         "kit_root": resolved.kit_root,
         "clients": format_clients_arg(parse_clients(clients) if clients else _clients),
-        "preset": preset or _preset or "_base",
         "language": normalize_language(language) if language else resolved.language,
-        "codegen": (
-            normalize_codegen(codegen, load_manifest(_kit_root)) if codegen else resolved.codegen
-        ),
-        "from_src": str(resolved.kit_root),
+        "from_src": kit_source(resolved.kit_root).value,
     }
+
+
+def _plan_lines(plan: BootstrapPlan) -> list[str]:
+    """Sekcje planu dry-runu: nowe / nadpisane / usunięte + licznik bez zmian."""
+    lines: list[str] = []
+    for title, paths in (
+        ("Nowe pliki", plan.created),
+        ("Nadpisane", plan.modified),
+        ("Usunięte przy sprzątaniu klientów", plan.deleted),
+    ):
+        if paths:
+            lines.append(f"## {title} ({len(paths)})")
+            lines.append("")
+            lines.extend(f"- `{p}`" for p in paths)
+            lines.append("")
+    if plan.unchanged:
+        # Świadomie licznik, nie sekcja: przy `--clients all` to grubo ponad sto
+        # plików, których bootstrap i tak nie tknie. Nagłówek `##` obiecywałby
+        # wyliczenie, więc raport urywałby się na pustej sekcji.
+        lines.append(
+            f"Bez zmian: {len(plan.unchanged)} plików kita już zgodnych "
+            "z tą wersją (nie wyliczam ich)."
+        )
+        lines.append("")
+    if not plan.touches_disk:
+        lines.append("Repo jest już zbootstrapowane tymi flagami — nic by się nie zmieniło.")
+        lines.append("")
+    return lines
+
+
+@mcp.tool()
+def reload_workspace(dry_run: bool = True) -> str:
+    """
+    Odśwież pliki kita z Profilu repo (to samo co ``kit-ai reload``).
+
+    Język i klienci z ``.ai/project.profile.yaml``; ``.ai/project.md`` nietknięty.
+    Repo ze starą konfiguracją (stamp z presetem, bez Profilu) dostaje Profil
+    core + none i nowy mcp.json. ``dry_run=True`` (domyślnie) nic nie zapisuje.
+
+    Args:
+        dry_run: ``True`` — tylko plan z sandboxu. ``False`` — faktyczny zapis.
+
+    Returns:
+        str: Markdown — plan albo raport z odświeżenia.
+    """
+    try:
+        workspace = _require_workspace()
+        settings, result = reload_workspace_files(
+            workspace, _get_resolved().kit_root, dry_run=dry_run
+        )
+    except (SetupError, BootstrapError, ValueError) as exc:
+        return f"# reload_workspace: błąd\n\n{exc}"
+    header = [
+        f"- Workspace: `{workspace}`",
+        f"- Z Profilu: `--language {settings.language} --clients {settings.clients}`",
+    ]
+    if settings.migrated:
+        header.append("- Migracja: stara konfiguracja (preset) → Profil core + none")
+    header.append("")
+    if isinstance(result, BootstrapPlan):
+        return "\n".join(
+            [
+                "# reload_workspace — dry run (nic nie zapisano)",
+                "",
+                *header,
+                *_plan_lines(result),
+                "Żeby zastosować: wywołaj ponownie z `dry_run=False`.",
+            ]
+        )
+    return "\n".join(
+        ["# reload_workspace — odświeżono", "", *header, "```", result, "```", ""]
+        + ["- Zrestartuj IDE w repo aplikacji, żeby wczytało hooki i komendy."]
+    )
 
 
 @mcp.tool()
 def bootstrap_workspace(
     clients: str | None = None,
-    preset: str | None = None,
     language: str | None = None,
-    codegen: str | None = None,
     with_overlay: bool = False,
     keep_unselected_clients: bool = False,
     dry_run: bool = True,
@@ -288,9 +347,7 @@ def bootstrap_workspace(
     Args:
         clients: ``--clients``: all | cursor | claude | codex | vscode | kiro | kilo |
             antigravity | opencode (po przecinku). Domyślnie: wartość startowa serwera.
-        preset: DEPRECATED — przekazywane do ``bootstrap-project.sh`` (do czasu B).
         language: Język prozy ``pl``/``en``. Domyślnie: język bieżącego profilu.
-        codegen: ``orval``/``none``/``graphql``. Domyślnie: codegen bieżącego profilu.
         with_overlay: Skopiuj szablon ``.ai/project.md``, jeśli repo go nie ma.
         keep_unselected_clients: Nie usuwaj kitowych plików klientów spoza ``clients``.
         dry_run: ``True`` (domyślnie) — tylko plan. ``False`` — faktyczny zapis.
@@ -300,7 +357,7 @@ def bootstrap_workspace(
     """
     try:
         workspace = _require_workspace()
-        kwargs = _bootstrap_kwargs(clients, preset, language, codegen)
+        kwargs = _bootstrap_kwargs(clients, language)
         if kwargs["kit_root"].resolve() == workspace.resolve():
             raise BootstrapError(
                 f"Workspace i kit to ten sam katalog (`{workspace}`). Bootstrap uruchamia się "
@@ -310,10 +367,7 @@ def bootstrap_workspace(
             with_overlay=with_overlay,
             keep_unselected_clients=keep_unselected_clients,
         )
-        flags = (
-            f"--preset {kwargs['preset']} --language {kwargs['language']} "
-            f"--codegen {kwargs['codegen']} --clients {kwargs['clients']}"
-        )
+        flags = f"--language {kwargs['language']} --clients {kwargs['clients']}"
         header = [
             f"- Workspace: `{workspace}`",
             f"- Kit: `{kwargs['kit_root']}`",
@@ -323,31 +377,12 @@ def bootstrap_workspace(
 
         if dry_run:
             plan = plan_bootstrap(workspace_root=workspace, **kwargs)
-            lines = ["# bootstrap_workspace — dry run (nic nie zapisano)", "", *header]
-            for title, paths in (
-                ("Nowe pliki", plan.created),
-                ("Nadpisane", plan.modified),
-                ("Usunięte przy sprzątaniu klientów", plan.deleted),
-            ):
-                if paths:
-                    lines.append(f"## {title} ({len(paths)})")
-                    lines.append("")
-                    lines.extend(f"- `{p}`" for p in paths)
-                    lines.append("")
-            if plan.unchanged:
-                # Świadomie licznik, nie sekcja: przy `--clients all` to grubo ponad sto
-                # plików, których bootstrap i tak nie tknie. Nagłówek `##` obiecywałby
-                # wyliczenie, więc raport urywałby się na pustej sekcji.
-                lines.append(
-                    f"Bez zmian: {len(plan.unchanged)} plików kita już zgodnych "
-                    "z tą wersją (nie wyliczam ich)."
-                )
-                lines.append("")
-            if not plan.touches_disk:
-                lines.append(
-                    "Repo jest już zbootstrapowane tymi flagami — nic by się nie zmieniło."
-                )
-                lines.append("")
+            lines = [
+                "# bootstrap_workspace — dry run (nic nie zapisano)",
+                "",
+                *header,
+                *_plan_lines(plan),
+            ]
             lines.append(
                 "Żeby zastosować: wywołaj ponownie z `dry_run=False`. To jedyne narzędzie "
                 "MCP tego serwera, które pisze po repo — hooki kita go nie zatrzymają."
@@ -456,7 +491,7 @@ def _register_bundle_resources() -> None:
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
     global _kit_root, _workspace_root, _extra_overlays
-    global _language_override, _codegen_override, _clients, _preset, _legacy_config
+    global _language_override, _clients, _legacy_config
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -486,16 +521,9 @@ def main() -> None:
         choices=("pl", "en", "PL", "EN"),
         help="Język prozy instrukcji (pl|en); tytuły issue/PR zawsze EN. Domyślnie: profil lub pl",
     )
-    parser.add_argument(
-        "--codegen",
-        required=False,
-        choices=("orval", "none", "graphql", "ORVAL", "NONE", "GRAPHQL"),
-        help=(
-            "Generator klienta API: orval (schema → frontend/src/api/generated + mutatory) "
-            "| none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast REST). "
-            "Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`"
-        ),
-    )
+    # Konfiguracje klienta sprzed ADR-0007 wciąż podają `--codegen` — serwer ma wystartować
+    # z ostrzeżeniem o migracji, nie paść na argparse; `kit-ai reload` je przepisze.
+    parser.add_argument("--codegen", required=False, help=argparse.SUPPRESS)
     parser.add_argument(
         "--kit-root",
         required=False,
@@ -530,24 +558,19 @@ def main() -> None:
     if lang_cli:
         _language_override = normalize_language(lang_cli)
 
-    codegen_cli = args.codegen or os.environ.get("GUIDES_CODEGEN")
-    if codegen_cli:
-        # Dozwolone wartości zna manifest (mappings.substitutions.codegen), nie ten plik.
-        _codegen_override = normalize_codegen(codegen_cli, load_manifest(_kit_root))
-
     clients_raw = args.clients if args.clients is not None else os.environ.get("GUIDES_CLIENTS")
     try:
         _clients = parse_clients(clients_raw)
     except ValueError as exc:
         parser.error(f"--clients: {exc}")
 
-    preset = args.preset or os.environ.get("GUIDES_PRESET")
-    _preset = preset
     _legacy_config = bool(
         args.preset
         or args.profile
+        or args.codegen
         or os.environ.get("GUIDES_PRESET")
         or os.environ.get("GUIDES_PROFILE")
+        or os.environ.get("GUIDES_CODEGEN")
     )
 
     if _workspace_root is None:

@@ -134,9 +134,9 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
             "# Kit status: brak stampu\n\n"
             f"Nie znaleziono `{STAMP_REL_PATH}` w repo aplikacji — projekt nie był "
             "bootstrapowany wersją kita ze stampem (albo plik usunięty).\n\n"
-            "Załóż go narzędziem MCP `bootstrap_workspace` — najpierw bez argumentów "
-            "(dry run pokaże listę plików), potem `dry_run=False` żeby zainstalować. "
-            "Alternatywa bez MCP: lokalny klon kita i `bootstrap-project.sh`."
+            "Z klona kita: `kit-ai install <repo>` (nowy projekt) albo `kit-ai reload <repo>` "
+            "(stara konfiguracja). Z agenta: narzędzie MCP `reload_workspace` albo "
+            "`bootstrap_workspace` — najpierw dry run, potem `dry_run=False`."
         )
 
     stamp_commit = stamp.get("kit_commit") or ""
@@ -199,8 +199,8 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
         lines.extend(f"- `{f}`" for f in overwritten)
         lines.append("")
         lines.append(
-            "Zaktualizuj narzędziem MCP `bootstrap_workspace` (dry run najpierw) albo "
-            "ponownym `bootstrap-project.sh` z tymi samymi flagami co poprzednio. "
+            "Zaktualizuj: `kit-ai reload` z klona kita albo narzędzie MCP `reload_workspace` "
+            "(dry run najpierw) — język i klienci biorą się z Profilu. "
             "**Nadpisze** `.claude/agents/`, `.claude/commands/`, `.claude/hooks/`, "
             "`.codex/skills/`, `.github/prompts/`, `mcp.json` — jeśli je ręcznie "
             "edytowałeś, zrób `git diff` najpierw."
