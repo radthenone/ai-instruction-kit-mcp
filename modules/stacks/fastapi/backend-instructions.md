@@ -65,8 +65,10 @@ async def create_order(payload: OrderCreate, session: SessionDep, user: CurrentU
   `session.get(Order, id)`. Bez `session.query(...)` (styl 1.x).
 - Async + relacje: jawne ładowanie (`selectinload`, `joinedload`) — leniwe ładowanie
   w async rzuca `MissingGreenlet`. Pętla po wynikach bez eager loadingu = N+1.
-- Transakcja w serwisie: `async with session.begin():` albo jawne `commit()`; endpoint
-  nie commituje. `expire_on_commit=False` w `async_sessionmaker`, gdy zwracasz obiekt po commicie.
+- Transakcja w serwisie: jawne `await session.commit()`; endpoint nie commituje. Bez
+  `async with session.begin():` na sesji z `SessionDep` — zależności (np. `CurrentUserDep`)
+  już ją użyły, transakcja jest otwarta i `begin()` rzuca `InvalidRequestError`.
+  `expire_on_commit=False` w `async_sessionmaker`, gdy zwracasz obiekt po commicie.
 
 ## Alembic
 
