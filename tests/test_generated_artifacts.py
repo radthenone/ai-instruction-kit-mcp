@@ -81,6 +81,9 @@ class TestDogfoodCopies(unittest.TestCase):
         cls._tmp = tempfile.mkdtemp(prefix="kit-dogfood-")
         target = Path(cls._tmp) / "generated"
         boot = KIT_ROOT / "scripts" / "bootstrap-project.sh"
+        # Ten sam Profil co repo kita — od jego Tierów zależy, którzy agenci się instalują.
+        (target / ".ai").mkdir(parents=True)
+        shutil.copy2(KIT_ROOT / ".ai" / "project.profile.yaml", target / ".ai" / "project.profile.yaml")
 
         # Windows nie umie odpalić `.sh` przez CreateProcess (WinError 193) — bootstrap
         # trzeba podać bashowi jawnie, tak samo jak robią to pozostałe suity.
@@ -127,7 +130,11 @@ class TestDogfoodCopies(unittest.TestCase):
             for rel_dir in DOGFOOD_DIRS:
                 in_repo = KIT_ROOT / rel_dir / agent.name
                 expected = self.generated / rel_dir / agent.name
-                if not in_repo.is_file():
+                if not expected.is_file():
+                    # Agent Tieru, którego Profil repo nie wybiera — kopii ma nie być.
+                    if in_repo.is_file():
+                        stale.append(f"{rel_dir}/{agent.name} — kopia agenta spoza Tierów Profilu")
+                elif not in_repo.is_file():
                     stale.append(f"{rel_dir}/{agent.name} — brak kopii w repo")
                 elif in_repo.read_text(encoding="utf-8") != expected.read_text(encoding="utf-8"):
                     stale.append(f"{rel_dir}/{agent.name} — kopia rozjechała się ze źródłem")

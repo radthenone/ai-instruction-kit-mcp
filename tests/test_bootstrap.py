@@ -316,6 +316,64 @@ class TestRealRun(_BootstrapTestCase):
             self.assertIn("bootstrap-project.sh", str(ctx.exception))
 
 
+BACKEND_AGENTS = {"review-backend", "teacher-backend", "subagent-backend"}
+CLIENT_AGENTS = {"review-frontend", "teacher-frontend", "subagent-frontend", "review-ui"}
+
+
+class TestTierAgents(_BootstrapTestCase):
+    """Agenci Stacku tylko dla wybranych Tierów; treść bez Stacka na sztywno."""
+
+    def _bootstrap(self, workspace: Path, backend: str, web: str, mobile: str) -> set[str]:
+        (workspace / ".ai").mkdir(parents=True, exist_ok=True)
+        (workspace / ".ai" / "project.profile.yaml").write_text(
+            f"name: t\nbackend: {backend}\nweb: {web}\nmobile: {mobile}\n", encoding="utf-8"
+        )
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex,opencode")
+        return {p.stem for p in (workspace / ".claude" / "agents").glob("*.md")}
+
+    def test_agents_follow_tiers(self) -> None:
+        cases = {
+            ("none", "none", "none"): set(),
+            ("fastapi", "none", "none"): BACKEND_AGENTS,
+            ("none", "react", "none"): CLIENT_AGENTS,
+            ("none", "none", "expo"): CLIENT_AGENTS,
+            ("django", "react", "none"): BACKEND_AGENTS | CLIENT_AGENTS,
+        }
+        for tiers, expected in cases.items():
+            with self.subTest(tiers=tiers), tempfile.TemporaryDirectory() as tmp:
+                workspace = Path(tmp) / "app"
+                installed = self._bootstrap(workspace, *tiers)
+                self.assertEqual(installed & (BACKEND_AGENTS | CLIENT_AGENTS), expected)
+                self.assertIn("review-architecture", installed)
+                self.assertIn("teacher-architecture", installed)
+                codex = {p.name for p in (workspace / ".codex" / "skills").iterdir()}
+                self.assertEqual(codex & (BACKEND_AGENTS | CLIENT_AGENTS), expected)
+                bugbot = (workspace / "BUGBOT.md").read_text(encoding="utf-8")
+                self.assertEqual("## Backend" in bugbot, "fastapi" in tiers or "django" in tiers)
+                self.assertNotIn("<!-- tier:", bugbot)
+
+    def test_tier_set_to_none_removes_its_agents(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self.assertEqual(self._bootstrap(workspace, "django", "none", "none") & BACKEND_AGENTS, BACKEND_AGENTS)
+            self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
+            for rel in (".claude/commands/review-backend.md", ".codex/skills/review-backend",
+                        ".opencode/command/review-backend.md"):
+                self.assertFalse((workspace / rel).exists(), rel)
+
+    def test_installed_descriptions_name_no_stack(self) -> None:
+        """Opis agenta nie zakłada Django/Expo — Stack przychodzi z Bundle'a."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._bootstrap(workspace, "fastapi", "react", "expo")
+            for agent in (workspace / ".claude" / "agents").glob("*.md"):
+                text = agent.read_text(encoding="utf-8")
+                description = next(l for l in text.splitlines() if l.startswith("description:"))
+                with self.subTest(agent=agent.name):
+                    self.assertNotRegex(description, "Django|DRF|Expo")
+                    self.assertNotIn("\ntier:", text)
+
+
 class TestServerTool(_BootstrapTestCase):
     """Narzędzie MCP — domyślki, bramka dry-run i odmowy."""
 

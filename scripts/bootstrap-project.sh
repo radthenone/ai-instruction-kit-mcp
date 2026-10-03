@@ -440,6 +440,97 @@ warn_tracked_machine_files() {
   echo "  git -C \"$TARGET\" rm --cached $tracked"
 }
 
+# Tiery z Profilu: `backend` gdy Tier backend wybrany, `client` gdy web lub mobile.
+# Bez PyYAML (bootstrap leci na systemowym Pythonie) — Profil ma płaskie klucze Tierów.
+# Legacy `stacks:` liczy się do Tierów tak jak w resolverze (`_filled_tiers`).
+profile_tiers() {
+  "$PYTHON_BIN" - "$TARGET/.ai/project.profile.yaml" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8") if path.is_file() else ""
+empty = {"", "none", "null", "~", "false", "0", "no"}
+filled = set()
+for tier in ("backend", "web", "mobile"):
+    match = re.search(rf"^{tier}:[ \t]*['\"]?([^'\"\s#]*)", text, re.MULTILINE)
+    if match and match.group(1).lower() not in empty:
+        filled.add(tier)
+legacy = re.search(r"^stacks:[ \t]*\n((?:[ \t]+\S.*\n?)*)", text, re.MULTILINE)
+for name, value in re.findall(r"^[ \t]+([\w-]+):[ \t]*(.*)$", legacy.group(1) if legacy else "", re.MULTILINE):
+    if value.strip().strip("'\"").lower() in empty:
+        continue
+    if name == "django-drf":
+        filled.add("backend")
+    elif name == "expo-router":
+        filled.update({"web", "mobile"})
+tags = (["backend"] if "backend" in filled else []) + (["client"] if filled & {"web", "mobile"} else [])
+print(" ".join(tags))
+PY
+}
+
+# Agenci z `tier:` we frontmatterze trafiają do klienta tylko przy wybranym Tierze
+# (`backend` / `client` = web lub mobile). Staging w katalogu tymczasowym, bez linii
+# `tier:` — wszystkie instalatory niżej czytają już przefiltrowany zestaw. Na stdout:
+# nazwy pominiętych agentów (do sprzątnięcia z poprzedniego Bootstrapu).
+stage_shared_agents() {
+  local dest="$1"
+  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+chosen = set(os.environ["TIERS"].split())
+dest = Path(os.environ["DEST"])
+for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
+    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+    end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    tier = next(
+        (line.partition(":")[2].strip() for line in lines[1:end] if line.startswith("tier:")),
+        None,
+    )
+    if tier and tier not in chosen:
+        print(src.stem)
+        continue
+    kept = [line for i, line in enumerate(lines) if not (0 < i < end and line.startswith("tier:"))]
+    (dest / src.name).write_text("".join(kept), encoding="utf-8", newline="\n")
+PY
+}
+
+# Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
+# (mapa 1:1 z copy_shared_agents / copy_claude_commands / install_codex_agents /
+# render_agent_commands). Tier zmieniony na `none` = agenci znikają przy reload.
+prune_tier_agents() {
+  local name
+  for name in $SKIPPED_AGENTS; do
+    rm -f "$TARGET/.claude/agents/$name.md" "$TARGET/.claude/commands/$name.md" \
+      "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
+      "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
+      "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
+    rm -rf "$TARGET/.codex/skills/$name"
+  done
+}
+
+# Sekcje `<!-- tier:X -->…<!-- /tier:X -->` w BUGBOT.md zostają tylko dla wybranych Tierów.
+copy_bugbot_md() {
+  SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" DEST="$1" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
+import os
+import re
+from pathlib import Path
+
+chosen = set(os.environ["TIERS"].split())
+text = Path(os.environ["SRC"]).read_text(encoding="utf-8")
+
+
+def keep(match: re.Match) -> str:
+    return match.group(2).strip("\n") + "\n" if match.group(1) in chosen else ""
+
+
+text = re.sub(r"<!-- tier:(\w+) -->\n(.*?)<!-- /tier:\1 -->\n?", keep, text, flags=re.DOTALL)
+Path(os.environ["DEST"]).write_text(re.sub(r"\n{3,}", "\n\n", text), encoding="utf-8", newline="\n")
+PY
+}
+
 copy_shared_agents() {
   local dest_dir="$1"
   if [[ "$SKIP_AGENTS" -ne 0 ]]; then
@@ -498,7 +589,7 @@ install_agenty_md_once() {
 # BugBot, która czyta z tamtej ścieżki; ta funkcja to nie duplikat, to inny konsument.
 install_bugbot_md_once() {
   if [[ ! -f "$TARGET/BUGBOT.md" ]]; then
-    cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/BUGBOT.md"
+    copy_bugbot_md "$TARGET/BUGBOT.md"
     echo "  + BUGBOT.md (root — dla /review-bugbot wszystkich klientów)"
   fi
 }
@@ -529,7 +620,7 @@ install_cursor() {
   cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
   if [[ ! -f "$TARGET/.cursor/BUGBOT.md" ]]; then
-    cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/.cursor/BUGBOT.md"
+    copy_bugbot_md "$TARGET/.cursor/BUGBOT.md"
   fi
 
   copy_shared_agents "$TARGET/.cursor/agents"
@@ -738,8 +829,25 @@ echo "  clients=$CLIENTS_ARG"
 echo "  from=$FROM_SRC"
 
 mkdir -p "$TARGET/.ai"
+# Profil przed wszystkim innym — z niego biorą się Tiery (agenci, BUGBOT.md).
+if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
+  sed -e "s/^name: my-project$/name: $(basename "$TARGET")/" \
+    -e "s/^language: .*/language: $LANGUAGE/" \
+    -e "s/^clients: .*/clients: $CLIENTS_ARG/" \
+    "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
+  echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
+fi
+
+PROFILE_TIERS="$(profile_tiers)"
+STAGED_AGENTS="$(mktemp -d)"
+trap 'rm -rf "$STAGED_AGENTS"' EXIT
+SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
+SHARED_AGENTS="$STAGED_AGENTS"
+echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, client → *-frontend, review-ui)"
+
 install_agenty_md_once
 install_bugbot_md_once
+prune_tier_agents
 
 if [[ "$PRUNE_CLIENTS" -eq 1 ]]; then
   prune_unselected_clients
@@ -771,14 +879,6 @@ elif [[ "$NEED_GIT_HOOK" -eq 1 ]] && client_enabled cursor; then
   if [[ ! -f "$TARGET/git-hooks/pre-push" ]] && [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
     install_git_pre_push_reminder
   fi
-fi
-
-if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
-  sed -e "s/^name: my-project$/name: $(basename "$TARGET")/" \
-    -e "s/^language: .*/language: $LANGUAGE/" \
-    -e "s/^clients: .*/clients: $CLIENTS_ARG/" \
-    "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
-  echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
 fi
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then

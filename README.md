@@ -260,6 +260,8 @@ Szkic (nie działa jeszcze):
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
+**Agenci per Tier:** agenci z `tier:` we frontmatterze (`templates/shared/agents/`) trafiają do klienta tylko przy wybranym Tierze — `tier: backend` (`review-backend`, `teacher-backend`, `subagent-backend`) gdy `backend ≠ none`, `tier: client` (`review-frontend`, `teacher-frontend`, `subagent-frontend`, `review-ui`) gdy `web` lub `mobile ≠ none`. Tier zmieniony na `none` + `kit-ai reload` = ich pliki znikają u wszystkich klientów. Agenci nie zakładają Stacka — biorą go z `get_bundle`. `BUGBOT.md` dostaje sekcje (`<!-- tier:backend -->`, `<!-- tier:client -->`) tylko wybranych Tierów.
+
 Zapisuje m.in. MCP per klient (`--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
