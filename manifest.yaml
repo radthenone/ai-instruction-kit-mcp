@@ -268,6 +268,17 @@ modules:
     title: React 16–18 — hooki, ręczna memoizacja, migracja
     tags: [frontend, web, react]
 
+  # ─── Stacks: Angular (web) ──────────────────────────
+  stack:angular:
+    path: modules/stacks/angular/overview.md
+    title: Angular — przegląd (web)
+    tags: [frontend, web, angular]
+
+  stack:angular:modern:
+    path: modules/stacks/angular/modern.md
+    title: Angular — standalone, signals, @if/@for, inject()
+    tags: [frontend, web, angular]
+
   # ─── Stacks: Expo Router (legacy detail modules) ────
   stack:expo-router:
     path: modules/stacks/expo-router/overview.md
@@ -484,8 +495,11 @@ mappings:
       react@legacy:
         - stack:react
         - stack:react:legacy
-      angular: []
-      angular@rxjs: []
+      angular:
+        - stack:angular
+        - stack:angular:modern
+      angular@rxjs:
+        - stack:angular
       expo:
         - stack:expo-router
         - stack:expo-router:structure
