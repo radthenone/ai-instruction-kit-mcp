@@ -18,6 +18,7 @@ from guides.clients import (
 )
 from guides.kit_status import check_kit_updates
 from guides.manifest import load_manifest
+from guides.questions import render_catalog
 from guides.resolver import (
     MIGRATION_NOTICE,
     normalize_language,
@@ -206,6 +207,23 @@ def get_codegen() -> str:
         f"Moduł: `arch:api-contract{module_suffix}`.",
     ]
     return "\n".join(lines)
+
+
+@mcp.tool()
+def list_questions() -> str:
+    """
+    Katalog pytań o projekt (Tiery, warianty, codegen, architektura, ścieżki).
+
+    Warunki ocenione na bieżącym Profilu; sygnały wykrywania (glob + regex treści)
+    sprawdza agent w plikach repo. Zawiera też podpowiedź układu katalogów dla
+    wybranych Tierów web/mobile.
+
+    Returns:
+        str: Markdown — aktywne pytania z opcjami, domyślnymi, miejscem zapisu i sygnałami.
+    """
+    resolved = _get_resolved()
+    values = {**resolved.tiers, "codegen": resolved.codegen}
+    return render_catalog(load_manifest(_kit_root), values)
 
 
 @mcp.tool()

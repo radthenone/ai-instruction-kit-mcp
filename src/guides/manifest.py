@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -165,6 +165,73 @@ class Mappings:
         return self.name_aliases.get(name, name)
 
 
+NOT_NONE = "!none"
+
+
+@dataclass(frozen=True)
+class Condition:
+    """Warunek na Profilu: ``all`` — każdy klucz pasuje, ``any`` — choć jeden."""
+
+    all: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    any: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def holds(self, values: dict[str, str]) -> bool:
+        """
+        Czy warunek jest spełniony dla wartości Profilu.
+
+        Args:
+            values: Klucz Profilu → wartość (Tiery znormalizowane, brak = ``none``).
+
+        Returns:
+            bool: ``True`` gdy pasują wszystkie ``all`` i choć jedno ``any``.
+        """
+
+        def matches(key: str, allowed: tuple[str, ...]) -> bool:
+            value = values.get(key, "none")
+            return value in allowed or (NOT_NONE in allowed and value != "none")
+
+        if not all(matches(key, allowed) for key, allowed in self.all.items()):
+            return False
+        return not self.any or any(matches(key, allowed) for key, allowed in self.any.items())
+
+
+@dataclass(frozen=True)
+class Signal:
+    """Sygnał wykrywania: plik pasujący do ``glob`` (i ``pattern`` w treści) → ``value``."""
+
+    glob: str
+    value: str
+    pattern: str | None = None
+
+
+@dataclass(frozen=True)
+class Question:
+    """Pytanie o projekt z katalogu manifestu."""
+
+    question_id: str
+    question: str
+    sets: str
+    options: tuple[str, ...]
+    default: str
+    defaults: tuple[tuple[Condition, str], ...]
+    when: Condition
+    detect: tuple[Signal, ...]
+    on_yes: dict[str, tuple[str, ...]]
+
+    def default_for(self, values: dict[str, str]) -> str:
+        """Domyślna odpowiedź dla Profilu — pierwsza pasująca z ``defaults``, inaczej ``default``."""
+        return next((value for cond, value in self.defaults if cond.holds(values)), self.default)
+
+
+@dataclass(frozen=True)
+class LayoutHint:
+    """Podpowiedź układu katalogów (moduł spoza Bundli) albo ostrzeżenie dla kombinacji Tierów."""
+
+    when: Condition
+    module: str | None = None
+    warning: str | None = None
+
+
 @dataclass(frozen=True)
 class Manifest:
     """Zmanifestowana kolekcja modułów, domyślnych bundle'i i mapowań."""
@@ -173,6 +240,8 @@ class Manifest:
     modules: dict[str, ModuleInfo]
     bundles: dict[str, BundleRule]
     mappings: Mappings
+    questions: dict[str, Question] = field(default_factory=dict)
+    layouts: tuple[LayoutHint, ...] = ()
 
 
 def find_kit_root(start: Path | None = None) -> Path:
@@ -251,11 +320,74 @@ def load_manifest(kit_root: Path | None = None) -> Manifest:
             )
         }
 
+    mappings = _load_mappings(raw.get("mappings", {}))
     return Manifest(
         kit_root=root,
         modules=modules,
         bundles=bundles,
-        mappings=_load_mappings(raw.get("mappings", {})),
+        mappings=mappings,
+        questions={
+            str(qid): _question(str(qid), meta or {}, mappings)
+            for qid, meta in (raw.get("questions") or {}).items()
+        },
+        layouts=tuple(
+            LayoutHint(
+                when=_condition(entry.get("when")),
+                module=entry.get("module"),
+                warning=entry.get("warning"),
+            )
+            for entry in raw.get("layouts") or []
+        ),
+    )
+
+
+def _condition(raw: dict[str, Any] | None) -> Condition:
+    """Warunek ``when:`` z YAML (``all`` / ``any``: klucz → lista wartości)."""
+    raw = raw or {}
+
+    def section(name: str) -> dict[str, tuple[str, ...]]:
+        return {
+            str(key): tuple(str(v) for v in (values if isinstance(values, list) else [values]))
+            for key, values in (raw.get(name) or {}).items()
+        }
+
+    return Condition(all=section("all"), any=section("any"))
+
+
+def _question(question_id: str, raw: dict[str, Any], mappings: Mappings) -> Question:
+    """
+    Pytanie z sekcji ``questions``.
+
+    Pytanie o Tier bez ``options:`` dostaje Stacki z ``mappings.tiers`` + ``none`` —
+    nowy Stack w manifeście od razu jest opcją, bez drugiej listy.
+    """
+    sets = str(raw.get("sets", ""))
+    options = [str(o) for o in raw.get("options") or []]
+    if not options and sets in mappings.tiers:
+        options = ["none", *mappings.tiers[sets]]
+    return Question(
+        question_id=question_id,
+        question=str(raw.get("question", question_id)),
+        sets=sets,
+        options=tuple(options),
+        default=str(raw.get("default", "")),
+        defaults=tuple(
+            (_condition(entry.get("when")), str(entry.get("value", "")))
+            for entry in raw.get("defaults") or []
+        ),
+        when=_condition(raw.get("when")),
+        detect=tuple(
+            Signal(
+                glob=str(entry["glob"]),
+                value=str(entry.get("value", "")),
+                pattern=str(entry["pattern"]) if entry.get("pattern") else None,
+            )
+            for entry in raw.get("detect") or []
+        ),
+        on_yes={
+            str(key): tuple(str(v) for v in values)
+            for key, values in (raw.get("on_yes") or {}).items()
+        },
     )
 
 
