@@ -355,7 +355,11 @@ class TestTierAgents(_BootstrapTestCase):
     def test_tier_set_to_none_removes_its_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
+            self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
+            self.assertNotIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
             self.assertEqual(self._bootstrap(workspace, "django", "none", "none") & BACKEND_AGENTS, BACKEND_AGENTS)
+            # Nietknięty BUGBOT.md podąża za Tierami (install zawsze zaczyna od `none`).
+            self.assertIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
             self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
             for rel in (".claude/commands/review-backend.md", ".codex/skills/review-backend",
                         ".opencode/command/review-backend.md"):
