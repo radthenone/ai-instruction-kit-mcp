@@ -284,6 +284,27 @@ modules:
     title: Angular — NgModule + RxJS, migracja w stronę signals
     tags: [frontend, web, angular]
 
+  # ─── Stacks: React Native (mobile) ──────────────────
+  stack:react-native:
+    path: modules/stacks/react-native/overview.md
+    title: React Native — przegląd (mobile)
+    tags: [frontend, mobile, react-native]
+
+  stack:react-native:structure:
+    path: modules/stacks/react-native/structure.md
+    title: Struktura katalogów — React Native
+    tags: [frontend, mobile, react-native]
+
+  stack:react-native:mobile-instructions:
+    path: modules/stacks/react-native/mobile-instructions.md
+    title: Instrukcje agenta — mobile React Native
+    tags: [frontend, mobile, react-native]
+
+  stack:react-native:testing:
+    path: modules/stacks/react-native/testing.md
+    title: Testing — React Native (Jest + RNTL, e2e)
+    tags: [frontend, mobile, react-native, testing]
+
   # ─── Stacks: Expo Router (legacy detail modules) ────
   stack:expo-router:
     path: modules/stacks/expo-router/overview.md
@@ -519,7 +540,11 @@ mappings:
         - stack:expo-router:frontend-instructions
         - stack:expo-router:mobile-native
         - stack:expo-router:testing
-      react-native: []
+      react-native:
+        - stack:react-native
+        - stack:react-native:structure
+        - stack:react-native:mobile-instructions
+        - stack:react-native:testing
 
   capabilities:
     auth: capability:auth
