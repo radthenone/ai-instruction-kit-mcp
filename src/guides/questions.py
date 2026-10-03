@@ -16,9 +16,9 @@ def active_questions(manifest: Manifest, values: dict[str, str]) -> list[Questio
     return [q for q in manifest.questions.values() if q.when.holds(values)]
 
 
-def layout_hint(manifest: Manifest, values: dict[str, str]) -> LayoutHint | None:
-    """Pierwsza podpowiedź układu pasująca do Tierów albo ``None``."""
-    return next((hint for hint in manifest.layouts if hint.when.holds(values)), None)
+def layout_hints(manifest: Manifest, values: dict[str, str]) -> list[LayoutHint]:
+    """Podpowiedzi układu pasujące do Tierów (backend i klient mają osobne wpisy)."""
+    return [hint for hint in manifest.layouts if hint.when.holds(values)]
 
 
 def _target(question: Question) -> str:
@@ -86,16 +86,18 @@ def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
         )
 
     lines.extend(["## Układ katalogów", ""])
-    hint = layout_hint(manifest, values)
-    if hint is not None and hint.warning:
-        lines.append(f"⚠ {hint.warning}")
-    elif hint is not None and hint.module and hint.module in manifest.modules:
-        info = manifest.modules[hint.module]
-        lines.append(f"Podpowiedź z `{hint.module}` — dopasuj do repo i zapisz w `## Ścieżki`:")
-        lines.append("")
-        if info.path.is_file():
-            lines.append(info.path.read_text(encoding="utf-8").strip())
-    else:
+    hints = layout_hints(manifest, values)
+    for hint in hints:
+        if hint.warning:
+            lines.extend([f"⚠ {hint.warning}", ""])
+        elif hint.module and hint.module in manifest.modules:
+            info = manifest.modules[hint.module]
+            lines.extend(
+                [f"Podpowiedź z `{hint.module}` — dopasuj do repo i zapisz w `## Ścieżki`:", ""]
+            )
+            if info.path.is_file():
+                lines.extend([info.path.read_text(encoding="utf-8").strip(), ""])
+    if not hints:
         lines.append(
             "Brak drzewka dla tej kombinacji Tierów — domyślne ścieżki per Tier z pytań `paths-*`."
         )

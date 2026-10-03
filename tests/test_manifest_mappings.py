@@ -58,7 +58,7 @@ class TestManifestMappings(unittest.TestCase):
             tiers["backend"]["django"], tiers["backend"].get("django", [])
         )
         self.assertIn("stack:django-drf", tiers["backend"]["django"])
-        self.assertIn("stack:fastapi:layout", tiers["backend"]["fastapi"])
+        self.assertIn("stack:fastapi", tiers["backend"]["fastapi"])
         self.assertIn("react@legacy", tiers["web"])
         self.assertIn("stack:expo-router:web-target", tiers["web"]["expo"])
         self.assertIn("stack:expo-router:mobile-native", tiers["mobile"]["expo"])

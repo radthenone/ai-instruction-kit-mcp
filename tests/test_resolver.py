@@ -111,12 +111,12 @@ class TestTierResolution(unittest.TestCase):
         finally:
             tmp.cleanup()
         enabled = set(resolved.enabled_module_ids)
-        self.assertIn("stack:fastapi:layout", enabled)
+        self.assertIn("stack:fastapi", enabled)
         self.assertIn("core:typing-python", enabled)
         self.assertNotIn("core:typing-typescript", enabled)
-        self.assertIn("stack:fastapi:layout", resolved.bundles["backend"].module_ids)
+        self.assertIn("stack:fastapi", resolved.bundles["backend"].module_ids)
         self.assertNotIn(
-            "stack:fastapi:layout", resolved.bundles["frontend"].module_ids
+            "stack:fastapi", resolved.bundles["frontend"].module_ids
         )
 
     def test_web_expo_twice_lists_modules_once(self) -> None:

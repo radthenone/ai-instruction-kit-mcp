@@ -179,8 +179,28 @@ modules:
 
   stack:fastapi:layout:
     path: modules/stacks/fastapi/layout.md
-    title: FastAPI — layout
+    title: FastAPI — podpowiedź ścieżek
     tags: [backend, fastapi]
+
+  stack:fastapi:
+    path: modules/stacks/fastapi/overview.md
+    title: FastAPI — przegląd
+    tags: [backend, fastapi]
+
+  stack:fastapi:structure:
+    path: modules/stacks/fastapi/structure.md
+    title: Struktura katalogów — FastAPI
+    tags: [backend, fastapi]
+
+  stack:fastapi:backend-instructions:
+    path: modules/stacks/fastapi/backend-instructions.md
+    title: Instrukcje agenta — backend FastAPI
+    tags: [backend, fastapi]
+
+  stack:fastapi:testing:
+    path: modules/stacks/fastapi/testing.md
+    title: Testing — FastAPI (pytest + httpx)
+    tags: [backend, fastapi, testing]
 
   stack:flask:layout:
     path: modules/stacks/flask/layout.md
@@ -410,7 +430,10 @@ mappings:
       django-html:
         - stack:django:layout
       fastapi:
-        - stack:fastapi:layout
+        - stack:fastapi
+        - stack:fastapi:structure
+        - stack:fastapi:backend-instructions
+        - stack:fastapi:testing
       flask:
         - stack:flask:layout
     # Moduły layoutu (`stack:frontend:*`) nie wchodzą do Bundli — są podpowiedzią
@@ -676,9 +699,12 @@ questions:
         value: frontend/
     when: {all: {mobile: ["!none"]}}
 
-# Podpowiedzi układu katalogów klienta (moduły `stack:frontend:*` spoza Bundli).
-# Pierwszy pasujący wpis wygrywa; `warning:` zamiast `module:` = ostrzeżenie dla skilla.
+# Podpowiedzi układu katalogów (moduły layoutu spoza Bundli). `list_questions` pokazuje
+# każdy pasujący wpis — warunki klienta (web/mobile) wzajemnie się wykluczają, backend
+# ma własne. `warning:` zamiast `module:` = ostrzeżenie dla skilla.
 layouts:
+  - when: {all: {backend: [fastapi]}}
+    module: stack:fastapi:layout
   - when: {all: {web: [expo], mobile: [react-native]}}
     warning: "web: expo + mobile: react-native — dwa toolchainy React Native w jednym repo. Rozważ mobile: expo (jeden projekt Expo) albo web: react."
   - when: {all: {web: [expo], mobile: [expo]}}
