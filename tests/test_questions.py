@@ -8,7 +8,7 @@ from pathlib import Path
 
 from guides import server
 from guides.manifest import load_manifest
-from guides.questions import active_questions, layout_hint, render_catalog
+from guides.questions import active_questions, layout_hints, render_catalog
 from guides.resolver import resolve_workspace_profile
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -84,14 +84,15 @@ class TestCatalog(unittest.TestCase):
                          "frontend/web/")
 
     def test_layout_hints(self) -> None:
-        hint = layout_hint(self.manifest, _values(web="react", mobile="expo"))
-        self.assertIsNotNone(hint)
-        assert hint is not None
-        self.assertEqual(hint.module, "stack:frontend:react-expo-split")
-        warning = layout_hint(self.manifest, _values(web="expo", mobile="react-native"))
-        assert warning is not None
-        self.assertIn("react-native", warning.warning or "")
-        self.assertIsNone(layout_hint(self.manifest, _values(backend="django")))
+        modules = [h.module for h in layout_hints(self.manifest, _values(web="react", mobile="expo"))]
+        self.assertEqual(modules, ["stack:frontend:react-expo-split"])
+        warnings = layout_hints(self.manifest, _values(web="expo", mobile="react-native"))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("react-native", warnings[0].warning or "")
+        self.assertEqual(layout_hints(self.manifest, _values(backend="django")), [])
+        both = layout_hints(self.manifest, _values(backend="fastapi", web="react"))
+        self.assertEqual([h.module for h in both],
+                         ["stack:fastapi:layout", "stack:frontend:react-web"])
 
     def test_render_includes_layout_tree_and_skipped(self) -> None:
         out = render_catalog(self.manifest, {**_values(web="react", mobile="expo"), "codegen": "none"})

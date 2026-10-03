@@ -18,11 +18,16 @@ Baza PR-ów — opcjonalnie. Bez tej linii agenci biorą `dev`, gdy nie jest w t
 branchem, inaczej default branch. Wymuszenie: dopisz w osobnej linii np. `base: dev`
 (sama linia, od początku wiersza).
 
-## Struktura
+## Ścieżki
 
-- `backend/` — Django + DRF
-- `frontend/` — Expo Router
-- `Taskfile.yml` — główny punkt wejścia komend
+Katalog kodu każdego Tieru — moduły Stacków odwołują się do tych kluczy zamiast zakładać
+`backend/` czy `frontend/`. Stack każdego Tieru: `.ai/project.profile.yaml`. Uzupełnia
+`/kit-project-begin` (MCP `list_questions`); Tier `none` — usuń linię.
+
+- backend: `backend/`
+- web: `frontend/web/`
+- mobile: `frontend/mobile/`
+- Taskfile: `Taskfile.yml` — główny punkt wejścia komend
 
 ## Taskfile
 
