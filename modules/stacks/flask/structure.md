@@ -8,7 +8,7 @@ względem tego katalogu — gdy repo ma inny, trzymaj się repo i opisz rozjazd 
 ```text
 <backend>/
   src/app/
-    __init__.py          # create_app(config_name | Settings) → Flask
+    __init__.py          # create_app(settings: Settings | None) → Flask
     config.py            # Settings(BaseSettings) — wartości z env
     extensions.py        # db = SQLAlchemy(model_class=Base), migrate = Migrate()
     errors.py            # wyjątki domenowe + register_error_handler

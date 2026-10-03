@@ -45,8 +45,10 @@ def create_order() -> tuple[dict, int]:
 ## Walidacja — Pydantic v2
 
 - Jeden helper `parse_body(Model)` / `parse_query(Model)`:
-  `Model.model_validate(request.get_json(silent=True) or {})`; `ValidationError` łapie
+  `Model.model_validate(request.get_json())`; `ValidationError` łapie
   handler i zamienia na `422` w formacie projektu. Nie waliduj ręcznie `if "x" not in data`.
+  Bez `silent=True` ani `or {}` — zepsuty JSON / zły `Content-Type` ma dać `400`/`415`,
+  a nie przejść jako `{}` (przy `PATCH` z polami opcjonalnymi to cichy „sukces” bez zmian).
 - Schematy wejścia i wyjścia osobno (`OrderCreate`, `OrderUpdate`, `OrderRead` z
   `model_config = ConfigDict(from_attributes=True)`); model ORM nigdy nie idzie do JSON-a
   bezpośrednio.
@@ -79,7 +81,9 @@ def create_order() -> tuple[dict, int]:
 - `errors.py`: `app.register_error_handler(DomainError, ...)`, `ValidationError` (Pydantic),
   `HTTPException` (werkzeug — także 404/405 z routingu) → jednolity JSON (`arch:api-errors`).
   Bez handlera Flask zwraca HTML, którego klient API nie sparsuje.
-- Nieobsłużony wyjątek → `500` w tym samym formacie, szczegóły tylko w logach.
+- Nieobsłużony wyjątek → `500` w tym samym formacie, szczegóły tylko w logach. Handler
+  na `InternalServerError` (oryginał w `e.original_exception`), nie na `Exception` —
+  inaczej `TESTING=True` nie przepuści wyjątku do testu.
 
 ## Kontrakt API
 

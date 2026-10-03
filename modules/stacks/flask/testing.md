@@ -45,7 +45,8 @@ def client(app: Flask) -> FlaskClient:
 ```
 
 - Każdy test dostaje aplikację z factory — nigdy nie importuj instancji z `wsgi.py`.
-- `TESTING=True` przepuszcza wyjątki do testu zamiast zamieniać je na 500.
+- `TESTING=True` przepuszcza nieobsłużone wyjątki do testu zamiast zamieniać je na 500 —
+  pod warunkiem, że 500 obsługuje handler `InternalServerError`, nie `Exception`.
 - Zalogowany użytkownik: fixture `auth_client` ustawia nagłówek / sesję raz, testy
   nie powtarzają logowania.
 
