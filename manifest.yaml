@@ -279,6 +279,11 @@ modules:
     title: Angular — standalone, signals, @if/@for, inject()
     tags: [frontend, web, angular]
 
+  stack:angular:legacy:
+    path: modules/stacks/angular/legacy.md
+    title: Angular — NgModule + RxJS, migracja w stronę signals
+    tags: [frontend, web, angular]
+
   # ─── Stacks: Expo Router (legacy detail modules) ────
   stack:expo-router:
     path: modules/stacks/expo-router/overview.md
@@ -500,6 +505,7 @@ mappings:
         - stack:angular:modern
       angular@rxjs:
         - stack:angular
+        - stack:angular:legacy
       expo:
         - stack:expo-router
         - stack:expo-router:structure
