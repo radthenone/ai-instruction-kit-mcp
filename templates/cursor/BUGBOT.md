@@ -1,6 +1,7 @@
-# Bugbot — reguły projektu (monorepo Django + Expo)
+# Bugbot — reguły projektu
 
-Dostosuj ścieżki i taski do `.ai/project.md`. Bugbot ładuje ten plik przy review PR.
+Sekcje Tierów (backend, web/mobile) Bootstrap zostawia tylko dla Tierów wybranych w `.ai/project.profile.yaml`.
+Stack każdego Tieru: MCP `get_bundle`. Dostosuj ścieżki i taski do `.ai/project.md` (sekcja `## Ścieżki`). Bugbot ładuje ten plik przy review PR.
 
 ## Ogólne
 
@@ -8,17 +9,18 @@ Dostosuj ścieżki i taski do `.ai/project.md`. Bugbot ładuje ten plik przy rev
 - Nie commituj `.env`, kluczy API, haseł, tokenów CI.
 - Preferuj minimalny diff — flaguj drive-by refactory poza zakresem PR.
 
-## Backend (`backend/`)
+<!-- tier:backend -->
+## Backend
 
-If the PR modifies files under `backend/` and there are no changes in `backend/**/test*.py`, `backend/**/tests/**`, or `backend/**/*_test.py`:
+If the PR modifies backend files (path from `.ai/project.md`, default `backend/`) and there are no changes in backend test files (`**/test*.py`, `**/tests/**`, `**/*_test.py`):
 
 - Add a blocking bug titled "Missing tests for backend changes"
-- Body: "Dodaj lub zaktualizuj testy pytest dla zmian w backendzie."
+- Body: "Dodaj lub zaktualizuj testy dla zmian w backendzie."
 
-If changed files include serializers, viewsets, urls, or models affecting API
-**and** the project uses Orval (`codegen: orval` in `.ai/project.profile.yaml`, or REST+FE without `codegen: manual|none`):
+If changed files include API schema, endpoints, routes, or models affecting API
+**and** the project uses Orval (`codegen: orval` in `.ai/project.profile.yaml`; MCP `get_codegen`):
 
-- Add a blocking bug unless `frontend/src/api/generated/` or Orval output was regenerated.
+- Add a blocking bug unless the generated API client (path from `.ai/project.md`) was regenerated.
 - Body: "Po zmianie kontraktu API uruchom `task ovral:generate` i commituj wygenerowany klient."
 
 If profile says `codegen: manual` or `codegen: none`: do **not** require Orval regeneration.
@@ -27,18 +29,21 @@ If any changed Python file lacks type hints on new public functions:
 
 - Add a non-blocking finding per `core:typing-python`.
 
-Flag `eval(`, `exec(`, raw SQL string concatenation with user input, and `permission_classes = []` on new viewsets without justification.
+Flag `eval(`, `exec(`, raw SQL string concatenation with user input, and new endpoints open to everyone without justification.
+<!-- /tier:backend -->
 
-## Frontend (`frontend/`)
+<!-- tier:client -->
+## Frontend (web / mobile)
 
-If the PR modifies `frontend/` without `task lints:frontend:typecheck` passing (assume CI will catch — flag risky patterns):
+If the PR modifies client code (paths from `.ai/project.md`) without the typecheck task passing (assume CI will catch — flag risky patterns):
 
-- Flag imports from `react-native` in `.web.tsx` files.
+- Flag native-only imports in web-only files (and DOM-only APIs in native files), if the Stack splits platforms.
 - Flag `any` on new public interfaces without `@ts-expect-error` justification.
 
-If Expo native modules or `app.json` plugins change without EAS note in PR description:
+If native modules or app config plugins change without a native-build note in PR description:
 
-- Add a non-blocking finding: "Zmiana native — wymaga EAS build, nie tylko OTA."
+- Add a non-blocking finding: "Zmiana native — wymaga nowego buildu natywnego, nie tylko OTA."
+<!-- /tier:client -->
 
 ## Auth, ACL, płatności
 
