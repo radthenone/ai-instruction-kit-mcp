@@ -19,7 +19,7 @@
 
 Moduły: Tiery z `.ai/project.profile.yaml` (backend/web/mobile) + overlay `.ai/project.md`.  
 
-Profil w workspace to jedyne źródło wyborów (ADR-0007); `--preset` / `--profile` są ignorowane.
+Profil w workspace to jedyne źródło wyborów (ADR-0007); po jego zmianie `kit-ai reload` (MCP: `reload_workspace`).
 
 **Wszystkie agenty:** `AGENTS.md` + reguła git-branch-pr. Po PR — Autopilot; nie dubluj TDD Matt+Superpowers.
 

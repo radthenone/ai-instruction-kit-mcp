@@ -11,32 +11,41 @@ hooki, `mcp.json`) nadpisuje świeżą kopią, a pliki z Twoją treścią (`AGEN
 **Wymagania:** `uv` w `PATH`, `bash` (Windows: Git for Windows), `node` (dla hooków),
 opcjonalnie `npx` (skille zewnętrzne).
 
-### 1. Instalacja / update w projekcie
+### 1. Instalacja / update w projekcie — `kit-ai`
 
-Ustaw dwie ścieżki i uruchom — reszta bloków korzysta z tych zmiennych:
+Z katalogu klona kita (ścieżki `M:/…`, `/m/…` i linuksowe działają tak samo):
 
 ```bash
-KIT=/m/projects/ai-instruction-kit-mcp      # klon tego repo
-APP=/m/projects/moja-appka                  # repo aplikacji
+cd /m/projects/ai-instruction-kit-mcp      # klon tego repo
+APP=/m/projects/moja-appka                 # repo aplikacji
 
-bash --noprofile --norc "$KIT/scripts/bootstrap-project.sh" "$APP" \
-  --from "$KIT" \
-  --clients claude,codex,vscode \
-  --language pl \
-  --codegen orval \
-  --with-overlay
+uv run kit-ai install "$APP"               # pyta o język i klientów, zakłada Profil, Bootstrap
+uv run kit-ai reload "$APP"                # po zmianie Profilu / update kita — odświeża pliki kita
+uv run kit-ai reload "$APP" --dry-run      # plan bez zapisu
+uv run kit-ai status "$APP"                # czy kit zmienił się od ostatniego Bootstrapu
 ```
 
-Potem w `$APP/.ai/project.profile.yaml` wybierz Stacki (`backend`/`web`/`mobile` — puste = sam core).
+`install` pyta o dwie rzeczy (`Język [pl/en] (pl)`, `Klienci (…) (all)`) — flagi `--language`
+i `--clients` pomijają pytania, bez TTY pytań nie ma wcale. Zakłada `.ai/project.profile.yaml`
+(`backend/web/mobile: none` = sam core) i `.ai/project.md`, robi Bootstrap, a na końcu
+wypisuje JSON serwera MCP i gdzie leży per klient. Repo z kitem `install` odrzuca — wtedy
+`reload`.
 
-| Flaga | Kiedy zmienić |
+Jedyna konfiguracja to Profil (ADR-0007): język, klienci, Stacki per Tier, `codegen:`.
+Zmiana czegokolwiek = edycja `$APP/.ai/project.profile.yaml` + `kit-ai reload`. `reload` nie
+rusza `.ai/project.md`; repo ze starą konfiguracją (stamp z `--preset`, brak Profilu) dostaje
+Profil core + none i nowy `mcp.json`.
+
+| Klucz Profilu | Kiedy zmienić |
 | --- | --- |
-| `--clients` | `claude` \| `codex` \| `vscode` (= GitHub Copilot) \| `cursor` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` \| `all`. Pliki klientów **spoza** listy są sprzątane — `--keep-unselected-clients` to wyłącza |
-| Stack per Tier | `backend`/`web`/`mobile` w `.ai/project.profile.yaml` (puste Tiery = sam core) |
-| `--language` | `pl` \| `en` — język prozy. Tytuły issue/PR/branch zawsze EN |
-| `--codegen` | `orval` (default) \| `none` \| `graphql` |
-| `--with-overlay` | Zakłada `.ai/project.md` z szablonu, **jeśli go jeszcze nie ma**. Przy update bez efektu — bezpieczne zostawić na stałe |
-| `--with-plugins` | Dokłada `npx skills@latest add mattpocock/skills` i wypisuje kroki do Superpowers |
+| `clients:` | `claude` \| `codex` \| `vscode` (= GitHub Copilot) \| `cursor` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` \| `all`. Pliki klientów **spoza** listy są sprzątane przy `reload` |
+| `backend`/`web`/`mobile` | Stack per Tier (puste Tiery = sam core) |
+| `language:` | `pl` \| `en` — język prozy. Tytuły issue/PR/branch zawsze EN |
+| `codegen:` | `orval` (default) \| `none` \| `graphql` |
+
+Niskopoziomowo to samo robi `scripts/bootstrap-project.sh "$APP" --from "$KIT" --clients … --language …`
+(dodatkowo `--with-overlay`, `--with-plugins`, `--keep-unselected-clients`). `--preset`,
+`--profile`, `--with-profile` i `--codegen` zostały usunięte — skrypt odmawia i odsyła do `kit-ai reload`.
 
 ### 2. Po instalacji (kroki, których skrypt nie zrobi za Ciebie)
 
@@ -77,8 +86,8 @@ Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrap
 (`.ai/.kit-bootstrap.json`) z aktualnym `HEAD` i mówi, co się zmieniło. Rozdziela dwie
 rzeczy: pliki, które **re-bootstrap wciągnie sam**, i te wymagające **ręcznego
 przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` — kopiowane
-tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany, powtórz komendę z kroku 1
-z tymi samymi flagami.
+tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany: `kit-ai reload "$APP"`
+(z terminala to samo pokazuje `kit-ai status "$APP"`).
 
 ### 5. Zanim odpalisz update na repo z pracą w toku
 
@@ -87,8 +96,8 @@ Bootstrap nadpisuje `.claude/{agents,commands,hooks}/`, `.codex/`, `.github/prom
 Nie chcesz oglądać planu na sucho? Z poziomu agenta:
 
 ```text
-bootstrap_workspace()               # dry run — lista plików nowych/nadpisanych/usuniętych
-bootstrap_workspace(dry_run=False)  # instalacja
+reload_workspace()                  # dry run — lista plików nowych/nadpisanych/usuniętych
+reload_workspace(dry_run=False)     # odświeżenie z Profilu (= kit-ai reload)
 ```
 
 **Gdzie żyje konfiguracja AI po instalacji:** wszystko poza `.claude/settings.local.json`
@@ -106,7 +115,7 @@ markerami `# >>> instruction-kit >>>`. Szczegóły: sekcja „`.gitignore`" niż
 | Multi-client design                          | [design](docs/specs/2026-08-05-multi-client-templates-design.md) |
 | Szczegóły jednego produktu                   | `.ai/project.md` w **repo aplikacji** (Taskfile, porty, Docker)  |
 | Inny zestaw modułów niż Tiery              | `include:` w `.ai/project.profile.yaml` (routing wg tagów)         |
-| Docelowy kontrakt `--profile` / stack / `--overlays` / `--codegen` | [design overlays](docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) (**CLI stack jeszcze nie**) |
+| Docelowy kontrakt `--overlays` | [design overlays](docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md) |
 | Cursor `/compact` (alias Summarize)          | `templates/cursor/skills/compact/` → `.cursor/skills/` (nie Claude/Codex) |
 | Skille kita (wszyscy klienci)                | `templates/shared/skills/` → sekcja „Skille kita” niżej |
 
@@ -164,24 +173,23 @@ Nie mieszaj: nazwa produktu ≠ Stack; porty ≠ tag.
 
 | Flaga              | Wymagana? | Rola                                                                                                                                               | Gdzie / jak zmieniać                                     |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `--from SOURCE`    | przy `uvx` | Źródło zdalne kita: `git+https://…`. Dla lokalnego klonu bootstrap generuje zamiast tego `uv run --directory <ścieżka>` — patrz „Lokalny klon" niżej | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
-| `--preset NAME`    | nie (deprecated) | Ignorowane — Tiery czyta serwer z profilu w `--workspace` | usuń z mcp.json |
-| `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | mcp.json / bootstrap `--language`; env `GUIDES_LANGUAGE` |
-| `--codegen orval\|none\|graphql` | nie | Generator klienta API — patrz sekcja "Codegen" niżej. Domyślnie: `orval` | mcp.json / bootstrap `--codegen`; env `GUIDES_CODEGEN`; tool `get_codegen` |
+| `--from SOURCE`    | przy `uvx` | Źródło zdalne kita: `git+https://…@ref`. Dla lokalnego klonu bootstrap generuje zamiast tego `uv run --project <ścieżka>` — patrz „Lokalny klon" niżej | `.cursor/mcp.json` (i odpowiedniki innych klientów)      |
+| `--language pl|en` | nie       | Język **prozy** (odpowiedzi, docstringi, body issue/PR, commity). **Tytuły** issue/PR/branch zawsze EN. Domyślnie: `language:` w profilu albo `pl` | `language:` w Profilu + `kit-ai reload`; env `GUIDES_LANGUAGE` |
 | `--clients LIST`   | nie       | Metadane IDE: `all` \| `cursor` \| `claude` \| `codex` \| `vscode` \| `kiro` \| `kilo` \| `antigravity` \| `opencode` (lista; alias `copilot`→`vscode`). **Nie** zmienia treści bundle | mcp.json / bootstrap `--clients` (default `all`); env `GUIDES_CLIENTS`; tool `get_clients` |
 | `--kit-root PATH`  | nie       | Klon kita, z którego serwer czyta `manifest.yaml` / `modules/`. Bez niej root jest wykrywany automatycznie — a przy `uvx --from <katalog>` wykrywa się kopia z cache `uv` zamiast klonu | mcp.json — bootstrap dodaje sam przy źródle lokalnym; env `GUIDES_KIT_ROOT` |
 | `--workspace PATH` | zalecane  | Root aplikacji — stąd profil `.ai/project.profile.yaml` i overlay `.ai/project.md`                                                                                                        | mcp.json; Cursor/VS: `${workspaceFolder}`                |
 | `--overlay PATH`   | nie       | Extra MD (można wielokrotnie)                                                                                                                      | mcp.json — rzadko; zwykle wystarczy workspace            |
-| `--profile PATH`   | nie (deprecated) | Ignorowane — profil zawsze `.ai/project.profile.yaml` w `--workspace`                                                                                                               | mcp.json + plik w aplikacji                              |
 
 
-Flagi `--preset` / `--profile` są ignorowane (do usunięcia w B razem z migracją `kit-ai reload`). Bootstrap zapisuje `--language` (domyślnie `pl`) oraz `--clients` (domyślnie `all`).
+Stare konfiguracje klienta z `--preset` / `--profile` / `--codegen` nadal startują serwer, ale
+te flagi są ignorowane, a bundle i indeks niosą ostrzeżenie o migracji — `kit-ai reload`
+przepisze `mcp.json`. Bootstrap zapisuje tylko `--language` i `--clients` (z Profilu).
 
 **Język:** MCP tool `get_language`. Priorytet: `--language` / `GUIDES_LANGUAGE` → `language:` w YAML profilu → `pl`. Moduł w bundle: `core:language-pl` albo `core:language-en`.
 
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
-**Codegen (Orval):** `codegen:` w `.ai/project.profile.yaml` (`orval` \| `none` \| `graphql`), do tego flaga `--codegen`, env `GUIDES_CODEGEN` i MCP tool `get_codegen`. Priorytet: `--codegen` / `GUIDES_CODEGEN` → `codegen:` w profilu → `orval`. Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
+**Codegen (Orval):** wyłącznie `codegen:` w `.ai/project.profile.yaml` (`orval` \| `none` \| `graphql`, domyślnie `orval`; ADR-0007), odczyt przez MCP tool `get_codegen`. Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
 
 ## Profil z Tierami (backend/web/mobile)
 
@@ -189,6 +197,7 @@ Flagi `--preset` / `--profile` są ignorowane (do usunięcia w B razem z migracj
 # .ai/project.profile.yaml w repo aplikacji
 name: moja-appka
 language: pl
+clients: claude,codex
 
 backend: django      # none | django | django-html | fastapi | flask
 web: react            # none | react | react@legacy | angular | angular@rxjs | expo
@@ -251,7 +260,7 @@ Szkic (nie działa jeszcze):
   --from /absolutna/sciezka/do/ai-instruction-kit-mcp
 ```
 
-Zapisuje m.in. MCP per klient (`--language`, `--codegen`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
+Zapisuje m.in. MCP per klient (`--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
@@ -276,11 +285,11 @@ bootstrap renderuje **ze ścieżką tej maszyny**:
 | — | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
 
 **Konfigi MCP i stamp są per maszyna, nie per repo.** Przy `--from <lokalny klon>` bootstrap
-wpisuje do nich absolutną ścieżkę klona (`uv run --directory`, `--kit-root`), a dla Codex
+wpisuje do nich absolutną ścieżkę klona (`uv run --project`, `--kit-root`), a dla Codex
 i opencode absolutny `--workspace`. Zacommitowane z Windowsa (`M:/projects/…`) na Linuksie
 dają `CONNECTION_CLOSED` bez czytelnego powodu. Każdy odbiornik — PC, laptop, serwer —
-odpala bootstrap u siebie; stamp pamięta flagi poprzedniego przebiegu (`.ai/.kit-bootstrap.json`),
-więc na nowej maszynie wystarczy ten sam `bootstrap-project.sh --from <klon>` z tymi flagami.
+odpala `kit-ai reload` u siebie; język i klienci są w zacommitowanym Profilu, więc nic
+więcej nie trzeba pamiętać.
 
 Repo zbootstrapowane wcześniej mają te pliki w indeksie — sam wpis w `.gitignore` ich nie
 odśledzi. Bootstrap wykrywa to i wypisuje gotową komendę (pliki zostają na dysku):
@@ -304,7 +313,9 @@ bootstrap_workspace(dry_run=False)             # instalacja
 bootstrap_workspace(clients="claude", with_overlay=True, dry_run=False)
 ```
 
-Argumenty (`clients`, `preset`, `language`, `codegen`, `with_overlay`, `keep_unselected_clients`) odpowiadają flagom skryptu; pominięte biorą wartość z parametrów startowych serwera MCP. Cel zapisu to `--workspace` / `GUIDES_WORKSPACE` — **bez niego narzędzie odmawia**, zamiast zapisywać do katalogu, z którego przypadkiem wystartował proces serwera.
+Odświeżenie z Profilu (= `kit-ai reload`, łącznie z migracją starej konfiguracji) robi `reload_workspace()` / `reload_workspace(dry_run=False)`.
+
+Argumenty `bootstrap_workspace` (`clients`, `language`, `with_overlay`, `keep_unselected_clients`) odpowiadają flagom skryptu; pominięte biorą wartość z parametrów startowych serwera MCP. Cel zapisu to `--workspace` / `GUIDES_WORKSPACE` — **bez niego narzędzie odmawia**, zamiast zapisywać do katalogu, z którego przypadkiem wystartował proces serwera.
 
 `dry_run=True` jest domyślne i nic nie zapisuje: skrypt leci na kopii kitowej powierzchni repo w katalogu tymczasowym, a raport pokazuje pliki nowe, nadpisane i **usunięte** przez sprzątanie klientów spoza `--clients`. Plan pochodzi więc z faktycznego przebiegu skryptu, nie z drugiej listy ścieżek w Pythonie.
 
@@ -372,7 +383,7 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 | Brak | Status | Obejście |
 | --- | --- | --- |
 | `--tag` / facety wariantów | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
-| `--profile` / `--preset` | Deprecated (ignorowane) | Profil zawsze `.ai/project.profile.yaml` w `--workspace`; migracja przez `kit-ai reload` (B) |
+| `--profile` / `--preset` / `--codegen` | Usunięte (serwer je ignoruje, bootstrap odmawia) | Profil zawsze `.ai/project.profile.yaml` w `--workspace`; migracja przez `kit-ai reload` |
 | `/review-security` jako plik kita | Nie istnieje w `templates/shared/agents/` | To skill user/global (Cursor) — dodaj we własnym środowisku, kit go nie dostarcza |
 | `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
 | Natywna weryfikacja formatu VS Code/Kilo/Antigravity/opencode | Oparta o dokumentację (sierpień 2026), **nie testowana na żywych klientach** | Jeśli `/nazwa` nie działa w Twoim kliencie, zgłoś i popraw `scripts/render_agent_commands.py` |
@@ -522,7 +533,7 @@ Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 | `AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
 | `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
 
-### Lokalny klon: `uv run --directory`, nie `uvx --from`
+### Lokalny klon: `uv run --project`, nie `uvx --from`
 
 `uvx --from <katalog>` **nie** czyta kita z tego katalogu w czasie działania. uv buduje koło,
 w którym `manifest.yaml` i `modules/` lądują jako `guides/_data`
@@ -538,7 +549,7 @@ Dlatego przy źródle lokalnym bootstrap generuje:
 
 ```json
 "command": "uv",
-"args": ["run", "--directory", "/sciezka/do/klona", "guides-mcp", …,
+"args": ["run", "--project", "/sciezka/do/klona", "guides-mcp", …,
          "--kit-root", "/sciezka/do/klona", …]
 ```
 
@@ -549,8 +560,8 @@ ale zostaje: nazywa klon wprost, zamiast pozwalać serwerowi go wnioskować.
 Przy źródle zdalnym (`git+https://…`) nic się nie zmienia — zostaje `uvx --from`, bo klonu
 nie ma, a `_data` z koła jest jedyną i aktualną kopią.
 
-Projekty zbootstrapowane przed tą zmianą mają w `mcp.json` stare `uvx --from` — odpal
-bootstrap ponownie z tymi samymi flagami.
+Projekty zbootstrapowane przed tą zmianą mają w `mcp.json` stare `uvx --from` albo
+`uv run --directory` — wystarczy `kit-ai reload`.
 
 Skąd wiedzieć **kiedy** re-bootstrapować (bez ciągłego czytania plików kita — tanie, jedno porównanie commitów):
 

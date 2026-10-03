@@ -18,7 +18,7 @@ codegen: orval
 | `none` | REST bez Orval — generyczny klient innym narzędziem albo ręczny fetch/typy |
 | `graphql` | GraphQL zamiast REST — patrz `arch:api-contract:graphql` |
 
-MCP `get_codegen` czyta ją z profilu (flaga `--codegen` wygrywa; bez pary backend + klient efektywny codegen to `none`).
+MCP `get_codegen` czyta ją wyłącznie z profilu (ADR-0007; bez pary backend + klient efektywny codegen to `none`).
 
 Gdy `orval`: po zmianie serializera/viewsetu/schema → `task ovral:generate` (lub task z Taskfile poniżej) → commit wygenerowanych plików.
 
@@ -33,5 +33,4 @@ W mcp.json (po implementacji):
 
 ```text
 "--overlays", "${workspaceFolder}/.ai/extras.md"
-"--codegen", "orval"
 ```
