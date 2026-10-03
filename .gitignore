@@ -84,7 +84,7 @@ skills-lock.json
 !.cursor/skills/skill-authoring/**
 
 # --- Per maszyna: konfigi MCP i stamp ----------------------------------------
-# Bootstrap renderuje w nich ścieżkę lokalnego klona kita (`uv run --directory`,
+# Bootstrap renderuje w nich ścieżkę lokalnego klona kita (`uv run --project`,
 # `--kit-root`) i absolutny `--workspace`. Zacommitowane z jednej maszyny psują serwer
 # MCP na każdej innej (Windows `M:/…` na Linuksie → CONNECTION_CLOSED). Odtwarza je
 # `bootstrap-project.sh` na danej maszynie — nie kopiuj ich z repo.
