@@ -14,7 +14,7 @@ modelu stanu. Pisz kod spójny z repo, który nie utrudnia migracji (sekcja na k
 - `CoreModule` (importowany raz w `AppModule`): interceptory (`HTTP_INTERCEPTORS`),
   guardy, serwisy singletonowe. Serwisy wolą `providedIn: 'root'` niż `providers` modułu.
 - Nowy komponent w istniejącym feature'rze deklaruj w jego module. Nowy, samodzielny
-  fragment (np. nowy feature) może już być standalone i importowany do modułu —
+  fragment (np. nowy feature) może już być standalone (Angular 14+) i importowany do modułu —
   to pierwszy krok migracji, nie niespójność.
 
 ## RxJS-first
@@ -52,7 +52,8 @@ zapis do localStorage, integracja z biblioteką). Wtedy zawsze z wypisaniem:
   i `complete()` w `ngOnDestroy`.
 
 Nie: zagnieżdżone `subscribe` w `subscribe` (użyj operatora spłaszczania), ręczne
-tablice `Subscription` bez sprzątania, `toPromise()` (przestarzałe — `firstValueFrom`).
+tablice `Subscription` bez sprzątania, `toPromise()` (przestarzałe od RxJS 7 — `firstValueFrom`;
+na RxJS 6 go nie ma).
 
 ## Szablony: `*ngIf` / `*ngFor`
 
@@ -76,7 +77,8 @@ tablice `Subscription` bez sprzątania, `toPromise()` (przestarzałe — `firstV
   + `HttpTestingController` (`expectOne`, `flush`, `verify`).
 - Strumienie: `fakeAsync` + `tick` dla czasu (`debounceTime`), marble testing
   (`TestScheduler`) dla złożonych operatorów.
-- Komponent z `OnPush`: zmiana wejścia przez `fixture.componentRef.setInput`, potem
+- Komponent z `OnPush`: zmiana wejścia przez `fixture.componentRef.setInput` (14.1+;
+  starsze: komponent-host w teście), potem
   `detectChanges()`.
 
 ## Migracja w stronę signals (`stack:angular:modern`)
