@@ -216,6 +216,22 @@ decisions:
 
 Bundle liczone są z Tierów: `get_bundle backend` zawiera Stack z Tieru `backend`, pusty profil daje sam core. Nierozpoznana wartość Tieru nie wywraca serwera — ląduje w „Nierozpoznanych decyzjach" w `get_index` (ADR-0004). Stare klucze `stacks:` / `patterns:` czytane są nadal.
 
+### Katalog pytań o projekt (`list_questions`)
+
+`manifest.yaml` → `questions:` trzyma pytania o projekt (Tiery, warianty, `codegen`, Docker,
+Taskfile, CI/CD, monorepo, capability-provider, webhooki, ścieżki per Tier) z opcjami,
+domyślnymi (`defaults:` zależne od Profilu, np. `django-html` → web/mobile `none`),
+warunkiem `when:` i sygnałami `detect:` (`glob` + opcjonalny regex `pattern` w treści pliku).
+Narzędzie MCP `list_questions` zwraca katalog z warunkami ocenionymi na bieżącym Profilu —
+sygnały sprawdza agent w plikach repo, Python niczego nie skanuje. Odpowiedź ląduje tam, gdzie
+wskazuje `sets:` (klucz Profilu albo `paths.<tier>` → `## Ścieżki` w `.ai/project.md`), a pytania
+tak/nie dopisują `include:` / `patterns:` z `on_yes:`.
+
+Moduły układu katalogów (`stack:frontend:*`) nie wchodzą do Bundli — `layouts:` w manifeście
+wybiera podpowiedź drzewka dla kombinacji web/mobile (np. `web: react` + `mobile: expo` →
+`react-expo-split`), `web: expo` + `mobile: react-native` daje ostrzeżenie, brak drzewka →
+domyślne ścieżki (`backend/`, `frontend/web/`, `frontend/mobile/`; Expo unified: `frontend/`).
+
 ### Tagi / facety (planowane — jeszcze nie w CLI)
 
 Gdy wiele projektów dzieli **ten sam** powtarzalny wariant instrukcji (np. sklep fizyczny vs cyfrowy), zamiast mnożyć presety `shop-jewelry` / `shop-tokens`:
