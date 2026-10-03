@@ -263,6 +263,11 @@ modules:
     title: React 19+ — actions, use(), kompilator
     tags: [frontend, web, react]
 
+  stack:react:legacy:
+    path: modules/stacks/react/legacy.md
+    title: React 16–18 — hooki, ręczna memoizacja, migracja
+    tags: [frontend, web, react]
+
   # ─── Stacks: Expo Router (legacy detail modules) ────
   stack:expo-router:
     path: modules/stacks/expo-router/overview.md
@@ -478,6 +483,7 @@ mappings:
         - stack:react:modern
       react@legacy:
         - stack:react
+        - stack:react:legacy
       angular: []
       angular@rxjs: []
       expo:
