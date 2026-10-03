@@ -36,7 +36,8 @@ Bez kompilatora memoizacja jest ręczna — ale celowana, nie „wszędzie”:
 
 - Dane z własnego API → TanStack Query (albo hooki z wygenerowanego klienta przy
   `codegen: orval`). Daje cache, deduplikację, ponowienia, unieważnianie po mutacji
-  i obsługę wyścigów.
+  i obsługę wyścigów. Wersję sprawdź w lockfile: v5 wymaga React 18 — na 16/17 zostaje v4
+  (`isLoading` zamiast `isPending`, `useQuery({ suspense: true })` zamiast `useSuspenseQuery`).
 - Ręczny `fetch` w `useEffect` tylko dla jednorazowych, nieudostępnianych danych —
   i wtedy obowiązkowo: `AbortController` w sprzątaniu, obsługa stanu błędu i ładowania,
   ignorowanie odpowiedzi po odmontowaniu / zmianie parametrów.
@@ -47,7 +48,8 @@ Bez kompilatora memoizacja jest ręczna — ale celowana, nie „wszędzie”:
 
 - Kontrolowane pola (`value` + `onChange`) dla prostych formularzy; większe —
   `react-hook-form` (niekontrolowane, mniej renderów), jeśli repo go używa.
-- Stan wysyłki z `useMutation` (`isPending`, `error`), nie trzy osobne `useState`.
+- Stan wysyłki z `useMutation` (`isPending` w v5 / `isLoading` w v4, `error`), nie trzy
+  osobne `useState`.
 - Walidacja schematem (np. `zod`) współdzielonym z typem danych; błędy serwera
   (`arch:api-errors`) mapowane na pola.
 
