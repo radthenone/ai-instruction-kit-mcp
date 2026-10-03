@@ -252,6 +252,17 @@ modules:
     title: Frontend — React + RN split
     tags: [frontend, react, mobile]
 
+  # ─── Stacks: React (web) ────────────────────────────
+  stack:react:
+    path: modules/stacks/react/overview.md
+    title: React — przegląd (web)
+    tags: [frontend, web, react]
+
+  stack:react:modern:
+    path: modules/stacks/react/modern.md
+    title: React 19+ — actions, use(), kompilator
+    tags: [frontend, web, react]
+
   # ─── Stacks: Expo Router (legacy detail modules) ────
   stack:expo-router:
     path: modules/stacks/expo-router/overview.md
@@ -462,8 +473,11 @@ mappings:
     # Moduły layoutu (`stack:frontend:*`) nie wchodzą do Bundli — są podpowiedzią
     # ścieżek w `layouts:` niżej (MCP `list_questions`).
     web:
-      react: []
-      react@legacy: []
+      react:
+        - stack:react
+        - stack:react:modern
+      react@legacy:
+        - stack:react
       angular: []
       angular@rxjs: []
       expo:
