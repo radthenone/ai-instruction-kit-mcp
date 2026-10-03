@@ -41,7 +41,8 @@ Feature nie importuje z wnętrza innego feature'a — wspólne przenieś do `sha
 ## Zasady wspólne
 
 - **Komponenty to funkcje.** Bez komponentów klasowych w nowym kodzie (wyjątek: error
-  boundary w React < 19 bez biblioteki).
+  boundary bez biblioteki typu `react-error-boundary` — React, także 19, nie ma
+  funkcyjnego odpowiednika).
 - **Reguły hooków** — tylko na najwyższym poziomie komponentu / hooka; lint
   `eslint-plugin-react-hooks` włączony i nie wyciszany.
 - **Stan w najniższym wspólnym rodzicu.** Nie kopiuj propsów do stanu; wartości pochodne

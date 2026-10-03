@@ -24,7 +24,8 @@ pokazuje React < 19 — to nie ten moduł, zmień Tier na `react@legacy`.
 - `useFormStatus()` w komponencie wewnątrz `<form>` (np. przycisk submit) — `pending`
   bez przekazywania propsów.
 - `useOptimistic` dla natychmiastowej odpowiedzi UI (polubienie, dodanie do listy),
-  cofanej automatycznie, gdy akcja się nie powiedzie.
+  porzucanej automatycznie po zakończeniu akcji (sukces lub błąd) — po sukcesie zaktualizuj
+  właściwy stan / unieważnij query, inaczej zmiana zniknie.
 - `useTransition` / `startTransition` dla aktualizacji niepilnych (filtrowanie, nawigacja),
   także z funkcją `async`.
 - Walidacja: schemat (np. `zod`) współdzielony między walidacją klienta a typem danych;
