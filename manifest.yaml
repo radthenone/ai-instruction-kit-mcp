@@ -529,11 +529,11 @@ questions:
     detect:
       - {glob: manage.py, value: django}
       - {glob: pyproject.toml, pattern: '(?i)\bdjango\b', value: django}
-      - {glob: requirements*.txt, pattern: '(?i)^django\b', value: django}
+      - {glob: requirements*.txt, pattern: '(?im)^django\b', value: django}
       - {glob: pyproject.toml, pattern: '(?i)\bfastapi\b', value: fastapi}
-      - {glob: requirements*.txt, pattern: '(?i)^fastapi\b', value: fastapi}
+      - {glob: requirements*.txt, pattern: '(?im)^fastapi\b', value: fastapi}
       - {glob: pyproject.toml, pattern: '(?i)\bflask\b', value: flask}
-      - {glob: requirements*.txt, pattern: '(?i)^flask\b', value: flask}
+      - {glob: requirements*.txt, pattern: '(?im)^flask\b', value: flask}
 
   web:
     question: Jaki Stack web?
@@ -544,8 +544,10 @@ questions:
         value: none
     detect:
       - {glob: angular.json, value: angular}
-      - {glob: "**/package.json", pattern: '"expo-router"\s*:', value: expo}
-      - {glob: "**/package.json", pattern: '"react"\s*:\s*"[\^~>=]*(1[6-8])\.', value: react@legacy}
+      # Expo na web wymaga react-native-web; samo `expo` / `expo-router` ma też projekt tylko mobile.
+      - {glob: "**/package.json", pattern: '(?s)(?=.*"expo"\s*:).*"react-native-web"\s*:', value: expo}
+      # React web = react-dom; sam `react` ma też projekt React Native.
+      - {glob: "**/package.json", pattern: '(?s)(?=.*"react-dom"\s*:).*"react"\s*:\s*"[\^~>=]*(1[6-8])\.', value: react@legacy}
       - {glob: "**/package.json", pattern: '"react-dom"\s*:', value: react}
 
   mobile:
@@ -556,9 +558,12 @@ questions:
       - when: {all: {backend: [django-html]}}
         value: none
     detect:
-      - {glob: "**/app.json", pattern: '"expo"\s*:', value: expo}
-      - {glob: "**/package.json", pattern: '"expo"\s*:', value: expo}
-      - {glob: "**/package.json", pattern: '"react-native"\s*:', value: react-native}
+      # Expo tylko web też ma `expo` w app.json — mobile zdradza sekcja ios/android.
+      - {glob: "**/app.json", pattern: '(?s)"expo"\s*:.*"(ios|android)"\s*:', value: expo}
+      - {glob: "**/app.config.*", pattern: '\b(ios|android)\s*:', value: expo}
+      # Projekt RN bez Expo ma natywne katalogi i nie ma `expo` w zależnościach.
+      - {glob: "**/android/build.gradle", value: react-native}
+      - {glob: "**/ios/Podfile", value: react-native}
 
   web-variant-react:
     question: Które podejście React — aktualne (19+) czy starsze (16–18)?
