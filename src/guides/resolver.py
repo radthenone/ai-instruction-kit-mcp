@@ -20,7 +20,7 @@ API_CONTRACT_BASE = "arch:api-contract"
 
 MIGRATION_NOTICE = (
     "⚠ Stara konfiguracja: brak `.ai/project.profile.yaml` albo start serwera "
-    "z `--preset` / `--profile`. Uruchom `kit-ai reload` — zapisze profil "
+    "z `--preset` / `--profile` / `--codegen`. Uruchom `kit-ai reload` — zapisze profil "
     "z Tierami (puste Tiery = sam core)."
 )
 
@@ -795,7 +795,6 @@ def resolve_workspace_profile(
     *,
     extra_overlays: list[Path] | None = None,
     language_override: str | None = None,
-    codegen_override: str | None = None,
     notice: str = "",
 ) -> ResolvedProfile:
     """
@@ -809,7 +808,6 @@ def resolve_workspace_profile(
         kit_root: Opcjonalny root instruction-kit.
         extra_overlays: Dodatkowe pliki overlay z CLI.
         language_override: Nadpisanie języka z CLI/env.
-        codegen_override: Nadpisanie generatora klienta API z CLI/env.
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
@@ -824,7 +822,6 @@ def resolve_workspace_profile(
         workspace_root=resolved_workspace,
         extra_overlays=extra_overlays,
         language_override=language_override,
-        codegen_override=codegen_override,
         notice=notice,
     )
 
@@ -836,7 +833,6 @@ def resolve_profile(
     workspace_root: Path | None = None,
     extra_overlays: list[Path] | None = None,
     language_override: str | None = None,
-    codegen_override: str | None = None,
     notice: str = "",
 ) -> ResolvedProfile:
     """
@@ -850,10 +846,9 @@ def resolve_profile(
             dla lokalnego ``.ai/…``, inaczej ``cwd``.
         extra_overlays: Dodatkowe pliki overlay z CLI.
         language_override: Nadpisanie języka z CLI/env (``pl`` / ``en``); ma pierwszeństwo
-            przed ``language`` w YAML profilu.
-        codegen_override: Nadpisanie generatora klienta API z CLI/env (``orval`` / ``none``);
-            ma pierwszeństwo przed ``codegen`` w YAML profilu. Bez pary
-            backend + klient (web/mobile) efektywny codegen to zawsze ``none``.
+            przed ``language`` w YAML profilu. Codegen nie ma nadpisania — tylko
+            ``codegen:`` w profilu (ADR-0007); bez pary backend + klient (web/mobile)
+            efektywny codegen to zawsze ``none``.
         notice: Ostrzeżenie doklejane na początek bundle'i i indeksu
             (np. migracja starej konfiguracji).
 
@@ -890,12 +885,7 @@ def resolve_profile(
     tiers, _ = profile_tiers(profile_data, manifest.mappings)
     filled = _filled_tiers(tiers, profile_data, manifest.mappings)
     if "backend" in filled and ("web" in filled or "mobile" in filled):
-        codegen = normalize_codegen(
-            codegen_override
-            if codegen_override is not None
-            else str(profile_data.get("codegen", "orval")),
-            manifest,
-        )
+        codegen = normalize_codegen(str(profile_data.get("codegen", "orval")), manifest)
     else:
         codegen = "none"
     profile_data = {**profile_data, "language": language, "codegen": codegen}

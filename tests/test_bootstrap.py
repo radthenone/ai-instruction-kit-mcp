@@ -106,7 +106,7 @@ class TestRealRun(_BootstrapTestCase):
             self.assertIn("PreToolUse", settings)
 
     def test_local_source_uses_uv_run_not_uvx(self) -> None:
-        """Lokalny klon: `uv run --directory` czyta kod i moduły z dysku.
+        """Lokalny klon: `uv run --project` czyta kod i moduły z dysku.
 
         `uvx --from <katalog>` cache'uje koło pod wersję pakietu, więc edycja modułu
         (albo kodu serwera) nie dociera do klienta, dopóki wersja nie wzrośnie.
@@ -132,7 +132,8 @@ class TestRealRun(_BootstrapTestCase):
                     text = (workspace / rel).read_text(encoding="utf-8")
                     self.assertIn('"uv"', text)
                     self.assertNotIn('"uvx"', text)
-                    self.assertIn('"run", "--directory"', text)
+                    self.assertIn('"run", "--project"', text)
+                    self.assertNotIn("--codegen", text)
                     self.assertNotIn('"--from"', text)
                     self.assertIn("--kit-root", text)
 
@@ -212,7 +213,7 @@ class TestRealRun(_BootstrapTestCase):
                 with self.subTest(skill=name):
                     self.assertIn(f"!.claude/skills/{name}/", gitignore)
 
-    # Konfigi MCP, które bootstrap renderuje ze ścieżką maszyny (`uv run --directory`,
+    # Konfigi MCP, które bootstrap renderuje ze ścieżką maszyny (`uv run --project`,
     # `--kit-root`, absolutny `--workspace`) — po jednym na klienta.
     MCP_CONFIGS = (
         ".mcp.json",
@@ -324,12 +325,10 @@ class TestServerTool(_BootstrapTestCase):
             server._kit_root,
             server._workspace_root,
             server._clients,
-            server._preset,
             server._legacy_config,
         )
         server._kit_root = KIT_ROOT
         server._clients = ["claude"]
-        server._preset = None
         server._legacy_config = False
         self._tmp = tempfile.mkdtemp(prefix="guides-tool-test-")
         self.addCleanup(shutil.rmtree, self._tmp, True)
@@ -342,7 +341,6 @@ class TestServerTool(_BootstrapTestCase):
             server._kit_root,
             server._workspace_root,
             server._clients,
-            server._preset,
             server._legacy_config,
         ) = self._saved
 

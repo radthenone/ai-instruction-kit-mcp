@@ -254,7 +254,7 @@ class TestUnifiedPipeline(unittest.TestCase):
             (workspace / ".ai").mkdir()
             profile = workspace / ".ai" / "project.profile.yaml"
             profile.write_text(
-                "name: t\nbackend: django\ncapabilities: [auth]\n"
+                "name: t\nbackend: django\ncodegen: graphql\ncapabilities: [auth]\n"
                 "decisions:\n  auth: allauth\n",
                 encoding="utf-8",
             )
@@ -263,7 +263,6 @@ class TestUnifiedPipeline(unittest.TestCase):
                 kit_root=KIT_ROOT,
                 workspace_root=workspace,
                 language_override="en",
-                codegen_override="graphql",
             )
         backend = resolved.bundles["backend"].module_ids
         self.assertIn("capability:auth:allauth", backend)

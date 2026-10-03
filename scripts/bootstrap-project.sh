@@ -6,8 +6,8 @@
 #   ./scripts/bootstrap-project.sh ../app --clients cursor
 #   ./scripts/bootstrap-project.sh ../app --clients all
 #
-# Profil z Tierami (`.ai/project.profile.yaml`) zapisywany zawsze; `--preset`
-# i `--with-profile` przyjmowane dla kompatybilności (preset ignorowany — do czasu B).
+# Profil z Tierami (`.ai/project.profile.yaml`) zapisywany, gdy go brak — jedyne
+# miejsce konfiguracji (ADR-0007). Na co dzień: `kit-ai install` / `kit-ai reload`.
 # Domyślni klienci: all.
 # Agenci: templates/shared/agents → natywne ścieżki klienta.
 # Skille: templates/shared/skills → katalog skilli klienta (claude/cursor/antigravity)
@@ -20,15 +20,10 @@ usage() {
 Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 
 Opcje:
-  --preset NAME       DEPRECATED — ignorowane (Tiery z `.ai/project.profile.yaml`)
   --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
-  --codegen NAME      Generator klienta API: orval (schema → frontend/src/api/generated
-                      + mutatory) | none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast
-                      REST). Domyślnie: orval
   --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity | opencode
                       (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
-  --with-profile      DEPRECATED — profil z Tierami zapisywany zawsze (flaga bez efektu)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
   --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*) ani skilli
                       z templates/shared/skills/
@@ -55,12 +50,9 @@ EOF
 }
 
 TARGET=""
-PRESET="_base"
 LANGUAGE="pl"
-CODEGEN="orval"
 CLIENTS_RAW="all"
 FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
-WITH_PROFILE=0
 WITH_OVERLAY=0
 SKIP_AGENTS=0
 WITH_PLUGINS=0
@@ -73,7 +65,11 @@ SHARED_SKILLS="$KIT_ROOT/templates/shared/skills"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --preset) PRESET="${2:?}"; shift 2 ;;
+    --preset|--profile|--with-profile|--codegen)
+      echo "Opcja $1 została usunięta — Stacki i codegen są w .ai/project.profile.yaml." >&2
+      echo "Odśwież istniejący projekt: kit-ai reload <ścieżka> (migruje starą konfigurację)." >&2
+      exit 1
+      ;;
     --language)
       LANGUAGE="$(echo "${2:?}" | tr '[:upper:]' '[:lower:]')"
       if [[ "$LANGUAGE" != "pl" && "$LANGUAGE" != "en" ]]; then
@@ -83,16 +79,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --clients) CLIENTS_RAW="${2:?}"; shift 2 ;;
-    --codegen)
-      CODEGEN="$(echo "${2:?}" | tr '[:upper:]' '[:lower:]')"
-      if [[ "$CODEGEN" != "orval" && "$CODEGEN" != "none" && "$CODEGEN" != "graphql" ]]; then
-        echo "Nieprawidłowy --codegen: $CODEGEN (dozwolone: orval, none, graphql)" >&2
-        exit 1
-      fi
-      shift 2
-      ;;
     --from) FROM_SRC="${2:?}"; shift 2 ;;
-    --with-profile) WITH_PROFILE=1; shift ;;
     --with-overlay) WITH_OVERLAY=1; shift ;;
     --skip-agents) SKIP_AGENTS=1; shift ;;
     --with-plugins) WITH_PLUGINS=1; shift ;;
@@ -163,7 +150,8 @@ PY
   exit 1
 }
 
-CLIENTS_ARG="$(echo "$CLIENTS_PARSE" | head -n1 | tr -d '\r')"
+CLIENTS_ARG="${CLIENTS_PARSE%%$'\n'*}"
+CLIENTS_ARG="${CLIENTS_ARG//$'\r'/}"
 CLIENTS_LIST=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line//$'\r'/}"
@@ -252,12 +240,12 @@ prune_unselected_clients() {
 }
 
 # Wypełnij szablon MCP (JSON/TOML): from, language, clients, opcjonalnie workspace.
-# Bez --preset: Tiery czyta serwer z `.ai/project.profile.yaml` w --workspace.
-# Linię `--preset` usuwamy, gdyby starszy szablon ją jeszcze miał.
+# Tiery i codegen czyta serwer z `.ai/project.profile.yaml` w --workspace (ADR-0007),
+# więc zmiana Stacka w profilu nie zmienia konfiguracji klienta.
 fill_mcp() {
   local src="$1" dest="$2" workspace_repl="${3:-}"
   mkdir -p "$(dirname "$dest")"
-  FROM_SRC="$FROM_SRC" PRESET="$PRESET" LANGUAGE="$LANGUAGE" CODEGEN="$CODEGEN" \
+  FROM_SRC="$FROM_SRC" LANGUAGE="$LANGUAGE" \
   CLIENTS_ARG="$CLIENTS_ARG" \
   WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
 import os
@@ -272,19 +260,8 @@ text = text.replace(
     os.environ["FROM_SRC"],
 )
 text = re.sub(
-    r'^[ \t]*"--preset",[^\n]*\n',
-    "",
-    text,
-    flags=re.MULTILINE,
-)
-text = re.sub(
     r'("--language",\s*")[^"]*(")',
     rf'\g<1>{os.environ["LANGUAGE"]}\2',
-    text,
-)
-text = re.sub(
-    r'("--codegen",\s*")[^"]*(")',
-    rf'\g<1>{os.environ["CODEGEN"]}\2',
     text,
 )
 text = re.sub(
@@ -292,7 +269,6 @@ text = re.sub(
     rf'\g<1>{os.environ["CLIENTS_ARG"]}\2',
     text,
 )
-# TOML: linie `"--preset", ...` usuwa powyższy regex; tu tylko bare strings w listach
 text = re.sub(
     r'("--workspace",\s*")[^"]*(")',
     lambda m: m.group(0)
@@ -304,7 +280,7 @@ if os.environ.get("WORKSPACE_REPL"):
     # Codex placeholder path
     text = text.replace("/ABSOLUTNA/SCIEZKA/DO/PROJEKTU", os.environ["WORKSPACE_REPL"])
 
-# Zrodlo lokalne: `uv run --directory`, nie `uvx --from`.
+# Zrodlo lokalne: `uv run --project`, nie `uvx --from`.
 #
 # `uvx --from <katalog>` nie czyta kita z tego katalogu w czasie dzialania. uv buduje
 # kolo, w ktorym `manifest.yaml` i `modules/` laduja jako `guides/_data`
@@ -314,9 +290,10 @@ if os.environ.get("WORKSPACE_REPL"):
 # Do tego `find_kit_root` woli `_data` od repo, wiec `check_kit_status` traci historie
 # gita i nie ma czego porownac ze stampem.
 #
-# `uv run --directory <katalog>` instaluje pakiet z ukladem `src/` jako editable: `_data`
+# `uv run --project <katalog>` instaluje pakiet z ukladem `src/` jako editable: `_data`
 # w ogole nie powstaje, kod i moduly czytane sa wprost z klonu. Jedna zmiana naprawia
-# jednoczesnie zamrozone moduly i zamrozony kod serwera.
+# jednoczesnie zamrozone moduly i zamrozony kod serwera. `--project` (w odroznieniu od
+# `--directory`) nie zmienia katalogu roboczego procesu serwera.
 #
 # `--kit-root` dokladamy mimo to — nie jest juz konieczny, ale nazywa klon wprost, wiec
 # konfiguracja mowi wprost, skad kit jest czytany, zamiast polegac na wnioskowaniu.
@@ -328,10 +305,10 @@ if Path(from_src).is_dir():
     # `uvx` występuje w szablonie raz — jako komenda (JSON `"command": "uvx"`,
     # TOML `command = "uvx"`, opencode jako pierwszy element tablicy `command`).
     text = text.replace('"uvx"', '"uv"', 1)
-    # `--from X` i `run --directory X` znaczą to samo dla obu poleceń: "weź pakiet stąd".
+    # `--from X` i `run --project X` znaczą to samo dla obu poleceń: "weź pakiet stąd".
     text = re.sub(
         r'"--from",(\s*)"' + re.escape(from_src) + r'"',
-        lambda m: f'"run", "--directory",{m.group(1)}"{from_src}"',
+        lambda m: f'"run", "--project",{m.group(1)}"{from_src}"',
         text,
         count=1,
     )
@@ -363,7 +340,7 @@ GITIGNORE_BEGIN="# >>> instruction-kit >>>"
 GITIGNORE_END="# <<< instruction-kit <<<"
 
 # Pliki, które bootstrap renderuje ze ścieżką TEJ maszyny: `fill_mcp` wstawia do konfigów
-# MCP lokalny klon kita (`uv run --directory`, `--kit-root`) i absolutny `--workspace`,
+# MCP lokalny klon kita (`uv run --project`, `--kit-root`) i absolutny `--workspace`,
 # stamp zapisuje `kit_from`. Zacommitowane z jednej maszyny psują serwer MCP na każdej
 # innej, więc idą do .gitignore (sekcja kita) i są sprawdzane w indeksie po instalacji.
 # Ścieżki względem $TARGET, w składni .gitignore (wiodący `/` = tylko root repo).
@@ -756,9 +733,7 @@ install_git_pre_push_reminder() {
 }
 
 echo "Bootstrap instruction-kit → $TARGET"
-echo "  preset=$PRESET"
 echo "  language=$LANGUAGE"
-echo "  codegen=$CODEGEN"
 echo "  clients=$CLIENTS_ARG"
 echo "  from=$FROM_SRC"
 
@@ -799,7 +774,9 @@ elif [[ "$NEED_GIT_HOOK" -eq 1 ]] && client_enabled cursor; then
 fi
 
 if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
-  sed "s/my-project/$(basename "$TARGET")/" \
+  sed -e "s/^name: my-project$/name: $(basename "$TARGET")/" \
+    -e "s/^language: .*/language: $LANGUAGE/" \
+    -e "s/^clients: .*/clients: $CLIENTS_ARG/" \
     "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
   echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
 fi
@@ -837,9 +814,7 @@ cat > "$TARGET/.ai/.kit-bootstrap.json" <<JSON
   "kit_commit": "${KIT_COMMIT}",
   "kit_from": "${FROM_SRC}",
   "bootstrapped_at": "${BOOTSTRAPPED_AT}",
-  "preset": "${PRESET}",
   "language": "${LANGUAGE}",
-  "codegen": "${CODEGEN}",
   "clients": "${CLIENTS_ARG}"
 }
 JSON
@@ -854,4 +829,4 @@ echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent
 if client_enabled cursor; then
   echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
 fi
-echo "MCP: --language ${LANGUAGE} --codegen ${CODEGEN} --clients ${CLIENTS_ARG} --workspace …"
+echo "MCP: --language ${LANGUAGE} --clients ${CLIENTS_ARG} --workspace …"
