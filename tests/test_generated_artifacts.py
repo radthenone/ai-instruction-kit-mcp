@@ -5,8 +5,8 @@ Dwie luki, które ten moduł zamyka:
 
 1. Wpis w `manifest.yaml` może wskazywać na nieistniejący plik — dotąd ujawniało
    się to dopiero przy `get_module()` u użytkownika.
-2. To repo dogfooduje własny kit: `.cursor/agents/`, `.claude/agents/` i
-   `.claude/commands/` to kopie `templates/shared/agents/`, a `.claude/skills/`
+2. To repo dogfooduje własny kit: `.claude/agents/` i `.claude/commands/`
+   to kopie `templates/shared/agents/`, a `.claude/skills/`
    to kopia `templates/shared/skills/`. Dodanie agenta albo skilla bez
    regeneracji kopii przechodziło CI niezauważone.
 
@@ -30,8 +30,10 @@ from guides.manifest import find_kit_root, load_manifest
 
 KIT_ROOT = find_kit_root(Path(__file__))
 
-# Katalogi, które bootstrap wypełnia z templates/shared/agents/.
-DOGFOOD_DIRS = (".cursor/agents", ".claude/agents", ".claude/commands")
+# Katalogi, które bootstrap wypełnia z templates/shared/agents/. Tylko klienci
+# zainstalowani w tym repo (`.ai/.kit-bootstrap.json` → clients) — Cursor wypadł
+# w d6117a6, więc `.cursor/` nie ma tu kopii do porównania.
+DOGFOOD_DIRS = (".claude/agents", ".claude/commands")
 
 # Skille ze wspólnego źródła sprawdzamy tylko w `.claude/skills/`. Pozostałe dwa
 # natywne katalogi są w .gitignore z dobrego powodu — `.agents/skills/` i
@@ -48,9 +50,6 @@ DOGFOOD_SKILL_DIR = ".claude/skills"
 # identyczna ze źródłem — inaczej Cursor i Claude rozjeżdżają się na polityce,
 # co jest dokładnie tą luką, dla której guardraile trafiły do shared.
 GUARD_COPIES: tuple[tuple[str, str], ...] = (
-    (".cursor/hooks", "git-guard.mjs"),
-    (".cursor/hooks", "sensitive-files-guard.mjs"),
-    (".cursor/hooks", "invoke-hook.js"),
     (".claude/hooks", "git-guard.mjs"),
     (".claude/hooks", "sensitive-files-guard.mjs"),
     (".claude/hooks", "invoke-hook.js"),
@@ -170,7 +169,6 @@ class TestDogfoodCopies(unittest.TestCase):
         """bash-guard, linters-guard i rtk-check sa tylko dla Claude Code (#63)."""
         for name in ("bash-guard.mjs", "linters-guard.mjs", "rtk-check.mjs"):
             self.assertFalse((self.generated / ".cursor/hooks" / name).exists(), name)
-            self.assertFalse((KIT_ROOT / ".cursor/hooks" / name).exists(), name)
 
     def test_no_legacy_guards_left(self) -> None:
         """Guards v1 (gate-*) nie moga wrocic ani do szablonow, ani do kopii w repo."""
