@@ -255,7 +255,12 @@ def plan_bootstrap(*, workspace_root: Path, **kwargs) -> BootstrapPlan:
         # Codex i opencode dostają absolutny `--workspace` — w sandboxie to ścieżka
         # sandboxu, więc porównujemy po podmianie jej na prawdziwy Workspace.
         real = str(workspace_root.resolve()).replace("\\", "/").encode()
-        fakes = {str(path).replace("\\", "/").encode() for path in (sandbox, sandbox.resolve())}
+        # Najdłuższa najpierw: na macOS `/var/…` jest podciągiem `/private/var/…`.
+        fakes = sorted(
+            {str(path).replace("\\", "/").encode() for path in (sandbox, sandbox.resolve())},
+            key=len,
+            reverse=True,
+        )
         for rel in sorted(before & after):
             produced = (sandbox / rel).read_bytes()
             for fake in fakes:

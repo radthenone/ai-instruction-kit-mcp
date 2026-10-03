@@ -213,5 +213,24 @@ class TestHelpers(unittest.TestCase):
             self.assertEqual(entry["args"][-2:], ["--workspace", "/srv/app"])
 
 
+class TestWorkspaceSettings(unittest.TestCase):
+    def test_profile_without_clients_falls_back_to_stamp(self) -> None:
+        """Profil sprzed kit-ai (bez `clients:`) nie może zgubić klientów i języka ze stampu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            (app / ".ai").mkdir()
+            (app / ".ai" / "project.profile.yaml").write_text(
+                "name: app\nlanguage: pl\nbackend: none\n", encoding="utf-8"
+            )
+            (app / ".ai" / ".kit-bootstrap.json").write_text(
+                json.dumps({"language": "en", "clients": "claude"}), encoding="utf-8"
+            )
+
+            settings = cli.workspace_settings(app)
+
+            self.assertEqual((settings.language, settings.clients), ("en", "claude"))
+            self.assertFalse(settings.migrated)
+
+
 if __name__ == "__main__":
     unittest.main()

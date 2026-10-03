@@ -197,13 +197,15 @@ def workspace_settings(workspace: Path) -> WorkspaceSettings:
         SetupError: Repo bez Profilu i bez stampu — kit nie był instalowany.
     """
     profile_path = workspace / PROFILE_REL_PATH
-    if profile_path.is_file():
-        profile = _read_yaml(profile_path)
+    stamp_path = workspace / STAMP_REL_PATH
+    profile = _read_yaml(profile_path) if profile_path.is_file() else None
+    # Profil sprzed `kit-ai` nie ma `clients:`, a jego `language:` to zawsze `pl` z szablonu
+    # — prawdziwe wartości są wtedy tylko w stampie.
+    if profile is not None and ("clients" in profile or not stamp_path.is_file()):
         return WorkspaceSettings(
             language=normalize_language(str(profile.get("language") or "pl")),
             clients=_clients_value(profile.get("clients")),
         )
-    stamp_path = workspace / STAMP_REL_PATH
     if stamp_path.is_file():
         try:
             stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
@@ -213,7 +215,7 @@ def workspace_settings(workspace: Path) -> WorkspaceSettings:
         return WorkspaceSettings(
             language=normalize_language(str(stamp.get("language") or "pl")),
             clients=_clients_value(stamp.get("clients")),
-            migrated=True,
+            migrated=profile is None,
         )
     raise SetupError(
         f"`{workspace}` nie ma kita (brak `{PROFILE_REL_PATH.as_posix()}` i `{STAMP_REL_PATH}`). "
