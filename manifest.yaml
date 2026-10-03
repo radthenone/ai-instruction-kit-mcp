@@ -204,8 +204,28 @@ modules:
 
   stack:flask:layout:
     path: modules/stacks/flask/layout.md
-    title: Flask — layout
+    title: Flask — podpowiedź ścieżek
     tags: [backend, flask]
+
+  stack:flask:
+    path: modules/stacks/flask/overview.md
+    title: Flask — przegląd
+    tags: [backend, flask]
+
+  stack:flask:structure:
+    path: modules/stacks/flask/structure.md
+    title: Struktura katalogów — Flask
+    tags: [backend, flask]
+
+  stack:flask:backend-instructions:
+    path: modules/stacks/flask/backend-instructions.md
+    title: Instrukcje agenta — backend Flask
+    tags: [backend, flask]
+
+  stack:flask:testing:
+    path: modules/stacks/flask/testing.md
+    title: Testing — Flask (pytest)
+    tags: [backend, flask, testing]
 
   stack:frontend:expo-web:
     path: modules/stacks/frontend/expo-web.md
@@ -435,7 +455,10 @@ mappings:
         - stack:fastapi:backend-instructions
         - stack:fastapi:testing
       flask:
-        - stack:flask:layout
+        - stack:flask
+        - stack:flask:structure
+        - stack:flask:backend-instructions
+        - stack:flask:testing
     # Moduły layoutu (`stack:frontend:*`) nie wchodzą do Bundli — są podpowiedzią
     # ścieżek w `layouts:` niżej (MCP `list_questions`).
     web:
@@ -705,6 +728,8 @@ questions:
 layouts:
   - when: {all: {backend: [fastapi]}}
     module: stack:fastapi:layout
+  - when: {all: {backend: [flask]}}
+    module: stack:flask:layout
   - when: {all: {web: [expo], mobile: [react-native]}}
     warning: "web: expo + mobile: react-native — dwa toolchainy React Native w jednym repo. Rozważ mobile: expo (jeden projekt Expo) albo web: react."
   - when: {all: {web: [expo], mobile: [expo]}}
