@@ -866,16 +866,6 @@ install_plugins() {
 EOF
 }
 
-install_git_pre_push_reminder() {
-  # Dla klientów bez Cursor hooks — szablon do ręcznej instalacji / copy do .git/hooks
-  if [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
-    mkdir -p "$TARGET/git-hooks"
-    cp "$KIT_ROOT/templates/git-hooks/pre-push" "$TARGET/git-hooks/pre-push"
-    chmod +x "$TARGET/git-hooks/pre-push"
-    echo "  + git-hooks/pre-push (zainstaluj do .git/hooks/pre-push)"
-  fi
-}
-
 # Sekcja kita w .gitignore — wycięta razem z pustą linią, którą dokłada sync.
 # Plik, w którym poza sekcją nic nie było, znika.
 strip_gitignore_section() {
@@ -920,10 +910,6 @@ remove_kit() {
      && cmp -s "$TARGET/.gitattributes" "$KIT_ROOT/templates/gitattributes.txt"; then
     kit_rm .gitattributes
   fi
-  if [[ -f "$TARGET/git-hooks/pre-push" ]] \
-     && cmp -s "$TARGET/git-hooks/pre-push" "$KIT_ROOT/templates/git-hooks/pre-push"; then
-    kit_rm git-hooks/pre-push
-  fi
   strip_gitignore_section
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
@@ -967,32 +953,22 @@ if [[ "$PRUNE_CLIENTS" -eq 1 ]]; then
   echo "  (sprzątnięto kitowe pliki klientów spoza --clients ${CLIENTS_ARG}; wyłącz: --keep-unselected-clients)"
 fi
 
-NEED_GIT_HOOK=0
 for c in "${CLIENTS_LIST[@]}"; do
   case "$c" in
     cursor) install_cursor ;;
-    claude) install_claude; NEED_GIT_HOOK=1 ;;
-    codex) install_codex; NEED_GIT_HOOK=1 ;;
-    vscode) install_vscode; NEED_GIT_HOOK=1 ;;
-    kiro) install_kiro; NEED_GIT_HOOK=1 ;;
-    kilo) install_kilo; NEED_GIT_HOOK=1 ;;
-    antigravity) install_antigravity; NEED_GIT_HOOK=1 ;;
-    opencode) install_opencode; NEED_GIT_HOOK=1 ;;
+    claude) install_claude ;;
+    codex) install_codex ;;
+    vscode) install_vscode ;;
+    kiro) install_kiro ;;
+    kilo) install_kilo ;;
+    antigravity) install_antigravity ;;
+    opencode) install_opencode ;;
     *)
       echo "Nieobsługiwany klient po expand: $c" >&2
       exit 1
       ;;
   esac
 done
-
-if [[ "$NEED_GIT_HOOK" -eq 1 ]] && ! client_enabled cursor; then
-  install_git_pre_push_reminder
-elif [[ "$NEED_GIT_HOOK" -eq 1 ]] && client_enabled cursor; then
-  : # Cursor ma gate-*; opcjonalnie i tak zostaw szablon
-  if [[ ! -f "$TARGET/git-hooks/pre-push" ]] && [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
-    install_git_pre_push_reminder
-  fi
-fi
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.md" ]]; then

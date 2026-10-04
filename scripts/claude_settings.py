@@ -12,6 +12,10 @@ SessionStart) i tylko je zabiera przy prune. Rozpoznaje je po ścieżce komendy
 (`GUARD_MARKERS`), więc reinstalacja podmienia stare wpisy zamiast je duplikować.
 Markery starych Guardów (`gate-*`, `invoke-hook.js`) zostają, żeby reinstalacja
 sprzątała wpisy z Workspace'ów bootstrapowanych przed Guards v2.
+
+Poza hookami kit dokłada marketplace i plugin Superpowers (`KIT_PLUGIN_SETTINGS`), żeby
+Claude Code sam zaproponował instalację przy otwarciu repo. Wpis, który użytkownik już ma
+(np. `false` w `enabledPlugins`), zostaje; prune zabiera tylko wpisy równe kitowym.
 """
 
 from __future__ import annotations
@@ -33,6 +37,58 @@ GUARD_MARKERS: tuple[str, ...] = (
     "gate-push.sh",
     "gate-destructive.sh",
 )
+
+
+# Klucze ustawień Claude Code dokładane obok hooków — nazwa → wartość kita.
+KIT_PLUGIN_SETTINGS: dict[str, dict] = {
+    "extraKnownMarketplaces": {
+        "superpowers-marketplace": {
+            "source": {"source": "github", "repo": "obra/superpowers-marketplace"}
+        }
+    },
+    "enabledPlugins": {"superpowers@superpowers-marketplace": True},
+}
+
+
+def strip_kit_plugins(settings: dict) -> dict:
+    """
+    Usuń wpisy marketplace/pluginów kita, o ile użytkownik ich nie zmienił.
+
+    Args:
+        settings: Ustawienia do oczyszczenia (modyfikowane w miejscu).
+
+    Returns:
+        dict: Te same ustawienia; pusty blok po usunięciu znika.
+    """
+    for key, entries in KIT_PLUGIN_SETTINGS.items():
+        block = settings.get(key)
+        if not isinstance(block, dict):
+            continue
+        for name, value in entries.items():
+            if block.get(name) == value:
+                del block[name]
+        if not block:
+            del settings[key]
+    return settings
+
+
+def merge_kit_plugins(settings: dict) -> dict:
+    """
+    Dołóż wpisy marketplace/pluginów kita bez nadpisywania wartości użytkownika.
+
+    Args:
+        settings: Ustawienia (modyfikowane w miejscu).
+
+    Returns:
+        dict: Te same ustawienia z wpisami kita.
+    """
+    for key, entries in KIT_PLUGIN_SETTINGS.items():
+        block = settings.get(key)
+        if not isinstance(block, dict):
+            block = settings[key] = {}
+        for name, value in entries.items():
+            block.setdefault(name, value)
+    return settings
 
 
 def is_kit_entry(entry: dict) -> bool:
@@ -127,7 +183,7 @@ def main(argv: list[str]) -> int:
     settings = strip_kit_entries(load(target))
 
     if mode == "prune":
-        write(target, settings)
+        write(target, strip_kit_plugins(settings))
         return 0
 
     if mode != "install" or len(argv) < 4:
@@ -139,7 +195,7 @@ def main(argv: list[str]) -> int:
     for event, entries in template.get("hooks", {}).items():
         hooks.setdefault(event, []).extend(entries)
 
-    write(target, settings)
+    write(target, merge_kit_plugins(settings))
     return 0
 
 

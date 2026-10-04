@@ -44,7 +44,6 @@ KIT_SURFACE: tuple[str, ...] = (
     ".gitignore",
     "AGENTS.md",
     "BUGBOT.md",
-    "git-hooks",
     "opencode.json",
 )
 

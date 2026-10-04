@@ -349,7 +349,17 @@ def install_summary(workspace: Path, kit_root: Path, *, language: str, clients: 
         f"  - {client}: {CLIENT_MCP_FILES[client]}"
         for client in expand_clients(parse_clients(clients))
     )
-    lines.extend(["", "Przeładuj okno i wywołaj /kit-project-begin"])
+    lines.extend(
+        [
+            "",
+            "Dalej (przeładuj okno klienta):",
+            "  1. Superpowers — Claude Code zaproponuje sam (wpis w .claude/settings.json);",
+            "     w pozostałych klientach albo gdy pytanie nie padło:",
+            "       /plugin marketplace add obra/superpowers-marketplace",
+            "       /plugin install superpowers@superpowers-marketplace",
+            "  2. /kit-project-begin — konfiguracja projektu (Stacki, codegen, .ai/project.md)",
+        ]
+    )
     return "\n".join(lines)
 
 

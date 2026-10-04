@@ -41,7 +41,6 @@ _MANUAL_GLOBS: tuple[str, ...] = (
     "templates/project.md",
     "templates/project.profile.yaml",
     "templates/cursor/BUGBOT.md",
-    "templates/git-hooks/pre-push",
 )
 
 

@@ -114,6 +114,34 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         run("prune", str(self.target))
         self.assertFalse(self.target.exists())
 
+    def test_install_enables_superpowers_marketplace(self) -> None:
+        """Claude Code sam proponuje Superpowers przy otwarciu repo (#122)."""
+        run("install", str(self.target), str(TEMPLATE))
+        data = self.load()
+        self.assertEqual(
+            data["extraKnownMarketplaces"]["superpowers-marketplace"]["source"]["repo"],
+            "obra/superpowers-marketplace",
+        )
+        self.assertIs(data["enabledPlugins"]["superpowers@superpowers-marketplace"], True)
+
+    def test_plugin_keys_keep_user_entries_and_do_not_duplicate(self) -> None:
+        user = {
+            "enabledPlugins": {"moj@moj-market": True, "superpowers@superpowers-marketplace": False},
+            "extraKnownMarketplaces": {"moj-market": {"source": {"source": "github", "repo": "ja/moj"}}},
+        }
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("install", str(self.target), str(TEMPLATE))
+        run("install", str(self.target), str(TEMPLATE))
+        data = self.load()
+        # Wyłączony przez użytkownika plugin zostaje wyłączony.
+        self.assertIs(data["enabledPlugins"]["superpowers@superpowers-marketplace"], False)
+        self.assertIs(data["enabledPlugins"]["moj@moj-market"], True)
+        self.assertEqual(
+            set(data["extraKnownMarketplaces"]), {"moj-market", "superpowers-marketplace"}
+        )
+        run("prune", str(self.target))
+        self.assertEqual(self.load(), user)
+
     def test_unreadable_settings_do_not_abort_install(self) -> None:
         # Uszkodzony JSON nie może wywalić bootstrapu — kit zaczyna od pustego stanu.
         self.target.write_text("{ to nie jest json", encoding="utf-8")

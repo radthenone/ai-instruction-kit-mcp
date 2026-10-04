@@ -69,20 +69,23 @@ Niskopoziomowo to samo robi `scripts/bootstrap-project.sh "$APP" --from "$KIT" -
 
 ### 2. Po instalacji (kroki, których skrypt nie zrobi za Ciebie)
 
-```bash
-# a) hook pre-push — skrypt kopiuje go do git-hooks/, ale nie do .git/
-cp "$APP/git-hooks/pre-push" "$APP/.git/hooks/pre-push"
-chmod +x "$APP/.git/hooks/pre-push"
-```
+`kit-ai install` kończy się blokiem „Dalej” z dwoma krokami:
 
 ```text
-# b) Superpowers — plugin marketplace Claude Code, nie da się ze skryptu.
-#    Wpisz w Claude Code:
+# 1. Superpowers — Claude Code proponuje go sam przy otwarciu repo: bootstrap wpisuje
+#    marketplace i plugin do .claude/settings.json (extraKnownMarketplaces + enabledPlugins,
+#    merge bez nadpisywania Twoich wpisów; odznaczenie klienta claude je zabiera).
+#    Pozostali klienci albo gdy pytanie nie padło:
 /plugin marketplace add obra/superpowers-marketplace
 /plugin install superpowers@superpowers-marketplace
+
+# 2. /kit-project-begin — konfiguracja projektu
 ```
 
-**c) Zrestartuj IDE / CLI.** MCP i komendy ładują się przy starcie — bez restartu
+Hooka `pre-push` kit już nie dostarcza (guardraile siedzą w hookach klientów);
+istniejący `git-hooks/pre-push` w Twoim repo zostaje nietknięty.
+
+**Zrestartuj IDE / CLI.** MCP i komendy ładują się przy starcie — bez restartu
 zobaczysz stan sprzed bootstrapu.
 
 ### 3. Weryfikacja
@@ -105,7 +108,7 @@ git -C "$APP" status --short -uall .claude .codex .github/prompts
 Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrapie
 (`.ai/.kit-bootstrap.json`) z aktualnym `HEAD` i mówi, co się zmieniło. Rozdziela dwie
 rzeczy: pliki, które **re-bootstrap wciągnie sam**, i te wymagające **ręcznego
-przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` — kopiowane
+przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md` — kopiowane
 tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany: `kit-ai reload "$APP"`
 (z terminala to samo pokazuje `kit-ai status "$APP"`).
 
@@ -304,7 +307,7 @@ Zapisuje m.in. MCP per klient (`--language`, `--clients`, `--workspace`), agents
 
 Sprzątanie kasuje **wyłącznie pliki kita, po nazwie** — listę bierze z przebiegu tych samych funkcji instalacji w pustym katalogu. Własne agenty, komendy, hooki i skille w `.claude/`, `.opencode/`, `.codex/`, `.github/prompts/` itd. zostają; katalog znika tylko, gdy po kicie jest pusty. Plik użytkownika o nazwie identycznej z plikiem kita (np. własny `.claude/agents/git-start.md`) zostanie usunięty razem z kitowymi.
 
-**`kit-ai remove [ścieżka] [--dry-run]`** — odinstalowanie: pliki kita wszystkich klientów, konfiguracje MCP, wpisy kita w `.claude/settings.json`, sekcja `# >>> instruction-kit >>>` w `.gitignore`, Profil i stamp (także stara konfiguracja z presetem). Pliki tworzone raz (`AGENTS.md`, `BUGBOT.md`, `.gitattributes`, `git-hooks/pre-push`) znikają tylko, gdy są identyczne z bieżącym szablonem kita — zmienione przez Ciebie zostają. Zawsze zostają `.ai/project.md`, `CONTEXT.md`, `docs/adr/` i Twoje pliki. Kit nie robi kopii, więc nic nie przywraca. `--dry-run` pokazuje listę bez usuwania.
+**`kit-ai remove [ścieżka] [--dry-run]`** — odinstalowanie: pliki kita wszystkich klientów, konfiguracje MCP, wpisy kita w `.claude/settings.json`, sekcja `# >>> instruction-kit >>>` w `.gitignore`, Profil i stamp (także stara konfiguracja z presetem). Pliki tworzone raz (`AGENTS.md`, `BUGBOT.md`, `.gitattributes`) znikają tylko, gdy są identyczne z bieżącym szablonem kita — zmienione przez Ciebie zostają. Zawsze zostają `.ai/project.md`, `CONTEXT.md`, `docs/adr/` i Twoje pliki. Kit nie robi kopii, więc nic nie przywraca. `--dry-run` pokazuje listę bez usuwania.
 
 ### `.gitignore` — co z tego wersjonować
 
@@ -572,7 +575,7 @@ Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
 | `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie. `mcp.json`/`config.toml` i stamp dodatkowo **nie są wersjonowane** (ścieżka maszyny) — patrz „`.gitignore` — co z tego wersjonować” |
-| `AGENTS.md`, `BUGBOT.md`, `.ai/project.md`, `git-hooks/pre-push` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
+| `AGENTS.md`, `BUGBOT.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
 | `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
 
 ### Lokalny klon: `uv run --project`, nie `uvx --from`

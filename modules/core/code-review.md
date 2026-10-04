@@ -71,17 +71,6 @@ Guard nigdy nie odpowiada `ask` (ADR 0006) — w auto mode `ask` blokuje jak pro
 
 **Codegen:** gdy overlay/`--codegen` = `orval` → po zmianie API regeneruj klienta; przy `manual`/`none` nie wymagaj Orval.
 
-### Git pre-push (deterministyczne)
-
-Szablon `templates/git-hooks/pre-push` — uruchamia testy/linty z Taskfile (jeśli istnieje). Nie uruchamia AI (wymaga Cursor IDE).
-
-Instalacja w projekcie:
-
-```bash
-cp templates/git-hooks/pre-push .git/hooks/pre-push
-chmod +x .git/hooks/pre-push
-```
-
 ## GitHub — Bugbot
 
 ### Setup (jednorazowo)
@@ -171,7 +160,6 @@ templates/cursor/hooks.json
 templates/shared/guards/git-guard.mjs
 templates/shared/guards/sensitive-files-guard.mjs
 templates/shared/guards/invoke-hook.js
-templates/git-hooks/pre-push
 scripts/bootstrap-project.sh
 ```
 
@@ -183,7 +171,6 @@ W projekcie docelowym:
 .cursor/hooks/git-guard.mjs
 .cursor/hooks/sensitive-files-guard.mjs
 .cursor/hooks/invoke-hook.js
-.git/hooks/pre-push        ← opcjonalnie, z szablonu
 ```
 
 ## Powiązane
