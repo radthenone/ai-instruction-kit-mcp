@@ -2,9 +2,42 @@
 
 Centralne repo MD + serwer MCP. Projekty wybierają Stack **per Tier** (`backend`/`web`/`mobile` w `.ai/project.profile.yaml`) + overlay.
 
-## Szybki start — instalacja i update
+## Szybki start
 
-Jedna komenda robi oba. Bootstrap jest idempotentny: pliki generowane (agenci, komendy,
+Trzy kroki cyklu życia kita w projekcie. Szczegóły każdego kroku są niżej.
+
+### Krok 1 — Instalacja
+
+```bash
+uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2
+cd /m/projects/moja-appka                  # repo aplikacji
+kit-ai install
+```
+
+### Krok 2 — Konfiguracja
+
+Zrestartuj IDE / CLI, potem w kliencie AI:
+
+```text
+/kit-project-begin      # pierwszy raz: pytania o Stack, karta Profilu i .ai/project.md
+/kit-project-edit "…"   # później: jedna zmiana, np. "zmień web na angular"
+```
+
+`/kit-project-begin` proponuje odpowiedzi wykryte w repo, a `/kit-project-edit` zmienia jedną
+odpowiedź bez całego wywiadu ([pełny opis](#slash-commands--konwencja-nazw)). Po zapisie
+zrestartuj klienta.
+
+### Krok 3 — Update
+
+```bash
+uv tool upgrade guides-mcp                 # nowa wersja kita
+kit-ai reload                              # odśwież pliki kita w projekcie
+kit-ai status                              # w agencie: check_kit_status
+```
+
+## Szczegóły instalacji
+
+Jedna komenda robi instalację i update. Bootstrap jest idempotentny: pliki generowane (agenci, komendy,
 hooki, `mcp.json`) nadpisuje świeżą kopią, a pliki z Twoją treścią (`AGENTS.md`,
 `.ai/project.md`, `BUGBOT.md`) zostawia w spokoju.
 
@@ -555,6 +588,9 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 W projekcie docelowym **nie** duplikuj `modules/` — wystarczy profil z Tierami + opcjonalny overlay.
 
 ## Update kita w projekcie
+
+Komendy update: [Szybki start, krok 3](#krok-3--update). Poniżej to, co update robi z plikami,
+i lokalny klon kita.
 
 Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
 
