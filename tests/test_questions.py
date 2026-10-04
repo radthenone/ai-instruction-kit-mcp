@@ -156,6 +156,18 @@ class TestDetectMonorepo(unittest.TestCase):
             self.assertEqual(_detect(questions["web-variant-angular"], root), "angular@rxjs")
 
 
+    def test_flat_integrations_registry_is_capability_provider(self) -> None:
+        """Płaskie `core/integrations/<capability>/` z `registry.py`, bez `providers/` (#132)."""
+        question = load_manifest(KIT_ROOT).questions["capability-provider"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(_detect(question, root))
+            registry = root / "backend/src/core/integrations/payments/registry.py"
+            registry.parent.mkdir(parents=True)
+            registry.write_text("def get_payment_gateway(name): ...\n", encoding="utf-8")
+            self.assertEqual(_detect(question, root), "yes")
+
+
 class TestLayoutModulesLeftBundles(unittest.TestCase):
     def test_layout_modules_never_reach_bundles(self) -> None:
         combos = [("none", "react", "none"), ("none", "react", "expo"), ("none", "expo", "expo"),

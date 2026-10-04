@@ -43,8 +43,7 @@ modelu domenowym.
 ```text
 apps/<domain>/          modele, serializers, views — CRUD REST; opcjonalnie selectors/filters/tasks
 apps/<capability>/      modele capability, HTTP/WS, orkiestracja — cienkie widoki + service capability
-core/integrations/      adaptery providerów (stripe, minio, mail, allauth, channels)
-core/providers/         protokoły / rejestry (opcjonalnie, gdy współdzielone)
+core/integrations/      adaptery providerów per capability: <capability>/{providers,webhooks}/ + registry.py
 common/                 abstrakcje bez vendora (TranslatableModel, pagination, locale)
 ```
 
