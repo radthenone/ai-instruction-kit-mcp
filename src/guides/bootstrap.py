@@ -29,6 +29,7 @@ KIT_SURFACE: tuple[str, ...] = (
     ".codex",
     ".cursor",
     ".github/copilot-instructions.md",
+    ".github/hooks",
     ".github/prompts",
     ".kilocode",
     ".kiro",
