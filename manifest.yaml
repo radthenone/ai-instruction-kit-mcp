@@ -638,13 +638,13 @@ questions:
     sets: backend
     default: none
     detect:
-      - {glob: manage.py, value: django}
-      - {glob: pyproject.toml, pattern: '(?i)\bdjango\b', value: django}
-      - {glob: requirements*.txt, pattern: '(?im)^django\b', value: django}
-      - {glob: pyproject.toml, pattern: '(?i)\bfastapi\b', value: fastapi}
-      - {glob: requirements*.txt, pattern: '(?im)^fastapi\b', value: fastapi}
-      - {glob: pyproject.toml, pattern: '(?i)\bflask\b', value: flask}
-      - {glob: requirements*.txt, pattern: '(?im)^flask\b', value: flask}
+      - {glob: "**/manage.py", value: django}
+      - {glob: "**/pyproject.toml", pattern: '(?i)\bdjango\b', value: django}
+      - {glob: "**/requirements*.txt", pattern: '(?im)^django\b', value: django}
+      - {glob: "**/pyproject.toml", pattern: '(?i)\bfastapi\b', value: fastapi}
+      - {glob: "**/requirements*.txt", pattern: '(?im)^fastapi\b', value: fastapi}
+      - {glob: "**/pyproject.toml", pattern: '(?i)\bflask\b', value: flask}
+      - {glob: "**/requirements*.txt", pattern: '(?im)^flask\b', value: flask}
 
   web:
     question: Jaki Stack web?
@@ -654,12 +654,13 @@ questions:
       - when: {all: {backend: [django-html]}}
         value: none
     detect:
-      - {glob: angular.json, value: angular}
+      - {glob: "**/angular.json", value: angular}
+      # React web = react-dom; sam `react` ma też projekt React Native. Pakiet z `expo` to
+      # aplikacja Expo (też ma react-dom), więc react go pomija — w monorepo web + mobile.
+      - {glob: "**/package.json", pattern: '(?s)^(?!.*"expo"\s*:)(?=.*"react-dom"\s*:).*"react"\s*:\s*"[\^~>=]*(1[6-8])\.', value: react@legacy}
+      - {glob: "**/package.json", pattern: '(?s)^(?!.*"expo"\s*:).*"react-dom"\s*:', value: react}
       # Expo na web wymaga react-native-web; samo `expo` / `expo-router` ma też projekt tylko mobile.
       - {glob: "**/package.json", pattern: '(?s)(?=.*"expo"\s*:).*"react-native-web"\s*:', value: expo}
-      # React web = react-dom; sam `react` ma też projekt React Native.
-      - {glob: "**/package.json", pattern: '(?s)(?=.*"react-dom"\s*:).*"react"\s*:\s*"[\^~>=]*(1[6-8])\.', value: react@legacy}
-      - {glob: "**/package.json", pattern: '"react-dom"\s*:', value: react}
 
   mobile:
     question: Jaki Stack mobile?
@@ -683,7 +684,7 @@ questions:
     default: react
     when: {all: {web: [react, react@legacy]}}
     detect:
-      - {glob: "**/package.json", pattern: '"react"\s*:\s*"[\^~>=]*(1[6-8])\.', value: react@legacy}
+      - {glob: "**/package.json", pattern: '(?s)^(?!.*"expo"\s*:)(?=.*"react-dom"\s*:).*"react"\s*:\s*"[\^~>=]*(1[6-8])\.', value: react@legacy}
 
   web-variant-angular:
     question: Które podejście Angular — signals/standalone czy NgModule + RxJS?
@@ -692,7 +693,7 @@ questions:
     default: angular
     when: {all: {web: [angular, angular@rxjs]}}
     detect:
-      - {glob: "src/**/*.module.ts", pattern: '@NgModule', value: angular@rxjs}
+      - {glob: "**/src/**/*.module.ts", pattern: '@NgModule', value: angular@rxjs}
 
   codegen:
     question: Jak klient dostaje typy API?
@@ -744,6 +745,7 @@ questions:
     on_yes: {include: [arch:monorepo-layout, arch:fe-be-separation]}
     detect:
       - {glob: "frontend/package.json", value: "yes"}
+      - {glob: "frontend/*/package.json", value: "yes"}
 
   capability-provider:
     question: Czy integracje zewnętrzne (płatności, mail, storage) idą przez wzorzec capability + provider?
@@ -762,6 +764,8 @@ questions:
     on_yes: {patterns: [webhooks]}
     detect:
       - {glob: "**/*webhook*.py", value: "yes"}
+      - {glob: "**/webhooks/**/*.py", value: "yes"}
+      - {glob: "**/urls.py", pattern: '(?i)webhook', value: "yes"}
 
   paths-backend:
     question: Gdzie leży kod backendu?
