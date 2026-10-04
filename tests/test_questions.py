@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,9 +41,9 @@ class TestCatalog(unittest.TestCase):
             self.assertIn(qid, questions)
         self.assertIn("fastapi", questions["backend"].options)
         self.assertIn("none", questions["web"].options)
-        self.assertTrue(any(s.glob == "manage.py" and s.value == "django"
+        self.assertTrue(any(s.glob == "**/manage.py" and s.value == "django"
                             for s in questions["backend"].detect))
-        self.assertTrue(any(s.glob == "angular.json" for s in questions["web"].detect))
+        self.assertTrue(any(s.glob == "**/angular.json" for s in questions["web"].detect))
 
     def test_references_point_at_known_ids(self) -> None:
         """Każdy Module ID / Pattern / opcja Tieru z katalogu istnieje (literówka = test, nie runtime)."""
@@ -99,6 +100,60 @@ class TestCatalog(unittest.TestCase):
         self.assertIn("stack:frontend:react-expo-split", out)
         self.assertIn("packages/", out)
         self.assertIn("`codegen`", out.split("## Pominięte")[1])
+
+
+MONOREPO = {
+    "backend/pyproject.toml": '[project]\ndependencies = ["django>=5.2"]\n',
+    "backend/src/manage.py": "import django\n",
+    "backend/src/apps/payments/urls.py": 'path("webhook/", PaymentWebhookView.as_view())\n',
+    "frontend/web/package.json":
+        '{"dependencies": {"next": "16.0.0", "react": "19.2.3", "react-dom": "19.2.3"}}',
+    "frontend/mobile/package.json": '{"dependencies": {"expo": "~57.0.0", "react": "18.3.1", '
+        '"react-native": "0.80.0", "react-dom": "18.3.1", "react-native-web": "0.21.0"}}',
+    "frontend/mobile/app.config.js": "export default {ios: {}, android: {}};\n",
+}
+
+
+def _detect(question, root: Path) -> str | None:
+    """Pierwszy pasujący sygnał — tak, jak agent czyta `Wykrywanie`."""
+    for signal in question.detect:
+        for path in sorted(root.glob(signal.glob)):
+            if not signal.pattern or re.search(signal.pattern, path.read_text(encoding="utf-8")):
+                return signal.value
+    return None
+
+
+class TestDetectMonorepo(unittest.TestCase):
+    def test_monorepo_layout_signals(self) -> None:
+        questions = load_manifest(KIT_ROOT).questions
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel, text in MONOREPO.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text, encoding="utf-8")
+            self.assertEqual(_detect(questions["backend"], root), "django")
+            self.assertEqual(_detect(questions["web"], root), "react")
+            self.assertEqual(_detect(questions["mobile"], root), "expo")
+            self.assertIsNone(_detect(questions["web-variant-react"], root))
+            self.assertEqual(_detect(questions["webhooks"], root), "yes")
+            self.assertEqual(_detect(questions["monorepo"], root), "yes")
+            (root / "frontend/web").rename(root / "web-gone")
+            (root / "web-gone/package.json").unlink()
+            self.assertEqual(_detect(questions["web"], root), "expo")
+            # Gołe RN (react 18, bez react-dom) obok webu 19 nie robi z webu react@legacy.
+            (root / "frontend/mobile/package.json").write_text(
+                '{"dependencies": {"react": "18.3.1", "react-native": "0.80.0"}}', encoding="utf-8")
+            self.assertIsNone(_detect(questions["web-variant-react"], root))
+
+    def test_monorepo_angular(self) -> None:
+        questions = load_manifest(KIT_ROOT).questions
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "frontend/web/src/app").mkdir(parents=True)
+            (root / "frontend/web/angular.json").write_text("{}", encoding="utf-8")
+            (root / "frontend/web/src/app/app.module.ts").write_text("@NgModule({})", encoding="utf-8")
+            self.assertEqual(_detect(questions["web"], root), "angular")
+            self.assertEqual(_detect(questions["web-variant-angular"], root), "angular@rxjs")
 
 
 class TestLayoutModulesLeftBundles(unittest.TestCase):
