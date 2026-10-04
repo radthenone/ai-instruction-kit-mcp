@@ -941,6 +941,8 @@ PROFILE_TIERS="$(profile_tiers)"
 STAGED_AGENTS="$(mktemp -d)"
 trap 'rm -rf "$STAGED_AGENTS"' EXIT
 SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
+# Python na Windowsie kończy linie `\r\n` — `\r` przykleja się do nazwy i `rm -f` chybia.
+SKIPPED_AGENTS="${SKIPPED_AGENTS//$'\r'/}"
 SHARED_AGENTS="$STAGED_AGENTS"
 echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, client → *-frontend, review-ui)"
 

@@ -180,12 +180,16 @@ def run_bootstrap(**kwargs) -> str:
         "KIT_PYTHON": sys.executable.replace("\\", "/"),
         "KIT_COMMIT": installed_kit_commit() or "",
         "KIT_VERSION": __version__,
+        # Skrypt i jego Pythony piszą UTF-8; bez tego Windows dekoduje stdout jako cp1250.
+        "PYTHONUTF8": "1",
     }
     try:
         result = subprocess.run(
             [bash, "--noprofile", "--norc", *argv],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_TIMEOUT_SECONDS,
             check=False,
             # Skrypt (i kazdy proces, ktory sam odpali) nie dostaje stdin serwera MCP.

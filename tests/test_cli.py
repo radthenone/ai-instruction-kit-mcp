@@ -373,6 +373,29 @@ class TestWorkspaceSettings(unittest.TestCase):
             self.assertEqual((settings.language, settings.clients), ("en", "claude"))
             self.assertFalse(settings.migrated)
 
+    def test_fresh_clone_reads_clients_from_committed_kit_files(self) -> None:
+        """Stamp jest w .gitignore — świeży klon / worktree ma tylko zacommitowane pliki kita."""
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            for rel in (".claude/agents/git-start.md", ".opencode/command/git-start.md"):
+                (app / rel).parent.mkdir(parents=True)
+                (app / rel).write_text("---\n", encoding="utf-8")
+
+            settings = cli.workspace_settings(app)
+
+            self.assertEqual((settings.language, settings.clients), ("pl", "claude,opencode"))
+            self.assertTrue(settings.migrated)
+
+    def test_overlay_left_by_remove_is_not_a_kit(self) -> None:
+        """`remove` zostawia `.ai/project.md` — po nim `install` ma znów przejść."""
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            (app / ".ai").mkdir()
+            (app / ".ai" / "project.md").write_text("# app\n", encoding="utf-8")
+
+            with self.assertRaises(cli.SetupError):
+                cli.workspace_settings(app)
+
 
 if __name__ == "__main__":
     unittest.main()
