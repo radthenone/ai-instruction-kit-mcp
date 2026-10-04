@@ -1,4 +1,4 @@
-"""CLI ``kit-ai`` — instalacja, odświeżenie i status kita w repo aplikacji.
+"""CLI ``kit-ai`` — instalacja, odświeżenie, usunięcie i status kita w repo aplikacji.
 
 Konfiguracja projektu żyje wyłącznie w Profilu (`.ai/project.profile.yaml`, ADR-0007).
 ``install`` zakłada Profil i robi Bootstrap, ``reload`` robi Bootstrap z istniejącego
@@ -307,6 +307,35 @@ def install_workspace(
     )
 
 
+def remove_workspace(workspace: Path, kit_root: Path, *, dry_run: bool = False) -> BootstrapPlan | str:
+    """
+    Usuń z repo pliki kita (``bootstrap-project.sh --remove``).
+
+    Zostają ``.ai/project.md``, pliki użytkownika i pliki tworzone raz, które
+    różnią się od szablonu kita.
+
+    Args:
+        workspace: Repo aplikacji.
+        kit_root: Root kita.
+        dry_run: ``True`` — tylko plan z sandboxu, nic nie usuwa.
+
+    Returns:
+        BootstrapPlan | str: Plan (dry-run) albo stdout skryptu.
+
+    Raises:
+        SetupError: Repo bez kita albo repo to sam kit.
+        BootstrapError: Skrypt się nie wykonał.
+    """
+    workspace = workspace.resolve()
+    if workspace == kit_root.resolve():
+        raise SetupError(f"`{workspace}` to repo kita — remove działa w repo aplikacji.")
+    if not _has_kit(workspace):
+        raise SetupError(f"`{workspace}` nie ma kita — nie ma czego usuwać.")
+    if dry_run:
+        return plan_bootstrap(workspace_root=workspace, kit_root=kit_root, remove=True)
+    return run_bootstrap(target=workspace, kit_root=kit_root, remove=True)
+
+
 def install_summary(workspace: Path, kit_root: Path, *, language: str, clients: str) -> str:
     """Podsumowanie po instalacji: JSON serwera MCP i gdzie leży per klient."""
     entry = mcp_server_entry(
@@ -399,6 +428,10 @@ def main(argv: list[str] | None = None) -> int:
     reload.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
     reload.add_argument("--dry-run", action="store_true", help="Pokaż plan, nic nie zapisuj")
 
+    remove = sub.add_parser("remove", help="Usuń pliki kita z repo (własne pliki zostają)")
+    remove.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+    remove.add_argument("--dry-run", action="store_true", help="Pokaż, co zniknie, nic nie usuwaj")
+
     status = sub.add_parser("status", help="Czy kit zmienił się od ostatniego Bootstrapu")
     status.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
 
@@ -417,6 +450,9 @@ def main(argv: list[str] | None = None) -> int:
             settings, result = reload_workspace(workspace, kit_root, dry_run=args.dry_run)
             if settings.migrated:
                 print("Stara konfiguracja (preset) → Profil core + none, nowy mcp.json.")
+            print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
+        elif args.command == "remove":
+            result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
         else:
             print(check_kit_updates(kit_root=kit_root, workspace_root=workspace))

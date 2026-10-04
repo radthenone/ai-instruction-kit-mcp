@@ -33,6 +33,10 @@ Opcje:
   --keep-unselected-clients
                       Nie usuwaj plików klientów spoza --clients (domyślnie: sprzątane —
                       declarative sync, np. --clients claude usuwa .cursor/.codex/… kitowe pliki)
+  --remove            Usuń z TARGET pliki kita wszystkich klientów, wpisy kita w .gitignore
+                      i .claude/settings.json, Profil i stamp. Zostają .ai/project.md,
+                      pliki użytkownika oraz AGENTS.md / BUGBOT.md / .gitattributes,
+                      jeśli różnią się od szablonu kita
   -h, --help          Ta pomoc
 
 Przykład (tylko Cursor):
@@ -60,6 +64,10 @@ PRUNE_CLIENTS=1
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
+# Komplet agentów (SHARED_AGENTS jest niżej podmieniane na zestaw po filtrze Tierów).
+ALL_AGENTS="$SHARED_AGENTS"
+PROFILE_TIERS=""
+REMOVE=0
 SHARED_GUARDS="$KIT_ROOT/templates/shared/guards"
 SHARED_SKILLS="$KIT_ROOT/templates/shared/skills"
 
@@ -84,6 +92,7 @@ while [[ $# -gt 0 ]]; do
     --skip-agents) SKIP_AGENTS=1; shift ;;
     --with-plugins) WITH_PLUGINS=1; shift ;;
     --keep-unselected-clients) PRUNE_CLIENTS=0; shift ;;
+    --remove) REMOVE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*)
       echo "Nieznana opcja: $1" >&2
@@ -167,67 +176,90 @@ client_enabled() {
   return 1
 }
 
-# Usuwa TYLKO pliki/foldery, które ten sam bootstrap sam kiedyś wygenerował dla danego
-# klienta (mapa 1:1 z install_*() niżej). Nigdy nie rusza sąsiednich plików tego samego
-# katalogu spoza kita (np. .vscode/settings.json, .github/workflows/, .kilocode/rules/).
+# Pliki kita jednego klienta = to, co install_<id> kładzie w pustym katalogu. Lista
+# pochodzi z tych samych funkcji co instalacja (komplet agentów, bez filtra Tierów), więc
+# prune i `--remove` nie trzymają drugiej, rozjeżdżającej się mapy ścieżek.
+# `.claude/settings.json` pomijamy — należy do użytkownika, wpisy kita zdejmuje
+# `claude_settings.py prune`.
+kit_files() {
+  local id="$1" sandbox
+  sandbox="$(mktemp -d)"
+  if ! ( TARGET="$sandbox" SHARED_AGENTS="$ALL_AGENTS" SKIP_AGENTS=0; "install_$id" ) >/dev/null 2>&1; then
+    rm -rf "$sandbox"
+    echo "Nie udało się ustalić plików kita klienta $id" >&2
+    return 1
+  fi
+  (cd "$sandbox" && find . -type f ! -path ./.claude/settings.json | sed 's|^\./||' | sort)
+  rm -rf "$sandbox"
+}
+
+# Usuń jeden plik kita (ścieżka względem $TARGET) i puste katalogi nad nim, aż do $TARGET.
+# Cudzy plik w tym samym katalogu blokuje rmdir, więc katalog zostaje razem z nim.
+kit_rm() {
+  local rel="$1" dir
+  [[ -e "$TARGET/$rel" || -L "$TARGET/$rel" ]] || return 0
+  rm -f "$TARGET/$rel"
+  echo "  - $rel"
+  dir="$(dirname "$rel")"
+  while [[ "$dir" != "." ]] && rmdir "$TARGET/$dir" 2>/dev/null; do
+    dir="$(dirname "$dir")"
+  done
+}
+
+# Ścieżki, po których poznać, że klient w ogóle jest w repo. Bez nich nie ma czego
+# sprzątać — i nie płacimy za render listy przy każdym bootstrapie.
+client_present() {
+  local rel
+  case "$1" in
+    cursor) set -- .cursor ;;
+    claude) set -- .claude .mcp.json ;;
+    codex) set -- .codex ;;
+    vscode) set -- .vscode .github ;;
+    kiro) set -- .kiro ;;
+    kilo) set -- .kilocode ;;
+    antigravity) set -- .agents ;;
+    opencode) set -- .opencode opencode.json ;;
+  esac
+  for rel in "$@"; do
+    [[ -e "$TARGET/$rel" ]] && return 0
+  done
+  return 1
+}
+
+# Usuwa TYLKO pliki, które bootstrap sam kładzie dla danego klienta — po nazwie, nigdy
+# całego katalogu. Własne agenty, komendy, hooki i skille użytkownika obok zostają.
+# Plik użytkownika o nazwie identycznej z plikiem kita też zniknie (README).
 prune_client() {
-  local id="$1"
+  local id="$1" files rel name
+  client_present "$id" || return 0
+  files="$(kit_files "$id")"
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    # .cursor/BUGBOT.md bootstrap nadpisuje tylko nietknięty — dostosowany zostaje i tu.
+    if [[ "$rel" == ".cursor/BUGBOT.md" ]] && ! bugbot_pristine "$TARGET/$rel"; then
+      continue
+    fi
+    kit_rm "$rel"
+  done <<< "$files"
+  # Pozostałości starszych wersji kita, których dzisiejsza instalacja już nie kładzie.
   case "$id" in
-    cursor)
-      rm -f "$TARGET/.cursor/mcp.json" "$TARGET/.cursor/hooks.json" \
-        "$TARGET/.cursor/hooks/git-guard.mjs" "$TARGET/.cursor/hooks/sensitive-files-guard.mjs" \
-        "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh" \
-        "$TARGET/.cursor/hooks/invoke-hook.js" \
-        "$TARGET/.cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/code-review.mdc" \
-        "$TARGET/.cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/BUGBOT.md"
-      rm -rf "$TARGET/.cursor/agents" "$TARGET/.cursor/skills"
-      rmdir "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.cursor" 2>/dev/null || true
-      ;;
-    claude)
-      rm -f "$TARGET/.mcp.json"
-      rm -rf "$TARGET/.claude/agents" "$TARGET/.claude/commands" "$TARGET/.claude/hooks"
-      prune_shared_skills "$TARGET/.claude/skills"
-      if [[ -f "$TARGET/.claude/settings.json" ]]; then
-        "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
-      fi
-      rmdir "$TARGET/.claude" 2>/dev/null || true
+    cursor|claude)
+      for name in gate-push.sh gate-destructive.sh gate-file-writes.mjs; do
+        kit_rm ".$id/hooks/$name"
+      done
       ;;
     codex)
-      rm -f "$TARGET/.codex/config.toml"
-      rm -rf "$TARGET/.codex/agents" "$TARGET/.codex/skills"
+      for name in "$ALL_AGENTS"/*.md backend-reviewer frontend-reviewer; do
+        kit_rm ".codex/agents/$(basename "$name" .md).toml"
+      done
+      prune_shared_skills "$TARGET/.codex/agents"
       rmdir "$TARGET/.codex" 2>/dev/null || true
       ;;
-    vscode)
-      rm -f "$TARGET/.vscode/mcp.json" "$TARGET/.github/copilot-instructions.md" \
-        "$TARGET/.github/hooks/rtk-rewrite.json"
-      rmdir "$TARGET/.github/hooks" 2>/dev/null || true
-      if [[ -d "$TARGET/.github/prompts" ]]; then
-        rm -f "$TARGET/.github/prompts/"*.prompt.md 2>/dev/null || true
-        rmdir "$TARGET/.github/prompts" 2>/dev/null || true
-      fi
-      rmdir "$TARGET/.vscode" 2>/dev/null || true
-      ;;
-    kiro)
-      rm -f "$TARGET/.kiro/settings/mcp.json" "$TARGET/.kiro/steering/instruction-kit.md"
-      rm -rf "$TARGET/.kiro/agents"
-      rmdir "$TARGET/.kiro/settings" "$TARGET/.kiro/steering" "$TARGET/.kiro" 2>/dev/null || true
-      ;;
-    kilo)
-      rm -f "$TARGET/.kilocode/mcp.json"
-      rm -rf "$TARGET/.kilocode/workflows"
-      rmdir "$TARGET/.kilocode" 2>/dev/null || true
-      ;;
-    antigravity)
-      rm -f "$TARGET/.agents/mcp_config.json"
-      rm -rf "$TARGET/.agents/workflows"
-      prune_shared_skills "$TARGET/.agents/skills"
-      rmdir "$TARGET/.agents" 2>/dev/null || true
-      ;;
-    opencode)
-      rm -f "$TARGET/opencode.json"
-      rm -rf "$TARGET/.opencode"
-      ;;
   esac
+  if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
+    rmdir "$TARGET/.claude" 2>/dev/null || true
+  fi
 }
 
 prune_unselected_clients() {
@@ -533,14 +565,22 @@ def render(chosen: set[str]) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-if dest.is_file():
-    current = dest.read_text(encoding="utf-8")
-    if current not in {render(c) for c in (set(), {"backend"}, {"client"}, {"backend", "client"})}:
-        raise SystemExit(0)
-else:
+pristine = dest.is_file() and dest.read_text(encoding="utf-8") in {
+    render(c) for c in (set(), {"backend"}, {"client"}, {"backend", "client"})
+}
+if os.environ.get("CHECK_ONLY"):
+    raise SystemExit(0 if pristine else 1)
+if dest.is_file() and not pristine:
+    raise SystemExit(0)
+if not dest.is_file():
     print(dest)
 dest.write_text(render(set(os.environ["TIERS"].split())), encoding="utf-8", newline="\n")
 PY
+}
+
+# Exit 0, gdy plik to nietknięty render BUGBOT.md kita — wtedy wolno go usunąć.
+bugbot_pristine() {
+  CHECK_ONLY=1 copy_bugbot_md "$1" >/dev/null
 }
 
 copy_shared_agents() {
@@ -831,6 +871,66 @@ install_git_pre_push_reminder() {
     echo "  + git-hooks/pre-push (zainstaluj do .git/hooks/pre-push)"
   fi
 }
+
+# Sekcja kita w .gitignore — wycięta razem z pustą linią, którą dokłada sync.
+# Plik, w którym poza sekcją nic nie było, znika.
+strip_gitignore_section() {
+  [[ -f "$TARGET/.gitignore" ]] || return 0
+  BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" DEST="$TARGET/.gitignore" \
+    "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+begin, end = os.environ["BEGIN_MARK"], os.environ["END_MARK"]
+dest = Path(os.environ["DEST"])
+text = dest.read_text(encoding="utf-8")
+if begin in text and end in text:
+    head, _, rest = text.partition(begin)
+    _, _, tail = rest.partition(end)
+    kept = (head.rstrip("\n") + "\n" if head.strip() else "") + tail.lstrip("\n")
+    if kept.strip():
+        dest.write_text(kept, encoding="utf-8", newline="\n")
+        print("  - .gitignore (sekcja instruction-kit)")
+    else:
+        dest.unlink()
+        print("  - .gitignore")
+PY
+}
+
+# `--remove`: repo ma wyglądać jak przed kitem — poza plikami z treścią użytkownika.
+# Kit nie robi kopii, więc niczego nie przywraca; usuwa tylko to, co sam położył.
+remove_kit() {
+  local id
+  echo "Usuwanie instruction-kit → $TARGET"
+  for id in cursor claude codex vscode kiro kilo antigravity opencode; do
+    prune_client "$id"
+  done
+  # Pliki tworzone raz: tylko gdy identyczne z szablonem — zmienione należą do użytkownika.
+  if [[ -f "$TARGET/AGENTS.md" ]] && cmp -s "$TARGET/AGENTS.md" "$KIT_ROOT/templates/AGENTS.md"; then
+    kit_rm AGENTS.md
+  fi
+  if bugbot_pristine "$TARGET/BUGBOT.md"; then
+    kit_rm BUGBOT.md
+  fi
+  if [[ -f "$TARGET/.gitattributes" ]] \
+     && cmp -s "$TARGET/.gitattributes" "$KIT_ROOT/templates/gitattributes.txt"; then
+    kit_rm .gitattributes
+  fi
+  if [[ -f "$TARGET/git-hooks/pre-push" ]] \
+     && cmp -s "$TARGET/git-hooks/pre-push" "$KIT_ROOT/templates/git-hooks/pre-push"; then
+    kit_rm git-hooks/pre-push
+  fi
+  strip_gitignore_section
+  kit_rm .ai/project.profile.yaml
+  kit_rm .ai/.kit-bootstrap.json
+  echo ""
+  echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
+}
+
+if [[ "$REMOVE" -eq 1 ]]; then
+  remove_kit
+  exit 0
+fi
 
 echo "Bootstrap instruction-kit → $TARGET"
 echo "  language=$LANGUAGE"
