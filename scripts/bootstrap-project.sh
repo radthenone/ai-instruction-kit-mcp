@@ -56,7 +56,7 @@ EOF
 TARGET=""
 LANGUAGE="pl"
 CLIENTS_RAW="all"
-FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
+FROM_SRC="git+https://github.com/radthenone/ai-instruction-kit-mcp.git"
 WITH_OVERLAY=0
 SKIP_AGENTS=0
 WITH_PLUGINS=0
@@ -124,7 +124,11 @@ if [[ -d "$FROM_SRC" ]]; then
 fi
 
 # python3 (Linux/macOS) albo python (Windows / pyenv) — bez twardego `python`.
-if command -v python3 >/dev/null 2>&1; then
+# `kit-ai` / serwer MCP podają własny interpreter (KIT_PYTHON): przy instalacji z koła
+# (`uv tool install`) tylko on widzi pakiet `guides` — klonu z `src/` nie ma.
+if [[ -n "${KIT_PYTHON:-}" ]]; then
+  PYTHON_BIN="$KIT_PYTHON"
+elif command -v python3 >/dev/null 2>&1; then
   PYTHON_BIN=python3
 elif command -v python >/dev/null 2>&1; then
   PYTHON_BIN=python
@@ -288,7 +292,7 @@ src = Path(os.environ["SRC"])
 dest = Path(os.environ["DEST"])
 text = src.read_text(encoding="utf-8")
 text = text.replace(
-    "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+    "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
     os.environ["FROM_SRC"],
 )
 text = re.sub(
@@ -1015,13 +1019,21 @@ fi
 
 # Stamp — commit kita w momencie bootstrapu, do taniego "czy trzeba re-bootstrapować"
 # (MCP tool check_kit_status). Pusty kit_commit gdy --from to zdalny URL / nie-git.
-KIT_COMMIT="$(git -C "$KIT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+# Z koła (`uv tool install git+…`) nie ma `.git` — commit podaje `kit-ai` z metadanych
+# instalacji (KIT_COMMIT). Bez `.git` nie pytamy gita: `_data` w `.venv` repo aplikacji
+# zwróciłoby HEAD aplikacji, nie kita.
+if [[ -e "$KIT_ROOT/.git" ]]; then
+  KIT_COMMIT="$(git -C "$KIT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+else
+  KIT_COMMIT="${KIT_COMMIT:-}"
+fi
 BOOTSTRAPPED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mkdir -p "$TARGET/.ai"
 cat > "$TARGET/.ai/.kit-bootstrap.json" <<JSON
 {
   "kit_commit": "${KIT_COMMIT}",
   "kit_from": "${FROM_SRC}",
+  "kit_version": "${KIT_VERSION:-}",
   "bootstrapped_at": "${BOOTSTRAPPED_AT}",
   "language": "${LANGUAGE}",
   "clients": "${CLIENTS_ARG}"

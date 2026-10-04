@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 STAMP_REL_PATH = ".ai/.kit-bootstrap.json"
 
@@ -41,6 +43,30 @@ _MANUAL_GLOBS: tuple[str, ...] = (
     "templates/cursor/BUGBOT.md",
     "templates/git-hooks/pre-push",
 )
+
+
+def direct_url_info() -> dict[str, Any]:
+    """
+    Metadane instalacji pakietu (PEP 610 ``direct_url.json``), ``{}`` gdy ich brak.
+
+    Instalacja z gita (``uv tool install git+…@ref``) ma tu ``vcs_info`` z ``commit_id``
+    — jedyne źródło commitu kita, gdy nie ma klonu z ``.git``.
+    """
+    try:
+        raw = importlib.metadata.distribution("guides-mcp").read_text("direct_url.json")
+    except importlib.metadata.PackageNotFoundError:
+        return {}
+    try:
+        info = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        return {}
+    return info if isinstance(info, dict) else {}
+
+
+def installed_kit_commit() -> str | None:
+    """Commit kita z metadanych instalacji z gita; ``None`` przy instalacji z pliku/ścieżki."""
+    vcs = direct_url_info().get("vcs_info") or {}
+    return str(vcs["commit_id"]) if vcs.get("vcs") == "git" and vcs.get("commit_id") else None
 
 
 def _read_stamp(workspace_root: Path) -> dict | None:
@@ -113,6 +139,33 @@ def _git(kit_root: Path, *args: str) -> str | None:
     return result.stdout.strip()
 
 
+def _wheel_status(stamp_commit: str, bootstrapped_at: str) -> str:
+    """Status, gdy kit działa z koła: commity porównujemy, historii plików nie ma."""
+    current = installed_kit_commit()
+    if current is None:
+        return (
+            "# Kit status: nieznany commit\n\n"
+            "Kit zainstalowany z pliku lub ścieżki (bez gita w metadanych instalacji) — "
+            "nie ma z czym porównać stampu. Zainstaluj z gita "
+            "(`uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@<ref>`) "
+            "albo odśwież ręcznie: `kit-ai reload`."
+        )
+    if current == stamp_commit:
+        return (
+            "# Kit status: aktualny\n\n"
+            f"- Bootstrapowano: {bootstrapped_at}\n"
+            f"- Commit: `{stamp_commit[:12]}`\n"
+            "- Nic nowego w kicie od ostatniego bootstrapu."
+        )
+    return (
+        "# Kit status: ZMIENIŁ SIĘ od ostatniego bootstrapu\n\n"
+        f"- Bootstrapowano: {bootstrapped_at} (`{stamp_commit[:12]}`)\n"
+        f"- Teraz: `{current[:12]}`\n\n"
+        "Kit działa z koła, bez historii gita — listy zmienionych plików nie ma. "
+        "Odśwież: `kit-ai reload` (albo narzędzie MCP `reload_workspace`)."
+    )
+
+
 def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
     """
     Porównaj commit kita zapisany przy ostatnim bootstrapie z aktualnym HEAD.
@@ -150,6 +203,9 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
             "brak commitu do porównania). Re-bootstrapuj ręcznie okresowo, albo "
             "sklonuj kit lokalnie żeby dostać porównanie."
         )
+
+    if not (kit_root / ".git").exists():
+        return _wheel_status(stamp_commit, bootstrapped_at)
 
     current_commit = _git(kit_root, "rev-parse", "HEAD")
     if current_commit is None:

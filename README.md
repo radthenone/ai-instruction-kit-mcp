@@ -13,7 +13,26 @@ opcjonalnie `npx` (skille zewnętrzne).
 
 ### 1. Instalacja / update w projekcie — `kit-ai`
 
-Z katalogu klona kita (ścieżki `M:/…`, `/m/…` i linuksowe działają tak samo):
+Bez klona kita — `kit-ai` jako narzędzie uv (ref po `@`: branch, tag albo commit):
+
+```bash
+uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2
+cd /m/projects/moja-appka                  # repo aplikacji
+kit-ai install                             # bez ścieżki = bieżący katalog
+kit-ai reload | kit-ai status | kit-ai remove [--dry-run]
+
+# jednorazowo, bez instalowania narzędzia:
+uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2 kit-ai install
+```
+
+Wybrany ref trafia do `mcp.json` projektu (`uvx --from git+…@dev-2`), a commit kita do
+stampu — `kit-ai status` porównuje go z commitem zainstalowanego narzędzia. Update:
+`uv tool upgrade guides-mcp` (albo `uv tool install --force git+…@<inny-ref>`) +
+`kit-ai reload`. Instalacja z lokalnej ścieżki (`uv tool install .`) nie zna commitu —
+`status` mówi wtedy „nieznany commit”.
+
+Ścieżka deweloperska kita — z katalogu klona (ścieżki `M:/…`, `/m/…` i linuksowe działają
+tak samo); `mcp.json` dostaje wtedy `uv run --project <klon>`, więc edycje modułów działają od razu:
 
 ```bash
 cd /m/projects/ai-instruction-kit-mcp      # klon tego repo
@@ -160,7 +179,7 @@ Nie mieszaj: nazwa produktu ≠ Stack; porty ≠ tag.
     "project-guides": {
       "command": "uvx",
       "args": [
-        "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+        "--from", "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
         "guides-mcp",
         "--language", "pl",
         "--clients", "all",

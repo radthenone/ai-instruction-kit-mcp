@@ -28,16 +28,20 @@ extra-paths = ["tests", "scripts"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/guides"]
 
+# `_data` ma układ repo kita (KIT_ROOT): bootstrap czyta `templates/` i helpery
+# z `scripts/` względem siebie, więc `uv tool install git+…` działa bez klona.
 [tool.hatch.build.targets.wheel.force-include]
 "manifest.yaml" = "guides/_data/manifest.yaml"
 "modules" = "guides/_data/modules"
-"scripts/bootstrap-project.sh" = "guides/_data/scripts/bootstrap-project.sh"
+"templates" = "guides/_data/templates"
+"scripts" = "guides/_data/scripts"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "manifest.yaml",
     "modules/**",
-    "scripts/bootstrap-project.sh",
+    "scripts/**",
+    "templates/**",
     "src/**",
     "README.md",
 ]

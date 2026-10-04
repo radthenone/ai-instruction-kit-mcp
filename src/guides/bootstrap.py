@@ -12,9 +12,13 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from guides import __version__
+from guides.kit_status import installed_kit_commit
 
 SCRIPT_REL_PATH = "scripts/bootstrap-project.sh"
 
@@ -170,6 +174,14 @@ def run_bootstrap(**kwargs) -> str:
     """
     argv = build_args(**kwargs)
     bash = find_bash()
+    # Skrypt dostaje ten interpreter (widzi pakiet `guides` także bez klonu z `src/`)
+    # i commit z metadanych instalacji — w kole nie ma `.git`, z którego by go wziął.
+    env = {
+        **os.environ,
+        "KIT_PYTHON": sys.executable.replace("\\", "/"),
+        "KIT_COMMIT": installed_kit_commit() or "",
+        "KIT_VERSION": __version__,
+    }
     try:
         result = subprocess.run(
             [bash, "--noprofile", "--norc", *argv],
@@ -183,6 +195,7 @@ def run_bootstrap(**kwargs) -> str:
             # zwrocic blad. Bootstrap jest nieinteraktywny, wiec pusty stdin to jedyne
             # poprawne wejscie. Patrz ten sam mechanizm w `guides.kit_status._git`.
             stdin=subprocess.DEVNULL,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise BootstrapError(
