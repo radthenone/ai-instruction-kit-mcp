@@ -23,6 +23,7 @@ uv run kit-ai install "$APP"               # pyta o język i klientów, zakłada
 uv run kit-ai reload "$APP"                # po zmianie Profilu / update kita — odświeża pliki kita
 uv run kit-ai reload "$APP" --dry-run      # plan bez zapisu
 uv run kit-ai status "$APP"                # czy kit zmienił się od ostatniego Bootstrapu
+uv run kit-ai remove "$APP" [--dry-run]    # usuń pliki kita, własne pliki zostają
 ```
 
 `install` pyta o dwie rzeczy (`Język [pl/en] (pl)`, `Klienci (…) (all)`) — flagi `--language`
@@ -281,6 +282,10 @@ Szkic (nie działa jeszcze):
 Zapisuje m.in. MCP per klient (`--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
+
+Sprzątanie kasuje **wyłącznie pliki kita, po nazwie** — listę bierze z przebiegu tych samych funkcji instalacji w pustym katalogu. Własne agenty, komendy, hooki i skille w `.claude/`, `.opencode/`, `.codex/`, `.github/prompts/` itd. zostają; katalog znika tylko, gdy po kicie jest pusty. Plik użytkownika o nazwie identycznej z plikiem kita (np. własny `.claude/agents/git-start.md`) zostanie usunięty razem z kitowymi.
+
+**`kit-ai remove [ścieżka] [--dry-run]`** — odinstalowanie: pliki kita wszystkich klientów, konfiguracje MCP, wpisy kita w `.claude/settings.json`, sekcja `# >>> instruction-kit >>>` w `.gitignore`, Profil i stamp (także stara konfiguracja z presetem). Pliki tworzone raz (`AGENTS.md`, `BUGBOT.md`, `.gitattributes`, `git-hooks/pre-push`) znikają tylko, gdy są identyczne z bieżącym szablonem kita — zmienione przez Ciebie zostają. Zawsze zostają `.ai/project.md`, `CONTEXT.md`, `docs/adr/` i Twoje pliki. Kit nie robi kopii, więc nic nie przywraca. `--dry-run` pokazuje listę bez usuwania.
 
 ### `.gitignore` — co z tego wersjonować
 

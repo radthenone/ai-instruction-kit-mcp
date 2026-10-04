@@ -29,6 +29,7 @@ KIT_SURFACE: tuple[str, ...] = (
     ".codex",
     ".cursor",
     ".github/copilot-instructions.md",
+    ".github/hooks",
     ".github/prompts",
     ".kilocode",
     ".kiro",
@@ -110,6 +111,7 @@ def build_args(
     with_overlay: bool = False,
     skip_agents: bool = False,
     keep_unselected_clients: bool = False,
+    remove: bool = False,
 ) -> list[str]:
     """
     Zbuduj listę argumentów wywołania ``bootstrap-project.sh``.
@@ -126,6 +128,7 @@ def build_args(
         with_overlay: Dołóż ``--with-overlay``.
         skip_agents: Dołóż ``--skip-agents``.
         keep_unselected_clients: Nie sprzątaj plików klientów spoza ``--clients``.
+        remove: ``--remove`` — usuń pliki kita zamiast instalować.
 
     Returns:
         list[str]: Argv dla bash (bez samego interpretera).
@@ -147,6 +150,8 @@ def build_args(
         args.append("--skip-agents")
     if keep_unselected_clients:
         args.append("--keep-unselected-clients")
+    if remove:
+        args.append("--remove")
     return args
 
 

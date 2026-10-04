@@ -149,6 +149,121 @@ class TestReloadTool(_BootstrapTestCase):
             self.assertIn(".claude/hooks/git-guard.mjs", out)
 
 
+USER_FILES = {
+    ".claude/agents/moj.md": "moj agent\n",
+    ".claude/commands/moja.md": "moja komenda\n",
+    ".claude/hooks/moj-hook.sh": "#!/bin/sh\n",
+    ".opencode/moje.txt": "moje\n",
+    ".codex/skills/moj/SKILL.md": "moj skill\n",
+    ".github/prompts/moj.prompt.md": "moj prompt\n",
+    ".cursor/agents/moj.md": "moj cursor\n",
+    "src/app.py": "print('app')\n",
+}
+
+
+def _write_user_files(app: Path) -> None:
+    for rel, text in USER_FILES.items():
+        (app / rel).parent.mkdir(parents=True, exist_ok=True)
+        (app / rel).write_text(text, encoding="utf-8")
+
+
+class TestPruneAndRemove(_BootstrapTestCase):
+    """Prune i `kit-ai remove` kasują tylko pliki kita — własne pliki użytkownika zostają (#123)."""
+
+    def test_unselected_client_prune_keeps_user_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "all")[0], 0)
+            _write_user_files(app)
+            profile = app / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                profile.read_text(encoding="utf-8").replace("clients: all", "clients: kiro"),
+                encoding="utf-8",
+            )
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            for rel, text in USER_FILES.items():
+                self.assertEqual((app / rel).read_text(encoding="utf-8"), text, rel)
+            for rel in (
+                ".claude/agents/git-start.md",
+                ".claude/commands/git-start.md",
+                ".claude/hooks/git-guard.mjs",
+                ".claude/skills",
+                ".opencode/command",
+                ".opencode/plugins",
+                "opencode.json",
+                ".codex/skills/git-start",
+                ".codex/config.toml",
+                ".github/prompts/git-start.prompt.md",
+                ".cursor/agents/git-start.md",
+                ".cursor/mcp.json",
+                ".mcp.json",
+            ):
+                self.assertFalse((app / rel).exists(), rel)
+            self.assertTrue((app / ".kiro" / "agents" / "git-start.md").is_file())
+
+    def test_remove_leaves_only_user_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            app.mkdir()
+            (app / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+            _write_user_files(app)
+            before = _snapshot(app)
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "all")[0], 0)
+            (app / "BUGBOT.md").write_text("# moje reguły\n", encoding="utf-8")
+            settings = app / ".claude" / "settings.json"
+            data = json.loads(settings.read_text(encoding="utf-8"))
+            data["permissions"] = {"allow": ["Bash(ls)"]}
+            settings.write_text(json.dumps(data), encoding="utf-8")
+
+            code, out = _quiet_main("remove", str(app))
+
+            self.assertEqual(code, 0, out)
+            after = _snapshot(app)
+            # Nietknięte AGENTS.md / .gitattributes zniknęły, zmieniony BUGBOT.md został.
+            self.assertEqual(after.pop("BUGBOT.md"), "# moje reguły\n".encode())
+            self.assertIn(b"permissions", after.pop(".claude/settings.json"))
+            self.assertNotIn(b"git-guard", settings.read_bytes())
+            self.assertIn(".ai/project.md", after)
+            after.pop(".ai/project.md")
+            self.assertEqual(after, before)
+
+    def test_remove_keeps_changed_agents_md(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+            agents = app / "AGENTS.md"
+            agents.write_text(agents.read_text(encoding="utf-8") + "\n## Moje\n", encoding="utf-8")
+
+            self.assertEqual(_quiet_main("remove", str(app))[0], 0)
+
+            self.assertIn("## Moje", agents.read_text(encoding="utf-8"))
+            self.assertFalse((app / ".ai" / "project.profile.yaml").exists())
+            self.assertFalse((app / ".ai" / ".kit-bootstrap.json").exists())
+
+    def test_remove_dry_run_lists_and_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+            before = _snapshot(app)
+
+            code, out = _quiet_main("remove", str(app), "--dry-run")
+
+            self.assertEqual(code, 0, out)
+            self.assertEqual(_snapshot(app), before)
+            self.assertIn(".claude/hooks/git-guard.mjs", out)
+            self.assertIn(".ai/project.profile.yaml", out)
+            self.assertNotIn(".ai/project.md", out)
+
+    def test_remove_without_kit_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = _quiet_main("remove", tmp)
+            self.assertEqual(code, 1)
+            self.assertIn("nie ma kita", out)
+
+
 class TestBashRejectsPresets(_BootstrapTestCase):
     def test_preset_flag_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
