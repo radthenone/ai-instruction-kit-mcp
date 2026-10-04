@@ -186,8 +186,9 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
             "# Kit status: brak stampu\n\n"
             f"Nie znaleziono `{STAMP_REL_PATH}` w repo aplikacji — projekt nie był "
             "bootstrapowany wersją kita ze stampem (albo plik usunięty).\n\n"
-            "Z klona kita: `kit-ai install <repo>` (nowy projekt) albo `kit-ai reload <repo>` "
-            "(stara konfiguracja). Z agenta: narzędzie MCP `reload_workspace` albo "
+            "Stamp jest w `.gitignore`, więc świeży klon go nie ma. W katalogu aplikacji: "
+            "`kit-ai reload` (pliki kita są w repo) albo `kit-ai install` (nowy projekt). "
+            "Z agenta: narzędzie MCP `reload_workspace` albo "
             "`bootstrap_workspace` — najpierw dry run, potem `dry_run=False`."
         )
 

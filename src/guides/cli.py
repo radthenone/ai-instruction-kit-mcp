@@ -9,6 +9,7 @@ Profilu. Logika siedzi w funkcjach, które woła też serwer MCP (``reload_works
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -39,6 +40,20 @@ CLIENT_MCP_FILES: dict[str, str] = {
     "kilo": ".kilocode/mcp.json",
     "antigravity": ".agents/mcp_config.json",
     "opencode": "opencode.json",
+}
+
+# Zacommitowany plik kita, po którym poznać klienta bez Profilu i stampu (stamp jest
+# w .gitignore, więc świeży klon i worktree go nie mają). Ścieżki jak w
+# `prune_tier_agents` w bootstrap-project.sh.
+CLIENT_KIT_MARKERS: dict[str, str] = {
+    "cursor": ".cursor/agents/git-start.md",
+    "claude": ".claude/agents/git-start.md",
+    "codex": ".codex/skills/git-start/SKILL.md",
+    "vscode": ".github/prompts/git-start.prompt.md",
+    "kiro": ".kiro/agents/git-start.md",
+    "kilo": ".kilocode/workflows/git-start.md",
+    "antigravity": ".agents/workflows/git-start.md",
+    "opencode": ".opencode/command/git-start.md",
 }
 
 
@@ -142,8 +157,16 @@ def _clients_value(raw: object) -> str:
     return format_clients_arg(parse_clients(str(raw) if raw else None))
 
 
+def _committed_clients(workspace: Path) -> list[str]:
+    return [cid for cid, rel in CLIENT_KIT_MARKERS.items() if (workspace / rel).is_file()]
+
+
 def _has_kit(workspace: Path) -> bool:
-    return (workspace / PROFILE_REL_PATH).is_file() or (workspace / STAMP_REL_PATH).is_file()
+    return (
+        (workspace / PROFILE_REL_PATH).is_file()
+        or (workspace / STAMP_REL_PATH).is_file()
+        or bool(_committed_clients(workspace))
+    )
 
 
 def write_profile(workspace: Path, kit_root: Path, *, language: str, clients: str) -> Path:
@@ -180,7 +203,8 @@ def workspace_settings(workspace: Path) -> WorkspaceSettings:
     Język i klienci istniejącej instalacji.
 
     Profil wygrywa. Bez Profilu — stara konfiguracja (stamp z czasów presetów):
-    język i klienci ze stampu, ``migrated=True``.
+    język i klienci ze stampu, ``migrated=True``. Bez stampu (świeży klon) — klienci
+    z zacommitowanych plików kita, język ``pl``.
 
     Args:
         workspace: Repo aplikacji.
@@ -212,9 +236,13 @@ def workspace_settings(workspace: Path) -> WorkspaceSettings:
             clients=_clients_value(stamp.get("clients")),
             migrated=profile is None,
         )
+    # Świeży klon: tylko zacommitowane pliki kita. Języka nie ma skąd wziąć — `pl` jak w install.
+    clients = _committed_clients(workspace)
+    if clients:
+        return WorkspaceSettings(language="pl", clients=_clients_value(clients), migrated=True)
     raise SetupError(
-        f"`{workspace}` nie ma kita (brak `{PROFILE_REL_PATH.as_posix()}` i `{STAMP_REL_PATH}`). "
-        f"Zainstaluj: kit-ai install {workspace}"
+        f"`{workspace}` nie ma kita (brak `{PROFILE_REL_PATH.as_posix()}`, `{STAMP_REL_PATH}` "
+        f"i plików kita klientów). Zainstaluj: kit-ai install {workspace}"
     )
 
 
@@ -421,7 +449,11 @@ def _plan_report(plan: BootstrapPlan) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     """Entrypoint ``kit-ai``."""
-    parser = argparse.ArgumentParser(prog="kit-ai", description="Instalacja kita w repo aplikacji")
+    # Windows bez konsoli (potok, agent) pisze w cp1252 i wywraca się na `→` z Bootstrapu.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    parser =argparse.ArgumentParser(prog="kit-ai", description="Instalacja kita w repo aplikacji")
     sub = parser.add_subparsers(dest="command", required=True)
 
     install = sub.add_parser("install", help="Pierwsza instalacja kita w repo")
