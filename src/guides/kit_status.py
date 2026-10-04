@@ -69,19 +69,6 @@ def installed_kit_commit() -> str | None:
     return str(vcs["commit_id"]) if vcs.get("vcs") == "git" and vcs.get("commit_id") else None
 
 
-def current_kit_commit(kit_root: Path) -> str | None:
-    """
-    Commit kita, z którego działa ten proces.
-
-    Klon (``.git``) → ``git rev-parse HEAD``; koło bez ``.git`` → ``commit_id``
-    z ``direct_url.json``. Gita w ``_data`` nie pytamy: koło w ``.venv`` repo aplikacji
-    oddałoby HEAD aplikacji.
-    """
-    if (kit_root / ".git").exists():
-        return _git(kit_root, "rev-parse", "HEAD")
-    return installed_kit_commit()
-
-
 def _read_stamp(workspace_root: Path) -> dict | None:
     path = workspace_root / STAMP_REL_PATH
     if not path.is_file():
