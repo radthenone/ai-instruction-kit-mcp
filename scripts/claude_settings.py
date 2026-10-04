@@ -14,7 +14,8 @@ Markery starych Guardów (`gate-*`, `invoke-hook.js`) zostają, żeby reinstalac
 sprzątała wpisy z Workspace'ów bootstrapowanych przed Guards v2.
 
 Poza hookami kit dokłada marketplace i plugin Superpowers (`KIT_PLUGIN_SETTINGS`), żeby
-Claude Code sam zaproponował instalację przy otwarciu repo. Wpis, który użytkownik już ma
+Claude Code sam zaproponował instalację przy otwarciu repo, oraz `env.MCP_TIMEOUT` — przy
+zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP. Wpis, który użytkownik już ma
 (np. `false` w `enabledPlugins`), zostaje; prune zabiera tylko wpisy równe kitowym.
 """
 
@@ -47,6 +48,7 @@ KIT_PLUGIN_SETTINGS: dict[str, dict] = {
         }
     },
     "enabledPlugins": {"superpowers@superpowers-marketplace": True},
+    "env": {"MCP_TIMEOUT": "90000"},
 }
 
 
