@@ -93,6 +93,8 @@ Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Revie
 | `/compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
 | `/create-task` | `/create-task "…"`; flagi: `/create-task --help` | kit |
 | `/create-skill` | `/create-skill "…"`; flagi: `/create-skill --help` | kit |
+| `/kit-project-begin` | Po `kit-ai install`: pytania o projekt → Profil + `.ai/project.md` → reload | kit |
+| `/kit-project-edit` | Jedna zmiana konfiguracji albo odstępstwo od modułu w `.ai/project.md` | kit |
 | `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |

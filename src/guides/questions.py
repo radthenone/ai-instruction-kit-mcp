@@ -34,7 +34,7 @@ def _target(question: Question) -> str:
 
 def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
     """
-    Katalog pytań jako Markdown dla skilla.
+    Katalog pytań jako Markdown dla agenta /kit-project-begin.
 
     Args:
         manifest: Manifest z sekcjami ``questions`` i ``layouts``.

@@ -147,6 +147,16 @@ for p in .cursor/agents/night-run.md .claude/commands/night-run.md \
          .agents/workflows/night-run.md .opencode/command/night-run.md; do
   test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
 done
+# kit-project-begin / kit-project-edit (#124): konfiguracja projektu u każdego klienta.
+for name in kit-project-begin kit-project-edit; do
+  for p in .cursor/agents/$name.md .claude/agents/$name.md .claude/commands/$name.md \
+           .codex/skills/$name/SKILL.md .github/prompts/$name.prompt.md \
+           .kiro/agents/$name.md .kilocode/workflows/$name.md \
+           .agents/workflows/$name.md .opencode/command/$name.md; do
+    test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
+  done
+done
+echo "OK  kit-project-begin/edit u wszystkich klientów"
 keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$ROOT/templates/shared/agents/night-run.md" | tr '\n' ' ')"
 test "$keys" = "name: description: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
 echo "OK  night-run u wszystkich klientów, frontmatter tylko name + description"

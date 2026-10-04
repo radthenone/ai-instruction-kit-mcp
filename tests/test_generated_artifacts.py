@@ -17,6 +17,7 @@ jego błędy.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -217,6 +218,19 @@ class TestDogfoodCopies(unittest.TestCase):
             if found.name not in known
         )
         self.assertEqual(orphans, [], msg=f"kopie bez źródła w shared: {orphans}")
+
+
+class TestProjectAgentsNeverWriteModules(unittest.TestCase):
+    """Agenci konfiguracji projektu piszą tylko do repo projektu — `modules/` kita jest poza ich zasięgiem (#124)."""
+
+    def test_modules_only_mentioned_as_forbidden(self) -> None:
+        negations = ("nie ", "nigdy", "nic ", "zakaz")
+        for name in ("kit-project-begin", "kit-project-edit"):
+            text = (KIT_ROOT / "templates" / "shared" / "agents" / f"{name}.md").read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if re.search(r"(?<![\w])modules/", line):
+                    with self.subTest(agent=name, line=line):
+                        self.assertTrue(any(n in line.lower() for n in negations), line)
 
 
 if __name__ == "__main__":

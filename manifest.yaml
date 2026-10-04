@@ -622,7 +622,7 @@ mappings:
       storage: files
 
 # ─── Katalog pytań o projekt (MCP `list_questions`) ─────
-# Skill (np. /kit-project-begin) czyta katalog, sprawdza `detect:` w plikach repo,
+# Agent /kit-project-begin (i /kit-project-edit) czyta katalog, sprawdza `detect:` w plikach repo,
 # pyta tylko o to, czego nie wykrył, i zapisuje odpowiedź tam, gdzie wskazuje `sets:`:
 #   - klucz Profilu (`backend`, `web`, `mobile`, `codegen`),
 #   - `paths.<tier>` → sekcja `## Ścieżki` w `.ai/project.md`,
@@ -789,7 +789,7 @@ questions:
 
 # Podpowiedzi układu katalogów (moduły layoutu spoza Bundli). `list_questions` pokazuje
 # każdy pasujący wpis — warunki klienta (web/mobile) wzajemnie się wykluczają, backend
-# ma własne. `warning:` zamiast `module:` = ostrzeżenie dla skilla.
+# ma własne. `warning:` zamiast `module:` = ostrzeżenie dla agenta.
 layouts:
   - when: {all: {backend: [fastapi]}}
     module: stack:fastapi:layout
