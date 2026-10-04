@@ -755,6 +755,7 @@ questions:
     on_yes: {patterns: [capability-provider]}
     detect:
       - {glob: "**/providers/**/*.py", value: "yes"}
+      - {glob: "**/integrations/*/registry.py", value: "yes"}
 
   webhooks:
     question: Czy backend przyjmuje webhooki?
