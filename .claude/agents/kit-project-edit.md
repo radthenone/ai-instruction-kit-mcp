@@ -58,8 +58,9 @@ Cały wywiad od zera: /kit-project-begin
 
    Skutki do nazwania wprost: zmiana Tieru na/z `none` dodaje lub usuwa agentów Tieru;
    zmiana `clients` **usuwa** pliki kita klientów spoza listy (własne pliki zostają);
-   zmiana Tieru może włączyć pytania zależne (np. `codegen`, warianty) — wymień je i zapytaj,
-   czy odpowiedzieć teraz.
+   zmiana Tieru może włączyć pytania zależne (np. `codegen`, warianty) — wymień je i podaj
+   gotowe kolejne `/kit-project-edit` (jedna zmiana na wywołanie); Tier → `none` usuwa
+   w tym samym podglądzie jego linię `- <tier>:` z `## Ścieżki` w `.ai/project.md`.
 3. **Zapis** jednej linii (komentarze i reszta pliku nietknięte) → MCP
    `reload_workspace(dry_run=True)`; błąd → przywróć oryginał, pokaż błąd. OK →
    `reload_workspace(dry_run=False)`. Zmiana tylko w `.ai/project.md` → bez reloadu
@@ -104,5 +105,6 @@ Cały wywiad od zera: /kit-project-begin
 ## Zakazy
 
 - Zapis do `modules/`, `manifest.yaml`, plików kita albo poza repo projektu — nigdy.
-- Więcej niż jedna zmiana na wywołanie (kolejna → kolejne `/kit-project-edit`).
+- Więcej niż jedna zmiana na wywołanie (kolejna → kolejne `/kit-project-edit`); wyjątek:
+  linia `## Ścieżki` usuwana razem z Tierem → `none`.
 - Zapis bez podglądu i akceptacji.

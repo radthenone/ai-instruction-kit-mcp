@@ -36,7 +36,8 @@ Jedna zmiana później: /kit-project-edit
 
 1. MCP `get_language`, potem `list_questions`.
 2. Przeczytaj `.ai/project.profile.yaml` i `.ai/project.md`.
-   - Brak Profilu → STOP: „kit nie jest zainstalowany — `kit-ai install`".
+   - Brak Profilu → STOP: „kit nie jest zainstalowany — `kit-ai install`"; stara konfiguracja
+     (stamp z presetem) → „`kit-ai reload` utworzy Profil".
    - Brak `.ai/project.md` → utworzysz go przy zapisie (sekcje z kroku FAZA 3).
    - Profil ma już Tier inny niż `none` → powiedz to i zaproponuj `/kit-project-edit`.
      Dalej tylko na wyraźne „od nowa".
