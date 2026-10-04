@@ -632,6 +632,8 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/git-*`      | Start / sync issue / commit / PR                   | `/git-start`, `/git-check`, `/git-commit`, `/git-end`                                                                                               |
 | `/create-task` | Pomysł → ocena na tle repo → issue (bez brancha)   | `/create-task`, `/create-task "eksport CSV"`; flagi: `/create-task --help`                                                                          |
 | `/create-skill` | Pomysł na skill → skill czy agent → issue (bez brancha) | `/create-skill`, `/create-skill "konwencje migracji"`; flagi: `/create-skill --help`                                                            |
+| `/kit-project-begin` | Konfiguracja projektu po `kit-ai install` | `/kit-project-begin`, `/kit-project-begin --yes` |
+| `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"` |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
 | `/night-run`  | Nocna praca na liście issue pod `/goal`              | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
@@ -685,6 +687,8 @@ Długo:    [/grill-me] → /git-start → worktree → kod → [/git-check] → 
 | ------------ | --------------------------------------------------------------------------------------- |
 | `/create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; `--dry-run` / `--quick` / `--split` / `--no-assign` / `--parent #N`. **Nie** zakłada brancha |
 | `/create-skill` | Rozstrzyga skill vs agent, potem karta issue z nazwą, `description` i kryterium odpalenia; `--dry-run` / `--quick` / `--no-assign` / `--parent #N`. **Nie** pisze `SKILL.md` |
+| `/kit-project-begin` | Pytania z MCP `list_questions` z propozycjami wykrytymi w repo (zawsze z wolną odpowiedzią) → karta Profilu i `.ai/project.md` → zapis → `reload_workspace`. `--yes` = same propozycje |
+| `/kit-project-edit` | (A) jedna odpowiedź: Stack per Tier, codegen, klienci, język, sekcja `project.md` → podgląd → zapis → reload; (B) spór z modułem → grillowanie → `## Odstępstwa od modułów` w `.ai/project.md`; zmiana dla wszystkich projektów → szkic `/create-task` w repo kita. **Nigdy** nie edytuje `modules/` |
 | `/git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
 | `/git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
 | `/git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
@@ -722,6 +726,8 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | ------------------------------------ | ------------------------------------------------ |
 | `/create-task`                       | `templates/shared/agents/create-task.md`         |
 | `/create-skill`                      | `templates/shared/agents/create-skill.md`        |
+| `/kit-project-begin`                 | `templates/shared/agents/kit-project-begin.md`   |
+| `/kit-project-edit`                  | `templates/shared/agents/kit-project-edit.md`    |
 | `/git-start`                         | `templates/shared/agents/git-start.md`           |
 | `/git-check`                         | `templates/shared/agents/git-check.md`           |
 | `/git-commit`                        | `templates/shared/agents/git-commit.md`          |

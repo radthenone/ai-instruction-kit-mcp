@@ -57,3 +57,9 @@ Jeśli projekt używa lokalnych forków — wpisz ścieżki tutaj. Domyślnie: b
 
 Opisz tu **tylko** rozjazdy tego repo względem docelowych modułów MCP
 (np. brak `apps/files` jeszcze, inny auth). Nie kopiuj stanu produktu do modules/ w kicie.
+
+## Odstępstwa od modułów
+
+Świadome wyjątki tego repo od treści modułów kita — overlay ma pierwszeństwo przed bundlem.
+Dopisuje `/kit-project-edit` (tryb odstępstwa), jedna linia na wyjątek:
+`- <Module ID> — zamiast <X z modułu> robimy <Y>, bo <powód>.` Domyślnie: brak.
