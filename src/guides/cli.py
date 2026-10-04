@@ -9,7 +9,6 @@ Profilu. Logika siedzi w funkcjach, które woła też serwer MCP (``reload_works
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
 import json
 import os
 import re
@@ -23,7 +22,7 @@ import yaml
 
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
 from guides.clients import KNOWN_CLIENTS, expand_clients, format_clients_arg, parse_clients
-from guides.kit_status import STAMP_REL_PATH, check_kit_updates
+from guides.kit_status import STAMP_REL_PATH, check_kit_updates, direct_url_info
 from guides.manifest import find_kit_root
 from guides.resolver import PROFILE_REL_PATH, normalize_language
 
@@ -80,11 +79,7 @@ def kit_source(kit_root: Path) -> KitSource:
     """
     if (kit_root / ".git").exists():
         return KitSource(value=str(kit_root), is_clone=True)
-    try:
-        raw = importlib.metadata.distribution("guides-mcp").read_text("direct_url.json")
-    except importlib.metadata.PackageNotFoundError:
-        raw = None
-    info: dict[str, Any] = json.loads(raw) if raw else {}
+    info = direct_url_info()
     vcs = info.get("vcs_info") or {}
     url = str(info.get("url") or "")
     if vcs.get("vcs") == "git" and url:
@@ -420,7 +415,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     install = sub.add_parser("install", help="Pierwsza instalacja kita w repo")
-    install.add_argument("path", help="Repo aplikacji (M:/…, /m/…, ścieżka linuksowa)")
+    install.add_argument(
+        "path", nargs="?", default=".", help="Repo aplikacji (M:/…, /m/…, linuksowa; domyślnie: .)"
+    )
     install.add_argument("--language", choices=("pl", "en", "PL", "EN"))
     install.add_argument("--clients", help="all | " + " | ".join(KNOWN_CLIENTS) + " (po przecinku)")
 

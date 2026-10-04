@@ -6,7 +6,7 @@
 [mcp_servers.project-guides]
 command = "uvx"
 args = [
-  "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+  "--from", "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
   "guides-mcp",
   "--language", "pl",
   "--clients", "all",
