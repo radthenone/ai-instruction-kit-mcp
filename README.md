@@ -31,20 +31,6 @@ stampu — `kit-ai status` porównuje go z commitem zainstalowanego narzędzia. 
 `kit-ai reload`. Instalacja z lokalnej ścieżki (`uv tool install .`) nie zna commitu —
 `status` mówi wtedy „nieznany commit”.
 
-Ścieżka deweloperska kita — z katalogu klona (ścieżki `M:/…`, `/m/…` i linuksowe działają
-tak samo); `mcp.json` dostaje wtedy `uv run --project <klon>`, więc edycje modułów działają od razu:
-
-```bash
-cd /m/projects/ai-instruction-kit-mcp      # klon tego repo
-APP=/m/projects/moja-appka                 # repo aplikacji
-
-uv run kit-ai install "$APP"               # pyta o język i klientów, zakłada Profil, Bootstrap
-uv run kit-ai reload "$APP"                # po zmianie Profilu / update kita — odświeża pliki kita
-uv run kit-ai reload "$APP" --dry-run      # plan bez zapisu
-uv run kit-ai status "$APP"                # czy kit zmienił się od ostatniego Bootstrapu
-uv run kit-ai remove "$APP" [--dry-run]    # usuń pliki kita, własne pliki zostają
-```
-
 `install` pyta o dwie rzeczy (`Język [pl/en] (pl)`, `Klienci (…) (all)`) — flagi `--language`
 i `--clients` pomijają pytania, bez TTY pytań nie ma wcale. Zakłada `.ai/project.profile.yaml`
 (`backend/web/mobile: none` = sam core) i `.ai/project.md`, robi Bootstrap, a na końcu
@@ -52,7 +38,7 @@ wypisuje JSON serwera MCP i gdzie leży per klient. Repo z kitem `install` odrzu
 `reload`.
 
 Jedyna konfiguracja to Profil (ADR-0007): język, klienci, Stacki per Tier, `codegen:`.
-Zmiana czegokolwiek = edycja `$APP/.ai/project.profile.yaml` + `kit-ai reload`. `reload` nie
+Zmiana czegokolwiek = edycja `.ai/project.profile.yaml` + `kit-ai reload`. `reload` nie
 rusza `.ai/project.md`; repo ze starą konfiguracją (stamp z `--preset`, brak Profilu) dostaje
 Profil core + none i nowy `mcp.json`.
 
@@ -97,10 +83,10 @@ zobaczysz stan sprzed bootstrapu.
 
 # hooki działają (powinno wypisać "deny")
 printf '%s' '{"tool_input":{"command":"git reset --hard HEAD"}}' \
-  | node "$APP/.claude/hooks/git-guard.mjs"
+  | node .claude/hooks/git-guard.mjs
 
 # konfiguracja AI wchodzi do repo, lokalny stan nie
-git -C "$APP" status --short -uall .claude .codex .github/prompts
+git status --short -uall .claude .codex .github/prompts
 ```
 
 ### 4. Kiedy aktualizować
@@ -109,8 +95,8 @@ Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrap
 (`.ai/.kit-bootstrap.json`) z aktualnym `HEAD` i mówi, co się zmieniło. Rozdziela dwie
 rzeczy: pliki, które **re-bootstrap wciągnie sam**, i te wymagające **ręcznego
 przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md` — kopiowane
-tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany: `kit-ai reload "$APP"`
-(z terminala to samo pokazuje `kit-ai status "$APP"`).
+tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany: `kit-ai reload`
+(z terminala to samo pokazuje `kit-ai status`).
 
 ### 5. Zanim odpalisz update na repo z pracą w toku
 
