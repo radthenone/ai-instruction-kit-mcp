@@ -19,6 +19,8 @@ Kit = prawda o stacku **i** nazwach branchy. Matt = proces feature. Superpowers 
 | Unikalne dla repo | `get_overlay` / `.ai/project.md` |
 | Docs bibliotek | Context7 |
 
+**Przed pracą przeczytaj `.ai/project.md`** — fakty tego repo (struktura, komendy, odstępstwa); działa także bez MCP.
+
 Profil (Tiery backend/web/mobile + `codegen:`) w `.ai/project.profile.yaml`; overlay w `.ai/project.md`.
 
 ## Priorytet źródeł

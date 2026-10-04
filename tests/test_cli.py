@@ -52,6 +52,33 @@ class TestInstall(_BootstrapTestCase):
             self.assertIn('"mcpServers"', out)
             self.assertIn("claude: .mcp.json", out)
             self.assertIn("/kit-project-begin", out)
+            # #122: brak hooka pre-push, Superpowers z settings.json, blok „Dalej”.
+            self.assertFalse((app / "git-hooks").exists())
+            settings = json.loads((app / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            self.assertIn("superpowers-marketplace", settings["extraKnownMarketplaces"])
+            self.assertIs(settings["enabledPlugins"]["superpowers@superpowers-marketplace"], True)
+            self.assertIn("Dalej", out)
+            self.assertIn("/plugin install superpowers@superpowers-marketplace", out)
+
+    def test_reload_keeps_user_settings_and_does_not_duplicate_plugins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+            path = app / ".claude" / "settings.json"
+            settings = json.loads(path.read_text(encoding="utf-8"))
+            settings["permissions"] = {"allow": ["Bash(ls)"]}
+            settings["enabledPlugins"]["moj@moj-market"] = True
+            path.write_text(json.dumps(settings), encoding="utf-8")
+
+            self.assertEqual(_quiet_main("reload", str(app))[0], 0)
+
+            after = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(after["permissions"], {"allow": ["Bash(ls)"]})
+            self.assertEqual(
+                after["enabledPlugins"],
+                {"moj@moj-market": True, "superpowers@superpowers-marketplace": True},
+            )
+            self.assertEqual(list(after["extraKnownMarketplaces"]), ["superpowers-marketplace"])
 
     def test_install_refuses_existing_kit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
