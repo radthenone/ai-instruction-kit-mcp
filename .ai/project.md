@@ -1,48 +1,35 @@
 # Overlay projektu — TYLKO unikalne informacje tego repo
 
+base: dev-2
+
 > Reużywalna zasada architektoniczna (zadziałałaby w innym projekcie tej samej kategorii)?
 > Nie wpisuj jej tu — zaproponuj zmianę w instruction-kit (`core:repo-first`, sekcja
 > "Nowa zasada architektoniczna — dokąd ją zapisać"). Tu tylko fakty **tego** repo.
 
 ## Codegen
 
-Źródło prawdy: MCP `get_codegen` / flaga `--codegen orval|none|graphql` w `.mcp.json` (nie ten plik).
-Domyślnie `orval`. Przy `orval`: po zmianie API → uruchom komendę regeneracji klienta
-(nazwa taska specyficzna dla tego repo — uzupełnij niżej) → commit klienta.
-
-Task regeneracji klienta w tym repo: `<uzupełnij, np. task orval:generate>`.
+Brak — repo nie ma pary backend + klient. Źródło prawdy: `codegen:` w
+`.ai/project.profile.yaml` (tu `none`), odczyt przez MCP `get_codegen`.
 
 ## Struktura
 
-- `backend/` — Django + DRF
-- `frontend/` — Expo Router
-- `Taskfile.yml` — główny punkt wejścia komend
+- `src/guides/` — serwer MCP (Python): `server.py`, `resolver.py`, `manifest.py`, `bootstrap.py`
+- `manifest.yaml` — rejestr modułów, Tierów i bundli (ADR-0001)
+- `modules/` — treść modułów Markdown serwowana przez MCP
+- `templates/` — pliki instalowane w projektach przez `scripts/bootstrap-project.sh`
+- `tests/` — `unittest` (+ suity `tests/*.sh` przez `test_shell_suites.py`)
 
-## Taskfile
+## Komendy
 
-Preferuj `task <namespace>:<nazwa>` zamiast surowych komend Docker/bash.
-Lista: `task --list`.
+- Testy: `uv run python -m unittest discover -s tests` (pełna suita ~15–20 min przez suity bash)
+- Szybko: `uv run python -m unittest tests.test_resolver tests.test_manifest_mappings tests.test_mcp_compat`
 
-## Docker (dev)
-
-| Kontener | Rola |
-|----------|------|
-| `<projekt>-postgres` | PostgreSQL |
-| `<projekt>-redis` | Redis |
-| `<projekt>-django` | Backend |
-
-Uzupełnij porty, nazwy kontenerów i zmienne env specyficzne dla projektu.
-
-## Ścieżki paczek lokalnych (opcjonalnie)
-
-Jeśli projekt używa lokalnych forków — wpisz ścieżki tutaj. Domyślnie: brak.
+Brak Taskfile i Dockera.
 
 ## Lockfile (weryfikacja wersji)
 
-- Backend: `backend/pyproject.toml`, `backend/uv.lock`
-- Frontend: `frontend/package.json`, `frontend/bun.lock`
+- `pyproject.toml`, `uv.lock`
 
 ## Stan implementacji vs instruction-kit
 
-Opisz tu **tylko** rozjazdy tego repo względem docelowych modułów MCP
-(np. brak `apps/files` jeszcze, inny auth). Nie kopiuj stanu produktu do modules/ w kicie.
+Repo jest samym kitem — Tiery `none`, w Bundle'ach sam core.

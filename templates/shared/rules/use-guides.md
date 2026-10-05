@@ -5,7 +5,8 @@
 | Zadanie | Źródło |
 |---------|--------|
 | Backend / frontend / arch / infra | MCP `project-guides` → `get_bundle` |
-| Porty, Taskfile, Docker, **codegen** | MCP `get_overlay` / `.ai/project.md` / extras (`codegen: orval\|manual\|none`) |
+| Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
+| codegen | MCP `get_codegen` / `codegen:` w `.ai/project.profile.yaml` |
 | Docs bibliotek | Context7 (user MCP) |
 | Review stacku | **minimalny zestaw** — zob. `code-review` (nie wszystkie `/review-*`) |
 | Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` (cross API+UI) |
@@ -16,11 +17,9 @@
 | Worktree / finisz | Superpowers (opc.) na branchu z `/git-start` |
 | PR → CI green | Autopilot po `/git-end` |
 
-Moduły: `--preset` (kategoria, np. `_base` / `shop`) + opcjonalnie `.ai/project.md`.  
-Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
+Moduły: Tiery z `.ai/project.profile.yaml` (backend/web/mobile) + overlay `.ai/project.md`.  
 
-**Docelowy kontrakt** (`--profile` / `--overlays` / `--codegen` / stack CLI): zob.  
-`docs/specs/2026-08-05-mcp-profile-architecture-overlays-design.md` — **CLI codegen jeszcze nie**.
+Profil w workspace to jedyne źródło wyborów (ADR-0007); po jego zmianie `kit-ai reload` (MCP: `reload_workspace`).
 
 **Wszystkie agenty:** `AGENTS.md` + reguła git-branch-pr. Po PR — Autopilot; nie dubluj TDD Matt+Superpowers.
 

@@ -83,7 +83,8 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         data = self.load()
 
         self.assertEqual(data["permissions"], USER_SETTINGS["permissions"])
-        self.assertEqual(data["env"], USER_SETTINGS["env"])
+        # Kit dokłada tylko MCP_TIMEOUT obok zmiennych użytkownika.
+        self.assertEqual(data["env"], {**USER_SETTINGS["env"], "MCP_TIMEOUT": "90000"})
         # Kit doklada swoj SessionStart (rtk-check) obok wpisu uzytkownika, nie zamiast.
         self.assertEqual(data["hooks"]["SessionStart"][0], USER_SETTINGS["hooks"]["SessionStart"][0])
         self.assertTrue(any("rtk-check.mjs" in h["command"] for e in data["hooks"]["SessionStart"] for h in e["hooks"]))
@@ -113,6 +114,45 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         self.assertTrue(self.target.is_file())
         run("prune", str(self.target))
         self.assertFalse(self.target.exists())
+
+    def test_install_enables_superpowers_marketplace(self) -> None:
+        """Claude Code sam proponuje Superpowers przy otwarciu repo (#122)."""
+        run("install", str(self.target), str(TEMPLATE))
+        data = self.load()
+        self.assertEqual(
+            data["extraKnownMarketplaces"]["superpowers-marketplace"]["source"]["repo"],
+            "obra/superpowers-marketplace",
+        )
+        self.assertIs(data["enabledPlugins"]["superpowers@superpowers-marketplace"], True)
+
+    def test_plugin_keys_keep_user_entries_and_do_not_duplicate(self) -> None:
+        user = {
+            "enabledPlugins": {"moj@moj-market": True, "superpowers@superpowers-marketplace": False},
+            "extraKnownMarketplaces": {"moj-market": {"source": {"source": "github", "repo": "ja/moj"}}},
+        }
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("install", str(self.target), str(TEMPLATE))
+        run("install", str(self.target), str(TEMPLATE))
+        data = self.load()
+        # Wyłączony przez użytkownika plugin zostaje wyłączony.
+        self.assertIs(data["enabledPlugins"]["superpowers@superpowers-marketplace"], False)
+        self.assertIs(data["enabledPlugins"]["moj@moj-market"], True)
+        self.assertEqual(
+            set(data["extraKnownMarketplaces"]), {"moj-market", "superpowers-marketplace"}
+        )
+        run("prune", str(self.target))
+        self.assertEqual(self.load(), user)
+
+    def test_install_sets_mcp_startup_timeout(self) -> None:
+        """Zimny cache uvx buduje guides-mcp dłużej niż domyślne 30 s startu MCP (#133)."""
+        run("install", str(self.target), str(TEMPLATE))
+        self.assertEqual(self.load()["env"]["MCP_TIMEOUT"], "90000")
+        user = {"env": {"MCP_TIMEOUT": "120000", "FOO": "1"}}
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("install", str(self.target), str(TEMPLATE))
+        self.assertEqual(self.load()["env"], user["env"])
+        run("prune", str(self.target))
+        self.assertEqual(self.load(), user)
 
     def test_unreadable_settings_do_not_abort_install(self) -> None:
         # Uszkodzony JSON nie może wywalić bootstrapu — kit zaczyna od pustego stanu.

@@ -1,7 +1,8 @@
 ---
 name: review-frontend
-description: Reviewer frontendu Expo/React. Use when reviewing frontend/, pliki .web/.native, klient Orval, typy TypeScript. Wywołuj jako /review-frontend.
+description: Reviewer frontendu — Stack z Tierów web/mobile (MCP get_bundle). Use when reviewing kod klienta web/mobile, generowany klient API, typy TypeScript. Wywołuj jako /review-frontend.
 readonly: true
+tier: client
 ---
 
 ## Reguły wspólne (obowiązkowe)
@@ -31,12 +32,12 @@ Auth UI, płatności, tokeny, brak dowodu w diffie → **zapytaj użytkownika**,
 
 ---
 
-Jesteś reviewerem frontendu (Expo Router / React / RN — wg overlay).
+Jesteś reviewerem frontendu. Stack web/mobile bierzesz z `get_bundle("frontend")` — nie zakładaj go z pamięci.
 
 ### Checklista MCP (przed oceną)
 
-1. `get_bundle("frontend")` — reguły z bundle.
-2. `get_overlay()` — odczytaj **`codegen:`**:
+1. `get_bundle("frontend")` — Stack z Tierów web/mobile i jego reguły (routing, stan, platformy).
+2. `get_overlay()` + `codegen:` z profilu (MCP `get_codegen`):
    - `orval` (lub brak wpisu przy REST API) → po zmianie kontraktu API wymagaj regeneracji + commit klienta;
    - `manual` → ręczny klient musi być zaktualizowany świadomie;
    - `none` → brak generowanego klienta; nie wymagaj Orval.
@@ -52,8 +53,8 @@ Jesteś reviewerem frontendu (Expo Router / React / RN — wg overlay).
 
 **Pozostałe:**
 
-- import `react-native` w `.web.tsx` lub DOM-only API w `.native.tsx`;
+- kod platformowy w złym miejscu (np. import natywny w pliku web, DOM-only API w pliku natywnym), jeśli Stack ma podział platform;
 - `any` na nowych publicznych interfejsach bez uzasadnienia;
-- naruszenie TanStack Query (server state) vs Zustand (local state), jeśli bundle to wymaga.
+- naruszenie podziału server state vs local state, jeśli bundle go wymaga.
 
 Odpowiadaj po polsku. Tylko tabela (+ pytania przy niskiej pewności).

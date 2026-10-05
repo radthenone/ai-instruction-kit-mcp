@@ -77,10 +77,54 @@ git push -u origin HEAD
 
 ### 3. PR
 
-Target: `dev` jeśli na remote, inaczej default (`main`/`master`).
+Target = `BASE`:
+
+Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
+w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
+Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
 
 ```bash
-gh pr create --base <target> --title "<typ>: <opis>" --body "$(cat <<'EOF'
+git fetch --all --prune
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+BASE=$(sed -n 's/^base:[[:space:]]*\([^[:space:]]*\).*/\1/p' .ai/project.md 2>/dev/null | head -1)
+if [ -z "$BASE" ]; then
+  BASE=$DEFAULT
+  if git rev-parse -q --verify origin/dev >/dev/null \
+     && ! { git merge-base --is-ancestor origin/dev "origin/$DEFAULT" \
+            && [ "$(git rev-parse origin/dev)" != "$(git rev-parse "origin/$DEFAULT")" ]; }; then
+    BASE=dev
+  fi
+fi
+LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefName' \
+  | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
+[ -n "$LAST" ] && [ "$LAST" != "$BASE" ] && echo "uwaga: baza $BASE, ostatnie scalone PR-y szły do $LAST"
+```
+
+
+Etykieta i tablica — odczyty, **nigdy** nie przerywają tworzenia PR; flagę dodajesz tylko,
+gdy jest dopasowanie:
+
+- **Etykieta:** `type: *` z issue (`gh issue view <N> --json labels -q '.labels[].name'`), a gdy
+  jej nie ma — z typu w tytule PR (`feat` → `type: feature`, `perf` → `type: performance`,
+  `hotfix` → `type: fix`, `ci`/`build`/`release` → `type: chore`, reszta `type: <typ>`). Użyj
+  jej tylko, jeśli jest w `gh label list --limit 100 --json name -q '.[].name'`. Nie zakładaj
+  etykiety bez osobnej zgody.
+- **Tablica:** ta o nazwie repo, porównanie bez wielkości liter, poza tym identyczne:
+
+```bash
+REPO=$(gh repo view --json name -q .name)
+OWNER=$(gh repo view --json owner -q .owner.login)
+gh project list --owner "$OWNER" --limit 100 --format json \
+  --jq ".projects[] | select(.title | ascii_downcase == (\"$REPO\" | ascii_downcase)) | .title"
+```
+
+Jeden wynik → `--project "<title>"`. Zero → pomiń, nie twórz tablicy. Więcej niż jeden →
+zapytaj użytkownika. Brak scope `project` → pomiń krok i jedna linijka: `gh auth refresh -s project`.
+
+```bash
+gh pr create --base <target> --title "<typ>: <opis>" \
+  [--label "<type: …>"] [--project "<title tablicy>"] --body "$(cat <<'EOF'
 ## Summary
 …
 
@@ -119,6 +163,7 @@ to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 - PR: <url>
 - Base: … (target PR-a — merge base, nie branch powrotu)
 - Closes: #N
+- Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
 - IDE teraz na: … (branch powrotu jeśli był zapisany, inaczej nadal branch feature)
 - Dalej: Autopilot → merge gdy green
 ```

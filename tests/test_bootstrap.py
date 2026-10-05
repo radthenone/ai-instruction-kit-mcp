@@ -106,7 +106,7 @@ class TestRealRun(_BootstrapTestCase):
             self.assertIn("PreToolUse", settings)
 
     def test_local_source_uses_uv_run_not_uvx(self) -> None:
-        """Lokalny klon: `uv run --directory` czyta kod i moduły z dysku.
+        """Lokalny klon: `uv run --project` czyta kod i moduły z dysku.
 
         `uvx --from <katalog>` cache'uje koło pod wersję pakietu, więc edycja modułu
         (albo kodu serwera) nie dociera do klienta, dopóki wersja nie wzrośnie.
@@ -132,7 +132,8 @@ class TestRealRun(_BootstrapTestCase):
                     text = (workspace / rel).read_text(encoding="utf-8")
                     self.assertIn('"uv"', text)
                     self.assertNotIn('"uvx"', text)
-                    self.assertIn('"run", "--directory"', text)
+                    self.assertIn('"run", "--project"', text)
+                    self.assertNotIn("--codegen", text)
                     self.assertNotIn('"--from"', text)
                     self.assertIn("--kit-root", text)
 
@@ -212,7 +213,7 @@ class TestRealRun(_BootstrapTestCase):
                 with self.subTest(skill=name):
                     self.assertIn(f"!.claude/skills/{name}/", gitignore)
 
-    # Konfigi MCP, które bootstrap renderuje ze ścieżką maszyny (`uv run --directory`,
+    # Konfigi MCP, które bootstrap renderuje ze ścieżką maszyny (`uv run --project`,
     # `--kit-root`, absolutny `--workspace`) — po jednym na klienta.
     MCP_CONFIGS = (
         ".mcp.json",
@@ -315,22 +316,82 @@ class TestRealRun(_BootstrapTestCase):
             self.assertIn("bootstrap-project.sh", str(ctx.exception))
 
 
+BACKEND_AGENTS = {"review-backend", "teacher-backend", "subagent-backend"}
+CLIENT_AGENTS = {"review-frontend", "teacher-frontend", "subagent-frontend", "review-ui"}
+
+
+class TestTierAgents(_BootstrapTestCase):
+    """Agenci Stacku tylko dla wybranych Tierów; treść bez Stacka na sztywno."""
+
+    def _bootstrap(self, workspace: Path, backend: str, web: str, mobile: str) -> set[str]:
+        (workspace / ".ai").mkdir(parents=True, exist_ok=True)
+        (workspace / ".ai" / "project.profile.yaml").write_text(
+            f"name: t\nbackend: {backend}\nweb: {web}\nmobile: {mobile}\n", encoding="utf-8"
+        )
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex,opencode")
+        return {p.stem for p in (workspace / ".claude" / "agents").glob("*.md")}
+
+    def test_agents_follow_tiers(self) -> None:
+        cases = {
+            ("none", "none", "none"): set(),
+            ("fastapi", "none", "none"): BACKEND_AGENTS,
+            ("none", "react", "none"): CLIENT_AGENTS,
+            ("none", "none", "expo"): CLIENT_AGENTS,
+            ("django", "react", "none"): BACKEND_AGENTS | CLIENT_AGENTS,
+        }
+        for tiers, expected in cases.items():
+            with self.subTest(tiers=tiers), tempfile.TemporaryDirectory() as tmp:
+                workspace = Path(tmp) / "app"
+                installed = self._bootstrap(workspace, *tiers)
+                self.assertEqual(installed & (BACKEND_AGENTS | CLIENT_AGENTS), expected)
+                self.assertIn("review-architecture", installed)
+                self.assertIn("teacher-architecture", installed)
+                codex = {p.name for p in (workspace / ".codex" / "skills").iterdir()}
+                self.assertEqual(codex & (BACKEND_AGENTS | CLIENT_AGENTS), expected)
+                bugbot = (workspace / "BUGBOT.md").read_text(encoding="utf-8")
+                self.assertEqual("## Backend" in bugbot, "fastapi" in tiers or "django" in tiers)
+                self.assertNotIn("<!-- tier:", bugbot)
+
+    def test_tier_set_to_none_removes_its_agents(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
+            self.assertNotIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
+            self.assertEqual(self._bootstrap(workspace, "django", "none", "none") & BACKEND_AGENTS, BACKEND_AGENTS)
+            # Nietknięty BUGBOT.md podąża za Tierami (install zawsze zaczyna od `none`).
+            self.assertIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
+            self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
+            for rel in (".claude/commands/review-backend.md", ".codex/skills/review-backend",
+                        ".opencode/command/review-backend.md"):
+                self.assertFalse((workspace / rel).exists(), rel)
+
+    def test_installed_descriptions_name_no_stack(self) -> None:
+        """Opis agenta nie zakłada Django/Expo — Stack przychodzi z Bundle'a."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._bootstrap(workspace, "fastapi", "react", "expo")
+            for agent in (workspace / ".claude" / "agents").glob("*.md"):
+                text = agent.read_text(encoding="utf-8")
+                description = next(l for l in text.splitlines() if l.startswith("description:"))
+                with self.subTest(agent=agent.name):
+                    self.assertNotRegex(description, "Django|DRF|Expo")
+                    self.assertNotIn("\ntier:", text)
+
+
 class TestServerTool(_BootstrapTestCase):
     """Narzędzie MCP — domyślki, bramka dry-run i odmowy."""
 
     def setUp(self) -> None:
         super().setUp()
         self._saved = (
-            server._profile_path,
             server._kit_root,
             server._workspace_root,
             server._clients,
-            server._preset,
+            server._legacy_config,
         )
-        server._profile_path = KIT_ROOT / "profiles" / "_base.yaml"
         server._kit_root = KIT_ROOT
         server._clients = ["claude"]
-        server._preset = "_base"
+        server._legacy_config = False
         self._tmp = tempfile.mkdtemp(prefix="guides-tool-test-")
         self.addCleanup(shutil.rmtree, self._tmp, True)
         self.workspace = Path(self._tmp) / "app"
@@ -339,11 +400,10 @@ class TestServerTool(_BootstrapTestCase):
 
     def tearDown(self) -> None:
         (
-            server._profile_path,
             server._kit_root,
             server._workspace_root,
             server._clients,
-            server._preset,
+            server._legacy_config,
         ) = self._saved
 
     def test_default_call_is_dry_run(self) -> None:

@@ -1,6 +1,6 @@
 # Frontend — Expo unified (web + native)
 
-`--frontend expo` + `--mobile expo` — jeden katalog `frontend/`.
+Tier web: `expo`, Tier mobile: `expo` — jeden katalog `frontend/`.
 
 ```text
 frontend/

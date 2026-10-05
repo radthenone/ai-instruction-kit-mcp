@@ -6,6 +6,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from guides.kit_status import check_kit_updates
@@ -202,6 +203,33 @@ class TestKitStatus(unittest.TestCase):
 
             out = check_kit_updates(kit_root, workspace)
             self.assertIn("re-bootstrap niepotrzebny", out)
+
+
+
+class TestWheelStatus(unittest.TestCase):
+    """Kit z koła (bez `.git`): commit z `direct_url.json`, bez historii plików (#121)."""
+
+    def _status(self, installed: str | None, stamp_commit: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit_root = Path(tmp) / "_data"
+            kit_root.mkdir()
+            workspace = Path(tmp) / "workspace"
+            _write_stamp(workspace, kit_commit=stamp_commit)
+            with mock.patch("guides.kit_status.installed_kit_commit", return_value=installed):
+                return check_kit_updates(kit_root, workspace)
+
+    def test_same_commit_is_up_to_date(self) -> None:
+        self.assertIn("aktualny", self._status("a" * 40, "a" * 40))
+
+    def test_other_commit_asks_for_reload(self) -> None:
+        out = self._status("b" * 40, "a" * 40)
+        self.assertIn("ZMIENIŁ SIĘ", out)
+        self.assertIn("kit-ai reload", out)
+
+    def test_local_wheel_without_commit_is_unknown_not_up_to_date(self) -> None:
+        out = self._status(None, "a" * 40)
+        self.assertIn("nieznany commit", out)
+        self.assertNotIn("aktualny", out)
 
 
 if __name__ == "__main__":

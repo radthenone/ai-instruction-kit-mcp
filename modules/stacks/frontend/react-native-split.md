@@ -1,6 +1,6 @@
 # Frontend — React web + React Native (split)
 
-`--frontend react` + `--mobile react-native`.
+Tier web: `react`, Tier mobile: `react-native` — dwa katalogi, współdzielone typy.
 
 ```text
 frontend/

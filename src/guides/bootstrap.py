@@ -9,13 +9,16 @@ z drugiej, rozjeżdżającej się listy ścieżek w Pythonie.
 
 from __future__ import annotations
 
-import filecmp
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from guides import __version__
+from guides.kit_status import installed_kit_commit
 
 SCRIPT_REL_PATH = "scripts/bootstrap-project.sh"
 
@@ -30,15 +33,17 @@ KIT_SURFACE: tuple[str, ...] = (
     ".codex",
     ".cursor",
     ".github/copilot-instructions.md",
+    ".github/hooks",
     ".github/prompts",
     ".kilocode",
     ".kiro",
     ".mcp.json",
     ".opencode",
     ".vscode",
+    ".gitattributes",
+    ".gitignore",
     "AGENTS.md",
     "BUGBOT.md",
-    "git-hooks",
     "opencode.json",
 )
 
@@ -104,30 +109,29 @@ def build_args(
     kit_root: Path,
     target: Path,
     clients: str = "all",
-    preset: str = "_base",
     language: str = "pl",
-    codegen: str = "orval",
     from_src: str | None = None,
     with_overlay: bool = False,
-    with_profile: bool = False,
     skip_agents: bool = False,
     keep_unselected_clients: bool = False,
+    remove: bool = False,
 ) -> list[str]:
     """
     Zbuduj listę argumentów wywołania ``bootstrap-project.sh``.
+
+    Stacki i codegen nie są flagami — skrypt ich nie potrzebuje, serwer czyta je
+    z profilu (ADR-0007).
 
     Args:
         kit_root: Root repozytorium instruction-kit (źródło szablonów).
         target: Repo aplikacji, do którego lądują pliki.
         clients: Wartość ``--clients`` (już zwalidowana przez ``guides.clients``).
-        preset: Kategoria presetu, np. ``_base``, ``shop``.
         language: Język prozy instrukcji (``pl``/``en``).
-        codegen: Generator klienta API (``orval``/``none``/``graphql``).
         from_src: Wartość ``--from``; domyślnie lokalna ścieżka kita.
         with_overlay: Dołóż ``--with-overlay``.
-        with_profile: Dołóż ``--with-profile``.
         skip_agents: Dołóż ``--skip-agents``.
         keep_unselected_clients: Nie sprzątaj plików klientów spoza ``--clients``.
+        remove: ``--remove`` — usuń pliki kita zamiast instalować.
 
     Returns:
         list[str]: Argv dla bash (bez samego interpretera).
@@ -136,12 +140,8 @@ def build_args(
     args = [
         str(script).replace("\\", "/"),
         str(target).replace("\\", "/"),
-        "--preset",
-        preset,
         "--language",
         language,
-        "--codegen",
-        codegen,
         "--clients",
         clients,
         "--from",
@@ -149,12 +149,12 @@ def build_args(
     ]
     if with_overlay:
         args.append("--with-overlay")
-    if with_profile:
-        args.append("--with-profile")
     if skip_agents:
         args.append("--skip-agents")
     if keep_unselected_clients:
         args.append("--keep-unselected-clients")
+    if remove:
+        args.append("--remove")
     return args
 
 
@@ -173,11 +173,23 @@ def run_bootstrap(**kwargs) -> str:
     """
     argv = build_args(**kwargs)
     bash = find_bash()
+    # Skrypt dostaje ten interpreter (widzi pakiet `guides` także bez klonu z `src/`)
+    # i commit z metadanych instalacji — w kole nie ma `.git`, z którego by go wziął.
+    env = {
+        **os.environ,
+        "KIT_PYTHON": sys.executable.replace("\\", "/"),
+        "KIT_COMMIT": installed_kit_commit() or "",
+        "KIT_VERSION": __version__,
+        # Skrypt i jego Pythony piszą UTF-8; bez tego Windows dekoduje stdout jako cp1250.
+        "PYTHONUTF8": "1",
+    }
     try:
         result = subprocess.run(
             [bash, "--noprofile", "--norc", *argv],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_TIMEOUT_SECONDS,
             check=False,
             # Skrypt (i kazdy proces, ktory sam odpali) nie dostaje stdin serwera MCP.
@@ -186,6 +198,7 @@ def run_bootstrap(**kwargs) -> str:
             # zwrocic blad. Bootstrap jest nieinteraktywny, wiec pusty stdin to jedyne
             # poprawne wejscie. Patrz ten sam mechanizm w `guides.kit_status._git`.
             stdin=subprocess.DEVNULL,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise BootstrapError(
@@ -260,7 +273,19 @@ def plan_bootstrap(*, workspace_root: Path, **kwargs) -> BootstrapPlan:
             plan.created.append(rel)
         for rel in sorted(before - after):
             plan.deleted.append(rel)
+        # Codex i opencode dostają absolutny `--workspace` — w sandboxie to ścieżka
+        # sandboxu, więc porównujemy po podmianie jej na prawdziwy Workspace.
+        real = str(workspace_root.resolve()).replace("\\", "/").encode()
+        # Najdłuższa najpierw: na macOS `/var/…` jest podciągiem `/private/var/…`.
+        fakes = sorted(
+            {str(path).replace("\\", "/").encode() for path in (sandbox, sandbox.resolve())},
+            key=len,
+            reverse=True,
+        )
         for rel in sorted(before & after):
-            same = filecmp.cmp(workspace_root / rel, sandbox / rel, shallow=False)
+            produced = (sandbox / rel).read_bytes()
+            for fake in fakes:
+                produced = produced.replace(fake, real)
+            same = produced == (workspace_root / rel).read_bytes()
             (plan.unchanged if same else plan.modified).append(rel)
         return plan

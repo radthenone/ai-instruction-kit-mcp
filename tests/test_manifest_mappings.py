@@ -51,6 +51,18 @@ class TestManifestMappings(unittest.TestCase):
         """Stack rozwija się do listy modułów, nie do jednego."""
         self.assertIn("stack:django-drf", self.manifest.mappings.stacks["django-drf"])
 
+    def test_tiers_map_stacks_per_tier(self) -> None:
+        """Tiery rozwijają Stacki per Tier — `django` to alias zestawu django-drf."""
+        tiers = self.manifest.mappings.tiers
+        self.assertEqual(
+            tiers["backend"]["django"], tiers["backend"].get("django", [])
+        )
+        self.assertIn("stack:django-drf", tiers["backend"]["django"])
+        self.assertIn("stack:fastapi", tiers["backend"]["fastapi"])
+        self.assertIn("react@legacy", tiers["web"])
+        self.assertIn("stack:expo-router:web-target", tiers["web"]["expo"])
+        self.assertIn("stack:expo-router:mobile-native", tiers["mobile"]["expo"])
+
 
 class TestManifestDrivenExtension(unittest.TestCase):
     """Nowa wartość Slotu wchodzi bez dotykania Pythona (leverage z ADR-0001)."""
@@ -60,7 +72,6 @@ class TestManifestDrivenExtension(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.kit = self.tmp / "kit"
         shutil.copytree(KIT_ROOT / "modules", self.kit / "modules")
-        shutil.copytree(KIT_ROOT / "profiles", self.kit / "profiles")
         shutil.copy(KIT_ROOT / "manifest.yaml", self.kit / "manifest.yaml")
         self.raw = yaml.safe_load((self.kit / "manifest.yaml").read_text(encoding="utf-8"))
 
@@ -70,7 +81,8 @@ class TestManifestDrivenExtension(unittest.TestCase):
         )
 
     def _write_profile(self, body: dict) -> Path:
-        path = self.kit / "profiles" / "tmp-test.yaml"
+        path = self.tmp / "workspace" / ".ai" / "project.profile.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(yaml.safe_dump(body, allow_unicode=True, sort_keys=False), encoding="utf-8")
         return path
 
@@ -235,13 +247,23 @@ class TestUnifiedPipeline(unittest.TestCase):
 
     def test_enabled_modules_and_bundles_agree_on_transforms(self) -> None:
         """Obie ścieżki (enabled + bundle) przechodzą przez ten sam pipeline."""
-        resolved = resolve_profile(
-            KIT_ROOT / "profiles" / "shop.yaml",
-            kit_root=KIT_ROOT,
-            workspace_root=KIT_ROOT,
-            language_override="en",
-            codegen_override="graphql",
-        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / ".ai").mkdir()
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                "name: t\nbackend: django\ncodegen: graphql\ncapabilities: [auth]\n"
+                "decisions:\n  auth: allauth\n",
+                encoding="utf-8",
+            )
+            resolved = resolve_profile(
+                profile,
+                kit_root=KIT_ROOT,
+                workspace_root=workspace,
+                language_override="en",
+            )
         backend = resolved.bundles["backend"].module_ids
         self.assertIn("capability:auth:allauth", backend)
         self.assertIn("capability:auth:allauth", resolved.enabled_module_ids)

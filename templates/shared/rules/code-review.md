@@ -32,7 +32,7 @@ Kolejność:
 
 ### Orval
 
-Gdy overlay ma `codegen: orval` (lub REST FE bez wpisu): po zmianie API regeneruj klienta i commituj. Przy `manual`/`none` nie wymagaj Orval.
+Gdy profil ma `codegen: orval` (MCP `get_codegen`; bez pary backend + klient efektywny to `none`): po zmianie API regeneruj klienta i commituj. Przy `manual`/`none` nie wymagaj Orval.
 
 Guardy (allow/deny, nigdy ask — ADR 0006):
 

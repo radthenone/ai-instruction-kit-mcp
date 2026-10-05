@@ -1,29 +1,18 @@
-# Stack — Flask
+# Backend — Flask (podpowiedź ścieżek)
 
-## Zakres
-
-API / app HTTP na Flask. Wymaga `--frontend` gdy serwujesz osobny klient SPA.
-
-## Layout (generyczny)
+Tier backend: `flask`. Domyślny katalog `backend/` — zapisz faktyczny w `## Ścieżki`
+w `.ai/project.md` (klucz `backend:`).
 
 ```text
 backend/
-  src/
-    app/
-      blueprints/
-        <feature>/
-      extensions.py
-      factory.py
-      config.py
-    tests/
+  src/app/
+    __init__.py        # create_app()
+    extensions.py
+    <feature>/         # blueprint
+  migrations/
+  tests/
+  wsgi.py
   pyproject.toml
 ```
 
-## Zasady
-
-- Blueprints per feature; config z env (`arch:configuration`).
-- JSON API: jednolite błędy (`arch:api-errors`).
-
-## Powiązane
-
-- `arch:testing`, `arch:security`
+Pełny podział warstw: `stack:flask:structure`.

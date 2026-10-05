@@ -6,8 +6,7 @@ import importlib.metadata
 import unittest
 from pathlib import Path
 
-from guides.manifest import find_kit_root
-from guides.resolver import resolve_preset_path
+from guides.manifest import find_kit_root, load_manifest
 
 
 class TestMcpCompat(unittest.TestCase):
@@ -26,14 +25,15 @@ class TestMcpCompat(unittest.TestCase):
         self.assertTrue(callable(FastMCP))
 
 
-class TestPresetDiscovery(unittest.TestCase):
-    """Wykrywanie kit root i presetów."""
+class TestWorkspaceDiscovery(unittest.TestCase):
+    """Wykrywanie kit root i profilu workspace'u."""
 
-    def test_find_kit_root_has_profiles(self) -> None:
-        """Kit root zawiera profiles/shop.yaml."""
+    def test_find_kit_root_has_manifest(self) -> None:
+        """Kit root zawiera manifest.yaml z sekcjami tiers i bundles."""
         root = find_kit_root(Path(__file__))
-        preset = resolve_preset_path("shop", root)
-        self.assertTrue(preset.is_file())
+        manifest = load_manifest(root)
+        self.assertIn("backend", manifest.mappings.tiers)
+        self.assertIn("backend", manifest.bundles)
 
 
 if __name__ == "__main__":

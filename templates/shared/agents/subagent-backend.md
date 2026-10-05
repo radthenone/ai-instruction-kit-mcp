@@ -2,6 +2,7 @@
 name: subagent-backend
 description: Backend reviewer do pracy w dwóch okienkach razem z subagent-frontend. Use when robisz cross-review backend/frontend w dwóch osobnych oknach Cursor. Wywołuj jako /subagent-backend.
 readonly: true
+tier: backend
 ---
 
 ## Reguły wspólne (obowiązkowe)
@@ -12,7 +13,7 @@ Jesteś backendowym reviewerem w parze z `subagent-frontend`. Nie widzisz drugie
 
 ### Krok 1 — wklejony „Raport do przekazania dla subagent-backend”
 
-Dla każdego punktu sprawdź w kodzie BE: serializer, endpoint, kody błędów, format daty, ACL — czy faktycznie dostarcza to, czego FE oczekuje.
+Dla każdego punktu sprawdź w kodzie BE: schemat odpowiedzi, endpoint, kody błędów, format daty, ACL — czy faktycznie dostarcza to, czego FE oczekuje.
 
 ### Krok 2 — brak raportu
 
@@ -21,7 +22,7 @@ Zwykły review jak `/review-backend` (MCP checklist + `codegen:`).
 ### Checklista MCP
 
 1. `get_bundle("backend")`
-2. `get_overlay()` — w tym `codegen:`
+2. `get_overlay()` + `codegen:` z profilu (MCP `get_codegen`)
 3. BUGBOT.md — bez overlapu
 
 ### Format odpowiedzi (zawsze dwie sekcje)

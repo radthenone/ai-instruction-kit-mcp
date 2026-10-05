@@ -144,12 +144,31 @@ echo "OK  shared skills u wszystkich klientów (4 natywnie, 4 przez degradację)
 for p in .cursor/agents/night-run.md .claude/commands/night-run.md \
          .codex/skills/night-run/SKILL.md .github/prompts/night-run.prompt.md \
          .kiro/agents/night-run.md .kilocode/workflows/night-run.md \
-         .agents/workflows/night-run.md .opencode/command/night-run.md; do
+         .agents/skills/night-run/SKILL.md .opencode/command/night-run.md; do
   test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
 done
+# kit-project-begin / kit-project-edit (#124): konfiguracja projektu u każdego klienta.
+for name in kit-project-begin kit-project-edit; do
+  for p in .cursor/agents/$name.md .claude/agents/$name.md .claude/commands/$name.md \
+           .codex/skills/$name/SKILL.md .github/prompts/$name.prompt.md \
+           .kiro/agents/$name.md .kilocode/workflows/$name.md \
+           .agents/skills/$name/SKILL.md .opencode/command/$name.md; do
+    test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
+  done
+done
+echo "OK  kit-project-begin/edit u wszystkich klientów"
 keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$ROOT/templates/shared/agents/night-run.md" | tr '\n' ' ')"
 test "$keys" = "name: description: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
 echo "OK  night-run u wszystkich klientów, frontmatter tylko name + description"
+
+# agy nie zna workflow: stare .agents/workflows/<agent>.md znikają, cudze zostają.
+mkdir -p "$TMP/skills/.agents/workflows"
+echo "stary" > "$TMP/skills/.agents/workflows/git-start.md"
+echo "moj" > "$TMP/skills/.agents/workflows/moj-workflow.md"
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+test ! -e "$TMP/skills/.agents/workflows/git-start.md"
+test -f "$TMP/skills/.agents/workflows/moj-workflow.md"
+echo "OK  antigravity: agenci jako skille, stare workflow kita sprzątnięte"
 
 # .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
 # kasować po nazwach ze źródła, nie całym katalogiem.

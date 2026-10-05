@@ -1,17 +1,14 @@
 # Codex CLI nie ma stałej zmiennej odpowiadającej ${workspaceFolder}.
 # Użyj ścieżki absolutnej do workspace (katalog projektu aplikacji).
-# Wybierz kategorię z kita (`_base`, albo `shop` dla e-commerce).
-# Lokalny .ai/project.profile.yaml tylko przy forku kategorii → wtedy --profile zamiast --preset.
+# Stack wybierasz w `.ai/project.profile.yaml` (Tiery backend/web/mobile).
 # --clients: metadane (all | cursor | claude | …); bundle bez zmian — get_clients.
 
 [mcp_servers.project-guides]
 command = "uvx"
 args = [
-  "--from", "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+  "--from", "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
   "guides-mcp",
-  "--preset", "_base",
   "--language", "pl",
-  "--codegen", "orval",
   "--clients", "all",
   "--workspace", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU",
 ]

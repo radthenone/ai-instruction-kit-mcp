@@ -12,9 +12,14 @@ backend/
       envs.py
       integrations/     # adaptery vendorów — TYLKO tutaj import stripe/boto3
         storage/
+          providers/    # s3.py, local.py
+          registry.py   # wybór providera z settings
         payments/
+          providers/    # stripe_gateway.py, …
+          webhooks/     # stripe.py — podpis i normalizacja eventu
+          registry.py
         mail/
-        allauth/
+        allauth/        # wyjątek: adaptery Django
     apps/
       accounts/         # profile użytkownika (DRF CRUD) + auth capability
       products/         # domain: katalog

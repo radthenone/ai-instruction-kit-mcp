@@ -6,7 +6,7 @@
 
 ## Codegen
 
-Źródło prawdy: MCP `get_codegen` / flaga `--codegen orval|none|graphql` w `.mcp.json` (nie ten plik).
+Źródło prawdy: MCP `get_codegen` / klucz `codegen: orval|none|graphql` w `.ai/project.profile.yaml` (nie ten plik).
 Domyślnie `orval`. Przy `orval`: po zmianie API → uruchom komendę regeneracji klienta
 (nazwa taska specyficzna dla tego repo — uzupełnij niżej) → commit klienta.
 
@@ -18,11 +18,16 @@ Baza PR-ów — opcjonalnie. Bez tej linii agenci biorą `dev`, gdy nie jest w t
 branchem, inaczej default branch. Wymuszenie: dopisz w osobnej linii np. `base: dev`
 (sama linia, od początku wiersza).
 
-## Struktura
+## Ścieżki
 
-- `backend/` — Django + DRF
-- `frontend/` — Expo Router
-- `Taskfile.yml` — główny punkt wejścia komend
+Katalog kodu każdego Tieru — moduły Stacków odwołują się do tych kluczy zamiast zakładać
+`backend/` czy `frontend/`. Stack każdego Tieru: `.ai/project.profile.yaml`. Uzupełnia
+`/kit-project-begin` (MCP `list_questions`); Tier `none` — usuń linię.
+
+- backend: `backend/`
+- web: `frontend/web/`
+- mobile: `frontend/mobile/`
+- Taskfile: `Taskfile.yml` — główny punkt wejścia komend
 
 ## Taskfile
 
@@ -52,3 +57,9 @@ Jeśli projekt używa lokalnych forków — wpisz ścieżki tutaj. Domyślnie: b
 
 Opisz tu **tylko** rozjazdy tego repo względem docelowych modułów MCP
 (np. brak `apps/files` jeszcze, inny auth). Nie kopiuj stanu produktu do modules/ w kicie.
+
+## Odstępstwa od modułów
+
+Świadome wyjątki tego repo od treści modułów kita — overlay ma pierwszeństwo przed bundlem.
+Dopisuje `/kit-project-edit` (tryb odstępstwa), jedna linia na wyjątek:
+`- <Module ID> — zamiast <X z modułu> robimy <Y>, bo <powód>.` Domyślnie: brak.

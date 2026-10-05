@@ -1,12 +1,17 @@
-# Profil projektu (opcjonalny — tylko fork kategorii)
-# Zalecane: mcp.json z --preset _base|shop|… --workspace ${workspaceFolder}
-# i ewentualnie samo .ai/project.md jako overlay.
-# Ten plik twórz wyłącznie gdy nadpisujesz capabilities/domains/decisions.
+# Profil projektu — jedyne miejsce konfiguracji kita (Tiery zamiast presetów).
+# Jeden Tier = jeden Stack albo `none`. Puste Tiery = sam core.
+# Wariant starszego podejścia: `react@legacy`, `angular@rxjs`.
+# Po zmianie: `kit-ai reload` odświeża pliki kita (agenci, mcp.json, hooki).
 
 name: my-project
 language: pl
+clients: all
 
-extends: profiles/_base.yaml
+backend: none
+web: none
+mobile: none
+
+codegen: orval
 
 overlays:
   - .ai/project.md

@@ -2,12 +2,13 @@
 # Bootstrap instruction-kit w repo aplikacji (multi-client).
 #
 # Użycie:
-#   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--from PATH|URL] [--preset shop]
+#   ./scripts/bootstrap-project.sh /sciezka/do/projektu [--from PATH|URL]
 #   ./scripts/bootstrap-project.sh ../app --clients cursor
 #   ./scripts/bootstrap-project.sh ../app --clients all
 #
-# Domyślny preset: _base. Domyślni klienci: all.
-# Kategoria e-commerce: --preset shop
+# Profil z Tierami (`.ai/project.profile.yaml`) zapisywany, gdy go brak — jedyne
+# miejsce konfiguracji (ADR-0007). Na co dzień: `kit-ai install` / `kit-ai reload`.
+# Domyślni klienci: all.
 # Agenci: templates/shared/agents → natywne ścieżki klienta.
 # Skille: templates/shared/skills → katalog skilli klienta (claude/cursor/antigravity)
 #         albo komenda /nazwa u pozostałych (patrz scripts/install_shared_skills.py).
@@ -19,15 +20,10 @@ usage() {
 Użycie: bootstrap-project.sh TARGET_DIR [opcje]
 
 Opcje:
-  --preset NAME       Kategoria z kita (domyślnie: _base). Przykład: shop
   --language LANG     Język prozy instrukcji: pl|en (domyślnie: pl). Tytuły issue/PR zawsze EN
-  --codegen NAME      Generator klienta API: orval (schema → frontend/src/api/generated
-                      + mutatory) | none (tool-agnostyczny/ręczny) | graphql (GraphQL zamiast
-                      REST). Domyślnie: orval
   --clients LIST      all | cursor | claude | codex | vscode | kiro | kilo | antigravity | opencode
                       (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
-  --with-profile      Skopiuj templates/project.profile.yaml → .ai/project.profile.yaml (tylko fork)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
   --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*) ani skilli
                       z templates/shared/skills/
@@ -37,6 +33,10 @@ Opcje:
   --keep-unselected-clients
                       Nie usuwaj plików klientów spoza --clients (domyślnie: sprzątane —
                       declarative sync, np. --clients claude usuwa .cursor/.codex/… kitowe pliki)
+  --remove            Usuń z TARGET pliki kita wszystkich klientów, wpisy kita w .gitignore
+                      i .claude/settings.json, Profil i stamp. Zostają .ai/project.md,
+                      pliki użytkownika oraz AGENTS.md / BUGBOT.md / .gitattributes,
+                      jeśli różnią się od szablonu kita
   -h, --help          Ta pomoc
 
 Przykład (tylko Cursor):
@@ -45,21 +45,18 @@ Przykład (tylko Cursor):
     --from /m/projects/ai-instruction-kit-mcp \
     --with-overlay
 
-Przykład (kategoria shop, wszyscy klienci):
-  ./scripts/bootstrap-project.sh ../moj-sklep \
-    --preset shop \
+Przykład (profil z Tierami, wszyscy klienci):
+  ./scripts/bootstrap-project.sh ../moj-projekt \
     --clients all \
     --from /m/projects/ai-instruction-kit-mcp
+  # potem w ../moj-projekt/.ai/project.profile.yaml wybierz Stacki (backend/web/mobile)
 EOF
 }
 
 TARGET=""
-PRESET="_base"
 LANGUAGE="pl"
-CODEGEN="orval"
 CLIENTS_RAW="all"
-FROM_SRC="git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git"
-WITH_PROFILE=0
+FROM_SRC="git+https://github.com/radthenone/ai-instruction-kit-mcp.git"
 WITH_OVERLAY=0
 SKIP_AGENTS=0
 WITH_PLUGINS=0
@@ -67,12 +64,20 @@ PRUNE_CLIENTS=1
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
+# Komplet agentów (SHARED_AGENTS jest niżej podmieniane na zestaw po filtrze Tierów).
+ALL_AGENTS="$SHARED_AGENTS"
+PROFILE_TIERS=""
+REMOVE=0
 SHARED_GUARDS="$KIT_ROOT/templates/shared/guards"
 SHARED_SKILLS="$KIT_ROOT/templates/shared/skills"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --preset) PRESET="${2:?}"; shift 2 ;;
+    --preset|--profile|--with-profile|--codegen)
+      echo "Opcja $1 została usunięta — Stacki i codegen są w .ai/project.profile.yaml." >&2
+      echo "Odśwież istniejący projekt: kit-ai reload <ścieżka> (migruje starą konfigurację)." >&2
+      exit 1
+      ;;
     --language)
       LANGUAGE="$(echo "${2:?}" | tr '[:upper:]' '[:lower:]')"
       if [[ "$LANGUAGE" != "pl" && "$LANGUAGE" != "en" ]]; then
@@ -82,20 +87,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --clients) CLIENTS_RAW="${2:?}"; shift 2 ;;
-    --codegen)
-      CODEGEN="$(echo "${2:?}" | tr '[:upper:]' '[:lower:]')"
-      if [[ "$CODEGEN" != "orval" && "$CODEGEN" != "none" && "$CODEGEN" != "graphql" ]]; then
-        echo "Nieprawidłowy --codegen: $CODEGEN (dozwolone: orval, none, graphql)" >&2
-        exit 1
-      fi
-      shift 2
-      ;;
     --from) FROM_SRC="${2:?}"; shift 2 ;;
-    --with-profile) WITH_PROFILE=1; shift ;;
     --with-overlay) WITH_OVERLAY=1; shift ;;
     --skip-agents) SKIP_AGENTS=1; shift ;;
     --with-plugins) WITH_PLUGINS=1; shift ;;
     --keep-unselected-clients) PRUNE_CLIENTS=0; shift ;;
+    --remove) REMOVE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*)
       echo "Nieznana opcja: $1" >&2
@@ -127,7 +124,11 @@ if [[ -d "$FROM_SRC" ]]; then
 fi
 
 # python3 (Linux/macOS) albo python (Windows / pyenv) — bez twardego `python`.
-if command -v python3 >/dev/null 2>&1; then
+# `kit-ai` / serwer MCP podają własny interpreter (KIT_PYTHON): przy instalacji z koła
+# (`uv tool install`) tylko on widzi pakiet `guides` — klonu z `src/` nie ma.
+if [[ -n "${KIT_PYTHON:-}" ]]; then
+  PYTHON_BIN="$KIT_PYTHON"
+elif command -v python3 >/dev/null 2>&1; then
   PYTHON_BIN=python3
 elif command -v python >/dev/null 2>&1; then
   PYTHON_BIN=python
@@ -162,7 +163,8 @@ PY
   exit 1
 }
 
-CLIENTS_ARG="$(echo "$CLIENTS_PARSE" | head -n1 | tr -d '\r')"
+CLIENTS_ARG="${CLIENTS_PARSE%%$'\n'*}"
+CLIENTS_ARG="${CLIENTS_ARG//$'\r'/}"
 CLIENTS_LIST=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line//$'\r'/}"
@@ -178,67 +180,95 @@ client_enabled() {
   return 1
 }
 
-# Usuwa TYLKO pliki/foldery, które ten sam bootstrap sam kiedyś wygenerował dla danego
-# klienta (mapa 1:1 z install_*() niżej). Nigdy nie rusza sąsiednich plików tego samego
-# katalogu spoza kita (np. .vscode/settings.json, .github/workflows/, .kilocode/rules/).
+# Pliki kita jednego klienta = to, co install_<id> kładzie w pustym katalogu. Lista
+# pochodzi z tych samych funkcji co instalacja (komplet agentów, bez filtra Tierów), więc
+# prune i `--remove` nie trzymają drugiej, rozjeżdżającej się mapy ścieżek.
+# `.claude/settings.json` pomijamy — należy do użytkownika, wpisy kita zdejmuje
+# `claude_settings.py prune`.
+kit_files() {
+  local id="$1" sandbox
+  sandbox="$(mktemp -d)"
+  if ! ( TARGET="$sandbox" SHARED_AGENTS="$ALL_AGENTS" SKIP_AGENTS=0; "install_$id" ) >/dev/null 2>&1; then
+    rm -rf "$sandbox"
+    echo "Nie udało się ustalić plików kita klienta $id" >&2
+    return 1
+  fi
+  (cd "$sandbox" && find . -type f ! -path ./.claude/settings.json | sed 's|^\./||' | sort)
+  rm -rf "$sandbox"
+}
+
+# Usuń jeden plik kita (ścieżka względem $TARGET) i puste katalogi nad nim, aż do $TARGET.
+# Cudzy plik w tym samym katalogu blokuje rmdir, więc katalog zostaje razem z nim.
+kit_rm() {
+  local rel="$1" dir
+  [[ -e "$TARGET/$rel" || -L "$TARGET/$rel" ]] || return 0
+  rm -f "$TARGET/$rel"
+  echo "  - $rel"
+  dir="$(dirname "$rel")"
+  while [[ "$dir" != "." ]] && rmdir "$TARGET/$dir" 2>/dev/null; do
+    dir="$(dirname "$dir")"
+  done
+}
+
+# Ścieżki, po których poznać, że klient w ogóle jest w repo. Bez nich nie ma czego
+# sprzątać — i nie płacimy za render listy przy każdym bootstrapie.
+client_present() {
+  local rel
+  case "$1" in
+    cursor) set -- .cursor ;;
+    claude) set -- .claude .mcp.json ;;
+    codex) set -- .codex ;;
+    vscode) set -- .vscode .github ;;
+    kiro) set -- .kiro ;;
+    kilo) set -- .kilocode ;;
+    antigravity) set -- .agents ;;
+    opencode) set -- .opencode opencode.json ;;
+  esac
+  for rel in "$@"; do
+    [[ -e "$TARGET/$rel" ]] && return 0
+  done
+  return 1
+}
+
+# Usuwa TYLKO pliki, które bootstrap sam kładzie dla danego klienta — po nazwie, nigdy
+# całego katalogu. Własne agenty, komendy, hooki i skille użytkownika obok zostają.
+# Plik użytkownika o nazwie identycznej z plikiem kita też zniknie (README).
 prune_client() {
-  local id="$1"
+  local id="$1" files rel name
+  client_present "$id" || return 0
+  files="$(kit_files "$id")"
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    # .cursor/BUGBOT.md bootstrap nadpisuje tylko nietknięty — dostosowany zostaje i tu.
+    if [[ "$rel" == ".cursor/BUGBOT.md" ]] && ! bugbot_pristine "$TARGET/$rel"; then
+      continue
+    fi
+    kit_rm "$rel"
+  done <<< "$files"
+  # Pozostałości starszych wersji kita, których dzisiejsza instalacja już nie kładzie.
   case "$id" in
-    cursor)
-      rm -f "$TARGET/.cursor/mcp.json" "$TARGET/.cursor/hooks.json" \
-        "$TARGET/.cursor/hooks/git-guard.mjs" "$TARGET/.cursor/hooks/sensitive-files-guard.mjs" \
-        "$TARGET/.cursor/hooks/gate-push.sh" "$TARGET/.cursor/hooks/gate-destructive.sh" \
-        "$TARGET/.cursor/hooks/invoke-hook.js" \
-        "$TARGET/.cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/code-review.mdc" \
-        "$TARGET/.cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/BUGBOT.md"
-      rm -rf "$TARGET/.cursor/agents" "$TARGET/.cursor/skills"
-      rmdir "$TARGET/.cursor/hooks" "$TARGET/.cursor/rules" "$TARGET/.cursor" 2>/dev/null || true
-      ;;
-    claude)
-      rm -f "$TARGET/.mcp.json"
-      rm -rf "$TARGET/.claude/agents" "$TARGET/.claude/commands" "$TARGET/.claude/hooks"
-      prune_shared_skills "$TARGET/.claude/skills"
-      if [[ -f "$TARGET/.claude/settings.json" ]]; then
-        "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
-      fi
-      rmdir "$TARGET/.claude" 2>/dev/null || true
+    cursor|claude)
+      for name in gate-push.sh gate-destructive.sh gate-file-writes.mjs; do
+        kit_rm ".$id/hooks/$name"
+      done
       ;;
     codex)
-      rm -f "$TARGET/.codex/config.toml"
-      rm -rf "$TARGET/.codex/agents" "$TARGET/.codex/skills"
+      for name in "$ALL_AGENTS"/*.md backend-reviewer frontend-reviewer; do
+        kit_rm ".codex/agents/$(basename "$name" .md).toml"
+      done
+      prune_shared_skills "$TARGET/.codex/agents"
       rmdir "$TARGET/.codex" 2>/dev/null || true
       ;;
-    vscode)
-      rm -f "$TARGET/.vscode/mcp.json" "$TARGET/.github/copilot-instructions.md" \
-        "$TARGET/.github/hooks/rtk-rewrite.json"
-      rmdir "$TARGET/.github/hooks" 2>/dev/null || true
-      if [[ -d "$TARGET/.github/prompts" ]]; then
-        rm -f "$TARGET/.github/prompts/"*.prompt.md 2>/dev/null || true
-        rmdir "$TARGET/.github/prompts" 2>/dev/null || true
-      fi
-      rmdir "$TARGET/.vscode" 2>/dev/null || true
-      ;;
-    kiro)
-      rm -f "$TARGET/.kiro/settings/mcp.json" "$TARGET/.kiro/steering/instruction-kit.md"
-      rm -rf "$TARGET/.kiro/agents"
-      rmdir "$TARGET/.kiro/settings" "$TARGET/.kiro/steering" "$TARGET/.kiro" 2>/dev/null || true
-      ;;
-    kilo)
-      rm -f "$TARGET/.kilocode/mcp.json"
-      rm -rf "$TARGET/.kilocode/workflows"
-      rmdir "$TARGET/.kilocode" 2>/dev/null || true
-      ;;
     antigravity)
-      rm -f "$TARGET/.agents/mcp_config.json"
-      rm -rf "$TARGET/.agents/workflows"
-      prune_shared_skills "$TARGET/.agents/skills"
-      rmdir "$TARGET/.agents" 2>/dev/null || true
-      ;;
-    opencode)
-      rm -f "$TARGET/opencode.json"
-      rm -rf "$TARGET/.opencode"
+      for name in "$ALL_AGENTS"/*.md; do
+        kit_rm ".agents/workflows/$(basename "$name")"
+      done
       ;;
   esac
+  if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
+    rmdir "$TARGET/.claude" 2>/dev/null || true
+  fi
 }
 
 prune_unselected_clients() {
@@ -250,11 +280,13 @@ prune_unselected_clients() {
   done
 }
 
-# Wypełnij szablon MCP (JSON/TOML): from, preset, language, clients, opcjonalnie workspace.
+# Wypełnij szablon MCP (JSON/TOML): from, language, clients, opcjonalnie workspace.
+# Tiery i codegen czyta serwer z `.ai/project.profile.yaml` w --workspace (ADR-0007),
+# więc zmiana Stacka w profilu nie zmienia konfiguracji klienta.
 fill_mcp() {
   local src="$1" dest="$2" workspace_repl="${3:-}"
   mkdir -p "$(dirname "$dest")"
-  FROM_SRC="$FROM_SRC" PRESET="$PRESET" LANGUAGE="$LANGUAGE" CODEGEN="$CODEGEN" \
+  FROM_SRC="$FROM_SRC" LANGUAGE="$LANGUAGE" \
   CLIENTS_ARG="$CLIENTS_ARG" \
   WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
 import os
@@ -265,13 +297,8 @@ src = Path(os.environ["SRC"])
 dest = Path(os.environ["DEST"])
 text = src.read_text(encoding="utf-8")
 text = text.replace(
-    "git+https://github.com/TWOJ_USER/ai-instruction-kit-mcp.git",
+    "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
     os.environ["FROM_SRC"],
-)
-text = re.sub(
-    r'("--preset",\s*")[^"]*(")',
-    rf'\g<1>{os.environ["PRESET"]}\2',
-    text,
 )
 text = re.sub(
     r'("--language",\s*")[^"]*(")',
@@ -279,16 +306,10 @@ text = re.sub(
     text,
 )
 text = re.sub(
-    r'("--codegen",\s*")[^"]*(")',
-    rf'\g<1>{os.environ["CODEGEN"]}\2',
-    text,
-)
-text = re.sub(
     r'("--clients",\s*")[^"]*(")',
     rf'\g<1>{os.environ["CLIENTS_ARG"]}\2',
     text,
 )
-# TOML: "--preset", "_base" style already covered; also bare strings in toml lists
 text = re.sub(
     r'("--workspace",\s*")[^"]*(")',
     lambda m: m.group(0)
@@ -300,19 +321,20 @@ if os.environ.get("WORKSPACE_REPL"):
     # Codex placeholder path
     text = text.replace("/ABSOLUTNA/SCIEZKA/DO/PROJEKTU", os.environ["WORKSPACE_REPL"])
 
-# Zrodlo lokalne: `uv run --directory`, nie `uvx --from`.
+# Zrodlo lokalne: `uv run --project`, nie `uvx --from`.
 #
 # `uvx --from <katalog>` nie czyta kita z tego katalogu w czasie dzialania. uv buduje
-# kolo, w ktorym `manifest.yaml`, `modules/` i `profiles/` laduja jako `guides/_data`
+# kolo, w ktorym `manifest.yaml` i `modules/` laduja jako `guides/_data`
 # (force-include w pyproject.toml), i cache'uje je pod WERSJE pakietu. Wersja nie rosnie
 # przy zwyklej edycji modulu ani kodu serwera, wiec klient dostaje kopie sprzed builda —
 # poprawiasz modul, restartujesz IDE, a `get_bundle` zwraca stara tresc. Bez bledu.
 # Do tego `find_kit_root` woli `_data` od repo, wiec `check_kit_status` traci historie
 # gita i nie ma czego porownac ze stampem.
 #
-# `uv run --directory <katalog>` instaluje pakiet z ukladem `src/` jako editable: `_data`
+# `uv run --project <katalog>` instaluje pakiet z ukladem `src/` jako editable: `_data`
 # w ogole nie powstaje, kod i moduly czytane sa wprost z klonu. Jedna zmiana naprawia
-# jednoczesnie zamrozone moduly i zamrozony kod serwera.
+# jednoczesnie zamrozone moduly i zamrozony kod serwera. `--project` (w odroznieniu od
+# `--directory`) nie zmienia katalogu roboczego procesu serwera.
 #
 # `--kit-root` dokladamy mimo to — nie jest juz konieczny, ale nazywa klon wprost, wiec
 # konfiguracja mowi wprost, skad kit jest czytany, zamiast polegac na wnioskowaniu.
@@ -324,10 +346,10 @@ if Path(from_src).is_dir():
     # `uvx` występuje w szablonie raz — jako komenda (JSON `"command": "uvx"`,
     # TOML `command = "uvx"`, opencode jako pierwszy element tablicy `command`).
     text = text.replace('"uvx"', '"uv"', 1)
-    # `--from X` i `run --directory X` znaczą to samo dla obu poleceń: "weź pakiet stąd".
+    # `--from X` i `run --project X` znaczą to samo dla obu poleceń: "weź pakiet stąd".
     text = re.sub(
         r'"--from",(\s*)"' + re.escape(from_src) + r'"',
-        lambda m: f'"run", "--directory",{m.group(1)}"{from_src}"',
+        lambda m: f'"run", "--project",{m.group(1)}"{from_src}"',
         text,
         count=1,
     )
@@ -359,7 +381,7 @@ GITIGNORE_BEGIN="# >>> instruction-kit >>>"
 GITIGNORE_END="# <<< instruction-kit <<<"
 
 # Pliki, które bootstrap renderuje ze ścieżką TEJ maszyny: `fill_mcp` wstawia do konfigów
-# MCP lokalny klon kita (`uv run --directory`, `--kit-root`) i absolutny `--workspace`,
+# MCP lokalny klon kita (`uv run --project`, `--kit-root`) i absolutny `--workspace`,
 # stamp zapisuje `kit_from`. Zacommitowane z jednej maszyny psują serwer MCP na każdej
 # innej, więc idą do .gitignore (sekcja kita) i są sprawdzane w indeksie po instalacji.
 # Ścieżki względem $TARGET, w składni .gitignore (wiodący `/` = tylko root repo).
@@ -459,6 +481,117 @@ warn_tracked_machine_files() {
   echo "  git -C \"$TARGET\" rm --cached $tracked"
 }
 
+# Tiery z Profilu: `backend` gdy Tier backend wybrany, `client` gdy web lub mobile.
+# Bez PyYAML (bootstrap leci na systemowym Pythonie) — Profil ma płaskie klucze Tierów.
+# Legacy `stacks:` liczy się do Tierów tak jak w resolverze (`_filled_tiers`).
+profile_tiers() {
+  "$PYTHON_BIN" - "$TARGET/.ai/project.profile.yaml" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8") if path.is_file() else ""
+empty = {"", "none", "null", "~", "false", "0", "no"}
+filled = set()
+for tier in ("backend", "web", "mobile"):
+    match = re.search(rf"^{tier}:[ \t]*['\"]?([^'\"\s#]*)", text, re.MULTILINE)
+    if match and match.group(1).lower() not in empty:
+        filled.add(tier)
+legacy = re.search(r"^stacks:[ \t]*\n((?:[ \t]+\S.*\n?)*)", text, re.MULTILINE)
+for name, value in re.findall(r"^[ \t]+([\w-]+):[ \t]*(.*)$", legacy.group(1) if legacy else "", re.MULTILINE):
+    if value.strip().strip("'\"").lower() in empty:
+        continue
+    if name == "django-drf":
+        filled.add("backend")
+    elif name == "expo-router":
+        filled.update({"web", "mobile"})
+tags = (["backend"] if "backend" in filled else []) + (["client"] if filled & {"web", "mobile"} else [])
+print(" ".join(tags))
+PY
+}
+
+# Agenci z `tier:` we frontmatterze trafiają do klienta tylko przy wybranym Tierze
+# (`backend` / `client` = web lub mobile). Staging w katalogu tymczasowym, bez linii
+# `tier:` — wszystkie instalatory niżej czytają już przefiltrowany zestaw. Na stdout:
+# nazwy pominiętych agentów (do sprzątnięcia z poprzedniego Bootstrapu).
+stage_shared_agents() {
+  local dest="$1"
+  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+chosen = set(os.environ["TIERS"].split())
+dest = Path(os.environ["DEST"])
+for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
+    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+    end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    tier = next(
+        (line.partition(":")[2].strip() for line in lines[1:end] if line.startswith("tier:")),
+        None,
+    )
+    if tier and tier not in chosen:
+        print(src.stem)
+        continue
+    kept = [line for i, line in enumerate(lines) if not (0 < i < end and line.startswith("tier:"))]
+    (dest / src.name).write_text("".join(kept), encoding="utf-8", newline="\n")
+PY
+}
+
+# Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
+# (mapa 1:1 z copy_shared_agents / copy_claude_commands / install_codex_agents /
+# render_agent_commands). Tier zmieniony na `none` = agenci znikają przy reload.
+prune_tier_agents() {
+  local name
+  for name in $SKIPPED_AGENTS; do
+    rm -f "$TARGET/.claude/agents/$name.md" "$TARGET/.claude/commands/$name.md" \
+      "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
+      "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
+      "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
+    rm -rf "$TARGET/.codex/skills/$name"
+  done
+}
+
+# Sekcje `<!-- tier:X -->…<!-- /tier:X -->` w BUGBOT.md zostają tylko dla wybranych Tierów.
+# Plik nadpisywany, gdy go brak albo gdy to nietknięty render kita (dowolny zestaw Tierów)
+# — zmiana Tierów + reload odświeża sekcje, a ręcznie dostosowany BUGBOT.md zostaje.
+# Na stdout: ścieżka, gdy plik powstał od zera.
+copy_bugbot_md() {
+  SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" DEST="$1" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
+import os
+import re
+from pathlib import Path
+
+source = Path(os.environ["SRC"]).read_text(encoding="utf-8")
+dest = Path(os.environ["DEST"])
+
+
+def render(chosen: set[str]) -> str:
+    def keep(match: re.Match) -> str:
+        return match.group(2).strip("\n") + "\n" if match.group(1) in chosen else ""
+
+    text = re.sub(r"<!-- tier:(\w+) -->\n(.*?)<!-- /tier:\1 -->\n?", keep, source, flags=re.DOTALL)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+pristine = dest.is_file() and dest.read_text(encoding="utf-8") in {
+    render(c) for c in (set(), {"backend"}, {"client"}, {"backend", "client"})
+}
+if os.environ.get("CHECK_ONLY"):
+    raise SystemExit(0 if pristine else 1)
+if dest.is_file() and not pristine:
+    raise SystemExit(0)
+if not dest.is_file():
+    print(dest)
+dest.write_text(render(set(os.environ["TIERS"].split())), encoding="utf-8", newline="\n")
+PY
+}
+
+# Exit 0, gdy plik to nietknięty render BUGBOT.md kita — wtedy wolno go usunąć.
+bugbot_pristine() {
+  CHECK_ONLY=1 copy_bugbot_md "$1" >/dev/null
+}
+
 copy_shared_agents() {
   local dest_dir="$1"
   if [[ "$SKIP_AGENTS" -ne 0 ]]; then
@@ -516,8 +649,7 @@ install_agenty_md_once() {
 # .cursor/BUGBOT.md (install_cursor) zostaje osobno — to dla natywnej usługi Cursor
 # BugBot, która czyta z tamtej ścieżki; ta funkcja to nie duplikat, to inny konsument.
 install_bugbot_md_once() {
-  if [[ ! -f "$TARGET/BUGBOT.md" ]]; then
-    cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/BUGBOT.md"
+  if [[ -n "$(copy_bugbot_md "$TARGET/BUGBOT.md")" ]]; then
     echo "  + BUGBOT.md (root — dla /review-bugbot wszystkich klientów)"
   fi
 }
@@ -547,9 +679,7 @@ install_cursor() {
   cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
-  if [[ ! -f "$TARGET/.cursor/BUGBOT.md" ]]; then
-    cp "$KIT_ROOT/templates/cursor/BUGBOT.md" "$TARGET/.cursor/BUGBOT.md"
-  fi
+  copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" >/dev/null
 
   copy_shared_agents "$TARGET/.cursor/agents"
 
@@ -702,7 +832,15 @@ install_antigravity() {
   mkdir -p "$TARGET/.agents"
   fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
   echo "  + .agents/mcp_config.json"
-  render_agent_commands antigravity "$TARGET/.agents/workflows"
+  if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+    # agy (Antigravity CLI) nie zna workflow — tylko skille .agents/skills/<nazwa>/SKILL.md.
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills"
+    echo "  + .agents/skills/ (agenty jako skille Antigravity)"
+    # Workflow ze starszych wersji kita — po nazwie, cudze zostają.
+    for name in "$ALL_AGENTS"/*.md; do
+      kit_rm ".agents/workflows/$(basename "$name")"
+    done
+  fi
   copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 
@@ -741,66 +879,111 @@ install_plugins() {
 EOF
 }
 
-install_git_pre_push_reminder() {
-  # Dla klientów bez Cursor hooks — szablon do ręcznej instalacji / copy do .git/hooks
-  if [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
-    mkdir -p "$TARGET/git-hooks"
-    cp "$KIT_ROOT/templates/git-hooks/pre-push" "$TARGET/git-hooks/pre-push"
-    chmod +x "$TARGET/git-hooks/pre-push"
-    echo "  + git-hooks/pre-push (zainstaluj do .git/hooks/pre-push)"
-  fi
+# Sekcja kita w .gitignore — wycięta razem z pustą linią, którą dokłada sync.
+# Plik, w którym poza sekcją nic nie było, znika.
+strip_gitignore_section() {
+  [[ -f "$TARGET/.gitignore" ]] || return 0
+  BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" DEST="$TARGET/.gitignore" \
+    "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+begin, end = os.environ["BEGIN_MARK"], os.environ["END_MARK"]
+dest = Path(os.environ["DEST"])
+text = dest.read_text(encoding="utf-8")
+if begin in text and end in text:
+    head, _, rest = text.partition(begin)
+    _, _, tail = rest.partition(end)
+    kept = (head.rstrip("\n") + "\n" if head.strip() else "") + tail.lstrip("\n")
+    if kept.strip():
+        dest.write_text(kept, encoding="utf-8", newline="\n")
+        print("  - .gitignore (sekcja instruction-kit)")
+    else:
+        dest.unlink()
+        print("  - .gitignore")
+PY
 }
 
+# `--remove`: repo ma wyglądać jak przed kitem — poza plikami z treścią użytkownika.
+# Kit nie robi kopii, więc niczego nie przywraca; usuwa tylko to, co sam położył.
+remove_kit() {
+  local id
+  echo "Usuwanie instruction-kit → $TARGET"
+  for id in cursor claude codex vscode kiro kilo antigravity opencode; do
+    prune_client "$id"
+  done
+  # Pliki tworzone raz: tylko gdy identyczne z szablonem — zmienione należą do użytkownika.
+  if [[ -f "$TARGET/AGENTS.md" ]] && cmp -s "$TARGET/AGENTS.md" "$KIT_ROOT/templates/AGENTS.md"; then
+    kit_rm AGENTS.md
+  fi
+  if bugbot_pristine "$TARGET/BUGBOT.md"; then
+    kit_rm BUGBOT.md
+  fi
+  if [[ -f "$TARGET/.gitattributes" ]] \
+     && cmp -s "$TARGET/.gitattributes" "$KIT_ROOT/templates/gitattributes.txt"; then
+    kit_rm .gitattributes
+  fi
+  strip_gitignore_section
+  kit_rm .ai/project.profile.yaml
+  kit_rm .ai/.kit-bootstrap.json
+  echo ""
+  echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
+}
+
+if [[ "$REMOVE" -eq 1 ]]; then
+  remove_kit
+  exit 0
+fi
+
 echo "Bootstrap instruction-kit → $TARGET"
-echo "  preset=$PRESET"
 echo "  language=$LANGUAGE"
-echo "  codegen=$CODEGEN"
 echo "  clients=$CLIENTS_ARG"
 echo "  from=$FROM_SRC"
 
 mkdir -p "$TARGET/.ai"
+# Profil przed wszystkim innym — z niego biorą się Tiery (agenci, BUGBOT.md).
+if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
+  sed -e "s/^name: my-project$/name: $(basename "$TARGET")/" \
+    -e "s/^language: .*/language: $LANGUAGE/" \
+    -e "s/^clients: .*/clients: $CLIENTS_ARG/" \
+    "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
+  echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
+fi
+
+PROFILE_TIERS="$(profile_tiers)"
+STAGED_AGENTS="$(mktemp -d)"
+trap 'rm -rf "$STAGED_AGENTS"' EXIT
+SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
+# Python na Windowsie kończy linie `\r\n` — `\r` przykleja się do nazwy i `rm -f` chybia.
+SKIPPED_AGENTS="${SKIPPED_AGENTS//$'\r'/}"
+SHARED_AGENTS="$STAGED_AGENTS"
+echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, client → *-frontend, review-ui)"
+
 install_agenty_md_once
 install_bugbot_md_once
+prune_tier_agents
 
 if [[ "$PRUNE_CLIENTS" -eq 1 ]]; then
   prune_unselected_clients
   echo "  (sprzątnięto kitowe pliki klientów spoza --clients ${CLIENTS_ARG}; wyłącz: --keep-unselected-clients)"
 fi
 
-NEED_GIT_HOOK=0
 for c in "${CLIENTS_LIST[@]}"; do
   case "$c" in
     cursor) install_cursor ;;
-    claude) install_claude; NEED_GIT_HOOK=1 ;;
-    codex) install_codex; NEED_GIT_HOOK=1 ;;
-    vscode) install_vscode; NEED_GIT_HOOK=1 ;;
-    kiro) install_kiro; NEED_GIT_HOOK=1 ;;
-    kilo) install_kilo; NEED_GIT_HOOK=1 ;;
-    antigravity) install_antigravity; NEED_GIT_HOOK=1 ;;
-    opencode) install_opencode; NEED_GIT_HOOK=1 ;;
+    claude) install_claude ;;
+    codex) install_codex ;;
+    vscode) install_vscode ;;
+    kiro) install_kiro ;;
+    kilo) install_kilo ;;
+    antigravity) install_antigravity ;;
+    opencode) install_opencode ;;
     *)
       echo "Nieobsługiwany klient po expand: $c" >&2
       exit 1
       ;;
   esac
 done
-
-if [[ "$NEED_GIT_HOOK" -eq 1 ]] && ! client_enabled cursor; then
-  install_git_pre_push_reminder
-elif [[ "$NEED_GIT_HOOK" -eq 1 ]] && client_enabled cursor; then
-  : # Cursor ma gate-*; opcjonalnie i tak zostaw szablon
-  if [[ ! -f "$TARGET/git-hooks/pre-push" ]] && [[ -f "$KIT_ROOT/templates/git-hooks/pre-push" ]]; then
-    install_git_pre_push_reminder
-  fi
-fi
-
-if [[ "$WITH_PROFILE" -eq 1 ]]; then
-  if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
-    sed "s/my-project/$(basename "$TARGET")/; s|profiles/_base.yaml|profiles/${PRESET}.yaml|" \
-      "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
-    echo "  + .ai/project.profile.yaml (extends profiles/${PRESET}.yaml)"
-  fi
-fi
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.md" ]]; then
@@ -827,17 +1010,23 @@ fi
 
 # Stamp — commit kita w momencie bootstrapu, do taniego "czy trzeba re-bootstrapować"
 # (MCP tool check_kit_status). Pusty kit_commit gdy --from to zdalny URL / nie-git.
-KIT_COMMIT="$(git -C "$KIT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+# Z koła (`uv tool install git+…`) nie ma `.git` — commit podaje `kit-ai` z metadanych
+# instalacji (KIT_COMMIT). Bez `.git` nie pytamy gita: `_data` w `.venv` repo aplikacji
+# zwróciłoby HEAD aplikacji, nie kita.
+if [[ -e "$KIT_ROOT/.git" ]]; then
+  KIT_COMMIT="$(git -C "$KIT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+else
+  KIT_COMMIT="${KIT_COMMIT:-}"
+fi
 BOOTSTRAPPED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mkdir -p "$TARGET/.ai"
 cat > "$TARGET/.ai/.kit-bootstrap.json" <<JSON
 {
   "kit_commit": "${KIT_COMMIT}",
   "kit_from": "${FROM_SRC}",
+  "kit_version": "${KIT_VERSION:-}",
   "bootstrapped_at": "${BOOTSTRAPPED_AT}",
-  "preset": "${PRESET}",
   "language": "${LANGUAGE}",
-  "codegen": "${CODEGEN}",
   "clients": "${CLIENTS_ARG}"
 }
 JSON
@@ -852,4 +1041,4 @@ echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent
 if client_enabled cursor; then
   echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
 fi
-echo "MCP: --preset ${PRESET} --language ${LANGUAGE} --codegen ${CODEGEN} --clients ${CLIENTS_ARG} --workspace …"
+echo "MCP: --language ${LANGUAGE} --clients ${CLIENTS_ARG} --workspace …"
