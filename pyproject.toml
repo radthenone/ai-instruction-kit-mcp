@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 guides-mcp = "guides.server:main"
+kit-ai = "guides.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -18,23 +19,29 @@ build-backend = "hatchling.build"
 
 # `unittest discover -s tests` i pytest wkładają `tests/` na sys.path, więc suity
 # mogą się nawzajem importować (test_shell_suites → test_bash_hook_launcher).
-# Type checker musi widzieć ten sam import root.
+# Python robi to samo dla katalogu uruchamianego skryptu, stąd `scripts/`
+# (install_shared_skills → render_agent_commands). Type checker musi widzieć te
+# same import rooty co runtime.
 [tool.ty.environment]
-extra-paths = ["tests"]
+extra-paths = ["tests", "scripts"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/guides"]
 
+# `_data` ma układ repo kita (KIT_ROOT): bootstrap czyta `templates/` i helpery
+# z `scripts/` względem siebie, więc `uv tool install git+…` działa bez klona.
 [tool.hatch.build.targets.wheel.force-include]
 "manifest.yaml" = "guides/_data/manifest.yaml"
 "modules" = "guides/_data/modules"
-"profiles" = "guides/_data/profiles"
+"templates" = "guides/_data/templates"
+"scripts" = "guides/_data/scripts"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "manifest.yaml",
     "modules/**",
-    "profiles/**",
+    "scripts/**",
+    "templates/**",
     "src/**",
     "README.md",
 ]

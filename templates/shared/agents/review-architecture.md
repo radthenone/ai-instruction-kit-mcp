@@ -32,7 +32,7 @@ Jesteś reviewerem architektury tego repo.
 ### Checklista MCP
 
 1. `get_bundle("architecture")`.
-2. `get_overlay()` — ścieżki, `codegen:`.
+2. `get_overlay()` — ścieżki; `codegen:` z profilu (MCP `get_codegen`).
 3. BUGBOT.md — unikaj overlapu.
 
 ### Sprawdzaj w diffie

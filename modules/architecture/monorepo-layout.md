@@ -13,7 +13,7 @@ project-root/
 ├── Taskfile.yml      # jeden punkt wejścia komend
 ├── .ai/
 │   ├── project.md             # overlay (Taskfile, porty) — zalecane
-│   └── project.profile.yaml   # opcjonalny — tylko gdy forujesz preset z kita
+│   └── project.profile.yaml   # Tiery (backend/web/mobile) + codegen — wymagane
 └── .github/workflows/         # CI/CD
 ```
 

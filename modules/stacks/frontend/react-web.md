@@ -1,6 +1,6 @@
 # Frontend — React web only
 
-`--frontend react` bez `--mobile`.
+Tier web: `react`, Tier mobile: `none`.
 
 ```text
 frontend/

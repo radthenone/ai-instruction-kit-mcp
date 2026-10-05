@@ -63,4 +63,4 @@ When suggesting fixes, prefer `task <namespace>:<nazwa>` from `.ai/project.md` o
 
 ## Lokalny workflow
 
-Przed pushem developer powinien uruchomić `/review-bugbot` w Cursor. Hook `.cursor/hooks/gate-push.sh` przypomina o tym przy `git push`.
+Przed pushem developer powinien uruchomić `/review-bugbot` w Cursor (przypomina o tym `/git-end`). Guard `git-guard.mjs` blokuje push bezpośrednio na main/master/dev.

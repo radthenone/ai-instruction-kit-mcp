@@ -34,18 +34,21 @@ Nie zastępuj testów review AI. AI łapie logikę i kontekst; CI łapie regresj
 
 **Sync z GitHub:** po lokalnym `/review-bugbot` i otwarciu PR z tym samym diffem Bugbot na GitHubie może pominąć ponowny review (ten sam patch ID).
 
-### Cursor Hooks — review + blokady destrukcyjne
+### Guardy — blokady destrukcyjne i sekrety
 
 W projekcie skopiuj z instruction-kit (albo użyj `scripts/bootstrap-project.sh`):
 
 - `.cursor/hooks.json`
-- `.cursor/hooks/gate-push.sh`
-- `.cursor/hooks/gate-destructive.sh`
+- `.cursor/hooks/git-guard.mjs`
+- `.cursor/hooks/sensitive-files-guard.mjs`
+- `.cursor/hooks/invoke-hook.js`
 
-| Hook | Zachowanie |
-|------|------------|
-| `gate-push.sh` | **ask** przed `git push` z niepushniętymi commitami. Bypass: `SKIP_PUSH_REVIEW=1` |
-| `gate-destructive.sh` | **deny** force push na main/master, `reset --hard`, agresywny `clean -f`; **ask** force na feature / push na main. `failClosed: true` |
+| Guard | Zachowanie |
+|-------|------------|
+| `git-guard.mjs` | **deny** force i zwykły push na main/master/dev, `reset --hard`, `clean -f`, `branch -D`, `checkout .`; wszystko inne **allow**. `failClosed: true` |
+| `sensitive-files-guard.mjs` | **deny** odczyt/zapis `.env*`, kluczy, `.netrc`; **deny** ręczna edycja lockfile |
+
+Guard nigdy nie odpowiada `ask` (ADR 0006) — w auto mode `ask` blokuje jak prompt.
 
 ### Slash commands review (konwencja)
 
@@ -67,17 +70,6 @@ W projekcie skopiuj z instruction-kit (albo użyj `scripts/bootstrap-project.sh`
 **Bugbot** = blocking/security. **Stack** = konwencje MCP (`Severity | Location | Finding | Fix`). Bez dublowania.
 
 **Codegen:** gdy overlay/`--codegen` = `orval` → po zmianie API regeneruj klienta; przy `manual`/`none` nie wymagaj Orval.
-
-### Git pre-push (deterministyczne)
-
-Szablon `templates/git-hooks/pre-push` — uruchamia testy/linty z Taskfile (jeśli istnieje). Nie uruchamia AI (wymaga Cursor IDE).
-
-Instalacja w projekcie:
-
-```bash
-cp templates/git-hooks/pre-push .git/hooks/pre-push
-chmod +x .git/hooks/pre-push
-```
 
 ## GitHub — Bugbot
 
@@ -165,9 +157,9 @@ Wymagane checks:
 ```text
 templates/cursor/BUGBOT.md
 templates/cursor/hooks.json
-templates/cursor/hooks/gate-push.sh
-templates/cursor/hooks/gate-destructive.sh
-templates/git-hooks/pre-push
+templates/shared/guards/git-guard.mjs
+templates/shared/guards/sensitive-files-guard.mjs
+templates/shared/guards/invoke-hook.js
 scripts/bootstrap-project.sh
 ```
 
@@ -176,9 +168,9 @@ W projekcie docelowym:
 ```text
 .cursor/BUGBOT.md
 .cursor/hooks.json
-.cursor/hooks/gate-push.sh
-.cursor/hooks/gate-destructive.sh
-.git/hooks/pre-push        ← opcjonalnie, z szablonu
+.cursor/hooks/git-guard.mjs
+.cursor/hooks/sensitive-files-guard.mjs
+.cursor/hooks/invoke-hook.js
 ```
 
 ## Powiązane

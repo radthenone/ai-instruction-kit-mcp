@@ -1,7 +1,25 @@
-# Shell proxy — RTK (jeśli dostępny)
+# Shell proxy — RTK + shell POSIX
 
 Przed wykonaniem komend shell (git, testy, grep/find, listowanie plików, docker, gh, itp.)
 sprawdź czy w `PATH` jest dostępny CLI `rtk` (Rust Token Killer).
+
+## Shell — zawsze POSIX, nigdy PowerShell/cmd
+
+Komendy deweloperskie uruchamiaj **zawsze w shellu POSIX**, niezależnie od
+domyslnego shella klienta na danej maszynie:
+
+- **Windows:** Git Bash (`bash.exe` z Git for Windows) — sprawdzaj po kolei:
+  `bash` w `PATH` → `C:\Program Files\Git\bin\bash.exe` →
+  `C:\Program Files\Git\usr\bin\bash.exe` →
+  `%LocalAppData%\Programs\Git\bin\bash.exe`.
+  Nigdy nie uruchamiaj komend deweloperskich przez `powershell`/`pwsh`/`cmd`.
+- **Linux / macOS:** domyslny shell POSIX (`bash` / `zsh`), bez zmian.
+- Skladnia komend (`&&`, `|`, redirecty, globbing, ścieżki `/c/...` na Windows)
+  to zawsze składnia POSIX, także gdy klient ma domyślnie inny shell.
+- Wyjątek: komendy specyficzne dla PowerShell (np. `Get-ChildItem`) są dozwolone
+  tylko wtedy, gdy klient nie potrafi uruchomić basha — wtedy opisz to wprost.
+
+## RTK — prefiks komend
 
 - **Jeśli `rtk` istnieje:** prefiksuj nim komendy developerskie, np. `rtk git status`,
   `rtk grep "pattern" src/`, `rtk docker ps`, `rtk gh pr list`. RTK filtruje/kompresuje
@@ -13,6 +31,47 @@ sprawdź czy w `PATH` jest dostępny CLI `rtk` (Rust Token Killer).
   `rtk gain --history`, `rtk discover`, `rtk proxy <cmd>` (raw, debug).
 - Nie myl z narzędziem o tej samej nazwie (`reachingforthejack/rtk` — Rust Type Kit) —
   jeśli `rtk --version` / `rtk gain` nie działa, to zły binarny `rtk`, pomiń prefiksowanie.
+
+## RTK — hook zamiast ręcznego prefiksu
+
+Ręczny prefiks to fallback. Docelowo klient ma hook `PreToolUse`, który przepisuje
+komendę na `rtk <cmd>` poza modelem (0 tokenów, model widzi już przefiltrowany output).
+Gdy hook jest, **nie dopisuj prefiksu sam** — hook na komendzie już zaczynającej się od
+`rtk` robi passthrough, więc podwójne `rtk rtk …` nie powstanie, ale to zbędny szum.
+
+| Klient | Zakres | Jak włączyć (raz, per maszyna) |
+|--------|--------|--------------------------------|
+| Claude Code | globalny | `rtk init -g --auto-patch` → `rtk hook claude` w `~/.claude/settings.json` |
+| Cursor | globalny | `rtk init -g --agent cursor` → `rtk hook cursor` w `~/.cursor/hooks.json` |
+| OpenCode | globalny | `rtk init -g --opencode` → plugin `~/.config/opencode/plugins/rtk.ts` |
+| Codex | globalny | ręcznie `~/.codex/hooks.json` (niżej) + trust w `/hooks` w TUI Codexa |
+| GitHub Copilot | **tylko per-repo** | bootstrap kita kopiuje `.github/hooks/rtk-rewrite.json` (`rtk hook copilot`) |
+
+Codex nie ma `rtk hook codex`, ale jego kontrakt `PreToolUse` (`permissionDecision` +
+`updatedInput`) jest identyczny z Claude, więc `rtk hook claude` działa bez zmian:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "rtk hook claude", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Codex wymaga zaufania hookowi przed pierwszym uruchomieniem (`/hooks` w TUI, trust jest
+per hash definicji). Bez trustu hook jest pomijany, komendy idą bez `rtk`.
+
+Copilot: `rtk init --copilot` pisze tylko per-repo i dopisuje sekcję do
+`.github/copilot-instructions.md`, którą bootstrap kita nadpisuje — dlatego hook Copilota
+idzie z szablonu kita, nie z `rtk init`. Nie dokładaj `.codex/hooks.json` do projektu, gdy
+masz global: Codex zmergowałby oba i wymagał trustu w każdym repo.
 
 Zasada ogólna (nie zależy od presetu/domeny) — dotyczy każdego projektu bootstrapowanego
 tym kitem, niezależnie od `--preset`.

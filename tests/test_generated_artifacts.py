@@ -5,8 +5,9 @@ Dwie luki, które ten moduł zamyka:
 
 1. Wpis w `manifest.yaml` może wskazywać na nieistniejący plik — dotąd ujawniało
    się to dopiero przy `get_module()` u użytkownika.
-2. To repo dogfooduje własny kit: `.cursor/agents/`, `.claude/agents/` i
-   `.claude/commands/` to kopie `templates/shared/agents/`. Dodanie agenta bez
+2. To repo dogfooduje własny kit: `.claude/agents/` i `.claude/commands/`
+   to kopie `templates/shared/agents/`, a `.claude/skills/`
+   to kopia `templates/shared/skills/`. Dodanie agenta albo skilla bez
    regeneracji kopii przechodziło CI niezauważone.
 
 Parytet kopii sprawdzamy **wywołując prawdziwy bootstrap**, a nie powtarzając tu
@@ -16,18 +17,47 @@ jego błędy.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+# Jedno źródło wykrywania Git Basha — to samo, którego używa test_shell_suites.
+from _shell import is_ci, posix_path, resolve_bash
+
 from guides.manifest import find_kit_root, load_manifest
 
 KIT_ROOT = find_kit_root(Path(__file__))
 
-# Katalogi, które bootstrap wypełnia z templates/shared/agents/.
-DOGFOOD_DIRS = (".cursor/agents", ".claude/agents", ".claude/commands")
+# Katalogi, które bootstrap wypełnia z templates/shared/agents/. Tylko klienci
+# zainstalowani w tym repo (`.ai/.kit-bootstrap.json` → clients) — Cursor wypadł
+# w d6117a6, więc `.cursor/` nie ma tu kopii do porównania.
+DOGFOOD_DIRS = (".claude/agents", ".claude/commands")
+
+# Skille ze wspólnego źródła sprawdzamy tylko w `.claude/skills/`. Pozostałe dwa
+# natywne katalogi są w .gitignore z dobrego powodu — `.agents/skills/` i
+# `.cursor/skills/*` to miejsca, gdzie lądują też skille instalowane spoza kita
+# (npx skills add), więc kopii kitowych po prostu tam nie śledzimy.
+#
+# Odwrotności — testu "katalog bez źródła w shared to sierota" — tu nie ma i mieć
+# nie może: `.claude/skills/` dzielimy z tymi samymi obcymi skillami (np. wygenerowany
+# `ai-instruction-kit-mcp`), więc nadmiarowy katalog nie jest dowodem na nic.
+DOGFOOD_SKILL_DIR = ".claude/skills"
+
+# Guardraile mają jedno źródło (templates/shared/guards) i trafiają do katalogu
+# hooków każdego klienta, który potrafi je egzekwować. Kopia w tym repo musi być
+# identyczna ze źródłem — inaczej Cursor i Claude rozjeżdżają się na polityce,
+# co jest dokładnie tą luką, dla której guardraile trafiły do shared.
+GUARD_COPIES: tuple[tuple[str, str], ...] = (
+    (".claude/hooks", "git-guard.mjs"),
+    (".claude/hooks", "sensitive-files-guard.mjs"),
+    (".claude/hooks", "invoke-hook.js"),
+    (".claude/hooks", "bash-guard.mjs"),
+    (".claude/hooks", "linters-guard.mjs"),
+    (".claude/hooks", "rtk-check.mjs"),
+)
 
 
 class TestManifestPaths(unittest.TestCase):
@@ -52,8 +82,31 @@ class TestDogfoodCopies(unittest.TestCase):
         cls._tmp = tempfile.mkdtemp(prefix="kit-dogfood-")
         target = Path(cls._tmp) / "generated"
         boot = KIT_ROOT / "scripts" / "bootstrap-project.sh"
+        # Ten sam Profil co repo kita — od jego Tierów zależy, którzy agenci się instalują.
+        (target / ".ai").mkdir(parents=True)
+        shutil.copy2(KIT_ROOT / ".ai" / "project.profile.yaml", target / ".ai" / "project.profile.yaml")
+
+        # Windows nie umie odpalić `.sh` przez CreateProcess (WinError 193) — bootstrap
+        # trzeba podać bashowi jawnie, tak samo jak robią to pozostałe suity.
+        bash = resolve_bash()
+        if not bash:
+            shutil.rmtree(cls._tmp, ignore_errors=True)
+            if is_ci():
+                raise AssertionError("brak bash na CI — parytet kopii musi być sprawdzony")
+            raise unittest.SkipTest("brak bash — pomijam parytet kopii")
+
         result = subprocess.run(
-            [str(boot), str(target), "--clients", "claude,cursor", "--from", str(KIT_ROOT)],
+            [
+                bash,
+                "--noprofile",
+                "--norc",
+                posix_path(boot),
+                str(target),
+                "--clients",
+                "claude,cursor",
+                "--from",
+                str(KIT_ROOT),
+            ],
             capture_output=True,
             text=True,
         )
@@ -78,10 +131,77 @@ class TestDogfoodCopies(unittest.TestCase):
             for rel_dir in DOGFOOD_DIRS:
                 in_repo = KIT_ROOT / rel_dir / agent.name
                 expected = self.generated / rel_dir / agent.name
-                if not in_repo.is_file():
+                if not expected.is_file():
+                    # Agent Tieru, którego Profil repo nie wybiera — kopii ma nie być.
+                    if in_repo.is_file():
+                        stale.append(f"{rel_dir}/{agent.name} — kopia agenta spoza Tierów Profilu")
+                elif not in_repo.is_file():
                     stale.append(f"{rel_dir}/{agent.name} — brak kopii w repo")
                 elif in_repo.read_text(encoding="utf-8") != expected.read_text(encoding="utf-8"):
                     stale.append(f"{rel_dir}/{agent.name} — kopia rozjechała się ze źródłem")
+        self.assertEqual(
+            stale,
+            [],
+            msg="uruchom bootstrap na tym repo albo zregeneruj kopie: " + "; ".join(stale),
+        )
+
+    def test_guard_copies_match_shared_source(self) -> None:
+        """Hook u klienta == plik w `templates/shared/guards/`, bajt w bajt."""
+        source_dir = KIT_ROOT / "templates" / "shared" / "guards"
+        stale: list[str] = []
+        for rel_dir, name in GUARD_COPIES:
+            source = source_dir / name
+            self.assertTrue(source.is_file(), msg=f"brak źródła {source}")
+            in_repo = KIT_ROOT / rel_dir / name
+            if not in_repo.is_file():
+                stale.append(f"{rel_dir}/{name} — brak kopii w repo")
+            elif in_repo.read_bytes() != source.read_bytes():
+                stale.append(f"{rel_dir}/{name} — kopia rozjechała się ze źródłem")
+        self.assertEqual(
+            stale,
+            [],
+            msg="uruchom bootstrap na tym repo: " + "; ".join(stale),
+        )
+
+    def test_guard_copies_match_bootstrap_output(self) -> None:
+        """To samo, ale względem tego, co naprawdę instaluje bootstrap."""
+        stale = [
+            f"{rel_dir}/{name}"
+            for rel_dir, name in GUARD_COPIES
+            if (KIT_ROOT / rel_dir / name).read_bytes()
+            != (self.generated / rel_dir / name).read_bytes()
+        ]
+        self.assertEqual(stale, [], msg=f"kopie niezgodne z bootstrapem: {stale}")
+
+    def test_cursor_does_not_get_claude_only_guards(self) -> None:
+        """bash-guard, linters-guard i rtk-check sa tylko dla Claude Code (#63)."""
+        for name in ("bash-guard.mjs", "linters-guard.mjs", "rtk-check.mjs"):
+            self.assertFalse((self.generated / ".cursor/hooks" / name).exists(), name)
+
+    def test_no_legacy_guards_left(self) -> None:
+        """Guards v1 (gate-*) nie moga wrocic ani do szablonow, ani do kopii w repo."""
+        for rel in (".claude/hooks", ".cursor/hooks", "templates/shared/guards"):
+            for name in ("gate-destructive.sh", "gate-push.sh", "gate-file-writes.mjs"):
+                self.assertFalse((KIT_ROOT / rel / name).exists(), f"{rel}/{name}")
+                self.assertFalse((self.generated / rel / name).exists(), f"{rel}/{name}")
+
+    def _shared_skills(self) -> list[Path]:
+        return sorted(
+            path.parent for path in (KIT_ROOT / "templates" / "shared" / "skills").glob("*/SKILL.md")
+        )
+
+    def test_skill_copies_match_bootstrap_output(self) -> None:
+        """Każdy shared skill ma w repo kopię identyczną z wygenerowaną."""
+        stale: list[str] = []
+        for skill in self._shared_skills():
+            rel = f"{DOGFOOD_SKILL_DIR}/{skill.name}/SKILL.md"
+            in_repo = KIT_ROOT / rel
+            expected = self.generated / rel
+            self.assertTrue(expected.is_file(), msg=f"bootstrap nie zainstalował {rel}")
+            if not in_repo.is_file():
+                stale.append(f"{rel} — brak kopii w repo")
+            elif in_repo.read_text(encoding="utf-8") != expected.read_text(encoding="utf-8"):
+                stale.append(f"{rel} — kopia rozjechała się ze źródłem")
         self.assertEqual(
             stale,
             [],
@@ -98,6 +218,19 @@ class TestDogfoodCopies(unittest.TestCase):
             if found.name not in known
         )
         self.assertEqual(orphans, [], msg=f"kopie bez źródła w shared: {orphans}")
+
+
+class TestProjectAgentsNeverWriteModules(unittest.TestCase):
+    """Agenci konfiguracji projektu piszą tylko do repo projektu — `modules/` kita jest poza ich zasięgiem (#124)."""
+
+    def test_modules_only_mentioned_as_forbidden(self) -> None:
+        negations = ("nie ", "nigdy", "nic ", "zakaz")
+        for name in ("kit-project-begin", "kit-project-edit"):
+            text = (KIT_ROOT / "templates" / "shared" / "agents" / f"{name}.md").read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if re.search(r"(?<![\w])modules/", line):
+                    with self.subTest(agent=name, line=line):
+                        self.assertTrue(any(n in line.lower() for n in negations), line)
 
 
 if __name__ == "__main__":

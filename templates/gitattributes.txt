@@ -1,0 +1,18 @@
+# Instalowane przez instruction-kit, gdy repo nie ma własnego .gitattributes.
+# LF w indeksie i na dysku niezależnie od systemu i core.autocrlf —
+# bez tego ten sam branch jest czysty na Linuksie i "zmieniony" na Windowsie.
+* text=auto eol=lf
+
+# Skrypty Windows muszą mieć CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary

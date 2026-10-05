@@ -4,7 +4,7 @@
 
 Django **bez** DRF jako API — render HTML po stronie serwera (`templates/`).
 
-`--frontend` / `--mobile` nie są wymagane; jeśli podane — ostrzeżenie (UI i tak w BE).
+Tiery web / mobile nie są wymagane; UI i tak mieszka w backendzie.
 
 ## Layout (generyczny)
 
@@ -33,5 +33,5 @@ backend/
 
 ## Powiązane
 
-- `arch:monorepo-layout` — wybór layoutu z CLI
+- `arch:monorepo-layout` — wybór Tierów w profilu
 - `stack:django-drf:*` — gdy potrzebujesz REST zamiast HTML

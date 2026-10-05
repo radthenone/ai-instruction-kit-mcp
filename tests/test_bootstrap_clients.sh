@@ -12,8 +12,21 @@ test -f "$TMP/only-cursor/.cursor/mcp.json"
 test -f "$TMP/only-cursor/AGENTS.md"
 test ! -e "$TMP/only-cursor/.mcp.json"
 test ! -e "$TMP/only-cursor/.kiro"
+# Ten przebieg leci z --skip-agents, więc jest zarazem dowodem, że flaga pomija skille.
+test ! -e "$TMP/only-cursor/.cursor/skills/skill-authoring"
 grep -q '"--clients", "cursor"' "$TMP/only-cursor/.cursor/mcp.json"
-echo "OK  --clients cursor"
+# Guardy ida ze wspolnego zrodla (templates/shared/guards).
+test -f "$TMP/only-cursor/.cursor/hooks/git-guard.mjs"
+test -f "$TMP/only-cursor/.cursor/hooks/sensitive-files-guard.mjs"
+test -f "$TMP/only-cursor/.cursor/hooks/invoke-hook.js"
+grep -q -- '--to cursor' "$TMP/only-cursor/.cursor/hooks.json"
+grep -q -- '--tool Read' "$TMP/only-cursor/.cursor/hooks.json"
+# Guardy tylko dla Claude nie trafiaja do Cursora (#63).
+test ! -e "$TMP/only-cursor/.cursor/hooks/bash-guard.mjs"
+test ! -e "$TMP/only-cursor/.cursor/hooks/linters-guard.mjs"
+test ! -e "$TMP/only-cursor/.cursor/hooks/rtk-check.mjs"
+test ! -e "$TMP/only-cursor/.claude/hooks"
+echo "OK  --clients cursor (+ guardy)"
 
 "$BOOT" "$TMP/all" --clients all --from "$ROOT" --skip-agents >/dev/null
 test -f "$TMP/all/.cursor/mcp.json"
@@ -31,7 +44,19 @@ echo "OK  --clients all"
 test -f "$TMP/opencode/opencode.json"
 test -f "$TMP/opencode/.opencode/command/cleanup.md"
 grep -q '"--clients", "opencode"' "$TMP/opencode/opencode.json"
-echo "OK  --clients opencode (+ rendered commands)"
+test -f "$TMP/opencode/.opencode/command/goal.md"
+test -f "$TMP/opencode/.opencode/command/loop.md"
+test -f "$TMP/opencode/.opencode/plugins/kit-loop.js"
+echo "OK  --clients opencode (+ rendered commands, /goal /loop + plugin)"
+
+"$BOOT" "$TMP/codex" --clients codex --from "$ROOT" >/dev/null
+test -f "$TMP/codex/.codex/config.toml"
+# Codex nie ma custom prompts (.codex/agents) — agenty i skille lądują w .codex/skills.
+test -f "$TMP/codex/.codex/skills/git-start/SKILL.md"
+test -f "$TMP/codex/.codex/skills/create-task/SKILL.md"
+test -f "$TMP/codex/.codex/skills/skill-authoring/SKILL.md"
+test ! -e "$TMP/codex/.codex/agents"
+echo "OK  --clients codex (+ agenty jako skille)"
 
 "$BOOT" "$TMP/claude-kiro" --clients claude,kiro --from "$ROOT" >/dev/null
 test -f "$TMP/claude-kiro/.mcp.json"
@@ -39,6 +64,122 @@ test -d "$TMP/claude-kiro/.claude/agents"
 test -f "$TMP/claude-kiro/.claude/commands/cleanup.md"
 test -d "$TMP/claude-kiro/.kiro/agents"
 test ! -e "$TMP/claude-kiro/.cursor/mcp.json"
-echo "OK  --clients claude,kiro (+ agents)"
+# Claude dostaje te same Guardy co Cursor plus bash-guard, linters-guard, rtk-check.
+test -f "$TMP/claude-kiro/.claude/hooks/git-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/sensitive-files-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/invoke-hook.js"
+test -f "$TMP/claude-kiro/.claude/hooks/bash-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/linters-guard.mjs"
+test -f "$TMP/claude-kiro/.claude/hooks/rtk-check.mjs"
+grep -q 'PreToolUse' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'PostToolUse' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'SessionStart' "$TMP/claude-kiro/.claude/settings.json"
+grep -q 'sensitive-files-guard.mjs' "$TMP/claude-kiro/.claude/settings.json"
+if grep -q 'gate-' "$TMP/claude-kiro/.claude/settings.json"; then
+  echo "FAIL .claude/settings.json nie powinien zawierac Guards v1" >&2
+  exit 1
+fi
+# Claude nie tlumaczy kontraktu — dialekt polityki jest jego wlasnym.
+if grep -q -- '--to cursor' "$TMP/claude-kiro/.claude/settings.json"; then
+  echo "FAIL .claude/settings.json nie powinien tlumaczyc na kontrakt Cursora" >&2
+  exit 1
+fi
+echo "OK  --clients claude,kiro (+ agents, guardy)"
+
+# Ta sama polityka u obu klientow: pliki musza byc identyczne ze zrodlem.
+"$BOOT" "$TMP/both" --clients cursor,claude --from "$ROOT" --skip-agents >/dev/null
+cmp -s "$ROOT/templates/shared/guards/git-guard.mjs" "$TMP/both/.cursor/hooks/git-guard.mjs"
+cmp -s "$ROOT/templates/shared/guards/git-guard.mjs" "$TMP/both/.claude/hooks/git-guard.mjs"
+cmp -s "$TMP/both/.cursor/hooks/invoke-hook.js" "$TMP/both/.claude/hooks/invoke-hook.js"
+echo "OK  --clients cursor,claude (jedno zrodlo polityki)"
+
+# Reinstalacja na Workspace z Guards v1 sprzata stare pliki i wpisy.
+printf '#!/bin/sh\n' > "$TMP/both/.claude/hooks/gate-destructive.sh"
+printf '#!/bin/sh\n' > "$TMP/both/.cursor/hooks/gate-push.sh"
+"$BOOT" "$TMP/both" --clients cursor,claude --from "$ROOT" --skip-agents >/dev/null
+test ! -e "$TMP/both/.claude/hooks/gate-destructive.sh"
+test ! -e "$TMP/both/.cursor/hooks/gate-push.sh"
+echo "OK  reinstalacja kasuje Guards v1"
+
+# Odznaczenie klienta sprzata jego hooki i wpisy w settings.json.
+"$BOOT" "$TMP/both" --clients cursor --from "$ROOT" --skip-agents >/dev/null
+test ! -e "$TMP/both/.claude/hooks"
+test ! -e "$TMP/both/.claude/settings.json"
+test -f "$TMP/both/.cursor/hooks/git-guard.mjs"
+echo "OK  prune: claude odznaczony sprzata po sobie"
+
+# Copilot: rtk nie ma trybu globalnego, wiec hook idzie z kita per-repo (#67).
+"$BOOT" "$TMP/vscode" --clients vscode --from "$ROOT" --skip-agents >/dev/null
+test -f "$TMP/vscode/.github/hooks/rtk-rewrite.json"
+cmp -s "$ROOT/templates/vscode/github/hooks/rtk-rewrite.json" "$TMP/vscode/.github/hooks/rtk-rewrite.json"
+grep -q 'rtk hook copilot' "$TMP/vscode/.github/hooks/rtk-rewrite.json"
+grep -q 'rtk-rewrite.json' "$TMP/vscode/.github/copilot-instructions.md"
+# Odznaczenie vscode sprzata hook i pusty katalog, nie rusza reszty .github.
+mkdir -p "$TMP/vscode/.github/workflows"
+echo "name: ci" > "$TMP/vscode/.github/workflows/ci.yml"
+"$BOOT" "$TMP/vscode" --clients cursor --from "$ROOT" --skip-agents >/dev/null
+test ! -e "$TMP/vscode/.github/hooks"
+test ! -e "$TMP/vscode/.github/copilot-instructions.md"
+test -f "$TMP/vscode/.github/workflows/ci.yml"
+echo "OK  --clients vscode (+ rtk hook copilot, prune)"
+
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+# Cztery klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
+test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"
+test -f "$TMP/skills/.cursor/skills/skill-authoring/SKILL.md"
+test -f "$TMP/skills/.agents/skills/skill-authoring/SKILL.md"
+# Cursorowy skill spoza shared zostaje na miejscu obok kitowych.
+test -f "$TMP/skills/.cursor/skills/compact/SKILL.md"
+# Codex czyta skille natywnie jak claude/cursor — katalog z zasobami.
+test -f "$TMP/skills/.codex/skills/skill-authoring/SKILL.md"
+# Reszta dostaje ten sam skill jako komendę w swoim formacie.
+test -f "$TMP/skills/.github/prompts/skill-authoring.prompt.md"
+test -f "$TMP/skills/.kiro/agents/skill-authoring.md"
+test -f "$TMP/skills/.kilocode/workflows/skill-authoring.md"
+test -f "$TMP/skills/.opencode/command/skill-authoring.md"
+echo "OK  shared skills u wszystkich klientów (4 natywnie, 4 przez degradację)"
+
+# night-run (#71): model pod /goal wywołuje go sam, więc musi trafić do każdego klienta,
+# a frontmatter nie może mieć readonly ani disable-model-invocation.
+for p in .cursor/agents/night-run.md .claude/commands/night-run.md \
+         .codex/skills/night-run/SKILL.md .github/prompts/night-run.prompt.md \
+         .kiro/agents/night-run.md .kilocode/workflows/night-run.md \
+         .agents/skills/night-run/SKILL.md .opencode/command/night-run.md; do
+  test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
+done
+# kit-project-begin / kit-project-edit (#124): konfiguracja projektu u każdego klienta.
+for name in kit-project-begin kit-project-edit; do
+  for p in .cursor/agents/$name.md .claude/agents/$name.md .claude/commands/$name.md \
+           .codex/skills/$name/SKILL.md .github/prompts/$name.prompt.md \
+           .kiro/agents/$name.md .kilocode/workflows/$name.md \
+           .agents/skills/$name/SKILL.md .opencode/command/$name.md; do
+    test -f "$TMP/skills/$p" || { echo "FAIL brak $p" >&2; exit 1; }
+  done
+done
+echo "OK  kit-project-begin/edit u wszystkich klientów"
+keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$ROOT/templates/shared/agents/night-run.md" | tr '\n' ' ')"
+test "$keys" = "name: description: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
+echo "OK  night-run u wszystkich klientów, frontmatter tylko name + description"
+
+# agy nie zna workflow: stare .agents/workflows/<agent>.md znikają, cudze zostają.
+mkdir -p "$TMP/skills/.agents/workflows"
+echo "stary" > "$TMP/skills/.agents/workflows/git-start.md"
+echo "moj" > "$TMP/skills/.agents/workflows/moj-workflow.md"
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+test ! -e "$TMP/skills/.agents/workflows/git-start.md"
+test -f "$TMP/skills/.agents/workflows/moj-workflow.md"
+echo "OK  antigravity: agenci jako skille, stare workflow kita sprzątnięte"
+
+# .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
+# kasować po nazwach ze źródła, nie całym katalogiem.
+mkdir -p "$TMP/skills/.agents/skills/obcy-skill"
+echo "nie moj" > "$TMP/skills/.agents/skills/obcy-skill/SKILL.md"
+"$BOOT" "$TMP/skills" --clients claude --from "$ROOT" >/dev/null
+test -f "$TMP/skills/.agents/skills/obcy-skill/SKILL.md"
+test ! -e "$TMP/skills/.agents/skills/skill-authoring"
+test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"
+# Cursor odznaczony w tym samym przebiegu — jego skille znikają razem z resztą.
+test ! -e "$TMP/skills/.cursor/skills"
+echo "OK  prune kasuje kitowe skille, zostawia cudze"
 
 echo "All bootstrap --clients checks passed."

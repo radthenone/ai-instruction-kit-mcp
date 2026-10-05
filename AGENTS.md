@@ -19,7 +19,7 @@ Kit = prawda o stacku **i** nazwach branchy. Matt = proces feature. Superpowers 
 | Unikalne dla repo | `get_overlay` / `.ai/project.md` |
 | Docs bibliotek | Context7 |
 
-`--preset` w mcp.json; overlay w `.ai/project.md`; lokalny `project.profile.yaml` tylko przy forku.
+Profil (Tiery backend/web/mobile + `codegen:`) w `.ai/project.profile.yaml`; overlay w `.ai/project.md`.
 
 ## Priorytet źródeł
 
@@ -38,10 +38,12 @@ Konflikt TDD: Matt `/tdd` *albo* Superpowers TDD — nie oba. Domyślnie Matt na
 Pełna reguła: `.cursor/rules/git-branch-pr.mdc`.
 
 ```text
-[/grill-me gdy scope niejasny] → /git-start → [worktree?] → kod [+/tdd]
+[/create-task | /create-skill gdy nie ma issue] → [/grill-me gdy scope niejasny] → /git-start → [worktree?] → kod [+/tdd]
   → [/git-check] → /git-commit → /review-bugbot (+ min. stack) → /git-end | finishing→PR → Autopilot → merge
 ```
 
+- **`/create-task`** — pomysł → ocena na tle repo → karta issue → issue po akceptacji. Przed `/git-start`; nie zakłada brancha.  
+- **`/create-skill`** — to samo dla skilli: najpierw rozstrzyga, czy pomysł to skill czy agent (wtedy odsyła do `/create-task`), potem karta i issue. Nie pisze `SKILL.md`.  
 - **`/git-start` / `/git-check` / `/git-commit` / `/git-end`** — issue, sync, Conventional commit(s), push+PR.  
 - **`/grill-me`** — tylko przy niejasnym scope / trade-offach (nie przy oczywistym fixie).  
 - **`/teacher-backend` / `/teacher-frontend` / `/teacher-architecture`** — nauka **przed** kodem: koncepcja, „dlaczego tak”, opcje i koszty. Nie edytują plików; nie mylić z `/review-*` (te działają na gotowym diffie).  
@@ -57,7 +59,7 @@ Chronione: `main` / `master` / `dev`.
 1. (Opc.) `/grill-me` — **tylko** gdy scope niejasny  
 2. `/git-start` — issue + branch  
 3. (Opc.) Superpowers worktree  
-4. MCP `get_bundle` + `get_overlay` (+ `get_language`; odczytaj `codegen:`)  
+4. MCP `get_bundle` + `get_overlay` (+ `get_language`; `codegen:` z profilu)  
 5. Implementacja (+ opc. `/tdd`)  
 6. (Opc.) `/git-check` — gdy scope/diff rozjechał się z issue  
 7. `/git-commit` — Conventional Commit(s) z lokalnego diffa  
@@ -71,8 +73,8 @@ Auth, ACL, billing, migracje, concurrency, brak dowodu w repo → **zapytaj uży
 
 ## Codegen (Orval)
 
-W overlay (`.ai/project.md` / extras) ustaw `codegen: orval` (default) \| `none` \| `graphql`.  
-Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE honorują tę wartość.  
+W profilu (`.ai/project.profile.yaml`) ustaw `codegen: orval` (default) \| `none` \| `graphql`.  
+Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Review FE/BE honorują tę wartość.
 
 ## Język
 
@@ -89,10 +91,15 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | Prefiks | Przykłady | Źródło |
 |---------|-----------|--------|
 | `/compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
+| `/create-task` | `/create-task "…"`; flagi: `/create-task --help` | kit |
+| `/create-skill` | `/create-skill "…"`; flagi: `/create-skill --help` | kit |
+| `/kit-project-begin` | Po `kit-ai install`: pytania o projekt → Profil + `.ai/project.md` → reload | kit |
+| `/kit-project-edit` | Jedna zmiana konfiguracji albo odstępstwo od modułu w `.ai/project.md` | kit |
 | `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |
 | `/teacher-*` | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture`, `/teacher-agent` | kit |
+| `/night-run` | `/goal Wykonaj #A–#C wg /night-run …` — nocna praca na liście issue | kit |
 | `/grill-me`, `/tdd`, … | proces | mattpocock |
 | Superpowers / Autopilot | worktree, finishing, CI loop | plugin / skills Cursor |
 
@@ -109,7 +116,14 @@ Zostawiłeś coś mimo to (albo dołączasz do sesji z już istniejącym syfem) 
 Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
 Format stack review: `Severity | Location | Finding | Fix`.  
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
-Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main/master/dev / reset --hard).
+Guardy — jedno źródło w `templates/shared/guards/`, instalowane per `--clients`, **zero
+`ask`** (ADR 0006): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na
+main/master/dev, `branch -D`, `checkout .`/`--`, rekursywne `rm` na szerokiej ścieżce,
+mutacje w katalogach systemowych), `sensitive-files-guard.mjs` (deny odczyt/zapis
+sekretów, deny ręczna edycja lockfile), tylko Claude: `bash-guard.mjs` (Windows: Git Bash,
+nie pwsh/cmd), `linters-guard.mjs` (format+lint po edycji, wynik do modelu),
+`rtk-check.mjs` (SessionStart: przypomnienie o `rtk init -g`).
+Polityka mówi kontraktem Claude Code; `invoke-hook.js --to cursor` tłumaczy dla Cursora.
 Bootstrap: `scripts/bootstrap-project.sh`.
 
 ## Agent skills

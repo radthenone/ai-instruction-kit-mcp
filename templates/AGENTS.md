@@ -19,7 +19,9 @@ Kit = prawda o stacku **i** nazwach branchy. Matt = proces feature. Superpowers 
 | Unikalne dla repo | `get_overlay` / `.ai/project.md` |
 | Docs bibliotek | Context7 |
 
-`--preset` w mcp.json; overlay w `.ai/project.md`; lokalny `project.profile.yaml` tylko przy forku.
+**Przed pracą przeczytaj `.ai/project.md`** — fakty tego repo (struktura, komendy, odstępstwa); działa także bez MCP.
+
+Profil (Tiery backend/web/mobile + `codegen:`) w `.ai/project.profile.yaml`; overlay w `.ai/project.md`.
 
 ## Priorytet źródeł
 
@@ -56,7 +58,7 @@ Chronione: `main` / `master` / `dev`.
 1. (Opc.) `/grill-me` — **tylko** gdy scope niejasny  
 2. `/git-start` — issue + branch  
 3. (Opc.) Superpowers worktree  
-4. MCP `get_bundle` + `get_overlay` (+ `get_language`; odczytaj `codegen:`)  
+4. MCP `get_bundle` + `get_overlay` (+ `get_language`; `codegen:` z profilu)  
 5. Implementacja (+ opc. `/tdd`)  
 6. (Opc.) `/git-check` — gdy scope/diff rozjechał się z issue  
 7. `/git-commit` — Conventional Commit(s) z lokalnego diffa  
@@ -70,8 +72,8 @@ Auth, ACL, billing, migracje, concurrency, brak dowodu w repo → **zapytaj uży
 
 ## Codegen (Orval)
 
-W overlay (`.ai/project.md` / extras) ustaw `codegen: orval` (default) \| `none` \| `graphql`.  
-Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE honorują tę wartość.  
+W profilu (`.ai/project.profile.yaml`) ustaw `codegen: orval` (default) \| `none` \| `graphql`.  
+Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Review FE/BE honorują tę wartość.  
 
 ## Język
 
@@ -88,10 +90,13 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 | Prefiks | Przykłady | Źródło |
 |---------|-----------|--------|
 | `/compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
+| `/kit-project-begin` | Po `kit-ai install`: pytania o projekt → Profil + `.ai/project.md` → reload | kit |
+| `/kit-project-edit` | Jedna zmiana konfiguracji albo odstępstwo od modułu w `.ai/project.md` | kit |
 | `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
 | `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
 | `/subagent-*` | `/subagent-backend` | kit |
 | `/teacher-*` | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` | kit |
+| `/night-run` | `/goal Wykonaj #A–#C wg /night-run …` — nocna praca na liście issue | kit |
 | `/grill-me`, `/tdd`, … | proces | mattpocock |
 | Superpowers / Autopilot | worktree, finishing, CI loop | plugin / skills Cursor |
 
@@ -100,5 +105,5 @@ Docelowo też flaga MCP `--codegen` (design — jeszcze nie w CLI). Review FE/BE
 Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
 Format stack review: `Severity | Location | Finding | Fix`.  
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
-Hooki: `gate-push.sh` (ask), `gate-destructive.sh` (deny force na main/master/dev / reset --hard).
+Guardy (zero `ask`): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na main/master/dev, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile).
 Bootstrap: `scripts/bootstrap-project.sh`.

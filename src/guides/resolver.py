@@ -8,10 +8,21 @@ from typing import Any
 
 import yaml
 
-from guides.manifest import Manifest, Mappings, load_manifest
+from guides.manifest import BundleRule, Manifest, Mappings, load_manifest
 
 CODEGEN_SLOT = "codegen"
 AUTH_SLOT = "auth"
+
+TIER_ORDER = ("backend", "web", "mobile")
+TIER_NONE = "none"
+EXPO_STRIPE_MODULE = "capability:payments:expo-stripe"
+API_CONTRACT_BASE = "arch:api-contract"
+
+MIGRATION_NOTICE = (
+    "⚠ Stara konfiguracja: brak `.ai/project.profile.yaml` albo start serwera "
+    "z `--preset` / `--profile` / `--codegen`. Uruchom `kit-ai reload` — zapisze profil "
+    "z Tierami (puste Tiery = sam core)."
+)
 
 
 def normalize_codegen(raw: str | None, manifest: Manifest) -> str:
@@ -85,6 +96,61 @@ def normalize_auth_variant(raw: object | None, manifest: Manifest) -> str:
     """
     value = raw if isinstance(raw, str) else None
     return manifest.mappings.rule(AUTH_SLOT).normalize(value)
+
+
+def normalize_tier_value(raw: object | None, tier: str, mappings: Mappings) -> str:
+    """
+    Znormalizuj wybór Stacka w Tierze do wartości znanej manifestowi.
+
+    Args:
+        raw: Wartość klucza Tieru z profilu (string, ``none``, ``None``).
+        tier: ``backend`` / ``web`` / ``mobile``.
+        mappings: Mapowania z manifestu (sekcja ``tiers``).
+
+    Returns:
+        str: Kanoniczna nazwa Stacka (lowercase, z ewentualnym ``@wariant``),
+            ``none`` dla pustego Tieru albo ``none`` dla nierozpoznanej wartości
+            (zgłaszanej osobno przez ``profile_tiers`` — ADR-0004).
+    """
+    if not isinstance(raw, str):
+        return TIER_NONE
+    key = raw.strip().lower()
+    if not key or key == TIER_NONE:
+        return TIER_NONE
+    if key in mappings.tiers.get(tier, {}):
+        return key
+    return TIER_NONE
+
+
+def profile_tiers(
+    profile_data: dict[str, Any],
+    mappings: Mappings,
+) -> tuple[dict[str, str], tuple[tuple[str, str], ...]]:
+    """
+    Wybór Stacka w każdym Tierze + nierozpoznane wartości (ADR-0004).
+
+    Brak klucza Tieru = ``none`` (cicho — profil bez wyborów daje sam core).
+
+    Args:
+        profile_data: Scalone dane profilu.
+        mappings: Mapowania z manifestu.
+
+    Returns:
+        tuple: ``(tiery, nierozpoznane)`` — Tier → Stack albo ``none``;
+            nierozpoznane to pary ``(tier, wartość)``.
+    """
+    tiers: dict[str, str] = {}
+    unknown: list[tuple[str, str]] = []
+    for tier in TIER_ORDER:
+        raw = profile_data.get(tier)
+        tiers[tier] = normalize_tier_value(raw, tier, mappings)
+        if isinstance(raw, str):
+            key = raw.strip().lower()
+            if key and key != TIER_NONE and tiers[tier] == TIER_NONE:
+                unknown.append((tier, raw.strip()))
+        elif raw is not None:
+            unknown.append((tier, str(raw)))
+    return tiers, tuple(unknown)
 
 
 def normalize_module_id(module_id: str, manifest: Manifest) -> str:
@@ -206,6 +272,8 @@ class ResolvedProfile:
     name: str
     language: str
     codegen: str
+    tiers: dict[str, str]
+    notice: str
     kit_root: Path
     profile_path: Path
     workspace_root: Path
@@ -234,17 +302,6 @@ def _merge_unique(base: list[str], extra: list[str]) -> list[str]:
         if item not in seen:
             seen.add(item)
             result.append(item)
-    return result
-
-
-def _merge_bundle_configs(
-    base: dict[str, list[str]],
-    extra: dict[str, list[str]],
-) -> dict[str, list[str]]:
-    """Scal konfiguracje bundle'ów — moduły z extra dopisują do base, nie zastępują."""
-    result: dict[str, list[str]] = {key: list(modules) for key, modules in base.items()}
-    for key, modules in extra.items():
-        result[key] = _merge_unique(result.get(key, []), list(modules))
     return result
 
 
@@ -388,6 +445,9 @@ def unrecognised_decisions(
     found: list[tuple[str, str]] = []
     decisions: dict[str, Any] = profile_data.get("decisions") or {}
 
+    _, tier_unknown = profile_tiers(profile_data, mappings)
+    found.extend(tier_unknown)
+
     for slot, value in decisions.items():
         name = str(slot)
         if not isinstance(value, str):
@@ -451,24 +511,83 @@ def used_aliases(
     return tuple(found)
 
 
-def _inject_infra_bundles(
-    bundles_config: dict[str, list[str]],
+def _routed_module_ids(
+    rule: BundleRule,
+    *,
+    enabled: list[str],
+    tier_ids: set[str],
+    tiers: dict[str, str],
+    language: str,
+    manifest: Manifest,
+) -> list[str]:
+    """
+    Moduły bundle'a z pełnej listy ``enabled`` (kolejność zachowana).
+
+    Skład: stały core, moduły Tierów przypisanych do bundle'a, reszta
+    wg przecięcia tagów modułu z selektorem (minus ``exclude_tags``).
+    ``tags: ["*"]`` bierze wszystko.
+    """
+    mappings = manifest.mappings
+    wanted: set[str] = set()
+    for tier in TIER_ORDER:
+        if tier in rule.tiers:
+            wanted.update(
+                mappings.canonical_module_id(mid)
+                for mid in mappings.tiers.get(tier, {}).get(tiers.get(tier, TIER_NONE), [])
+            )
+
+    selected: list[str] = []
+    for module_id in enabled:
+        info = manifest.modules.get(module_id)
+        if info is None:
+            continue
+        if module_id in wanted:
+            selected.append(module_id)
+            continue
+        if module_id in tier_ids:
+            continue
+        if "*" in rule.tags:
+            selected.append(module_id)
+            continue
+        tags = set(info.tags)
+        if not tags & set(rule.tags):
+            continue
+        if tags & set(rule.exclude_tags):
+            continue
+        selected.append(module_id)
+
+    lang_module = mappings.languages.module_for(language)
+    core_ids = [
+        mid
+        for mid in ("core:repo-first", lang_module, "core:external-knowledge", "core:tooling-rtk")
+        if mid in manifest.modules
+    ]
+    return _merge_unique(core_ids, selected)
+
+
+def _filled_tiers(
+    tiers: dict[str, str],
     profile_data: dict[str, Any],
     mappings: Mappings,
-) -> dict[str, list[str]]:
-    """Dopisz moduły infra do bundle'i infra/devops/full na podstawie Decyzji."""
-    infra_modules = _decision_module_ids(profile_data.get("decisions", {}), mappings)
-    if not infra_modules:
-        return bundles_config
+) -> set[str]:
+    """
+    Tiery z wybranym Stackiem — także te wypełnione przez legacy ``stacks:``.
 
-    return _merge_bundle_configs(
-        bundles_config,
-        {
-            "infra": infra_modules,
-            "devops": _merge_unique(["arch:ci-cd"], infra_modules),
-            "full": infra_modules,
-        },
-    )
+    Legacy Stack liczy się do Tieru, którego moduły zawiera w ``mappings.tiers``
+    (np. ``django-drf`` → backend, ``expo-router`` → web i mobile).
+    """
+    filled = {tier for tier in TIER_ORDER if tiers.get(tier, TIER_NONE) != TIER_NONE}
+    stacks: dict[str, Any] = profile_data.get("stacks", {}) or {}
+    for stack_name, stack_modules in mappings.stacks.items():
+        if not stacks.get(stack_name):
+            continue
+        for tier in TIER_ORDER:
+            tier_modules = {
+                mid for mids in mappings.tiers.get(tier, {}).values() for mid in mids
+            }
+            if tier_modules & set(stack_modules):
+                filled.add(tier)
+    return filled
 
 
 def _collect_module_ids(
@@ -477,23 +596,40 @@ def _collect_module_ids(
     *,
     language: str,
     selections: dict[str, str],
-) -> list[str]:
+    tiers: dict[str, str],
+) -> tuple[list[str], set[str]]:
     """
     Zbierz listę modułów włączonych przez profil.
+
+    Tiery rozwijają się z ``mappings.tiers``; stare klucze ``stacks:`` /
+    ``patterns:`` oraz ``bundles:`` z profilu czytane są nadal (legacy).
 
     Args:
         profile_data: Scalone dane profilu.
         manifest: Manifest z rejestrem i mapowaniami.
         language: Znormalizowany język.
         selections: Slot → wybrana wartość (wynik ``profile_selections``).
+        tiers: Tier → Stack albo ``none`` (wynik ``profile_tiers``).
 
     Returns:
-        list[str]: Kanoniczne ID istniejących w rejestrze modułów.
+        tuple: ``(moduły, moduły_z_tierów)`` — kanoniczne ID istniejących
+            w rejestrze modułów oraz podzbiór wniesiony przez Tiery
+            (do przypisania bundle'i).
     """
     mappings = manifest.mappings
     module_ids: list[str] = list(profile_data.get("include", []))
 
-    stacks: dict[str, Any] = profile_data.get("stacks", {})
+    # Legacy: profilowe `bundles:` traktuj jak `include` (routing wg tagów).
+    for bundle_ids in (profile_data.get("bundles") or {}).values():
+        module_ids.extend(bundle_ids)
+
+    tier_ids: set[str] = set()
+    for tier in TIER_ORDER:
+        for module_id in mappings.tiers.get(tier, {}).get(tiers.get(tier, TIER_NONE), []):
+            module_ids.append(module_id)
+            tier_ids.add(mappings.canonical_module_id(module_id))
+
+    stacks: dict[str, Any] = profile_data.get("stacks", {}) or {}
     for stack_name, stack_modules in mappings.stacks.items():
         if stacks.get(stack_name):
             module_ids.extend(stack_modules)
@@ -515,6 +651,30 @@ def _collect_module_ids(
 
     module_ids.extend(_decision_module_ids(profile_data.get("decisions", {}), mappings))
 
+    # Warunki na stałych osiach Tierów (backend/web/mobile — zbiór zamknięty
+    # z CONTEXT, nie otwarte technologie; te żyją w mappings.tiers — ADR-0001).
+    filled = _filled_tiers(tiers, profile_data, mappings)
+    has_backend = "backend" in filled
+    has_client = "web" in filled or "mobile" in filled
+    if has_backend:
+        module_ids.append("core:typing-python")
+    if has_client:
+        module_ids.append("core:typing-typescript")
+    if has_backend and has_client:
+        module_ids.append(API_CONTRACT_BASE)
+
+    has_expo = (
+        tiers.get("web") == "expo"
+        or tiers.get("mobile") == "expo"
+        or bool(stacks.get("expo-router"))
+    )
+    capabilities = {mappings.canonical_name(str(name)) for name in profile_data.get("capabilities", [])}
+    payments_on = "payments" in capabilities or "capability:payments" in module_ids
+    if has_expo and payments_on and EXPO_STRIPE_MODULE in manifest.modules:
+        module_ids.append(EXPO_STRIPE_MODULE)
+    if not has_expo:
+        module_ids = [mid for mid in module_ids if mid != EXPO_STRIPE_MODULE]
+
     # Domyślnie core jeśli profil nie wyłącza
     if profile_data.get("core", True):
         module_ids = _merge_unique(
@@ -535,13 +695,15 @@ def _collect_module_ids(
     )
 
     # Walidacja — tylko znane moduły
-    return [mid for mid in resolved if mid in manifest.modules]
+    return [mid for mid in resolved if mid in manifest.modules], tier_ids
 
 
 def _build_bundle_content(
     bundle_name: str,
     module_ids: list[str],
     manifest: Manifest,
+    *,
+    notice: str = "",
 ) -> ResolvedBundle:
     """
     Złóż treść Markdown bundle'a z plików modułów.
@@ -568,6 +730,8 @@ def _build_bundle_content(
 
     header = f"# Bundle: {bundle_name}\n\n"
     content = header + "\n\n---\n\n".join(parts) if parts else header + "_Brak modułów._"
+    if notice:
+        content = f"{notice}\n\n{content}"
 
     return ResolvedBundle(
         name=bundle_name,
@@ -622,36 +786,43 @@ def _load_overlays(
     return "# Overlay projektu\n\n" + "\n\n---\n\n".join(parts)
 
 
-def resolve_preset_path(preset: str, kit_root: Path) -> Path:
+PROFILE_REL_PATH = Path(".ai/project.profile.yaml")
+
+
+def resolve_workspace_profile(
+    workspace_root: Path,
+    kit_root: Path | None = None,
+    *,
+    extra_overlays: list[Path] | None = None,
+    language_override: str | None = None,
+    notice: str = "",
+) -> ResolvedProfile:
     """
-    Znajdź plik presetu w instruction-kit.
+    Rozwiąż profil workspace'u (``.ai/project.profile.yaml``).
+
+    Brak pliku to nie błąd (ADR-0004): serwer startuje na samym corze,
+    a Bundle i indeks niosą ostrzeżenie o migracji przez ``kit-ai reload``.
 
     Args:
-        preset: Nazwa kategorii (np. ``shop``) albo względna ścieżka ``profiles/….yaml``.
-        kit_root: Root kita (repo albo ``guides/_data`` w wheel).
+        workspace_root: Root repo aplikacji.
+        kit_root: Opcjonalny root instruction-kit.
+        extra_overlays: Dodatkowe pliki overlay z CLI.
+        language_override: Nadpisanie języka z CLI/env.
 
     Returns:
-        Path: Absolutna ścieżka do pliku YAML presetu.
-
-    Raises:
-        FileNotFoundError: Gdy preset nie istnieje.
+        ResolvedProfile: Gotowe bundle'e i metadane profilu.
     """
-    raw = preset.strip().removesuffix(".yaml").removesuffix(".yml")
-    candidates: list[Path] = []
-    if raw.startswith("profiles/"):
-        candidates.append(kit_root / f"{raw}.yaml")
-    else:
-        candidates.append(kit_root / "profiles" / f"{raw}.yaml")
-        candidates.append(kit_root / f"{raw}.yaml")
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-
-    available = sorted(p.stem for p in (kit_root / "profiles").glob("*.yaml"))
-    hint = ", ".join(available) if available else "(brak profiles/*.yaml)"
-    raise FileNotFoundError(
-        f"Nie znaleziono presetu `{preset}` w `{kit_root}`. Dostępne: {hint}"
+    resolved_workspace = workspace_root.resolve()
+    profile_path = resolved_workspace / PROFILE_REL_PATH
+    if not profile_path.is_file() and MIGRATION_NOTICE not in notice:
+        notice = f"{notice}\n\n{MIGRATION_NOTICE}" if notice else MIGRATION_NOTICE
+    return resolve_profile(
+        profile_path,
+        kit_root,
+        workspace_root=resolved_workspace,
+        extra_overlays=extra_overlays,
+        language_override=language_override,
+        notice=notice,
     )
 
 
@@ -662,21 +833,24 @@ def resolve_profile(
     workspace_root: Path | None = None,
     extra_overlays: list[Path] | None = None,
     language_override: str | None = None,
-    codegen_override: str | None = None,
+    notice: str = "",
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
 
     Args:
-        profile_path: Ścieżka do profilu (``.ai/project.profile.yaml`` albo preset kita).
+        profile_path: Ścieżka do profilu (``.ai/project.profile.yaml``).
+            Nieistniejący plik = pusty profil (sam core).
         kit_root: Opcjonalny root instruction-kit.
         workspace_root: Root repo aplikacji (overlay). Gdy brak — ``profile_path.parent.parent``
             dla lokalnego ``.ai/…``, inaczej ``cwd``.
         extra_overlays: Dodatkowe pliki overlay z CLI.
         language_override: Nadpisanie języka z CLI/env (``pl`` / ``en``); ma pierwszeństwo
-            przed ``language`` w YAML profilu.
-        codegen_override: Nadpisanie generatora klienta API z CLI/env (``orval`` / ``none``);
-            ma pierwszeństwo przed ``codegen`` w YAML profilu.
+            przed ``language`` w YAML profilu. Codegen nie ma nadpisania — tylko
+            ``codegen:`` w profilu (ADR-0007); bez pary backend + klient (web/mobile)
+            efektywny codegen to zawsze ``none``.
+        notice: Ostrzeżenie doklejane na początek bundle'i i indeksu
+            (np. migracja starej konfiguracji).
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
@@ -689,10 +863,18 @@ def resolve_profile(
     elif profile_path.parent.name == ".ai":
         resolved_workspace = profile_path.parent.parent
     else:
-        # Preset z kita — workspace to katalog roboczy konsumenta.
         resolved_workspace = Path.cwd().resolve()
 
     raw_profile = _read_yaml(profile_path)
+    # Stary profil z `extends: profiles/_base.yaml` (usunięte presety) — bez
+    # ostrzeżenia straciłby Stacki po cichu (ADR-0004).
+    extends = raw_profile.get("extends")
+    if extends and MIGRATION_NOTICE not in notice:
+        extends_path = Path(extends)
+        if not extends_path.is_absolute():
+            extends_path = manifest.kit_root / extends_path
+        if not extends_path.is_file():
+            notice = f"{notice}\n\n{MIGRATION_NOTICE}" if notice else MIGRATION_NOTICE
     profile_data = _resolve_extends(raw_profile, manifest.kit_root)
 
     language = normalize_language(
@@ -700,13 +882,13 @@ def resolve_profile(
         if language_override is not None
         else str(profile_data.get("language", "pl"))
     )
-    codegen = normalize_codegen(
-        codegen_override
-        if codegen_override is not None
-        else str(profile_data.get("codegen", "orval")),
-        manifest,
-    )
-    profile_data: dict[str, Any] = {**profile_data, "language": language, "codegen": codegen}
+    tiers, _ = profile_tiers(profile_data, manifest.mappings)
+    filled = _filled_tiers(tiers, profile_data, manifest.mappings)
+    if "backend" in filled and ("web" in filled or "mobile" in filled):
+        codegen = normalize_codegen(str(profile_data.get("codegen", "orval")), manifest)
+    else:
+        codegen = "none"
+    profile_data = {**profile_data, "language": language, "codegen": codegen}
     selections = profile_selections(profile_data, manifest.mappings)
 
     def _pipeline(module_ids: list[str]) -> tuple[str, ...]:
@@ -718,52 +900,52 @@ def resolve_profile(
             selections=selections,
         )
 
-    enabled_modules = _collect_module_ids(
+    enabled_modules, tier_ids = _collect_module_ids(
         profile_data,
         manifest,
         language=language,
         selections=selections,
+        tiers=tiers,
     )
-
-    bundles_config = _merge_bundle_configs(
-        manifest.default_bundles,
-        profile_data.get("bundles", {}),
-    )
-    bundles_config = _inject_infra_bundles(bundles_config, profile_data, manifest.mappings)
 
     bundles: dict[str, ResolvedBundle] = {}
-    for bundle_name, module_ids in bundles_config.items():
-        bundles[bundle_name] = _build_bundle_content(
-            bundle_name, list(_pipeline(list(module_ids))), manifest
+    for bundle_name, rule in manifest.bundles.items():
+        routed = _routed_module_ids(
+            rule,
+            enabled=enabled_modules,
+            tier_ids=tier_ids,
+            tiers=tiers,
+            language=language,
+            manifest=manifest,
         )
-
-    all_from_bundles: list[str] = []
-    for bundle in bundles.values():
-        all_from_bundles.extend(list(bundle.module_ids))
-    enabled_modules = [
-        mid
-        for mid in _pipeline(_merge_unique(enabled_modules, all_from_bundles))
-        if mid in manifest.modules
-    ]
+        bundles[bundle_name] = _build_bundle_content(
+            bundle_name, list(_pipeline(routed)), manifest, notice=notice
+        )
 
     overlay_content = _load_overlays(profile_data, resolved_workspace, extra_overlays)
     unknown_decisions = unrecognised_decisions(profile_data, manifest.mappings)
     deprecated_aliases = used_aliases(profile_data, manifest.mappings)
     lang_module = manifest.mappings.languages.module_for(language)
 
-    index_lines = [
-        f"# Instruction index: {profile_data.get('name', resolved_workspace.name)}",
-        "",
-        f"- Język: {language}",
-        f"- Moduł języka: `{lang_module}`",
-        f"- Codegen: {codegen}",
-        f"- Profil: `{profile_path}`",
-        f"- Workspace: `{resolved_workspace}`",
-        f"- Kit root: `{manifest.kit_root}`",
-        "",
-        "## Włączone moduły",
-        "",
-    ]
+    index_lines = []
+    if notice:
+        index_lines.extend([notice, ""])
+    index_lines.extend(
+        [
+            f"# Instruction index: {profile_data.get('name', resolved_workspace.name)}",
+            "",
+            f"- Język: {language}",
+            f"- Moduł języka: `{lang_module}`",
+            f"- Codegen: {codegen}",
+            f"- Tiery: backend=`{tiers['backend']}` web=`{tiers['web']}` mobile=`{tiers['mobile']}`",
+            f"- Profil: `{profile_path}`",
+            f"- Workspace: `{resolved_workspace}`",
+            f"- Kit root: `{manifest.kit_root}`",
+            "",
+            "## Włączone moduły",
+            "",
+        ]
+    )
     for module_id in enabled_modules:
         info = manifest.modules[module_id]
         index_lines.append(f"- `{module_id}` — {info.title}")
@@ -794,6 +976,8 @@ def resolve_profile(
         name=str(profile_data.get("name", resolved_workspace.name)),
         language=language,
         codegen=codegen,
+        tiers=tiers,
+        notice=notice,
         kit_root=manifest.kit_root,
         profile_path=profile_path,
         workspace_root=resolved_workspace,

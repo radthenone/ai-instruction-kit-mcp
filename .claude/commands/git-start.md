@@ -40,7 +40,7 @@ gh issue create --title "Add cart coupon" --body "## Summary\n…"
 # numer z URL, np. …/issues/42
 gh issue develop 42 --name feat/42-add-cart-coupon --base dev --checkout
 # albo przy brudnym tree:
-git checkout -b feat/42-add-cart-coupon origin/dev   # lub main/master
+git checkout --no-track -b feat/42-add-cart-coupon origin/dev   # lub main/master
 ```
 
 ## Ręcznie — gotowe issue
@@ -81,14 +81,18 @@ Wywnioskuj typ, tytuł EN, slug, body. Zero zmian i zero opisu → dopytaj.
 
 Normalne przy przenoszeniu pracy z chronionej gałęzi. Po utworzeniu issue:
 
-1. Ustal `baza` (`dev` jeśli `origin/dev` lub lokalny `dev`, inaczej `main`/`master`).  
+1. Ustal `baza` = `BASE` z kroku 0.  
 2. Branch **od bazy integracyjnej**, z zabraniem lokalnych zmian:
 
 ```bash
-git checkout -b "<typ>/<N>-<slug>" "origin/${baza}" 2>/dev/null \
-  || git checkout -b "<typ>/<N>-<slug>" "${baza}" 2>/dev/null \
-  || git checkout -b "<typ>/<N>-<slug>"
+git checkout --no-track -b "<typ>/<N>-<slug>" "origin/${baza}" 2>/dev/null \
+  || git checkout --no-track -b "<typ>/<N>-<slug>" "${baza}" 2>/dev/null \
+  || git checkout --no-track -b "<typ>/<N>-<slug>"
 ```
+
+`--no-track` obowiązkowo: bez niego branch dostaje upstream `origin/${baza}` i push/Sync
+w IDE wysyła go prosto na gałąź integracyjną z pominięciem PR. Upstream ustawia `/git-end`
+(`git push -u origin HEAD`) na gałąź o tej samej nazwie.
 
 W raporcie zapisz faktyczną bazę (jeśli padło do HEAD — zaznacz ostrzeżenie). Bez `stash` / reset bez zgody.
 
@@ -101,13 +105,33 @@ Kebab-case ASCII, 3–6 słów.
 ### 0. Kontekst
 
 ```bash
-git fetch --all --prune 2>/dev/null || true
 git status -sb
-gh repo view --json nameWithOwner,defaultBranchRef -q .
 PREV_BRANCH=$(git branch --show-current)
 ```
 
-Baza: `dev` jeśli istnieje, inaczej default branch. Zapamiętaj `PREV_BRANCH` — to branch na
+Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
+w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
+Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
+
+```bash
+git fetch --all --prune
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+BASE=$(sed -n 's/^base:[[:space:]]*\([^[:space:]]*\).*/\1/p' .ai/project.md 2>/dev/null | head -1)
+if [ -z "$BASE" ]; then
+  BASE=$DEFAULT
+  if git rev-parse -q --verify origin/dev >/dev/null \
+     && ! { git merge-base --is-ancestor origin/dev "origin/$DEFAULT" \
+            && [ "$(git rev-parse origin/dev)" != "$(git rev-parse "origin/$DEFAULT")" ]; }; then
+    BASE=dev
+  fi
+fi
+LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefName' \
+  | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
+[ -n "$LAST" ] && [ "$LAST" != "$BASE" ] && echo "uwaga: baza $BASE, ostatnie scalone PR-y szły do $LAST"
+```
+
+Zapamiętaj `PREV_BRANCH` — to branch na
 którym stał user przed `/git-start` (najczęściej `main`/`master`/`dev`, czasem inny feature
 branch w toku). `/git-end` ma na niego wrócić po push+PR — zapisz go od razu w konfigu nowego
 brancha (krok 2–3), nie tylko w raporcie.
@@ -118,8 +142,12 @@ brancha (krok 2–3), nie tylko w raporcie.
 
 **B) Utwórz:**
 
+Najpierw etykieta i tablica (sekcja „Etykieta i tablica” niżej). Flagę dodajesz tylko,
+gdy jest dopasowanie.
+
 ```bash
-URL=$(gh issue create --title "<title EN>" --body "…")
+URL=$(gh issue create --title "<title EN>" --body "…" \
+  [--label "<type: …>"] [--project "<title tablicy>"])
 # Numer TYLKO z create — nie używaj `gh issue list --limit 1`
 N=$(printf '%s' "$URL" | grep -Eo '[0-9]+$')
 ```
@@ -127,6 +155,36 @@ N=$(printf '%s' "$URL" | grep -Eo '[0-9]+$')
 Albo (gdy CLI wspiera): `gh issue create … --json number,url -q .number`.
 
 **C) `no-issue`:** `<typ>/<slug>`.
+
+#### Etykieta i tablica
+
+Oba kroki to odczyty i **nigdy** nie przerywają tworzenia issue — najwyżej pole zostaje puste.
+
+**Etykieta — jedna, tylko z istniejących:**
+
+```bash
+gh label list --limit 100 --json name -q '.[].name'
+```
+
+Typ → `type: <typ>`, z wyjątkami: `feat` → `type: feature`, `perf` → `type: performance`,
+`hotfix` → `type: fix`, `ci` / `build` / `release` → `type: chore`. Nazwa jest na liście →
+`--label "<nazwa>"`. Nie ma → najbliższa istniejąca tylko wtedy, gdy znaczy to samo, i powiedz,
+że mapowanie jest przybliżone; inaczej bez `--label`. Nie zakładaj etykiety (`gh label create`)
+bez osobnej zgody.
+
+**Tablica (GitHub Project) — ta o nazwie repo:**
+
+```bash
+REPO=$(gh repo view --json name -q .name)
+OWNER=$(gh repo view --json owner -q .owner.login)
+gh project list --owner "$OWNER" --limit 100 --format json \
+  --jq ".projects[] | select(.title | ascii_downcase == (\"$REPO\" | ascii_downcase)) | .title"
+```
+
+Porównanie bez wielkości liter, poza tym identyczne — bez dopasowywania „podobnych”. Jeden
+wynik → `--project "<title>"`. Zero → pomiń, nie twórz tablicy. Więcej niż jeden → zapytaj
+użytkownika. Komenda pada na braku scope `project` → pomiń krok i jedna linijka:
+`gh auth refresh -s project`. Pól tablicy (status, iteracja) nie ustawiasz.
 
 ### 2–3. Branch
 
@@ -149,6 +207,7 @@ feature branchu, bez próby powrotu.
 ## /git-start OK
 - Tryb: auto-diff | user-opis | #N | help
 - Issue: #N — title — url
+- Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
 - Branch: …
 - Base: … (wanted / actual)
 - Powrót po `/git-end`: `$PREV_BRANCH` (zapisane w `branch.<nazwa>.startedFrom`)

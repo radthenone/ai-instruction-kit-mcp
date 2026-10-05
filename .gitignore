@@ -17,4 +17,90 @@ skills-lock.json
 # Materiały do nauki pracy z agentami — trzymane lokalnie, poza repo.
 # Ukośnik wiodący zakotwicza wzorzec w roocie: bez niego `usage/` łapałby
 # każdy katalog o tej nazwie na dowolnej głębokości drzewa.
-/docs/usage/
+/.scratch/
+
+# Zawiera lokalną, absolutną ścieżkę do repo (--from) — różni się per maszyna.
+/.mcp.json
+
+# >>> instruction-kit >>>
+# Pliki instalowane przez instruction-kit (bootstrap-project.sh).
+#
+# Zasada: konfiguracja AI jest częścią repo — hooki bezpieczeństwa, agenci i komendy
+# mają działać u każdego, kto klonuje projekt, nie tylko na maszynie, gdzie odpalono
+# bootstrap. Poza gitem zostaje lokalny stan klienta (sesje, cache, ustawienia prywatne)
+# i to, co bootstrap renderuje ze ścieżką tej maszyny (konfigi MCP, stamp) — patrz niżej.
+#
+# Reguły są w formie "ignoruj katalog, odwróć dla plików kita", bo klienci AI trzymają
+# w tych samych katalogach dane sesji. Git nie wejdzie do zignorowanego katalogu, więc
+# wyjątek na sam plik nie wystarczy — musi być też wyjątek na katalog po drodze.
+
+# --- Claude Code -------------------------------------------------------------
+.claude/*
+!.claude/agents/
+!.claude/agents/**
+!.claude/commands/
+!.claude/commands/**
+!.claude/hooks/
+!.claude/hooks/**
+!.claude/skills/
+# Wersjonujemy tylko skille kita, wyliczone z nazwy. Reszta zawartosci tego katalogu
+# to zwykle dowiazania do `.agents/skills/` (npx skills add), ktory jest ignorowany —
+# w repo bylyby to linki donikad, na dodatek ze sciezka absolutna maszyny, na ktorej
+# odpalono instalator.
+.claude/skills/*
+!.claude/skills/skill-authoring/
+!.claude/skills/skill-authoring/**
+!.claude/settings.json
+# Prywatne nadpisania: uprawnienia, włączone serwery MCP. Per maszyna, nie per repo.
+.claude/settings.local.json
+
+# --- Codex CLI ---------------------------------------------------------------
+.codex/*
+!.codex/skills/
+!.codex/skills/**
+
+# --- GitHub Copilot (VS Code) ------------------------------------------------
+# Pliki kita pod .github/ — instrukcje i prompty Copilota, nie stan IDE (MCP Copilota
+# to .vscode/mcp.json, per maszyna — sekcja niżej).
+!.github/copilot-instructions.md
+!.github/prompts/
+!.github/prompts/**
+
+# --- Cursor ------------------------------------------------------------------
+.cursor/*
+!.cursor/hooks.json
+!.cursor/BUGBOT.md
+!.cursor/agents/
+!.cursor/agents/**
+!.cursor/hooks/
+!.cursor/hooks/**
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/skills/
+.cursor/skills/*
+!.cursor/skills/compact/
+!.cursor/skills/compact/**
+!.cursor/skills/skill-authoring/
+!.cursor/skills/skill-authoring/**
+
+# --- Per maszyna: konfigi MCP i stamp ----------------------------------------
+# Bootstrap renderuje w nich ścieżkę lokalnego klona kita (`uv run --project`,
+# `--kit-root`) i absolutny `--workspace`. Zacommitowane z jednej maszyny psują serwer
+# MCP na każdej innej (Windows `M:/…` na Linuksie → CONNECTION_CLOSED). Odtwarza je
+# `bootstrap-project.sh` na danej maszynie — nie kopiuj ich z repo.
+/.mcp.json
+/.cursor/mcp.json
+/.vscode/mcp.json
+/.codex/config.toml
+/.kiro/settings/mcp.json
+/.kilocode/mcp.json
+/.agents/mcp_config.json
+/opencode.json
+/.ai/.kit-bootstrap.json
+
+# --- Skille spoza kita (npx skills add …) ------------------------------------
+# Instalowane globalnie w ~/.agents/skills/ i linkowane do projektu. Kopia w repo
+# to duplikat, który zaraz rozjedzie się z globalną wersją — trzymaj je globalnie.
+.agents/skills/
+skills-lock.json
+# <<< instruction-kit <<<

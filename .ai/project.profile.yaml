@@ -1,0 +1,15 @@
+# Profil repo instruction-kit — puste Tiery (sam core + to, co dopisze include).
+# Serwer MCP czyta go z `--workspace` (tu: root tego repo).
+
+name: ai-instruction-kit-mcp
+language: pl
+clients: claude,codex,opencode,vscode,antigravity
+
+backend: none
+web: none
+mobile: none
+
+codegen: none
+
+overlays:
+  - .ai/project.md
