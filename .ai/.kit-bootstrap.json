@@ -1,9 +1,0 @@
-{
-  "kit_commit": "d6117a6a7c0fd0a0735ef11b703f59e0436c50c8",
-  "kit_from": "/m/projects/ai-instruction-kit-mcp",
-  "bootstrapped_at": "2026-10-02T20:12:32Z",
-  "preset": "_base",
-  "language": "pl",
-  "codegen": "none",
-  "clients": "claude,codex,opencode"
-}
