@@ -136,6 +136,9 @@ Po `rtk init` zrestartuj klienta. Weryfikacja: `rtk init --show`.
 Kolejność bez znaczenia; wszystkie są opcjonalne poza Superpowers (warstwa 3 w
 `AGENTS.md`). `npx skills` przyjmuje `-a claude-code|codex|opencode|github-copilot|antigravity`
 i dla klientów poza Claude instaluje do `.agents/skills/` (dodaj `-g`, żeby globalnie).
+Wyjątek: Antigravity CLI (`agy`) **nie czyta** globalnego `~/.agents/skills/`, gdzie `-g`
+kładzie skille — globalnie widzi tylko `~/.gemini/config/skills/`
+([antigravity-cli#103](https://github.com/google-antigravity/antigravity-cli/issues/103)).
 
 **Superpowers** ([obra/superpowers](https://github.com/obra/superpowers))
 
@@ -152,7 +155,9 @@ i dla klientów poza Claude instaluje do `.agents/skills/` (dodaj `-g`, żeby gl
 | Klient | Komenda |
 | --- | --- |
 | Claude Code | `/plugin install mattpocock-skills` |
-| Codex, OpenCode, VS Code, Antigravity | `npx skills@latest add mattpocock/skills -a <id>` (albo `bootstrap-project.sh --with-plugins`) |
+| Codex, OpenCode, VS Code | `npx skills@latest add mattpocock/skills -a <id>` (albo `bootstrap-project.sh --with-plugins`) |
+| Antigravity — per projekt | `npx skills@latest add mattpocock/skills -a antigravity -s '*' -y` → `.agents/skills/` w repo |
+| Antigravity — globalnie | `npx skills@latest add mattpocock/skills -g -a antigravity -s '*' -y`, potem skopiuj skille Matta z `~/.agents/skills/` do `~/.gemini/config/skills/` i zrestartuj `agy`. `agy plugin install` **nie działa** — skille Matta leżą w `skills/<kategoria>/<nazwa>`, agy szuka tylko `skills/<nazwa>` |
 
 **Caveman** ([JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman))
 
@@ -218,6 +223,9 @@ w zmiennej środowiskowej, nie w pliku w repo:
 `.agents/skills/` jest wspólny dla Codexa, OpenCode, Copilota i Antigravity — skill dodany
 przez `npx skills -a codex` zobaczą też pozostali. Kit ignoruje ten katalog w `.gitignore`,
 więc na nowej maszynie instalację powtarzasz.
+
+Globalnie Antigravity CLI czyta tylko `~/.gemini/config/skills/` — `npx skills update`
+odświeża `~/.agents/skills/`, więc po aktualizacji skopiuj skille ponownie.
 
 #### 2.4. Windows (Git Bash) vs Linux
 
