@@ -9,10 +9,13 @@ Trzy kroki cyklu życia kita w projekcie. Szczegóły każdego kroku są niżej.
 ### Krok 1 — Instalacja
 
 ```bash
-uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2
+uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp
 cd /m/projects/moja-appka                  # repo aplikacji
 kit-ai install
 ```
+
+Bez `@` instalujesz gałąź domyślną (`master`). Nowsze, jeszcze nie wydane zmiany są na
+`dev` i `dev-2` — wtedy dopisz ref, np. `…/ai-instruction-kit-mcp@dev-2`.
 
 ### Krok 2 — Konfiguracja
 
@@ -49,16 +52,18 @@ opcjonalnie `npx` (skille zewnętrzne).
 Bez klona kita — `kit-ai` jako narzędzie uv (ref po `@`: branch, tag albo commit):
 
 ```bash
-uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2
+uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp          # master
+uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev      # albo gałąź dev
+uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2    # albo dev-2
 cd /m/projects/moja-appka                  # repo aplikacji
 kit-ai install                             # bez ścieżki = bieżący katalog
 kit-ai reload | kit-ai status | kit-ai remove [--dry-run]
 
 # jednorazowo, bez instalowania narzędzia:
-uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp@dev-2 kit-ai install
+uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp kit-ai install
 ```
 
-Wybrany ref trafia do `mcp.json` projektu (`uvx --from git+…@dev-2`), a commit kita do
+Wybrany ref trafia do `mcp.json` projektu (np. `uvx --from git+…@dev-2`), a commit kita do
 stampu — `kit-ai status` porównuje go z commitem zainstalowanego narzędzia. Update:
 `uv tool upgrade guides-mcp` (albo `uv tool install --force git+…@<inny-ref>`) +
 `kit-ai reload`. Instalacja z lokalnej ścieżki (`uv tool install .`) nie zna commitu —
