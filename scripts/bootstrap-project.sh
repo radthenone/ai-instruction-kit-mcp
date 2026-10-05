@@ -259,6 +259,11 @@ prune_client() {
       prune_shared_skills "$TARGET/.codex/agents"
       rmdir "$TARGET/.codex" 2>/dev/null || true
       ;;
+    antigravity)
+      for name in "$ALL_AGENTS"/*.md; do
+        kit_rm ".agents/workflows/$(basename "$name")"
+      done
+      ;;
   esac
   if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
     "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
@@ -827,7 +832,15 @@ install_antigravity() {
   mkdir -p "$TARGET/.agents"
   fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
   echo "  + .agents/mcp_config.json"
-  render_agent_commands antigravity "$TARGET/.agents/workflows"
+  if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+    # agy (Antigravity CLI) nie zna workflow — tylko skille .agents/skills/<nazwa>/SKILL.md.
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills"
+    echo "  + .agents/skills/ (agenty jako skille Antigravity)"
+    # Workflow ze starszych wersji kita — po nazwie, cudze zostają.
+    for name in "$ALL_AGENTS"/*.md; do
+      kit_rm ".agents/workflows/$(basename "$name")"
+    done
+  fi
   copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 

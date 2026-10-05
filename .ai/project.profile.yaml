@@ -3,6 +3,7 @@
 
 name: ai-instruction-kit-mcp
 language: pl
+clients: claude,codex,opencode,vscode,antigravity
 
 backend: none
 web: none
