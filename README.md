@@ -88,18 +88,148 @@ Niskopoziomowo to samo robi `scripts/bootstrap-project.sh "$APP" --from "$KIT" -
 
 ### 2. Po instalacji (kroki, których skrypt nie zrobi za Ciebie)
 
-`kit-ai install` kończy się blokiem „Dalej” z dwoma krokami:
+`kit-ai install` kończy się blokiem „Dalej” (Superpowers + `/kit-project-begin`). Pełna
+lista poniżej — rób tylko to, czego jeszcze nie masz, i tylko dla klientów z `clients:`.
+Wszystko poza 2.5 robisz **raz na maszynę**, nie per projekt.
 
-```text
-# 1. Superpowers — Claude Code proponuje go sam przy otwarciu repo: bootstrap wpisuje
-#    marketplace i plugin do .claude/settings.json (extraKnownMarketplaces + enabledPlugins,
-#    merge bez nadpisywania Twoich wpisów; odznaczenie klienta claude je zabiera).
-#    Pozostali klienci albo gdy pytanie nie padło:
-/plugin marketplace add obra/superpowers-marketplace
-/plugin install superpowers@superpowers-marketplace
+Komendy są te same w Git Bash (Windows) i na Linuksie, chyba że wiersz mówi inaczej.
+Różnice Windows zebrane są w [2.4](#24-windows-git-bash-vs-linux).
 
-# 2. /kit-project-begin — konfiguracja projektu
+#### 2.1. rtk — sprawdź, czy jest
+
+```bash
+rtk --version && rtk gain        # oba muszą zadziałać; "command not found" = brak rtk
 ```
+
+`rtk gain` nie działa, a `rtk --version` tak → masz inne narzędzie o tej nazwie
+(`reachingforthejack/rtk`), nie Rust Token Killer. Brak rtk niczego nie psuje — agenci
+wykonują wtedy komendy bez prefiksu (`core:tooling-rtk`).
+
+Instalacja:
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+# Windows (winget działa też z Git Bash)
+winget install rtk-ai.rtk
+```
+
+Hook, który przepisuje komendy na `rtk …` poza modelem — po jednym na klienta:
+
+| Klient | Komenda | Uwagi |
+| --- | --- | --- |
+| Claude Code | `rtk init -g --auto-patch` | Hook kita `rtk-check.mjs` przypomina przy starcie sesji, gdy go brak |
+| Codex | `rtk init -g --codex` | Potem `/hooks` w TUI Codexa i zaufaj hookowi — bez tego jest pomijany |
+| OpenCode | `rtk init -g --opencode` | |
+| VS Code (Copilot) | — | Hook przychodzi z kita: `.github/hooks/rtk-rewrite.json`. Nie odpalaj `rtk init --copilot` — nadpisze `.github/copilot-instructions.md` |
+| Antigravity | `rtk init -g --agent antigravity` | |
+
+Po `rtk init` zrestartuj klienta. Weryfikacja: `rtk init --show`.
+
+#### 2.2. Pluginy i skille zewnętrzne — per klient
+
+Kolejność bez znaczenia; wszystkie są opcjonalne poza Superpowers (warstwa 3 w
+`AGENTS.md`). `npx skills` przyjmuje `-a claude-code|codex|opencode|github-copilot|antigravity`
+i dla klientów poza Claude instaluje do `.agents/skills/` (dodaj `-g`, żeby globalnie).
+
+**Superpowers** ([obra/superpowers](https://github.com/obra/superpowers))
+
+| Klient | Komenda |
+| --- | --- |
+| Claude Code | Proponuje się sam przy otwarciu repo (bootstrap wpisuje go do `.claude/settings.json`). Gdy pytanie nie padło: `/plugin marketplace add obra/superpowers-marketplace`, potem `/plugin install superpowers@superpowers-marketplace` |
+| Codex | W TUI: `/plugins` → `superpowers` → *Install Plugin* |
+| OpenCode | Napisz agentowi: `Fetch and follow instructions from https://raw.githubusercontent.com/obra/superpowers/refs/heads/main/.opencode/INSTALL.md` |
+| VS Code (Copilot) | Tylko Copilot CLI: `copilot plugin marketplace add obra/superpowers-marketplace` + `copilot plugin install superpowers@superpowers-marketplace` |
+| Antigravity | `agy plugin install https://github.com/obra/superpowers` |
+
+**Skille Matta Pococka** ([mattpocock/skills](https://github.com/mattpocock/skills), [aihero.dev/skills](https://www.aihero.dev/skills)) — `/grill-me`, `/tdd`
+
+| Klient | Komenda |
+| --- | --- |
+| Claude Code | `/plugin install mattpocock-skills` |
+| Codex, OpenCode, VS Code, Antigravity | `npx skills@latest add mattpocock/skills -a <id>` (albo `bootstrap-project.sh --with-plugins`) |
+
+**Caveman** ([JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman))
+
+| Klient | Komenda |
+| --- | --- |
+| Claude Code | `claude plugin marketplace add JuliusBrussee/caveman && claude plugin install caveman@caveman` |
+| Codex | `npx skills add JuliusBrussee/caveman -a codex` |
+| OpenCode | `npx -y github:JuliusBrussee/caveman -- --only opencode` |
+| VS Code (Copilot) | `npx -y github:JuliusBrussee/caveman -- --only copilot --with-init` |
+| Antigravity | `npx skills add JuliusBrussee/caveman -a antigravity` (bez trybu always-on) |
+
+**Ponytail** ([DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail))
+
+| Klient | Komenda |
+| --- | --- |
+| Claude Code | `/plugin marketplace add DietrichGebert/ponytail`, potem **osobną wiadomością** `/plugin install ponytail@ponytail` |
+| Codex | `codex plugin marketplace add DietrichGebert/ponytail` + `codex plugin add ponytail@ponytail`, potem zaufaj hookom w `/hooks` |
+| OpenCode | Klon repo + w `opencode.json`: `{ "plugin": ["<ścieżka-do-klona>/.opencode/plugins/ponytail.mjs"] }` |
+| VS Code (Copilot) | Tylko Copilot CLI: `copilot plugin marketplace add DietrichGebert/ponytail` + `copilot plugin install ponytail@ponytail` |
+| Antigravity | `agy plugin install https://github.com/DietrichGebert/ponytail` |
+
+**Context7** ([upstash/context7](https://github.com/upstash/context7)) — docs bibliotek (MCP)
+
+Najprościej `npx ctx7 setup --claude` / `--opencode` (OAuth + klucz API + konfiguracja).
+Reszta ręcznie — serwer zdalny `https://mcp.context7.com/mcp`, nagłówek
+`Authorization: Bearer <KLUCZ>` ([wszystkie klienty](https://context7.com/docs/resources/all-clients)):
+
+| Klient | Gdzie | Wpis |
+| --- | --- | --- |
+| Claude Code | CLI | `claude mcp add --scope user --header "Authorization: Bearer KLUCZ" --transport http context7 https://mcp.context7.com/mcp` |
+| Codex | `~/.codex/config.toml` | `[mcp_servers.context7]` + `url = "https://mcp.context7.com/mcp"` + `http_headers = { "Authorization" = "Bearer KLUCZ" }` |
+| OpenCode | `opencode.json` | `"mcp": { "context7": { "type": "remote", "url": "https://mcp.context7.com/mcp", "headers": { "Authorization": "Bearer KLUCZ" } } }` |
+| VS Code | `mcp.json` | `"servers": { "context7": { "type": "http", "url": "https://mcp.context7.com/mcp", "headers": { "Authorization": "Bearer KLUCZ" } } }` |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json` | `"mcpServers": { "context7": { "serverUrl": "https://mcp.context7.com/mcp", "headers": { "Authorization": "Bearer KLUCZ" } } }` |
+
+**CodeGraph** ([@colbymchenry/codegraph](https://www.npmjs.com/package/@colbymchenry/codegraph)) — graf kodu (MCP + CLI, nie skill)
+
+```bash
+npm i -g @colbymchenry/codegraph
+codegraph install --target claude,codex,opencode,copilot-vscode,antigravity --location global
+codegraph init -i        # w każdym repo — buduje indeks .codegraph/
+```
+
+Zostaw w `--target` tylko swoich klientów. `codegraph install --print-config <id>` pokazuje
+wpis bez zapisu.
+
+**GitHub MCP** ([github/github-mcp-server](https://github.com/github/github-mcp-server)) — issues/PR z poziomu agenta
+
+Serwer zdalny `https://api.githubcopilot.com/mcp/`. Poza VS Code (OAuth) potrzebny PAT
+([github.com/settings/tokens](https://github.com/settings/tokens), scope `repo`, `read:org`, `read:user`)
+w zmiennej środowiskowej, nie w pliku w repo:
+
+| Klient | Komenda / wpis |
+| --- | --- |
+| Claude Code | `/plugin install github@claude-plugins-official` albo `claude mcp add github --transport http https://api.githubcopilot.com/mcp/ -H "Authorization: Bearer $GITHUB_PAT"` |
+| Codex | `codex mcp add github --url https://api.githubcopilot.com/mcp/ --bearer-token-env-var GITHUB_PAT_TOKEN` |
+| OpenCode | `"mcp": { "github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}" } } }` |
+| VS Code | `"servers": { "github": { "type": "http", "url": "https://api.githubcopilot.com/mcp/" } }` — logowanie OAuth przy pierwszym użyciu |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json`: `"mcpServers": { "github": { "serverUrl": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer <PAT>" } } }` |
+
+#### 2.3. Gdzie co ląduje
+
+`.agents/skills/` jest wspólny dla Codexa, OpenCode, Copilota i Antigravity — skill dodany
+przez `npx skills -a codex` zobaczą też pozostali. Kit ignoruje ten katalog w `.gitignore`,
+więc na nowej maszynie instalację powtarzasz.
+
+#### 2.4. Windows (Git Bash) vs Linux
+
+- `npx skills` domyślnie robi symlinki, a te na Windowsie wymagają Developer Mode albo
+  admina. Bez tego dodaj `--copy`.
+- Lokalny (stdio) serwer MCP odpalany przez `npx` uruchamiaj na Windowsie jako
+  `cmd /c npx …`. Serwery zdalne (Context7, GitHub wyżej) tego nie potrzebują.
+- Pełny instalator Caveman: na Windowsie `install.ps1`, nie `install.sh` — hooki i tak
+  wołają wersje PowerShell.
+- Hooki Ponytail i Caveman (Claude, Codex) potrzebują `node` w PATH powłoki
+  **nieinteraktywnej** — przy nvm to częsta pułapka.
+- Zmienne z tokenami: Git Bash / Linux `export GITHUB_PAT_TOKEN=…`, PowerShell
+  `$env:GITHUB_PAT_TOKEN = "…"`. Klient musi wystartować już z ustawioną zmienną.
+
+#### 2.5. Konfiguracja projektu
+
+`/kit-project-begin` — patrz [Krok 2](#krok-2--konfiguracja).
 
 Hooka `pre-push` kit już nie dostarcza (guardraile siedzą w hookach klientów);
 istniejący `git-hooks/pre-push` w Twoim repo zostaje nietknięty.
