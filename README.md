@@ -633,7 +633,7 @@ modules/
     frontend/        warianty Expo/React (macierz web/mobile — design)
   capabilities/      auth (+ allauth/jwt/custom warianty), files, payments (+ expo-stripe gdy Tier expo), …
   patterns/          capability-provider, providers-and-settings, gateway, webhooks, …
-  infra/             database, cache, queue, storage, tasks, search
+  infra/             database, cache, queue, storage, tasks, search, vps-lightweight (auto na VPS)
 templates/
   shared/            kanon agents + rules (źródło prawdy)
   cursor|claude|…    adaptery MCP / format IDE
@@ -663,6 +663,25 @@ Moduły infra trafiają automatycznie do bundle `infra` i `devops`.
 
 Nierozpoznana Decyzja (literówka `postgress`, technologia bez modułu) **nie wywraca
 serwera** — ląduje w sekcji „Nierozpoznane decyzje" w `get_index` (ADR-0004).
+
+## Lekki tryb VPS (`infra:vps-lightweight`)
+
+Agenci na słabym VPS-ie (np. 1 vCPU, 4,5 GB RAM, bez swapu, LXC) nie mogą zachowywać
+się jak na maszynie dewelopera — pełny `docker compose up`, `next dev` czy e2e
+potrafią zabić produkcję obok przez OOM.
+
+- Wykrywanie bez nazw hostów: Linux, brak CI/WSL, małe zasoby (CPU ≤ 2, RAM ≤ 8 GB,
+  brak swapu) i sygnał serwerowy (wirtualizacja z `systemd-detect-virt` albo brak
+  desktopu). Nadpisanie: `KIT_HOST_PROFILE=vps|local` (alias `GUIDES_HOST_PROFILE`).
+  CI zawsze dostaje `local` — pełna weryfikacja należy do CI.
+- `get_bundle` na takim hoście dokleja `infra:vps-lightweight` do **każdego**
+  bundle'a (też `backend`/`frontend`/`architecture`); `get_index` pokazuje
+  `- Host: vps|local`. Bez hooka blokującego — tylko reguła tekstowa, żeby nie
+  zatrzymać celowego deployu.
+- Moduł operuje kategoriami (kontenery, dev serwery, buildy, e2e vs lint/typecheck/
+  unit in-memory), nie zakłada Django/React/Next ani innego stacku.
+- Podział Twojego repo dopisz w overlay (`.ai/project.md`), np. `task lint` lekkie
+  vs `task test:e2e` ciężkie — jedna zmiana przez `/kit-project-edit`.
 
 ## Wariant auth (`decisions.auth`)
 

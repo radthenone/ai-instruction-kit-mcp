@@ -449,6 +449,12 @@ modules:
     title: Celery (async tasks)
     tags: [infra, tasks]
 
+  # ─── Infra: VPS ─────────────────────────────────────────
+  infra:vps-lightweight:
+    path: modules/infra/vps-lightweight.md
+    title: VPS — lekki tryb agenta
+    tags: [infra]
+
 bundles:
   # Selektory wg tagów modułu + Tierów (zamiast sztywnych list — ADR-0001).
   # `full` bierze wszystko; `tags: ["*"]` = każdy moduł z profilu.

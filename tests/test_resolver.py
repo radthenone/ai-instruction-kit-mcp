@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,23 @@ CORE_ONLY = (
     "core:external-knowledge",
     "core:tooling-rtk",
 )
+
+_PINNED_HOST_ENV = "KIT_HOST_PROFILE"
+_PINNED_HOST_OLD: str | None = None
+
+
+def setUpModule() -> None:
+    """Przypnij lokalny host — testy Tierów mają być niezależne od maszyny."""
+    global _PINNED_HOST_OLD
+    _PINNED_HOST_OLD = os.environ.get(_PINNED_HOST_ENV)
+    os.environ[_PINNED_HOST_ENV] = "local"
+
+
+def tearDownModule() -> None:
+    if _PINNED_HOST_OLD is None:
+        os.environ.pop(_PINNED_HOST_ENV, None)
+    else:
+        os.environ[_PINNED_HOST_ENV] = _PINNED_HOST_OLD
 
 
 def _workspace(body: str | None) -> tuple[tempfile.TemporaryDirectory, Path]:
