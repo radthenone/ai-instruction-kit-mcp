@@ -289,6 +289,7 @@ fill_mcp() {
   FROM_SRC="$FROM_SRC" LANGUAGE="$LANGUAGE" \
   CLIENTS_ARG="$CLIENTS_ARG" \
   WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
+import json
 import os
 import re
 from pathlib import Path
@@ -363,6 +364,85 @@ if Path(from_src).is_dir():
             count=1,
             flags=re.MULTILINE,
         )
+
+# Istniejący plik należy do użytkownika (własne serwery, modele, providerzy) i jest
+# w .gitignore, więc nadpisanie go ginie bez śladu. Podmieniamy tylko wpis kita
+# `project-guides`, resztę zostawiamy. Pliku, którego nie umiemy sparsować (JSONC
+# z komentarzami, uszkodzony JSON/TOML), nie scalamy: oryginał idzie do `.bak`.
+KIT_SERVER = "project-guides"
+
+
+def merge_json(old_text):
+    old = json.loads(old_text)
+    new = json.loads(text)
+    key = next(k for k in ("mcpServers", "servers", "mcp") if k in new)
+    if not isinstance(old, dict) or not isinstance(old.get(key, {}), dict):
+        raise ValueError(f"`{key}` nie jest obiektem")
+    merged = json.loads(json.dumps(old))
+    for k, v in new.items():
+        if k != key:
+            merged.setdefault(k, v)
+    merged.setdefault(key, {})[KIT_SERVER] = new[key][KIT_SERVER]
+    if merged == old:
+        return old_text
+    return json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
+
+
+TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+
+
+def toml_kit_span(lines):
+    """Zakres linii tabeli `[mcp_servers.project-guides]` (z podtabelami) albo None."""
+    start = None
+    for i, line in enumerate(lines):
+        m = TOML_HEADER.match(line)
+        if not m:
+            continue
+        name = m.group(1).replace('"', "")
+        is_kit = name == f"mcp_servers.{KIT_SERVER}" or name.startswith(f"mcp_servers.{KIT_SERVER}.")
+        if start is None and is_kit:
+            start = i
+        elif start is not None and not is_kit:
+            return start, i
+    return None if start is None else (start, len(lines))
+
+
+def merge_toml(old_text):
+    try:
+        import tomllib
+    except ImportError:  # Python < 3.11: walidacja niedostępna, scalamy tekstowo
+        tomllib = None
+    if tomllib:
+        tomllib.loads(old_text)
+    new_lines = text.splitlines(keepends=True)
+    s, e = toml_kit_span(new_lines)
+    kit_block = new_lines[s:e]
+    old_lines = old_text.splitlines(keepends=True)
+    span = toml_kit_span(old_lines)
+    if span is None:
+        if old_lines and not old_lines[-1].endswith("\n"):
+            old_lines[-1] += "\n"
+        sep = ["\n"] if old_lines and old_lines[-1].strip() else []
+        merged = old_lines + sep + kit_block
+    else:
+        merged = old_lines[: span[0]] + kit_block + old_lines[span[1] :]
+    return "".join(merged)
+
+
+if dest.is_file():
+    old_text = dest.read_text(encoding="utf-8")
+    try:
+        text = merge_toml(old_text) if dest.suffix == ".toml" else merge_json(old_text)
+    except Exception as exc:
+        backup = dest.with_name(dest.name + ".bak")
+        backup.write_text(old_text, encoding="utf-8", newline="\n")
+        print(
+            f"  ! {dest.name}: nie da się scalić ({exc.__class__.__name__}) — oryginał w "
+            f"{backup.name}, przenieś swoje wpisy ręcznie"
+        )
+    else:
+        if text == old_text:
+            raise SystemExit(0)
 dest.write_text(text, encoding="utf-8", newline="\n")
 PY
 }

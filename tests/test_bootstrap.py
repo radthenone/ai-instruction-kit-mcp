@@ -8,6 +8,7 @@ ta sama polityka co w `test_shell_suites`.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -318,6 +319,90 @@ class TestRealRun(_BootstrapTestCase):
 
 BACKEND_AGENTS = {"review-backend", "teacher-backend", "subagent-backend"}
 CLIENT_AGENTS = {"review-frontend", "teacher-frontend", "subagent-frontend", "review-ui"}
+
+
+class TestUserConfigMerge(_BootstrapTestCase):
+    """Reload podmienia tylko wpis kita w configach klientów, nie cały plik (#160)."""
+
+    def _run(self, workspace: Path, clients: str) -> str:
+        return run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients)
+
+    def test_json_configs_keep_user_servers_and_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "claude,vscode,opencode")
+
+            mine = {"command": "my-server"}
+            edits = {
+                ".mcp.json": ("mcpServers", {}),
+                ".vscode/mcp.json": ("servers", {"inputs": []}),
+                "opencode.json": ("mcp", {"model": "anthropic/claude-x"}),
+            }
+            for rel, (key, extra) in edits.items():
+                path = workspace / rel
+                data = json.loads(path.read_text(encoding="utf-8"))
+                data[key]["mine"] = mine
+                data[key]["project-guides"] = {"command": "stale"}
+                data.update(extra)
+                path.write_text(json.dumps(data), encoding="utf-8")
+
+            self._run(workspace, "claude,vscode,opencode")
+
+            for rel, (key, extra) in edits.items():
+                with self.subTest(config=rel):
+                    data = json.loads((workspace / rel).read_text(encoding="utf-8"))
+                    self.assertEqual(data[key]["mine"], mine)
+                    self.assertNotEqual(data[key]["project-guides"], {"command": "stale"})
+                    for k, v in extra.items():
+                        self.assertEqual(data[k], v)
+                    self.assertFalse((workspace / (rel + ".bak")).exists())
+
+    def test_codex_toml_keeps_user_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            text = path.read_text(encoding="utf-8").replace('"guides-mcp"', '"stale"')
+            path.write_text('model = "o3"\n\n' + text + '\n[mcp_servers.mine]\ncommand = "x"\n', encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertIn('model = "o3"', text)
+            self.assertIn('[mcp_servers.mine]\ncommand = "x"', text)
+            self.assertIn('"guides-mcp"', text)
+            self.assertNotIn('"stale"', text)
+            self.assertEqual(text.count("[mcp_servers.project-guides]"), 1)
+
+    def test_unchanged_config_is_not_rewritten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "claude")
+            path = workspace / ".mcp.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["mcpServers"]["mine"] = {"command": "x"}
+            text = json.dumps(data, indent=4)
+            path.write_text(text, encoding="utf-8")
+
+            self._run(workspace, "claude")
+
+            self.assertEqual(path.read_text(encoding="utf-8"), text)
+
+    def test_unparseable_config_goes_to_bak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            original = '{\n  // komentarz JSONC\n  "mcp": {}\n}\n'
+            (workspace / "opencode.json").write_text(original, encoding="utf-8")
+
+            out = self._run(workspace, "opencode")
+
+            self.assertEqual((workspace / "opencode.json.bak").read_text(encoding="utf-8"), original)
+            self.assertIn("project-guides", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
+            self.assertIn("opencode.json.bak", out)
 
 
 class TestTierAgents(_BootstrapTestCase):
