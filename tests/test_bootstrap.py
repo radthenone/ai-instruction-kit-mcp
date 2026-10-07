@@ -570,6 +570,13 @@ class TestTestNamePolicy(_BootstrapTestCase):
         self.assertIn("/tdd", out)
         self.assertIn("test function and class names", self._language("en"))
 
+    def test_bugbot_blocks_non_english_test_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            bugbot = (workspace / "BUGBOT.md").read_text(encoding="utf-8")
+            self.assertIn("Non-English identifier", bugbot)
+
 
 if __name__ == "__main__":
     unittest.main()

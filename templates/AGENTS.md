@@ -81,7 +81,7 @@ Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Revie
 
 | Element | Zawsze | Zależne od `--language` |
 |---------|--------|-------------------------|
-| Identyfikatory w kodzie | EN | — |
+| Identyfikatory w kodzie, w tym nazwy testów (`test_*`, `class Test*`) | EN | — |
 | Tytuł issue / PR / slug brancha | EN | — |
 | Odpowiedzi agenta, docstringi, body issue/PR, komentarze, commity | — | `pl` albo `en` |
 
