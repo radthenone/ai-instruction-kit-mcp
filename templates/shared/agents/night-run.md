@@ -223,7 +223,7 @@ model/pole/serwis/endpoint, z którego korzysta inny — treść issue + „Prze
 - **D — pauza limitu (tylko Claude Code, 429 / „session limit”):** zapisz pauzę do `## Stan`
   (od–do, godzina resetu z komunikatu jeśli była), koniec tury — nie halt. Przy pierwszym
   udanym tiku heartbeat: teraz < koniec nocy (domyślnie 08:00 lokalnie albo `koniec:` z celu)
-  **i** pauzy < 2 → łańcuch od kroku z `## Stan`; inaczej halt C.
+  **i** pauzy ≤ 2 → łańcuch od kroku z `## Stan`; inaczej halt C.
 
 ### Decyzja odwracalna — nie blokuj
 
@@ -259,7 +259,7 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 - działa, ale bez zmian w gicie i PR od > 90 min (`git log -1 --format=%ct` na branchu +
   ostatni check) → `TaskStop`, potem wznowienie jak wyżej;
 - nic nie działa, a noc nieskończona (także przerwana tura orkiestratora) → łańcuch od kroku
-  z `## Stan` (przypadek D: pauzy < 2 i przed końcem nocy → wznów, inaczej halt C).
+  z `## Stan` (przypadek D: pauzy ≤ 2 i przed końcem nocy → wznów, inaczej halt C).
 
 ## Pomiar kosztu ticketu (Claude Code)
 
