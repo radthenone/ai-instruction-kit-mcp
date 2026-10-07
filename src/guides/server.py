@@ -139,12 +139,17 @@ def get_language() -> str:
             "and commit messages — **English**."
         )
         chat = "Chat replies: English (unless user asks otherwise)."
+        tdd: list[str] = []
     else:
         prose = (
             "Odpowiedzi agenta, docstringi publiczne, body issue/PR, komentarze review "
             "i komunikaty commitów — **po polsku**."
         )
         chat = "Odpowiedzi w czacie: po polsku (chyba że user prosi inaczej)."
+        tdd = [
+            "- **`/tdd` override** (`core:language-pl` § Testy): \"the project's domain language\" "
+            "means the English term names from `CONTEXT.md` headings, never the Polish definition prose."
+        ]
 
     lines = [
         f"# Language: `{lang}`",
@@ -160,9 +165,8 @@ def get_language() -> str:
         f"- **Prose follows `{lang}`**: {prose}",
         "- **Code identifiers**: always English, including test function and class names "
         "(`test_*`, `class Test*`).",
-        "- **`/tdd` override**: \"the project's domain language\" means the English term names "
-        "from `CONTEXT.md` headings, never the definition prose.",
         f"- {chat}",
+        *tdd,
         "",
         "Source of truth for agents: this tool + the language module inside bundles.",
     ]

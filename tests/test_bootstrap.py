@@ -565,17 +565,23 @@ class TestTestNamePolicy(_BootstrapTestCase):
                 server._kit_root, server._workspace_root, server._language_override = saved
 
     def test_get_language_names_tests_and_tdd_override(self) -> None:
+        """Polityka identyfikatorów wymienia nazwy testów, a `pl` wskazuje override `/tdd`."""
         out = self._language("pl")
         self.assertIn("test function and class names", out)
         self.assertIn("/tdd", out)
-        self.assertIn("test function and class names", self._language("en"))
+        en = self._language("en")
+        self.assertIn("test function and class names", en)
+        self.assertNotIn("/tdd", en)
 
     def test_bugbot_blocks_non_english_test_names(self) -> None:
+        """Zbootstrapowany BUGBOT.md ma blokującą regułę na nieangielskie nazwy."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
             bugbot = (workspace / "BUGBOT.md").read_text(encoding="utf-8")
-            self.assertIn("Non-English identifier", bugbot)
+            rule = bugbot[bugbot.index("Non-English identifier") - 300:]
+            self.assertIn("`test_*`", rule)
+            self.assertIn("blocking bug", rule)
 
 
 if __name__ == "__main__":

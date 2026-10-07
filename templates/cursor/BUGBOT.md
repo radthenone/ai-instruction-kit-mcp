@@ -12,7 +12,7 @@ Stack każdego Tieru: MCP `get_bundle`. Dostosuj ścieżki i taski do `.ai/proje
 If the diff adds or renames a function, class, or test (`test_*`, `class Test*`; strings in `describe`/`it` are prose, not names) with a non-English name:
 
 - Add a blocking bug titled "Non-English identifier"
-- Body: "Nazwy funkcji, klas i testów po angielsku (terminy z nagłówków `CONTEXT.md`); opis zachowania w docstringu."
+- Body: "Nazwy funkcji, klas i testów po angielsku (terminy z nagłówków `CONTEXT.md`, jeśli istnieje); opis zachowania w docstringu."
 
 <!-- tier:backend -->
 ## Backend
