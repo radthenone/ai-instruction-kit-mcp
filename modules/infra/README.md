@@ -42,3 +42,11 @@ Zmiana brokera = edycja profilu. Kod tasków bez zmian.
 2. Zarejestruj w `manifest.yaml`: `infra:database:mysql`
 3. Rozszerz mapowanie w `resolver.py` → slot `database: mysql`
 4. Użyj w profilu projektu
+
+## Lekki tryb VPS (auto, nie slot)
+
+`infra:vps-lightweight` nie wchodzi przez `decisions` — dokleja go resolver, gdy
+host to VPS (`KIT_HOST_PROFILE=vps` albo heurystyka: Linux, małe zasoby, brak swapu,
+wirtualizacja/brak desktopu; CI i WSL zawsze `local`). Trafia do każdego bundle'a.
+Projekt dopisuje tylko podział lekkie/ciężkie taski w `.ai/project.md` (przez
+`/kit-project-edit`). Bez hooka blokującego.

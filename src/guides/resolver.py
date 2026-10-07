@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from guides.manifest import BundleRule, Manifest, Mappings, load_manifest
+from guides.host_profile import VPS_LIGHTWEIGHT_MODULE, detect_host_profile
 
 CODEGEN_SLOT = "codegen"
 AUTH_SLOT = "auth"
@@ -541,6 +542,9 @@ def _routed_module_ids(
         info = manifest.modules.get(module_id)
         if info is None:
             continue
+        if module_id == VPS_LIGHTWEIGHT_MODULE:
+            selected.append(module_id)
+            continue
         if module_id in wanted:
             selected.append(module_id)
             continue
@@ -597,6 +601,7 @@ def _collect_module_ids(
     language: str,
     selections: dict[str, str],
     tiers: dict[str, str],
+    host_profile: str | None = None,
 ) -> tuple[list[str], set[str]]:
     """
     Zbierz listę modułów włączonych przez profil.
@@ -610,6 +615,8 @@ def _collect_module_ids(
         language: Znormalizowany język.
         selections: Slot → wybrana wartość (wynik ``profile_selections``).
         tiers: Tier → Stack albo ``none`` (wynik ``profile_tiers``).
+        host_profile: ``vps`` / ``local`` albo ``None`` (= wykryj heurystyką
+            + ``KIT_HOST_PROFILE``). VPS dokleja ``infra:vps-lightweight``.
 
     Returns:
         tuple: ``(moduły, moduły_z_tierów)`` — kanoniczne ID istniejących
@@ -686,6 +693,11 @@ def _collect_module_ids(
             ],
             module_ids,
         )
+
+    if host_profile is None:
+        host_profile = detect_host_profile()
+    if host_profile == "vps" and VPS_LIGHTWEIGHT_MODULE in manifest.modules:
+        module_ids.append(VPS_LIGHTWEIGHT_MODULE)
 
     resolved = apply_profile_decisions(
         module_ids,
@@ -796,6 +808,7 @@ def resolve_workspace_profile(
     extra_overlays: list[Path] | None = None,
     language_override: str | None = None,
     notice: str = "",
+    host_profile: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil workspace'u (``.ai/project.profile.yaml``).
@@ -808,6 +821,7 @@ def resolve_workspace_profile(
         kit_root: Opcjonalny root instruction-kit.
         extra_overlays: Dodatkowe pliki overlay z CLI.
         language_override: Nadpisanie języka z CLI/env.
+        host_profile: ``vps`` / ``local`` albo ``None`` (= wykryj heurystyką).
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
@@ -823,6 +837,7 @@ def resolve_workspace_profile(
         extra_overlays=extra_overlays,
         language_override=language_override,
         notice=notice,
+        host_profile=host_profile,
     )
 
 
@@ -834,6 +849,7 @@ def resolve_profile(
     extra_overlays: list[Path] | None = None,
     language_override: str | None = None,
     notice: str = "",
+    host_profile: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
@@ -851,6 +867,9 @@ def resolve_profile(
             efektywny codegen to zawsze ``none``.
         notice: Ostrzeżenie doklejane na początek bundle'i i indeksu
             (np. migracja starej konfiguracji).
+        host_profile: ``vps`` / ``local`` albo ``None`` (= wykryj heurystyką
+            + ``KIT_HOST_PROFILE``). VPS dokleja ``infra:vps-lightweight``
+            do każdego bundle'a.
 
     Returns:
         ResolvedProfile: Gotowe bundle'e i metadane profilu.
@@ -906,7 +925,9 @@ def resolve_profile(
         language=language,
         selections=selections,
         tiers=tiers,
+        host_profile=host_profile,
     )
+    resolved_host = host_profile if host_profile in ("vps", "local") else detect_host_profile()
 
     bundles: dict[str, ResolvedBundle] = {}
     for bundle_name, rule in manifest.bundles.items():
@@ -938,6 +959,7 @@ def resolve_profile(
             f"- Moduł języka: `{lang_module}`",
             f"- Codegen: {codegen}",
             f"- Tiery: backend=`{tiers['backend']}` web=`{tiers['web']}` mobile=`{tiers['mobile']}`",
+            f"- Host: `{resolved_host}`",
             f"- Profil: `{profile_path}`",
             f"- Workspace: `{resolved_workspace}`",
             f"- Kit root: `{manifest.kit_root}`",
