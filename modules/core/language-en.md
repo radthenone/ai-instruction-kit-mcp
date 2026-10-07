@@ -13,6 +13,7 @@
 - Public docstrings (functions, classes, endpoints) — English (Google style, PEP 257).
 - Logical comments — English, only when they explain non-trivial business logic.
 - Type hints — required in new Python and TypeScript code.
+- Test names in English: test functions and classes (`test_*`, `class Test*`).
 
 ## GitHub / git prose
 
