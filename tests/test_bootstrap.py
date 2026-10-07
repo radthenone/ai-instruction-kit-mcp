@@ -552,5 +552,24 @@ class TestServerTool(_BootstrapTestCase):
         self.assertIn("błąd", out)
 
 
+class TestTestNamePolicy(_BootstrapTestCase):
+    """Nazwy testów zawsze po angielsku, także przy `language: pl` (#163)."""
+
+    def _language(self, lang: str) -> str:
+        saved = (server._kit_root, server._workspace_root, server._language_override)
+        with tempfile.TemporaryDirectory() as tmp:
+            server._kit_root, server._workspace_root, server._language_override = KIT_ROOT, Path(tmp), lang
+            try:
+                return server.get_language()
+            finally:
+                server._kit_root, server._workspace_root, server._language_override = saved
+
+    def test_get_language_names_tests_and_tdd_override(self) -> None:
+        out = self._language("pl")
+        self.assertIn("test function and class names", out)
+        self.assertIn("/tdd", out)
+        self.assertIn("test function and class names", self._language("en"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -158,7 +158,10 @@ def get_language() -> str:
         "- **Titles always English**: issue title, PR title, branch slug "
         "(`feat/42-add-cart-coupon`).",
         f"- **Prose follows `{lang}`**: {prose}",
-        "- **Code identifiers**: always English.",
+        "- **Code identifiers**: always English, including test function and class names "
+        "(`test_*`, `class Test*`).",
+        "- **`/tdd` override**: \"the project's domain language\" means the English term names "
+        "from `CONTEXT.md` headings, never the definition prose.",
         f"- {chat}",
         "",
         "Source of truth for agents: this tool + the language module inside bundles.",
