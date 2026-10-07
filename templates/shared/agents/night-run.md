@@ -98,18 +98,30 @@ ticket dostaje needs-human „zablokowany przez #X spoza listy”.
   zna specyfiki projektu; brak źródła → „brak danych”.
 - **Przekazanie:** `### #N` + modele, serwisy, endpointy, migracje z hand-backu. Dopisujesz
   **Ty** po każdym MERGED.
+- **Stan (`## Stan` na końcu CTX):** ticket, id subagenta, krok (`ticket|review|resume|ci`),
+  pauzy (od–do), wznowienia per ticket. Nadpisujesz **Ty** przy każdej zmianie kroku; tik
+  czyta ją jako pierwszą.
+
+### 6. Heartbeat (tylko Claude Code)
+
+`CronCreate`, recurring `13,33,53 * * * *`, prompt z wpisaną na sztywno ścieżką CTX:
+`night-run heartbeat: przeczytaj sekcję „Heartbeat” w /night-run i „## Stan” w <CTX>,
+działaj wg niej.` Bez `CronCreate` u klienta → ten krok pomiń (limit API zostaje haltem C).
+Każde zakończenie nocy (wszystko MERGED, halt, raport) zaczyna się od `CronDelete`.
 
 ## Łańcuch na ticket — dokładnie ten
 
 1. **Subagent ticketu** (świeży, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
-   dosłownie. Wraca z hand-backiem i niewypchniętym branchem. Zapisz jego id.
+   dosłownie. Wraca z hand-backiem i niewypchniętym branchem. Zapisz jego id, nadpisz
+   `## Stan` w `CTX` (ticket, id, krok `ticket`).
 2. **Subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` +
-   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id (do pomiaru).
+   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id, nadpisz `## Stan` (krok `review`).
 3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z
    findingami: potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
-   potwierdzeniem review dla `/git-end`. Dalej kroki 6–8 promptu.
+   potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
+   przed CI — krok `ci`. Dalej kroki 6–8 promptu.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
 5. Dopisz „Przekazanie” do `CTX`, policz koszt ticketu (sekcja „Pomiar”),
    `git checkout $BASE && git pull` przed następnym ticketem.
@@ -191,20 +203,27 @@ z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; 
 po 2 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 
-**halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,
-limit API.
+**halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów.
+U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypadek D, nie C.
+
+**Limity:** 2 pauzy na noc (tylko 429); 2 wznowienia na ticket (inne przyczyny) → needs-human.
 
 ### Zasięg — zanim cokolwiek zrobisz
 
 Które tickety z listy od tego zależą: jawnie (blocked-by) i niejawnie (ticket zmienia
 model/pole/serwis/endpoint, z którego korzysta inny — treść issue + „Przekazanie” w `CTX`).
 
-### Trzy przypadki
+### Przypadki
 
 - **A — tylko ten ticket:** raport na issue, bez merge, następny ticket.
 - **B — część listy:** raport na issue + na każdym zależnym `needs-human: czeka na
   odpowiedzi z #N`; robisz tylko tickety spoza zasięgu.
-- **C — wszystko:** `night-run halted: <powód>` na pierwszym issue, NIGHT-RUN REPORT, koniec.
+- **C — wszystko:** `CronDelete`, potem `night-run halted: <powód>` na pierwszym issue,
+  NIGHT-RUN REPORT, koniec.
+- **D — pauza limitu (tylko Claude Code, 429 / „session limit”):** zapisz pauzę do `## Stan`
+  (od–do, godzina resetu z komunikatu jeśli była), koniec tury — nie halt. Przy pierwszym
+  udanym tiku heartbeat: teraz < koniec nocy (domyślnie 08:00 lokalnie albo `koniec:` z celu)
+  **i** pauzy ≤ 2 → łańcuch od kroku z `## Stan`; inaczej halt C.
 
 ### Decyzja odwracalna — nie blokuj
 
@@ -228,6 +247,19 @@ Sprawdzone: <pliki, ADR, testy, komendy z wynikiem>
 Wpływ: blokuje #X, #Y · nie blokuje #Z
 Stan kodu: branch <nazwa> wypchnięty / porzucony
 ```
+
+## Heartbeat (tik co 20 min, tylko Claude Code)
+
+Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents`):
+
+- działa → jedna linia „ok”, koniec tiku;
+- failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
+  subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
+  (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
+- działa, ale bez zmian w gicie i PR od > 90 min (`git log -1 --format=%ct` na branchu +
+  ostatni check) → `TaskStop`, potem wznowienie jak wyżej;
+- nic nie działa, a noc nieskończona (także przerwana tura orkiestratora) → łańcuch od kroku
+  z `## Stan` (przypadek D: pauzy ≤ 2 i przed końcem nocy → wznów, inaczej halt C).
 
 ## Pomiar kosztu ticketu (Claude Code)
 
@@ -259,13 +291,16 @@ maks.). Czas = wall-clock z oczekiwaniem na review. Inny klient → „brak tran
 
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
-Warunek `/goal` sprawdza transkrypt, więc raport i dowody muszą paść w rozmowie.
+Zaczynasz od `CronDelete`. Warunek `/goal` sprawdza transkrypt, więc raport i dowody muszą
+paść w rozmowie.
 
 ```markdown
 ## NIGHT-RUN REPORT
 Baza: <BASE> — <powód>
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
+Pauzy limitu: <liczba> (przestój <od>–<do>, reset: <godzina z komunikatu / brak>)
+Wznowienia per ticket: <#N: liczba>
 
 | Ticket | Stan | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- |
