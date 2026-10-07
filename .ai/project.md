@@ -1,6 +1,6 @@
 # Overlay projektu — TYLKO unikalne informacje tego repo
 
-base: dev-2
+base: dev
 
 > Reużywalna zasada architektoniczna (zadziałałaby w innym projekcie tej samej kategorii)?
 > Nie wpisuj jej tu — zaproponuj zmianę w instruction-kit (`core:repo-first`, sekcja

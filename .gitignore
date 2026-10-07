@@ -104,3 +104,6 @@ skills-lock.json
 .agents/skills/
 skills-lock.json
 # <<< instruction-kit <<<
+
+# Runtime daemona CodeGraph (PID, pipe) — per maszyna
+.codegraph/daemon.pid
