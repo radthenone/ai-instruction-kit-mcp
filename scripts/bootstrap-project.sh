@@ -289,6 +289,8 @@ fill_mcp() {
   FROM_SRC="$FROM_SRC" LANGUAGE="$LANGUAGE" \
   CLIENTS_ARG="$CLIENTS_ARG" \
   WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -372,7 +374,7 @@ if Path(from_src).is_dir():
 KIT_SERVER = "project-guides"
 
 
-def merge_json(old_text):
+def merge_json(old_text: str) -> str:
     old = json.loads(old_text)
     new = json.loads(text)
     key = next(k for k in ("mcpServers", "servers", "mcp") if k in new)
@@ -391,26 +393,36 @@ def merge_json(old_text):
 TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
 
 
-def toml_kit_span(lines):
+def toml_kit_span(lines: list[str]) -> tuple[int, int] | None:
     """Zakres linii tabeli `[mcp_servers.project-guides]` (z podtabelami) albo None."""
     start = None
+    end = len(lines)
     for i, line in enumerate(lines):
         m = TOML_HEADER.match(line)
         if not m:
             continue
-        name = m.group(1).replace('"', "")
+        name = re.sub(r"""\s*\.\s*""", ".", m.group(1)).replace('"', "").replace("'", "")
         is_kit = name == f"mcp_servers.{KIT_SERVER}" or name.startswith(f"mcp_servers.{KIT_SERVER}.")
         if start is None and is_kit:
             start = i
         elif start is not None and not is_kit:
-            return start, i
-    return None if start is None else (start, len(lines))
+            end = i
+            break
+    if start is None:
+        return None
+    # Komentarze i puste linie tuż przed następną tabelą należą do niej, nie do kita.
+    while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
+        end -= 1
+    return start, end
 
 
-def merge_toml(old_text):
+def merge_toml(old_text: str) -> str:
+    # ponytail: tekstowa podmiana tabeli; wpis kita zapisany inaczej (dotted key, inline
+    # table) da duplikat — łapie go walidacja wyniku niżej, na Pythonie < 3.11 nie ma
+    # `tomllib`, więc wtedy bez walidacji.
     try:
         import tomllib
-    except ImportError:  # Python < 3.11: walidacja niedostępna, scalamy tekstowo
+    except ImportError:
         tomllib = None
     if tomllib:
         tomllib.loads(old_text)
@@ -426,7 +438,10 @@ def merge_toml(old_text):
         merged = old_lines + sep + kit_block
     else:
         merged = old_lines[: span[0]] + kit_block + old_lines[span[1] :]
-    return "".join(merged)
+    result = "".join(merged)
+    if tomllib:
+        tomllib.loads(result)
+    return result
 
 
 if dest.is_file():
@@ -522,7 +537,13 @@ body = body.replace(
 )
 # Wiodący `/` doklejamy dopiero tutaj: w env Git Bash (MSYS) zamieniłby pierwszą
 # linię `/.mcp.json` na `C:/Program Files/Git/.mcp.json`.
-machine_files = "\n".join("/" + line for line in os.environ["MACHINE_FILES"].splitlines())
+# Do tego `.bak`, które `fill_mcp` zostawia przy nieparsowalnym konfigu — ta sama treść,
+# często z tokenami w `env` serwerów MCP.
+machine_files = "\n".join(
+    f"/{line}\n/{line}.bak" if line.endswith((".json", ".toml")) and "kit-bootstrap" not in line
+    else "/" + line
+    for line in os.environ["MACHINE_FILES"].splitlines()
+)
 body = body.replace("@KIT_MACHINE_FILES@", machine_files)
 
 section = f"{begin}\n{body}\n{end}\n"

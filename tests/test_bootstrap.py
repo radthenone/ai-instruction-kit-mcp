@@ -365,13 +365,14 @@ class TestUserConfigMerge(_BootstrapTestCase):
             self._run(workspace, "codex")
             path = workspace / ".codex" / "config.toml"
             text = path.read_text(encoding="utf-8").replace('"guides-mcp"', '"stale"')
-            path.write_text('model = "o3"\n\n' + text + '\n[mcp_servers.mine]\ncommand = "x"\n', encoding="utf-8")
+            mine = '# mój serwer\n[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text('model = "o3"\n\n' + text + "\n" + mine, encoding="utf-8")
 
             self._run(workspace, "codex")
 
             text = path.read_text(encoding="utf-8")
             self.assertIn('model = "o3"', text)
-            self.assertIn('[mcp_servers.mine]\ncommand = "x"', text)
+            self.assertIn(mine, text)
             self.assertIn('"guides-mcp"', text)
             self.assertNotIn('"stale"', text)
             self.assertEqual(text.count("[mcp_servers.project-guides]"), 1)
@@ -397,12 +398,15 @@ class TestUserConfigMerge(_BootstrapTestCase):
             workspace.mkdir()
             original = '{\n  // komentarz JSONC\n  "mcp": {}\n}\n'
             (workspace / "opencode.json").write_text(original, encoding="utf-8")
+            (workspace / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
 
             out = self._run(workspace, "opencode")
 
             self.assertEqual((workspace / "opencode.json.bak").read_text(encoding="utf-8"), original)
             self.assertIn("project-guides", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
             self.assertIn("opencode.json.bak", out)
+            # Backup ma tę samą treść co config, łącznie z tokenami — nie może wejść do gita.
+            self.assertIn("/opencode.json.bak\n", (workspace / ".gitignore").read_text(encoding="utf-8"))
 
 
 class TestTierAgents(_BootstrapTestCase):
