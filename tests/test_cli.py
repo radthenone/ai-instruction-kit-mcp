@@ -134,7 +134,9 @@ class TestReload(_BootstrapTestCase):
                 ),
                 encoding="utf-8",
             )
-            (app / ".mcp.json").write_text('{"args": ["--preset", "_base"]}\n', encoding="utf-8")
+            (app / ".mcp.json").write_text(
+                '{"mcpServers": {"project-guides": {"args": ["--preset", "_base"]}}}\n', encoding="utf-8"
+            )
 
             code, out = _quiet_main("reload", str(app))
 
@@ -144,9 +146,9 @@ class TestReload(_BootstrapTestCase):
             self.assertEqual(profile["language"], "en")
             self.assertEqual(profile["clients"], "claude")
             self.assertEqual(profile["backend"], "none")
-            mcp = (app / ".mcp.json").read_text(encoding="utf-8")
-            self.assertNotIn("--preset", mcp)
-            self.assertIn('"--language", "en"', mcp)
+            args = json.loads((app / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["project-guides"]["args"]
+            self.assertNotIn("--preset", args)
+            self.assertEqual(args[args.index("--language") + 1], "en")
             stamp = json.loads((app / ".ai" / ".kit-bootstrap.json").read_text(encoding="utf-8"))
             self.assertNotIn("preset", stamp)
 
