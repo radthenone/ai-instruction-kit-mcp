@@ -2,6 +2,7 @@
 name: review-architecture
 description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /review-architecture.
 readonly: true
+model: sonnet
 ---
 
 ## Reguły wspólne (obowiązkowe)

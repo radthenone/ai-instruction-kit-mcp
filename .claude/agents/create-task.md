@@ -1,6 +1,7 @@
 ---
 name: create-task
 description: Pomysł → ocena na tle repo → karta issue → akceptacja → issue. Use when /create-task, nowy pomysł do zapisania, "czy warto to robić", issue przed /git-start. Nie zakłada brancha. Wywołuj jako /create-task.
+model: sonnet
 ---
 
 ## Reguły wspólne

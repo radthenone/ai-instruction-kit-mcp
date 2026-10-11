@@ -18,3 +18,13 @@ agents:
   light: cleanup,git-check,git-commit,git-end,git-start,headless
   standard: create-skill,create-task,kit-project-begin,kit-project-edit,review-architecture,review-backend,review-bugbot,review-frontend,review-tests,review-ui,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend
   heavy: night-run,review-edge
+
+models:
+  claude:
+    light: haiku
+    standard: sonnet
+    heavy: opus
+  opencode:
+    light: opencode/muse-spark-1.3-contributor-free
+    standard: opencode/muse-spark-1.3-contributor-free
+    heavy: opencode/muse-spark-1.3-contributor-free
