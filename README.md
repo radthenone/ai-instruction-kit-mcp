@@ -1041,6 +1041,13 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
 - **Antigravity**: `scripts/render_agent_commands.py antigravity` → `.agents/workflows/*.md` (wywołanie `/nazwa`; limit 12 000 znaków/plik, kit przycina jeśli trzeba).
 - **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/command/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
   Guardy kita: plugin `.opencode/plugins/kit-guards.js` + `.opencode/hooks/` (sekcja „Guardrails”).
+  Model: projektowy `opencode.json` dostaje przy install i reload `model` z globalnego
+  `~/.config/opencode/opencode.json` albo `opencode.jsonc` (`$XDG_CONFIG_HOME/opencode/…`, ten
+  sam katalog na Windows), tylko gdy projekt nie ma własnego `model`. Kolejność: `model`
+  w projektowym `opencode.json` → globalny config → domyślny model OpenCode. Nadpisanie: wpisz
+  `model` w projektowym `opencode.json` — reload go nie rusza. Kopia nie śledzi późniejszych
+  zmian globalnego configu; żeby ją odświeżyć, usuń `model` z projektu i zrób reload. Inne pola
+  globalnego configu (provider, agent) nie są kopiowane.
   Do tego `/goal` i `/loop` jak w Claude Code: `templates/opencode/command/{goal,loop}.md` + plugin `.opencode/plugins/kit-loop.js`, który po `session.execution.succeeded` wysyła kolejną turę. Stop: `<promise>DONE</promise>` w odpowiedzi, Esc, `/goal clear` / `/loop stop`, limit tur (goal 25, loop 10, `max=N`); `/loop 5m <zadanie>` powtarza co interwał.
 
 Formaty VS Code/Kilo/Antigravity/opencode oparte o publiczną dokumentację tych klientów (sierpień 2026) — nie testowane na żywych instalacjach; jeśli coś nie zadziała, zgłoś różnicę i popraw `scripts/render_agent_commands.py`.
