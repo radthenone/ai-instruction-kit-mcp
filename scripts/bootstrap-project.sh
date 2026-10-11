@@ -957,10 +957,66 @@ install_antigravity() {
   copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 
+# `model` z globalnego configu opencode, gdy projektowy `opencode.json` go nie ma (#167).
+# Katalog jak w opencode: `$XDG_CONFIG_HOME` albo `<home>/.config` (home z Pythona — na
+# Windows USERPROFILE, nie `$HOME` Git Basha); pliki `config.json`, `opencode.json`,
+# `opencode.jsonc`, ostatni z `model` wygrywa. Własny `model` projektu wygrywa; brak
+# configu, pola albo nieczytelny plik = brak pola, bez błędu.
+inherit_opencode_model() {
+  DEST="$TARGET/opencode.json" "$PYTHON_BIN" - <<'PY'
+import json
+import os
+import re
+from pathlib import Path
+
+dest = Path(os.environ["DEST"])
+STRING = r'("(?:\\.|[^"\\])*")'
+
+
+def load_jsonc(text: str):
+    # Komentarze `//` i `/* */` oraz przecinki końcowe — poza stringami.
+    text = re.sub(STRING + r"|//[^\n]*|/\*.*?\*/", lambda m: m.group(1) or "", text, flags=re.S)
+    text = re.sub(STRING + r"|,(\s*[}\]])", lambda m: m.group(1) or m.group(2), text)
+    return json.loads(text)
+
+
+try:
+    text = dest.read_text(encoding="utf-8")
+    project = json.loads(text)
+except (OSError, ValueError):
+    raise SystemExit(0)
+if not isinstance(project, dict) or "model" in project:
+    raise SystemExit(0)
+config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+model, source = None, None
+for name in ("config.json", "opencode.json", "opencode.jsonc"):
+    try:
+        value = load_jsonc((config_dir / name).read_text(encoding="utf-8-sig")).get("model")
+    except (OSError, ValueError, AttributeError):
+        continue
+    if isinstance(value, str) and value:
+        model, source = value, config_dir / name
+if model is None:
+    raise SystemExit(0)
+# Wstawka zamiast json.dumps — układ pliku z fill_mcp (tablice w linii) zostaje.
+line = f'  "model": {json.dumps(model, ensure_ascii=False)},\n'
+updated = re.sub(r"\A\{[ \t]*\n", lambda m: m.group(0) + line, text, count=1)
+try:
+    ok = json.loads(updated).get("model") == model
+except ValueError:
+    ok = False
+if not ok:
+    updated = json.dumps({"model": model, **project}, indent=2, ensure_ascii=False) + "\n"
+dest.write_text(updated, encoding="utf-8", newline="\n")
+print(f"  + opencode.json: model {model} (z {source})")
+PY
+}
+
 install_opencode() {
   mkdir -p "$TARGET/.opencode"
   fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
   echo "  + opencode.json"
+  inherit_opencode_model
   render_agent_commands opencode "$TARGET/.opencode/command"
   apply_model_tiers opencode "$TARGET/.opencode/command"
   copy_shared_skills opencode "$TARGET/.opencode/command"
