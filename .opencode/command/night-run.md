@@ -1,5 +1,6 @@
 ---
 description: "Autonomiczna nocna praca na liście issue pod /goal — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) i review na diffie, needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run."
+model: opencode/muse-spark-1.3-contributor-free
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
