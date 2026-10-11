@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from _shell import is_ci, resolve_bash
 
@@ -42,6 +43,12 @@ class _BootstrapTestCase(unittest.TestCase):
             if is_ci():
                 self.fail("brak bash w środowisku CI — bootstrap musi się wykonać")
             self.skipTest("brak bash / Git for Windows w PATH")
+        # Globalny config opencode z tej maszyny nie może przeciekać do wyniku (#167).
+        config_home = tempfile.TemporaryDirectory()
+        self.addCleanup(config_home.cleanup)
+        patcher = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config_home.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
 
 class TestFindBash(_BootstrapTestCase):
@@ -582,6 +589,235 @@ class TestTestNamePolicy(_BootstrapTestCase):
             rule = bugbot[bugbot.index("Non-English identifier") - 300:]
             self.assertIn("`test_*`", rule)
             self.assertIn("blocking bug", rule)
+
+
+
+class TestModelTiers(_BootstrapTestCase):
+    """`models:` / `agents:` w Profilu → `model:` u Claude i opencode (#168)."""
+
+    def _install(self, workspace: Path, profile_extra: str = "") -> None:
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+        if profile_extra:
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(profile.read_text(encoding="utf-8") + profile_extra, encoding="utf-8")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+
+    def test_without_models_agents_have_no_model_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace)
+            profile = (workspace / ".ai" / "project.profile.yaml").read_text(encoding="utf-8")
+            self.assertIn("\nagents:\n  light: ", profile)
+            for rel in (".claude/agents/git-start.md", ".opencode/command/git-start.md"):
+                text = (workspace / rel).read_text(encoding="utf-8")
+                self.assertNotIn("model:", text.split("---")[1], rel)
+                self.assertNotIn("model-tier", text, rel)
+
+    def test_models_mapping_renders_model_for_claude_and_opencode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(
+                workspace,
+                "\nmodels:\n  claude:\n    light: haiku\n  opencode:\n    light: anthropic/claude-haiku-5-5\n",
+            )
+            read = lambda rel: (workspace / rel).read_text(encoding="utf-8")  # noqa: E731
+            self.assertIn("\nmodel: haiku\n---", read(".claude/agents/git-start.md"))
+            self.assertIn(
+                "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/command/git-start.md")
+            )
+            self.assertNotIn("model:", read(".claude/commands/git-start.md").split("---")[1])
+            self.assertNotIn("model:", read(".claude/agents/night-run.md").split("---")[1])
+
+    def test_invalid_agents_block_fails_with_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            with self.assertRaises(BootstrapError) as ctx:
+                self._install(workspace, "\nmodels:\n  claude:\n    turbo: haiku\n")
+            self.assertIn("models.claude.turbo", str(ctx.exception))
+
+
+class TestOpencodeGuards(_BootstrapTestCase):
+    """`--clients opencode` kładzie plugin guardów i guardy w `.opencode/` (#166)."""
+
+    def test_opencode_gets_guard_plugin_and_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
+            self.assertTrue((workspace / ".opencode/plugins/kit-guards.js").is_file())
+            for guard in ("invoke-hook.js", "git-guard.mjs", "sensitive-files-guard.mjs"):
+                with self.subTest(guard=guard):
+                    self.assertEqual(
+                        (workspace / ".opencode/hooks" / guard).read_bytes(),
+                        (KIT_ROOT / "templates/shared/guards" / guard).read_bytes(),
+                    )
+
+    def test_dropping_opencode_removes_its_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            self.assertFalse((workspace / ".opencode").exists())
+
+
+class TestOpencodeDefaultModel(_BootstrapTestCase):
+    """Projektowy `opencode.json` dziedziczy `model` z globalnego configu (#167)."""
+
+    def _run(self, home: Path, workspace: Path) -> dict:
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(home)}):
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
+        return json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))
+
+    def _global(self, home: Path, name: str, text: str) -> None:
+        (home / "opencode").mkdir(parents=True, exist_ok=True)
+        (home / "opencode" / name).write_text(text, encoding="utf-8")
+
+    def test_missing_project_model_is_copied_from_global(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark", "theme": "x"}')
+            data = self._run(home, workspace)
+            self.assertEqual(data["model"], "opencode/muse-spark")
+            self.assertNotIn("theme", data)
+
+    def test_project_model_is_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
+            self._run(home, workspace)
+            path = workspace / "opencode.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["model"] = "anthropic/claude-x"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            self.assertEqual(self._run(home, workspace)["model"], "anthropic/claude-x")
+
+    def test_no_global_config_or_model_leaves_field_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self.assertNotIn("model", self._run(home, workspace))
+            self._global(home, "opencode.json", '{"theme": "x"}')
+            self.assertNotIn("model", self._run(home, workspace))
+            self._global(home, "opencode.json", "{ zepsuty")
+            self.assertNotIn("model", self._run(home, workspace))
+
+    def test_inherited_model_keeps_kit_layout_of_opencode_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
+            self._run(home, workspace)
+            text = (workspace / "opencode.json").read_text(encoding="utf-8")
+            self.assertIn('"run", "--project"', text)
+
+    def test_last_global_file_wins_like_opencode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "config.json", '{"model": "a/legacy"}')
+            self._global(home, "opencode.json", '{"model": "a/json"}')
+            self._global(home, "opencode.jsonc", '{"model": "a/jsonc"}')
+            self.assertEqual(self._run(home, workspace)["model"], "a/jsonc")
+
+    def test_global_config_with_bom_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '\ufeff{"model": "a/bom"}')
+            self.assertEqual(self._run(home, workspace)["model"], "a/bom")
+
+    def test_jsonc_global_config_with_comments_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(
+                home,
+                "opencode.jsonc",
+                '{\n  // domyślny\n  "$schema": "https://opencode.ai/config.json",\n'
+                '  /* darmowy */ "model": "opencode/muse-spark",\n}\n',
+            )
+            self.assertEqual(self._run(home, workspace)["model"], "opencode/muse-spark")
+
+
+
+class TestHeadlessAgent(_BootstrapTestCase):
+    """Agent `/headless` i wrapper tylko przy ≥2 klientach z trybem headless (#169)."""
+
+    HOST_FILES = {
+        "claude": (".claude/agents/headless.md", ".claude/commands/headless.md"),
+        "opencode": (".opencode/command/headless.md",),
+        "codex": (".codex/skills/headless/SKILL.md",),
+        "cursor": (".cursor/agents/headless.md",),
+    }
+
+    def _install(self, workspace: Path, clients: str) -> None:
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients)
+
+    def test_installed_for_every_host_with_its_own_host_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode,codex,cursor")
+            self.assertEqual(
+                (workspace / ".ai/headless.mjs").read_bytes(),
+                (KIT_ROOT / "templates/shared/headless/headless.mjs").read_bytes(),
+            )
+            for host, files in self.HOST_FILES.items():
+                for rel in files:
+                    with self.subTest(file=rel):
+                        text = (workspace / rel).read_text(encoding="utf-8")
+                        self.assertIn(f"--host {host} ", text)
+                        self.assertNotIn("@KIT_HOST@", text)
+
+    def test_not_installed_with_fewer_than_two_headless_clients(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,codex,cursor")
+            self.assertFalse((workspace / ".ai/headless.mjs").exists())
+            self.assertFalse((workspace / ".claude/agents/headless.md").exists())
+            self.assertFalse((workspace / ".codex/skills/headless").exists())
+
+    def test_removed_when_clients_drop_below_two(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode,antigravity")
+            self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
+            self._install(workspace, "claude,antigravity")
+            self.assertFalse((workspace / ".agents/skills/headless").exists())
+            self.assertFalse((workspace / ".ai/headless.mjs").exists())
+            self.assertFalse((workspace / ".claude/agents/headless.md").exists())
+            self.assertFalse((workspace / ".claude/commands/headless.md").exists())
+
+    def test_light_tier_model_lands_in_claude_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode")
+            agent = workspace / ".claude/agents/headless.md"
+            self.assertNotIn("model:", agent.read_text(encoding="utf-8").split("---")[1])
+            profile = workspace / ".ai/project.profile.yaml"
+            profile.write_text(
+                profile.read_text(encoding="utf-8") + "\nmodels:\n  claude:\n    light: haiku\n",
+                encoding="utf-8",
+            )
+            self._install(workspace, "claude,opencode")
+            self.assertIn("\nmodel: haiku\n---", agent.read_text(encoding="utf-8"))
+
+    def test_remove_deletes_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, remove=True)
+            self.assertFalse((workspace / ".ai/headless.mjs").exists())
 
 
 if __name__ == "__main__":

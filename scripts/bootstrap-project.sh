@@ -618,13 +618,17 @@ PY
 # nazwy pominiętych agentów (do sprzątnięcia z poprzedniego Bootstrapu).
 stage_shared_agents() {
   local dest="$1"
-  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
+  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" HEADLESS="$HEADLESS" "$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
 
 chosen = set(os.environ["TIERS"].split())
 dest = Path(os.environ["DEST"])
 for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
+    # /headless ma sens dopiero przy dwóch klientach z trybem headless (#169).
+    if src.stem == "headless" and os.environ["HEADLESS"] != "1":
+        print(src.stem)
+        continue
     lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
     end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
     tier = next(
@@ -634,9 +638,53 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
     if tier and tier not in chosen:
         print(src.stem)
         continue
-    kept = [line for i, line in enumerate(lines) if not (0 < i < end and line.startswith("tier:"))]
+    # `model-tier:` czyta tylko model_tiers.py (z template) — klienci go nie znają.
+    kept = [
+        line for i, line in enumerate(lines)
+        if not (0 < i < end and line.startswith(("tier:", "model-tier:")))
+    ]
     (dest / src.name).write_text("".join(kept), encoding="utf-8", newline="\n")
 PY
+}
+
+# /headless (#169): wrapper wspólny dla hostów + `@KIT_HOST@` w pliku agenta każdego
+# klienta, żeby wrapper wiedział, kto woła (wykonawca != host). Wykonawcy = klienci
+# z trybem headless i guardami kita — ta sama lista co EXECUTORS w headless.mjs.
+HEADLESS_EXECUTORS="claude opencode"
+
+headless_enabled() {
+  local c n=0
+  for c in "${CLIENTS_LIST[@]}"; do
+    [[ " $HEADLESS_EXECUTORS " == *" $c "* ]] && n=$((n + 1))
+  done
+  [[ "$n" -ge 2 && "$SKIP_AGENTS" -eq 0 ]]
+}
+
+install_headless() {
+  local c rel
+  if [[ "$HEADLESS" != "1" ]]; then
+    kit_rm .ai/headless.mjs
+    return 0
+  fi
+  cp "$KIT_ROOT/templates/shared/headless/headless.mjs" "$TARGET/.ai/headless.mjs"
+  for c in "${CLIENTS_LIST[@]}"; do
+    case "$c" in
+      cursor) set -- .cursor/agents/headless.md ;;
+      claude) set -- .claude/agents/headless.md .claude/commands/headless.md ;;
+      codex) set -- .codex/skills/headless/SKILL.md ;;
+      vscode) set -- .github/prompts/headless.prompt.md ;;
+      kiro) set -- .kiro/agents/headless.md ;;
+      kilo) set -- .kilocode/workflows/headless.md ;;
+      antigravity) set -- .agents/skills/headless/SKILL.md ;;
+      opencode) set -- .opencode/command/headless.md ;;
+    esac
+    for rel in "$@"; do
+      [[ -f "$TARGET/$rel" ]] || continue
+      # Bez `sed -i` — GNU i BSD różnią się składnią.
+      sed "s/@KIT_HOST@/$c/g" "$TARGET/$rel" > "$TARGET/$rel.tmp" && mv "$TARGET/$rel.tmp" "$TARGET/$rel"
+    done
+  done
+  echo "  + .ai/headless.mjs (/headless — wykonawcy: $HEADLESS_EXECUTORS)"
 }
 
 # Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
@@ -649,7 +697,7 @@ prune_tier_agents() {
       "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
       "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
       "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
-    rm -rf "$TARGET/.codex/skills/$name"
+    rm -rf "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
   done
 }
 
@@ -691,6 +739,13 @@ PY
 # Exit 0, gdy plik to nietknięty render BUGBOT.md kita — wtedy wolno go usunąć.
 bugbot_pristine() {
   CHECK_ONLY=1 copy_bugbot_md "$1" >/dev/null
+}
+
+# `model:` z Profilu (`models.<klient>.<tier>`) dla agentów kita w danym tierze (#168).
+# Bez mapowania pliki zostają jak z template — klient dziedziczy model sesji.
+apply_model_tiers() {
+  [[ "$SKIP_AGENTS" -eq 0 ]] || return 0
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/model_tiers.py" apply "$1" "$TARGET/.ai/project.profile.yaml" "$2"
 }
 
 copy_shared_agents() {
@@ -849,6 +904,7 @@ install_claude() {
   echo "  + .claude/hooks/ + wpisy hookow kita w .claude/settings.json"
 
   copy_shared_agents "$TARGET/.claude/agents"
+  apply_model_tiers claude "$TARGET/.claude/agents"
   copy_claude_commands "$TARGET/.claude/commands"
   copy_shared_skills claude "$TARGET/.claude/skills"
 }
@@ -945,11 +1001,68 @@ install_antigravity() {
   copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 
+# `model` z globalnego configu opencode, gdy projektowy `opencode.json` go nie ma (#167).
+# Katalog jak w opencode: `$XDG_CONFIG_HOME` albo `<home>/.config` (home z Pythona — na
+# Windows USERPROFILE, nie `$HOME` Git Basha); pliki `config.json`, `opencode.json`,
+# `opencode.jsonc`, ostatni z `model` wygrywa. Własny `model` projektu wygrywa; brak
+# configu, pola albo nieczytelny plik = brak pola, bez błędu.
+inherit_opencode_model() {
+  DEST="$TARGET/opencode.json" "$PYTHON_BIN" - <<'PY'
+import json
+import os
+import re
+from pathlib import Path
+
+dest = Path(os.environ["DEST"])
+STRING = r'("(?:\\.|[^"\\])*")'
+
+
+def load_jsonc(text: str):
+    # Komentarze `//` i `/* */` oraz przecinki końcowe — poza stringami.
+    text = re.sub(STRING + r"|//[^\n]*|/\*.*?\*/", lambda m: m.group(1) or "", text, flags=re.S)
+    text = re.sub(STRING + r"|,(\s*[}\]])", lambda m: m.group(1) or m.group(2), text)
+    return json.loads(text)
+
+
+try:
+    text = dest.read_text(encoding="utf-8")
+    project = json.loads(text)
+except (OSError, ValueError):
+    raise SystemExit(0)
+if not isinstance(project, dict) or "model" in project:
+    raise SystemExit(0)
+config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+model, source = None, None
+for name in ("config.json", "opencode.json", "opencode.jsonc"):
+    try:
+        value = load_jsonc((config_dir / name).read_text(encoding="utf-8-sig")).get("model")
+    except (OSError, ValueError, AttributeError):
+        continue
+    if isinstance(value, str) and value:
+        model, source = value, config_dir / name
+if model is None:
+    raise SystemExit(0)
+# Wstawka zamiast json.dumps — układ pliku z fill_mcp (tablice w linii) zostaje.
+line = f'  "model": {json.dumps(model, ensure_ascii=False)},\n'
+updated = re.sub(r"\A\{[ \t]*\n", lambda m: m.group(0) + line, text, count=1)
+try:
+    ok = json.loads(updated).get("model") == model
+except ValueError:
+    ok = False
+if not ok:
+    updated = json.dumps({"model": model, **project}, indent=2, ensure_ascii=False) + "\n"
+dest.write_text(updated, encoding="utf-8", newline="\n")
+print(f"  + opencode.json: model {model} (z {source})")
+PY
+}
+
 install_opencode() {
   mkdir -p "$TARGET/.opencode"
   fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
   echo "  + opencode.json"
+  inherit_opencode_model
   render_agent_commands opencode "$TARGET/.opencode/command"
+  apply_model_tiers opencode "$TARGET/.opencode/command"
   copy_shared_skills opencode "$TARGET/.opencode/command"
   # /goal i /loop jak w Claude Code: komendy + plugin, który po session.execution.succeeded
   # wznawia turę (sam markdown kończy się z końcem tury).
@@ -957,6 +1070,11 @@ install_opencode() {
   cp "$KIT_ROOT/templates/opencode/command/"*.md "$TARGET/.opencode/command/"
   cp "$KIT_ROOT/templates/opencode/plugins/kit-loop.js" "$TARGET/.opencode/plugins/kit-loop.js"
   echo "  + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
+  # Guardy kita (git-guard, sensitive-files-guard) przed każdym narzędziem — plugin woła
+  # adapter `invoke-hook.js --to opencode`, deny działa także przy `allow` w permission.
+  install_guards "$TARGET/.opencode/hooks"
+  cp "$KIT_ROOT/templates/opencode/plugins/kit-guards.js" "$TARGET/.opencode/plugins/kit-guards.js"
+  echo "  + .opencode/plugins/kit-guards.js + .opencode/hooks/ (guardy kita)"
 }
 
 install_plugins() {
@@ -1027,6 +1145,7 @@ remove_kit() {
   strip_gitignore_section
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
+  kit_rm .ai/headless.mjs
   echo ""
   echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
 }
@@ -1051,7 +1170,13 @@ if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
   echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
 fi
 
+if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+  # Blok `agents:` (model tiers, #168) — walidacja i dopisanie agentów kita przed renderem.
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/model_tiers.py" sync "$TARGET/.ai/project.profile.yaml" "$SHARED_AGENTS"
+fi
 PROFILE_TIERS="$(profile_tiers)"
+HEADLESS=0
+if headless_enabled; then HEADLESS=1; fi
 STAGED_AGENTS="$(mktemp -d)"
 trap 'rm -rf "$STAGED_AGENTS"' EXIT
 SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
@@ -1085,6 +1210,8 @@ for c in "${CLIENTS_LIST[@]}"; do
       ;;
   esac
 done
+
+install_headless
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.md" ]]; then

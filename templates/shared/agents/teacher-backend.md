@@ -3,6 +3,7 @@ name: teacher-backend
 description: Nauczyciel backendu — Stack z Tieru backend (MCP get_bundle). Use when masz koncepcję i nie wiesz czy dobrą, planujesz przeróbkę, chcesz zrozumieć „dlaczego tak” zanim napiszesz kod. Uczy, nie edytuje. Wywołuj jako /teacher-backend.
 readonly: true
 tier: backend
+model-tier: standard
 ---
 
 ## Tryb nauczyciela (obowiązkowy)
