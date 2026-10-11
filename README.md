@@ -1040,6 +1040,7 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
 - **Kilo**: `scripts/render_agent_commands.py kilo` → `.kilocode/workflows/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
 - **Antigravity**: `scripts/render_agent_commands.py antigravity` → `.agents/workflows/*.md` (wywołanie `/nazwa`; limit 12 000 znaków/plik, kit przycina jeśli trzeba).
 - **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/command/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
+  Guardy kita: plugin `.opencode/plugins/kit-guards.js` + `.opencode/hooks/` (sekcja „Guardrails”).
   Do tego `/goal` i `/loop` jak w Claude Code: `templates/opencode/command/{goal,loop}.md` + plugin `.opencode/plugins/kit-loop.js`, który po `session.execution.succeeded` wysyła kolejną turę. Stop: `<promise>DONE</promise>` w odpowiedzi, Esc, `/goal clear` / `/loop stop`, limit tur (goal 25, loop 10, `max=N`); `/loop 5m <zadanie>` powtarza co interwał.
 
 Formaty VS Code/Kilo/Antigravity/opencode oparte o publiczną dokumentację tych klientów (sierpień 2026) — nie testowane na żywych instalacjach; jeśli coś nie zadziała, zgłoś różnicę i popraw `scripts/render_agent_commands.py`.
@@ -1095,13 +1096,13 @@ Nowy skill zakładasz przez **`/create-skill`** (issue), a piszesz według skill
 ## Guardrails — bezpieczeństwo
 
 Jedno źródło polityki: **`templates/shared/guards/`**. Bootstrap kopiuje je do katalogu
-hooków wybranego klienta (`--clients`), więc Cursor i Claude Code egzekwują dokładnie
-te same reguły.
+hooków wybranego klienta (`--clients`), więc Cursor, Claude Code i OpenCode egzekwują
+dokładnie te same reguły.
 
 | Guard | Klient | Zachowanie |
 |-------|--------|------------|
-| `git-guard.mjs` | Claude, Cursor | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
-| `sensitive-files-guard.mjs` | Claude, Cursor | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `git-guard.mjs` | Claude, Cursor, OpenCode | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
+| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
@@ -1114,14 +1115,15 @@ w repo; poza repo pilnujemy tylko katalogów systemowych i sekretów — resztę
 natywna permission klienta (`cwd` + `additionalDirectories`).
 
 **Jeden dialekt, adapter na brzegu.** Skrypty polityki mówią wyłącznie kontraktem
-Claude Code (`hookSpecificOutput.permissionDecision`). Cursor ma własny kształt
-(`permission`), więc `invoke-hook.js` tłumaczy — i to jedyne miejsce w kicie, które
+Claude Code (`hookSpecificOutput.permissionDecision`). Cursor (`permission`) i OpenCode
+(`{ tool, input }` → `{ decision, reason }`) mają własne kształty, więc `invoke-hook.js` tłumaczy — i to jedyne miejsce w kicie, które
 wie o różnicy między klientami.
 
 | Klient | Wywołanie | Kontrakt |
 |--------|-----------|----------|
 | Claude Code | `node .claude/hooks/<guard>.mjs` | natywny, bez adaptera |
 | Cursor | `node .cursor/hooks/invoke-hook.js <guard>.mjs --to cursor [--tool Read\|Write]` | tłumaczony przez adapter |
+| OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
 
 Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
 (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
@@ -1129,6 +1131,18 @@ Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-fil
 `failClosed: true` — padnięty Guard (brak JSON) blokuje akcję, a nieczytelny payload
 daje **deny**. `invoke-hook.js` po wypisaniu JSON **zawsze kończy exit 0** (niezerowy
 exit ukrywa payload przy failClosed).
+
+OpenCode (`--clients opencode`): bootstrap kładzie `git-guard.mjs`, `sensitive-files-guard.mjs`
+i `invoke-hook.js` w `.opencode/hooks/` oraz plugin V2 `.opencode/plugins/kit-guards.js`.
+Plugin podpina się pod `tool.execute.before`: `shell` (dawniej `bash`) → git-guard, `read` /
+`edit` / `write` / `multiedit` → sensitive-files-guard, `patch` → sensitive-files-guard dla każdego
+pliku z `patchText` (także celu `Move to`). Nazwy i pola narzędzi sprawdzone na opencode 2.0.24.
+Działa niezależnie od `permission` w `opencode.json`, także przy `allow` na bash i edycje. Przy
+deny narzędzie kończy się błędem, a model widzi `Zablokowane przez guard kita — <powód z guarda>`
+i dobiera inną drogę. Awaria guarda, timeout (10 s) albo wejście bez oczekiwanego pola
+(`command`, `path`) = deny. `grep` i `glob` nie są pilnowane — tak samo jak w Claude Code.
+Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko API pluginów V2 (`export default { id, setup }`, jak `kit-loop.js`); `bash-guard`,
+`linters-guard` i `rtk-check` zostają tylko w Claude Code.
 
 Guardy są w `.mjs` i idą przez `node` — bez basha, więc bez wykrywania Git Basha na
 Windows i bez otwartych okien konsoli.

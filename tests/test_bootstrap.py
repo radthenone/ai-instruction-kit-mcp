@@ -632,5 +632,30 @@ class TestModelTiers(_BootstrapTestCase):
             self.assertIn("models.claude.turbo", str(ctx.exception))
 
 
+class TestOpencodeGuards(_BootstrapTestCase):
+    """`--clients opencode` kładzie plugin guardów i guardy w `.opencode/` (#166)."""
+
+    def test_opencode_gets_guard_plugin_and_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
+            self.assertTrue((workspace / ".opencode/plugins/kit-guards.js").is_file())
+            for guard in ("invoke-hook.js", "git-guard.mjs", "sensitive-files-guard.mjs"):
+                with self.subTest(guard=guard):
+                    self.assertEqual(
+                        (workspace / ".opencode/hooks" / guard).read_bytes(),
+                        (KIT_ROOT / "templates/shared/guards" / guard).read_bytes(),
+                    )
+
+    def test_dropping_opencode_removes_its_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            self.assertFalse((workspace / ".opencode").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
