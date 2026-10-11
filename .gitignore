@@ -89,13 +89,21 @@ skills-lock.json
 # MCP na każdej innej (Windows `M:/…` na Linuksie → CONNECTION_CLOSED). Odtwarza je
 # `bootstrap-project.sh` na danej maszynie — nie kopiuj ich z repo.
 /.mcp.json
+/.mcp.json.bak
 /.cursor/mcp.json
+/.cursor/mcp.json.bak
 /.vscode/mcp.json
+/.vscode/mcp.json.bak
 /.codex/config.toml
+/.codex/config.toml.bak
 /.kiro/settings/mcp.json
+/.kiro/settings/mcp.json.bak
 /.kilocode/mcp.json
+/.kilocode/mcp.json.bak
 /.agents/mcp_config.json
+/.agents/mcp_config.json.bak
 /opencode.json
+/opencode.json.bak
 /.ai/.kit-bootstrap.json
 
 # --- Skille spoza kita (npx skills add …) ------------------------------------
@@ -104,6 +112,5 @@ skills-lock.json
 .agents/skills/
 skills-lock.json
 # <<< instruction-kit <<<
-
 # Runtime daemona CodeGraph (PID, pipe) — per maszyna
 .codegraph/daemon.pid
