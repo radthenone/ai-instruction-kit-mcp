@@ -957,11 +957,13 @@ install_antigravity() {
   copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 
-# `model` z globalnego configu opencode (`$XDG_CONFIG_HOME` albo `~/.config`, także na
-# Windows), gdy projektowy `opencode.json` go nie ma (#167). Własny `model` projektu wygrywa;
-# brak globalnego configu, pola albo nieczytelny plik = brak pola, bez błędu.
+# `model` z globalnego configu opencode, gdy projektowy `opencode.json` go nie ma (#167).
+# Katalog jak w opencode: `$XDG_CONFIG_HOME` albo `<home>/.config` (home z Pythona — na
+# Windows USERPROFILE, nie `$HOME` Git Basha); pliki `config.json`, `opencode.json`,
+# `opencode.jsonc`, ostatni z `model` wygrywa. Własny `model` projektu wygrywa; brak
+# configu, pola albo nieczytelny plik = brak pola, bez błędu.
 inherit_opencode_model() {
-  DEST="$TARGET/opencode.json" CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" "$PYTHON_BIN" - <<'PY'
+  DEST="$TARGET/opencode.json" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 import re
@@ -979,22 +981,34 @@ def load_jsonc(text: str):
 
 
 try:
-    project = json.loads(dest.read_text(encoding="utf-8"))
+    text = dest.read_text(encoding="utf-8")
+    project = json.loads(text)
 except (OSError, ValueError):
     raise SystemExit(0)
 if not isinstance(project, dict) or "model" in project:
     raise SystemExit(0)
-for name in ("opencode.json", "opencode.jsonc"):
-    path = Path(os.environ["CONFIG_HOME"]) / "opencode" / name
+config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+model, source = None, None
+for name in ("config.json", "opencode.json", "opencode.jsonc"):
     try:
-        model = load_jsonc(path.read_text(encoding="utf-8")).get("model")
+        value = load_jsonc((config_dir / name).read_text(encoding="utf-8-sig")).get("model")
     except (OSError, ValueError, AttributeError):
         continue
-    if isinstance(model, str) and model:
-        project["model"] = model
-        dest.write_text(json.dumps(project, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-        print(f"  + opencode.json: model {model} (z {path})")
-        break
+    if isinstance(value, str) and value:
+        model, source = value, config_dir / name
+if model is None:
+    raise SystemExit(0)
+# Wstawka zamiast json.dumps — układ pliku z fill_mcp (tablice w linii) zostaje.
+line = f'  "model": {json.dumps(model, ensure_ascii=False)},\n'
+updated = re.sub(r"\A\{[ \t]*\n", lambda m: m.group(0) + line, text, count=1)
+try:
+    ok = json.loads(updated).get("model") == model
+except ValueError:
+    ok = False
+if not ok:
+    updated = json.dumps({"model": model, **project}, indent=2, ensure_ascii=False) + "\n"
+dest.write_text(updated, encoding="utf-8", newline="\n")
+print(f"  + opencode.json: model {model} (z {source})")
 PY
 }
 

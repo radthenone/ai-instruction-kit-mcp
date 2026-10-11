@@ -14,8 +14,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 from _shell import is_ci, resolve_bash
 
@@ -43,6 +43,12 @@ class _BootstrapTestCase(unittest.TestCase):
             if is_ci():
                 self.fail("brak bash w środowisku CI — bootstrap musi się wykonać")
             self.skipTest("brak bash / Git for Windows w PATH")
+        # Globalny config opencode z tej maszyny nie może przeciekać do wyniku (#167).
+        config_home = tempfile.TemporaryDirectory()
+        self.addCleanup(config_home.cleanup)
+        patcher = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config_home.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
 
 class TestFindBash(_BootstrapTestCase):
@@ -658,7 +664,6 @@ class TestOpencodeGuards(_BootstrapTestCase):
             self.assertFalse((workspace / ".opencode").exists())
 
 
-
 class TestOpencodeDefaultModel(_BootstrapTestCase):
     """Projektowy `opencode.json` dziedziczy `model` z globalnego configu (#167)."""
 
@@ -701,6 +706,31 @@ class TestOpencodeDefaultModel(_BootstrapTestCase):
             self.assertNotIn("model", self._run(home, workspace))
             self._global(home, "opencode.json", "{ zepsuty")
             self.assertNotIn("model", self._run(home, workspace))
+
+    def test_inherited_model_keeps_kit_layout_of_opencode_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
+            self._run(home, workspace)
+            text = (workspace / "opencode.json").read_text(encoding="utf-8")
+            self.assertIn('"run", "--project"', text)
+
+    def test_last_global_file_wins_like_opencode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "config.json", '{"model": "a/legacy"}')
+            self._global(home, "opencode.json", '{"model": "a/json"}')
+            self._global(home, "opencode.jsonc", '{"model": "a/jsonc"}')
+            self.assertEqual(self._run(home, workspace)["model"], "a/jsonc")
+
+    def test_global_config_with_bom_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '\ufeff{"model": "a/bom"}')
+            self.assertEqual(self._run(home, workspace)["model"], "a/bom")
 
     def test_jsonc_global_config_with_comments_is_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
