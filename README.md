@@ -1101,6 +1101,75 @@ nigdy całego katalogu skilli.
 Nowy skill zakładasz przez **`/create-skill`** (issue), a piszesz według skilla
 `skill-authoring` — to on trzyma zasady frontmatter, sufity długości i kryteria odpalania.
 
+## `/headless` — zadanie dla innego klienta
+
+Z dowolnego klienta kitu (host) zlecasz zadanie innemu klientowi uruchomionemu bez
+interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wynik.
+
+```text
+/headless <wykonawca> [--model <id>] [--timeout <min>] "<treść>"
+```
+
+| Flaga | Znaczenie |
+|-------|-----------|
+| `--model <id>` | Model sesji wykonawcy w jego formacie (`haiku`, `anthropic/claude-haiku-5-5`) |
+| `--timeout <min>` | Limit w minutach, domyślnie 30; po nim drzewo procesów jest zabijane (kod `124`) |
+
+Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
+stopka: nie commituj, odpal testy, raport `## Zmiany` / `## Testy` / `## Problemy`. Commit
+robi host (`/git-commit`) po review diffa.
+
+**Reguły.** Wykonawca musi być w `clients:` Profilu, mieć tryb headless z guardami kita
+i być **inny niż host** — `/headless <host>` z tego samego hosta kończy się błędem z listą
+dozwolonych wykonawców.
+
+| Wykonawca | Komenda | Model | Treść |
+|-----------|---------|-------|-------|
+| `claude` | `claude -p --permission-mode bypassPermissions` | `--model` | stdin |
+| `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
+
+Obaj wykonawcy mają edycje i bash bez pytań, a guardy kita (git-guard, sensitive-files-guard)
+działają dalej: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166). Nowy wykonawca
+= wiersz w `EXECUTORS` w `templates/shared/headless/headless.mjs` i w `HEADLESS_EXECUTORS`
+w `scripts/bootstrap-project.sh`.
+
+Niedostępni jako wykonawcy (mogą być hostem): Codex (`codex exec`), Cursor (`cursor-agent -p`)
+i Antigravity (`agy -p`) mają tryb headless, ale kit nie instaluje im guardów — wejdą do
+tabeli z osobnym issue na guardy. VS Code (Copilot), Kiro i Kilo — bez trybu headless
+w instalacji kita.
+
+**Macierz host × wykonawca** (przy kliencie w `clients:`):
+
+| Host \ wykonawca | `claude` | `opencode` |
+|------------------|----------|------------|
+| Claude Code | — (sam siebie) | tak |
+| OpenCode | tak | — (sam siebie) |
+| Codex, Cursor, VS Code, Kiro, Kilo, Antigravity | tak | tak |
+
+**Instalacja.** Agent `/headless` trafia do każdego klienta z `--clients`, gdy lista zawiera
+co najmniej dwóch wykonawców (dziś: `claude` i `opencode`; `all` też). Bootstrap wpisuje w plik
+agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wykonawców
+= agent i wrapper znikają przy reload.
+
+**Model — trzy warstwy:**
+
+| Warstwa | Skąd model |
+|---------|------------|
+| Agent `/headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
+| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy |
+| Agenci kitu wołani w sesji wykonawcy | `models.<wykonawca>.<tier>` w Profilu, bez mapowania — model sesji wykonawcy |
+
+**Sprzątanie procesów.** Wrapper uruchamia wykonawcę we własnej grupie procesów (Unix)
+i po zakończeniu, błędzie albo timeoucie zabija całe drzewo — z LSP i serwerami MCP
+(Windows: `taskkill /T /F /PID` na wykonawcy i na potomkach zebranych w trakcie przez
+`Get-CimInstance Win32_Process` co 5 s — Windows nie ma grup procesów, a po wyjściu rodzica
+`/T` nie widzi już dzieci). OpenCode leci z `--standalone`, żeby jego serwer był procesem
+potomnym, a nie usługą w tle. Proces żyjący krócej niż 5 s może umknąć snapshotowi.
+Zabicie samego wrappera (SIGINT / SIGTERM / SIGHUP — np. koniec sesji hosta) też sprząta
+drzewo wykonawcy. Na Windows OpenCode musi być w PATH jako `.exe`: shim `.cmd` z npm idzie
+przez `cmd.exe`, który rozbija wieloliniową treść w argumencie, więc wrapper go odrzuca. Sesje wykonawców zostają na
+dysku (historia `claude` i `opencode`); wrapper ich nie usuwa.
+
 ## Guardrails — bezpieczeństwo
 
 Jedno źródło polityki: **`templates/shared/guards/`**. Bootstrap kopiuje je do katalogu

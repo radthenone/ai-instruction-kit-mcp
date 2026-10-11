@@ -745,5 +745,80 @@ class TestOpencodeDefaultModel(_BootstrapTestCase):
             self.assertEqual(self._run(home, workspace)["model"], "opencode/muse-spark")
 
 
+
+class TestHeadlessAgent(_BootstrapTestCase):
+    """Agent `/headless` i wrapper tylko przy ≥2 klientach z trybem headless (#169)."""
+
+    HOST_FILES = {
+        "claude": (".claude/agents/headless.md", ".claude/commands/headless.md"),
+        "opencode": (".opencode/command/headless.md",),
+        "codex": (".codex/skills/headless/SKILL.md",),
+        "cursor": (".cursor/agents/headless.md",),
+    }
+
+    def _install(self, workspace: Path, clients: str) -> None:
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients)
+
+    def test_installed_for_every_host_with_its_own_host_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode,codex,cursor")
+            self.assertEqual(
+                (workspace / ".ai/headless.mjs").read_bytes(),
+                (KIT_ROOT / "templates/shared/headless/headless.mjs").read_bytes(),
+            )
+            for host, files in self.HOST_FILES.items():
+                for rel in files:
+                    with self.subTest(file=rel):
+                        text = (workspace / rel).read_text(encoding="utf-8")
+                        self.assertIn(f"--host {host} ", text)
+                        self.assertNotIn("@KIT_HOST@", text)
+
+    def test_not_installed_with_fewer_than_two_headless_clients(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,codex,cursor")
+            self.assertFalse((workspace / ".ai/headless.mjs").exists())
+            self.assertFalse((workspace / ".claude/agents/headless.md").exists())
+            self.assertFalse((workspace / ".codex/skills/headless").exists())
+
+    def test_removed_when_clients_drop_below_two(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode,antigravity")
+            self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
+            self._install(workspace, "claude,antigravity")
+            self.assertFalse((workspace / ".agents/skills/headless").exists())
+            self.assertFalse((workspace / ".ai/headless.mjs").exists())
+            self.assertFalse((workspace / ".claude/agents/headless.md").exists())
+            self.assertFalse((workspace / ".claude/commands/headless.md").exists())
+
+    def test_light_tier_model_lands_in_claude_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode")
+            agent = workspace / ".claude/agents/headless.md"
+            self.assertNotIn("model:", agent.read_text(encoding="utf-8").split("---")[1])
+            profile = workspace / ".ai/project.profile.yaml"
+            profile.write_text(
+                profile.read_text(encoding="utf-8") + "\nmodels:\n  claude:\n    light: haiku\n",
+                encoding="utf-8",
+            )
+            self._install(workspace, "claude,opencode")
+            self.assertIn("\nmodel: haiku\n---", agent.read_text(encoding="utf-8"))
+
+    def test_remove_deletes_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,opencode")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, remove=True)
+            self.assertFalse((workspace / ".ai/headless.mjs").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
