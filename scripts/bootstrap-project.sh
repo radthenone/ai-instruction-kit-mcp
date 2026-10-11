@@ -697,6 +697,13 @@ bugbot_pristine() {
   CHECK_ONLY=1 copy_bugbot_md "$1" >/dev/null
 }
 
+# `model:` z Profilu (`models.<klient>.<tier>`) dla agentów kita w danym tierze (#168).
+# Bez mapowania pliki zostają jak z template — klient dziedziczy model sesji.
+apply_model_tiers() {
+  [[ "$SKIP_AGENTS" -eq 0 ]] || return 0
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/model_tiers.py" apply "$1" "$TARGET/.ai/project.profile.yaml" "$2"
+}
+
 copy_shared_agents() {
   local dest_dir="$1"
   if [[ "$SKIP_AGENTS" -ne 0 ]]; then
@@ -853,6 +860,7 @@ install_claude() {
   echo "  + .claude/hooks/ + wpisy hookow kita w .claude/settings.json"
 
   copy_shared_agents "$TARGET/.claude/agents"
+  apply_model_tiers claude "$TARGET/.claude/agents"
   copy_claude_commands "$TARGET/.claude/commands"
   copy_shared_skills claude "$TARGET/.claude/skills"
 }
@@ -954,6 +962,7 @@ install_opencode() {
   fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
   echo "  + opencode.json"
   render_agent_commands opencode "$TARGET/.opencode/command"
+  apply_model_tiers opencode "$TARGET/.opencode/command"
   copy_shared_skills opencode "$TARGET/.opencode/command"
   # /goal i /loop jak w Claude Code: komendy + plugin, który po session.execution.succeeded
   # wznawia turę (sam markdown kończy się z końcem tury).
@@ -1055,6 +1064,10 @@ if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
   echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
 fi
 
+if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+  # Blok `agents:` (model tiers, #168) — walidacja i dopisanie agentów kita przed renderem.
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/model_tiers.py" sync "$TARGET/.ai/project.profile.yaml" "$SHARED_AGENTS"
+fi
 PROFILE_TIERS="$(profile_tiers)"
 STAGED_AGENTS="$(mktemp -d)"
 trap 'rm -rf "$STAGED_AGENTS"' EXIT
