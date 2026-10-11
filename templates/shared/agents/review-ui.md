@@ -3,6 +3,7 @@ name: review-ui
 description: Reviewer UI/UX. Use when zmiana dotyka ekranów, formularzy, flow użytkownika lub komponentów wspólnych. Wywołuj jako /review-ui.
 readonly: true
 tier: client
+model-tier: standard
 ---
 
 ## Reguły wspólne (obowiązkowe)

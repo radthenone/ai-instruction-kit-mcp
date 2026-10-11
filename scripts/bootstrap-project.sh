@@ -634,7 +634,11 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
     if tier and tier not in chosen:
         print(src.stem)
         continue
-    kept = [line for i, line in enumerate(lines) if not (0 < i < end and line.startswith("tier:"))]
+    # `model-tier:` czyta tylko model_tiers.py (z template) — klienci go nie znają.
+    kept = [
+        line for i, line in enumerate(lines)
+        if not (0 < i < end and line.startswith(("tier:", "model-tier:")))
+    ]
     (dest / src.name).write_text("".join(kept), encoding="utf-8", newline="\n")
 PY
 }

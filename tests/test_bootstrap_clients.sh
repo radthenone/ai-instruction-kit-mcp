@@ -158,7 +158,8 @@ for name in kit-project-begin kit-project-edit; do
 done
 echo "OK  kit-project-begin/edit u wszystkich klientów"
 keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$ROOT/templates/shared/agents/night-run.md" | tr '\n' ' ')"
-test "$keys" = "name: description: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
+# `model-tier:` wycina staging bootstrapu — u klientów zostaje name + description.
+test "$keys" = "name: description: model-tier: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
 echo "OK  night-run u wszystkich klientów, frontmatter tylko name + description"
 
 # agy nie zna workflow: stare .agents/workflows/<agent>.md znikają, cudze zostają.
