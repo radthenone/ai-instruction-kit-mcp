@@ -161,6 +161,21 @@ def _committed_clients(workspace: Path) -> list[str]:
     return [cid for cid, rel in CLIENT_KIT_MARKERS.items() if (workspace / rel).is_file()]
 
 
+def is_kit_repo(path: Path) -> bool:
+    """Repo samego kita (rejestr modułów + szablony agentów), niezależnie od tego, skąd działa CLI."""
+    return (path / "manifest.yaml").is_file() and (path / "templates" / "shared" / "agents").is_dir()
+
+
+def own_kit_root(workspace: Path, kit_root: Path) -> Path:
+    """
+    Kit, z którym porównywać i z którego odświeżać ``workspace``.
+
+    Repo kita jest źródłem samego siebie. Koło z ``uv tool`` bywa starsze od checkoutu —
+    reload z niego cofnąłby kopie agentów, a status mówiłby "aktualny" wobec starego koła.
+    """
+    return workspace if is_kit_repo(workspace) else kit_root
+
+
 def _has_kit(workspace: Path) -> bool:
     return (
         (workspace / PROFILE_REL_PATH).is_file()
@@ -256,10 +271,11 @@ def reload_workspace(
     Bootstrap z istniejącego Profilu — wspólny kod ``kit-ai reload`` i MCP.
 
     Nie rusza ``.ai/project.md``. Stara konfiguracja (stamp z presetem, brak Profilu)
-    dostaje Profil core + none z językiem i klientami ze stampu.
+    dostaje Profil core + none z językiem i klientami ze stampu. W repo kita odświeża
+    jego własne kopie agentów z jego własnego drzewa (:func:`own_kit_root`).
 
     Args:
-        workspace: Repo aplikacji.
+        workspace: Repo aplikacji albo repo kita.
         kit_root: Root kita.
         dry_run: ``True`` — tylko plan z sandboxu, nic nie zapisuje.
 
@@ -267,12 +283,11 @@ def reload_workspace(
         tuple: ``(ustawienia, plan albo stdout Bootstrapu)``.
 
     Raises:
-        SetupError: Brak kita w repo albo repo to sam kit.
+        SetupError: Brak kita w repo.
         BootstrapError: Skrypt Bootstrapu się nie wykonał.
     """
     workspace = workspace.resolve()
-    if workspace == kit_root.resolve():
-        raise SetupError(f"`{workspace}` to repo kita — reload działa w repo aplikacji.")
+    kit_root = own_kit_root(workspace, kit_root)
     settings = workspace_settings(workspace)
     kwargs = {
         "kit_root": kit_root,
@@ -311,7 +326,7 @@ def install_workspace(
         BootstrapError: Skrypt Bootstrapu się nie wykonał.
     """
     workspace = workspace.resolve()
-    if workspace == kit_root.resolve():
+    if is_kit_repo(workspace):
         raise SetupError(f"`{workspace}` to repo kita — instaluj w repo aplikacji.")
     if _has_kit(workspace):
         raise SetupError(
@@ -350,7 +365,7 @@ def remove_workspace(workspace: Path, kit_root: Path, *, dry_run: bool = False) 
         BootstrapError: Skrypt się nie wykonał.
     """
     workspace = workspace.resolve()
-    if workspace == kit_root.resolve():
+    if is_kit_repo(workspace):
         raise SetupError(f"`{workspace}` to repo kita — remove działa w repo aplikacji.")
     if not _has_kit(workspace):
         raise SetupError(f"`{workspace}` nie ma kita — nie ma czego usuwać.")
@@ -494,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
             result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
         else:
-            print(check_kit_updates(kit_root=kit_root, workspace_root=workspace))
+            print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
     except (SetupError, BootstrapError, ValueError) as exc:
         print(f"kit-ai: {exc}", file=sys.stderr)
         return 1

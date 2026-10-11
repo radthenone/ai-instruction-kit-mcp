@@ -24,6 +24,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 # Jedno źródło wykrywania Git Basha — to samo, którego używa test_shell_suites.
 from _shell import is_ci, posix_path, resolve_bash
 
@@ -31,10 +33,21 @@ from guides.manifest import find_kit_root, load_manifest
 
 KIT_ROOT = find_kit_root(Path(__file__))
 
-# Katalogi, które bootstrap wypełnia z templates/shared/agents/. Tylko klienci
-# zainstalowani w tym repo (`.ai/.kit-bootstrap.json` → clients) — Cursor wypadł
-# w d6117a6, więc `.cursor/` nie ma tu kopii do porównania.
+# Katalogi `.claude/`, które bootstrap wypełnia wyłącznie agentami kita — tylko tu
+# nadmiarowy plik dowodzi sieroty. Cursor wypadł w d6117a6, więc `.cursor/` nie ma kopii.
 DOGFOOD_DIRS = (".claude/agents", ".claude/commands")
+
+# Kopia agenta u każdego klienta z Profilu repo, którą trzymamy w gicie. Dawniej test
+# patrzył tylko na `.claude/` i Codex/Copilot/OpenCode rozjeżdżały się po cichu
+# (night-run bez heartbeatu, brak /headless). Antygravity (`.agents/skills/`) jest w
+# .gitignore — nie ma czego porównywać.
+DOGFOOD_AGENT_PATHS = (
+    ".claude/agents/{name}.md",
+    ".claude/commands/{name}.md",
+    ".codex/skills/{name}/SKILL.md",
+    ".github/prompts/{name}.prompt.md",
+    ".opencode/command/{name}.md",
+)
 
 # Skille ze wspólnego źródła sprawdzamy tylko w `.claude/skills/`. Pozostałe dwa
 # natywne katalogi są w .gitignore z dobrego powodu — `.agents/skills/` i
@@ -84,7 +97,9 @@ class TestDogfoodCopies(unittest.TestCase):
         boot = KIT_ROOT / "scripts" / "bootstrap-project.sh"
         # Ten sam Profil co repo kita — od jego Tierów zależy, którzy agenci się instalują.
         (target / ".ai").mkdir(parents=True)
-        shutil.copy2(KIT_ROOT / ".ai" / "project.profile.yaml", target / ".ai" / "project.profile.yaml")
+        profile = KIT_ROOT / ".ai" / "project.profile.yaml"
+        shutil.copy2(profile, target / ".ai" / "project.profile.yaml")
+        clients = yaml.safe_load(profile.read_text(encoding="utf-8"))["clients"]
 
         # Windows nie umie odpalić `.sh` przez CreateProcess (WinError 193) — bootstrap
         # trzeba podać bashowi jawnie, tak samo jak robią to pozostałe suity.
@@ -103,7 +118,7 @@ class TestDogfoodCopies(unittest.TestCase):
                 posix_path(boot),
                 str(target),
                 "--clients",
-                "claude,opencode",
+                clients,
                 "--from",
                 str(KIT_ROOT),
             ],
@@ -128,21 +143,27 @@ class TestDogfoodCopies(unittest.TestCase):
         """Każdy shared agent ma w repo kopię identyczną z wygenerowaną."""
         stale: list[str] = []
         for agent in self._shared_agents():
-            for rel_dir in DOGFOOD_DIRS:
-                in_repo = KIT_ROOT / rel_dir / agent.name
-                expected = self.generated / rel_dir / agent.name
+            for pattern in DOGFOOD_AGENT_PATHS:
+                rel = pattern.format(name=agent.stem)
+                in_repo = KIT_ROOT / rel
+                expected = self.generated / rel
                 if not expected.is_file():
                     # Agent Tieru, którego Profil repo nie wybiera — kopii ma nie być.
                     if in_repo.is_file():
-                        stale.append(f"{rel_dir}/{agent.name} — kopia agenta spoza Tierów Profilu")
+                        stale.append(f"{rel} — kopia agenta spoza Tierów Profilu")
                 elif not in_repo.is_file():
-                    stale.append(f"{rel_dir}/{agent.name} — brak kopii w repo")
+                    stale.append(f"{rel} — brak kopii w repo")
                 elif in_repo.read_text(encoding="utf-8") != expected.read_text(encoding="utf-8"):
-                    stale.append(f"{rel_dir}/{agent.name} — kopia rozjechała się ze źródłem")
+                    stale.append(f"{rel} — kopia rozjechała się ze źródłem")
+        self.assertEqual(stale, [], msg="uruchom `kit-ai reload` w repo kita: " + "; ".join(stale))
+
+    def test_profile_matches_bootstrap_output(self) -> None:
+        """Bootstrap dopisuje do Profilu blok `agents:` — Profil repo musi go już mieć."""
+        rel = ".ai/project.profile.yaml"
         self.assertEqual(
-            stale,
-            [],
-            msg="uruchom bootstrap na tym repo albo zregeneruj kopie: " + "; ".join(stale),
+            (KIT_ROOT / rel).read_text(encoding="utf-8"),
+            (self.generated / rel).read_text(encoding="utf-8"),
+            msg="uruchom `kit-ai reload` w repo kita",
         )
 
     def test_guard_copies_match_shared_source(self) -> None:

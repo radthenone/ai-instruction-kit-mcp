@@ -399,5 +399,33 @@ class TestWorkspaceSettings(unittest.TestCase):
                 cli.workspace_settings(app)
 
 
+class TestKitRepoAsWorkspace(unittest.TestCase):
+    """Repo kita rozpoznajemy po zawartości — także gdy CLI działa z koła (`uv tool`)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wheel = Path(self._tmp.name) / "wheel" / "_data"
+        self.wheel.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_kit_repo_is_its_own_source(self) -> None:
+        """Koło bywa starsze od checkoutu — reload i status w repo kita biorą checkout."""
+        self.assertEqual(cli.own_kit_root(KIT_ROOT, self.wheel), KIT_ROOT)
+
+    def test_app_repo_keeps_given_kit(self) -> None:
+        app = Path(self._tmp.name) / "app"
+        app.mkdir()
+        self.assertEqual(cli.own_kit_root(app, self.wheel), self.wheel)
+
+    def test_install_and_remove_refuse_kit_repo_from_wheel(self) -> None:
+        """Dawny warunek `workspace == kit_root` przepuszczał to, gdy kit był kołem."""
+        with self.assertRaisesRegex(cli.SetupError, "repo kita"):
+            cli.install_workspace(KIT_ROOT, self.wheel, language="pl", clients="claude")
+        with self.assertRaisesRegex(cli.SetupError, "repo kita"):
+            cli.remove_workspace(KIT_ROOT, self.wheel, dry_run=True)
+
+
 if __name__ == "__main__":
     unittest.main()

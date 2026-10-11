@@ -9,7 +9,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
-from guides.cli import SetupError, kit_source
+from guides.cli import SetupError, kit_source, own_kit_root
 from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
@@ -249,7 +249,12 @@ def check_kit_status() -> str:
             by nadpisał) / brak stampu / brak lokalnej historii git do porównania.
     """
     resolved = _get_resolved()
-    return check_kit_updates(kit_root=resolved.kit_root, workspace_root=resolved.workspace_root)
+    kit_root = (
+        own_kit_root(resolved.workspace_root, resolved.kit_root)
+        if resolved.workspace_root
+        else resolved.kit_root
+    )
+    return check_kit_updates(kit_root=kit_root, workspace_root=resolved.workspace_root)
 
 
 def _require_workspace() -> Path:
