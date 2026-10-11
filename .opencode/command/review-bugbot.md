@@ -1,5 +1,6 @@
 ---
 description: "Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako /review-bugbot."
+model: opencode/muse-spark-1.3-contributor-free
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

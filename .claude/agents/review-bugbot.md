@@ -2,6 +2,7 @@
 name: review-bugbot
 description: Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako /review-bugbot.
 readonly: true
+model: sonnet
 ---
 
 ## Reguły wspólne (obowiązkowe)

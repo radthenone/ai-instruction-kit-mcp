@@ -1,6 +1,7 @@
 ---
 name: headless
 description: Zleć zadanie innemu klientowi kitu w trybie headless (np. tańszemu modelowi w OpenCode) i dostań krótki raport. Use when /headless <wykonawca> "<treść>", delegowanie implementacji do innego CLI, praca pod /goal z tańszym wykonawcą. Wywołuj jako /headless.
+model: haiku
 ---
 
 # /headless — zadanie dla innego klienta

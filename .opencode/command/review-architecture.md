@@ -1,5 +1,6 @@
 ---
 description: "Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /review-architecture."
+model: opencode/muse-spark-1.3-contributor-free
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

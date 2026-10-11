@@ -1,6 +1,7 @@
 ---
 name: git-end
 description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /git-end. Wywołuj jako /git-end. (Dawniej /git-pr.)
+model: haiku
 ---
 
 ## Reguły wspólne
