@@ -13,5 +13,11 @@ mobile: none
 
 codegen: orval
 
+# Model per tier agenta (light / standard / heavy) i klient — README „Model tiers”.
+# Bez tego bloku agenci jadą na modelu sesji. Blok `agents:` dopisuje reload.
+# models:
+#   claude:
+#     light: haiku
+
 overlays:
   - .ai/project.md
