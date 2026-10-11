@@ -40,14 +40,14 @@ def template_tiers(agents_dir: Path) -> dict[str, str]:
 
 
 def _block_range(lines: list[str], key: str) -> tuple[int, int] | None:
-    """Zakres linii bloku `key:` najwyższego poziomu, bez pustych linii na końcu."""
+    """Zakres linii bloku `key:` najwyższego poziomu, bez pustych linii i komentarzy na końcu."""
     start = next((i for i, line in enumerate(lines) if re.match(rf"{key}:\s*(#.*)?$", line)), None)
     if start is None:
         return None
     end = start + 1
-    while end < len(lines) and (not lines[end].strip() or lines[end][0] in " \t"):
+    while end < len(lines) and (not lines[end].strip() or lines[end][0] in " \t#"):
         end += 1
-    while end > start + 1 and not lines[end - 1].strip():
+    while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].startswith("#")):
         end -= 1
     return start, end
 
@@ -74,22 +74,34 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[
     Raises:
         ProfileError: Nieznany tier albo agent w dwóch tierach.
     """
+    inline = re.search(r"^(models|agents):[ \t]*[^\s#]", text, re.MULTILINE)
+    if inline:
+        raise ProfileError(
+            f"Profil: `{inline.group(1)}:` zapisz blokiem z wcięciami (jak w README), nie w jednej linii."
+        )
     lines = text.splitlines(keepends=True)
     models: dict[str, dict[str, str]] = {}
     span = _block_range(lines, "models")
     if span:
+        entries = _entries(lines[span[0] + 1 : span[1]])
+        client_indent = entries[0][0] if entries else 0
         client, client_name = None, ""
-        for indent, key, value in _entries(lines[span[0] + 1 : span[1]]):
-            if not value:
-                client = models.setdefault(key, {})
-                client_name = key
+        for indent, key, value in entries:
+            if indent == client_indent:
+                if value:
+                    raise ProfileError(
+                        f"Profil: `models.{key}` bez klienta. Wzór:\nmodels:\n  claude:\n    light: haiku"
+                    )
+                client, client_name = models.setdefault(key, {}), key
                 continue
-            if client is None:
-                raise ProfileError(f"Profil: `models.{key}` bez klienta. Wzór: models.claude.light: haiku")
+            if client is None or indent < client_indent:
+                raise ProfileError(f"Profil: `models.{key}` ma złe wcięcie.")
             if key not in TIERS:
                 raise ProfileError(
                     f"Profil: nieznany tier `models.{client_name}.{key}`. Dozwolone: {_ALLOWED}."
                 )
+            if not value:
+                raise ProfileError(f"Profil: `models.{client_name}.{key}` bez modelu — wpisz nazwę albo usuń linię.")
             client[key] = value
 
     span = _block_range(lines, "agents")
@@ -98,6 +110,11 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[
     agents: dict[str, list[str]] = {}
     seen: dict[str, str] = {}
     for _, tier, value in _entries(lines[span[0] + 1 : span[1]]):
+        if tier.startswith("-"):
+            raise ProfileError(
+                "Profil: `agents.<tier>` to lista nazw po przecinku w jednej linii, "
+                "np. `light: git-start,cleanup`."
+            )
         if tier not in TIERS:
             raise ProfileError(
                 f"Profil: nieznany tier `agents.{tier}`. Dozwolone: {_ALLOWED} — "
@@ -139,15 +156,16 @@ def sync_agents(text: str, template: dict[str, str]) -> tuple[str, list[str]]:
     if agents is not None and not report:
         return text, []
 
-    block = ["agents:\n"] + [f"  {tier}: {','.join(names)}\n" for tier, names in synced.items() if names]
+    eol = "\r\n" if "\r\n" in text else "\n"
+    block = [f"agents:{eol}"] + [f"  {tier}: {','.join(names)}{eol}" for tier, names in synced.items() if names]
     lines = text.splitlines(keepends=True)
     span = _block_range(lines, "agents")
     if span:
         lines[span[0] : span[1]] = block
         return "".join(lines), report
     if text and not text.endswith("\n"):
-        text += "\n"
-    return text + ("\n" if text.strip() else "") + "".join(block), report
+        text += eol
+    return text + (eol if text.strip() else "") + "".join(block), report
 
 
 def apply_models(client: str, profile_text: str, dest_dir: Path) -> None:

@@ -584,9 +584,6 @@ class TestTestNamePolicy(_BootstrapTestCase):
             self.assertIn("blocking bug", rule)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestModelTiers(_BootstrapTestCase):
     """`models:` / `agents:` w Profilu → `model:` u Claude i opencode (#168)."""
@@ -633,3 +630,7 @@ class TestModelTiers(_BootstrapTestCase):
             with self.assertRaises(BootstrapError) as ctx:
                 self._install(workspace, "\nmodels:\n  claude:\n    turbo: haiku\n")
             self.assertIn("models.claude.turbo", str(ctx.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

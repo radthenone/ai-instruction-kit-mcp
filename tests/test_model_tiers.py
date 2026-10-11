@@ -74,6 +74,29 @@ class TestParseProfile(unittest.TestCase):
         self.assertIn("light", message)
         self.assertIn("heavy", message)
 
+    def test_empty_model_value_is_error_not_new_client(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("models:\n  claude:\n    light:\n    heavy: opus\n")
+        self.assertIn("models.claude.light", str(ctx.exception))
+
+    def test_tier_at_client_indent_is_error(self) -> None:
+        with self.assertRaises(ProfileError):
+            parse_profile("models:\n  claude:\n  light: haiku\n")
+
+    def test_block_list_in_agents_is_error_with_supported_form(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("agents:\n  light:\n    - cleanup\n")
+        self.assertIn("po przecinku", str(ctx.exception))
+
+    def test_flow_map_is_error_with_supported_form(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("models: {claude: {light: haiku}}\n")
+        self.assertIn("blokiem", str(ctx.exception))
+
+    def test_comment_at_column_zero_inside_block_is_skipped(self) -> None:
+        _, agents = parse_profile("agents:\n# moje\n  light: cleanup\nx: 1\n")
+        self.assertEqual(agents, {"light": ["cleanup"]})
+
 
 class TestSyncAgents(unittest.TestCase):
     def test_creates_block_from_template_when_missing(self) -> None:
@@ -105,6 +128,15 @@ class TestSyncAgents(unittest.TestCase):
     def test_in_sync_profile_is_untouched(self) -> None:
         profile = "agents:\n  light: git-start, cleanup # moje\n  standard: create-task\n  heavy: night-run\n"
         self.assertEqual(sync_agents(profile, TEMPLATE), (profile, []))
+
+    def test_rewrite_keeps_crlf_line_endings(self) -> None:
+        text, _ = sync_agents("a: 1\r\nagents:\r\n  light: ghost\r\n", TEMPLATE)
+        self.assertNotIn("\n", text.replace("\r\n", ""))
+
+    def test_rewrite_after_inner_comment_leaves_no_orphan_lines(self) -> None:
+        text, _ = sync_agents("agents:\n# c\n  light: cleanup\nx: 1\n", TEMPLATE)
+        self.assertEqual(text.count("light:"), 1)
+        self.assertTrue(text.endswith("x: 1\n"))
 
 
 class TestApplyModels(unittest.TestCase):

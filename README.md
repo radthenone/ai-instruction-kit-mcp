@@ -426,13 +426,14 @@ agents:                  # synchronizuje reload
   do tieru z template; agenta już przypisanego reload nie przenosi (Profil wygrywa);
   nazwy spoza kita znikają. Każde dopisanie (`+ agents.<tier>: <agent>`) i usunięcie (`-`)
   jest w wyjściu reloadu. Reload przepisuje tylko blok `agents:` — komentarze w nim giną.
-- Nieznany tier (w `models:` albo `agents:`) i agent w dwóch tierach przerywają reload
-  z opisem błędu.
+- Nieznany tier (w `models:` albo `agents:`), tier bez modelu, agent w dwóch tierach i zapis
+  w jednej linii (`models: {…}`) przerywają reload z opisem błędu. Oba bloki pisz z wcięciami,
+  jak wyżej; `agents:` obejmuje wszystkich agentów kita, także Tierów Stacku spoza Profilu.
 
 | Klient | Wspiera `model` | Plik | Format nazwy modelu | Przykład |
 |--------|-----------------|------|---------------------|----------|
-| Claude Code | tak | `.claude/agents/<agent>.md` | alias (`haiku`/`sonnet`/`opus`) albo pełne id | `claude: {light: haiku}` |
-| opencode | tak | `.opencode/command/<agent>.md` | `provider/model` | `opencode: {light: anthropic/claude-haiku-5-5}` |
+| Claude Code | tak | `.claude/agents/<agent>.md` | alias (`haiku`/`sonnet`/`opus`) albo pełne id | `models.claude.light: haiku` |
+| opencode | tak | `.opencode/command/<agent>.md` | `provider/model` | `models.opencode.light: anthropic/claude-haiku-5-5` |
 | Cursor, Codex, VS Code, Kiro, Kilo, Antigravity | nie — pole pomijane | — | — | — |
 
 Komendy `/nazwa` Claude (`.claude/commands/`) zostają bez `model:` — działają w sesji głównej.
