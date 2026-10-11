@@ -970,6 +970,11 @@ install_opencode() {
   cp "$KIT_ROOT/templates/opencode/command/"*.md "$TARGET/.opencode/command/"
   cp "$KIT_ROOT/templates/opencode/plugins/kit-loop.js" "$TARGET/.opencode/plugins/kit-loop.js"
   echo "  + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
+  # Guardy kita (git-guard, sensitive-files-guard) przed każdym narzędziem — plugin woła
+  # adapter `invoke-hook.js --to opencode`, deny działa także przy `allow` w permission.
+  install_guards "$TARGET/.opencode/hooks"
+  cp "$KIT_ROOT/templates/opencode/plugins/kit-guards.js" "$TARGET/.opencode/plugins/kit-guards.js"
+  echo "  + .opencode/plugins/kit-guards.js + .opencode/hooks/ (guardy kita)"
 }
 
 install_plugins() {
