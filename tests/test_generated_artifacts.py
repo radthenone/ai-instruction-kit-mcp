@@ -103,7 +103,7 @@ class TestDogfoodCopies(unittest.TestCase):
                 posix_path(boot),
                 str(target),
                 "--clients",
-                "claude,cursor",
+                "claude,opencode",
                 "--from",
                 str(KIT_ROOT),
             ],
