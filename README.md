@@ -1123,7 +1123,7 @@ wie o różnicy między klientami.
 |--------|-----------|----------|
 | Claude Code | `node .claude/hooks/<guard>.mjs` | natywny, bez adaptera |
 | Cursor | `node .cursor/hooks/invoke-hook.js <guard>.mjs --to cursor [--tool Read\|Write]` | tłumaczony przez adapter |
-| OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode` | tłumaczony przez adapter |
+| OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
 
 Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
 (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
@@ -1134,12 +1134,14 @@ exit ukrywa payload przy failClosed).
 
 OpenCode (`--clients opencode`): bootstrap kładzie `git-guard.mjs`, `sensitive-files-guard.mjs`
 i `invoke-hook.js` w `.opencode/hooks/` oraz plugin V2 `.opencode/plugins/kit-guards.js`.
-Plugin podpina się pod `tool.execute.before`: `bash` → git-guard, `read` / `edit` / `write` /
-`multiedit` → sensitive-files-guard. Działa niezależnie od `permission` w `opencode.json`,
-także przy `allow` na bash i edycje. Przy deny narzędzie kończy się błędem, a model widzi
-`Zablokowane przez guard kita — <powód z guarda>` i dobiera inną drogę. Awaria guarda albo
-adaptera = deny. Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko
-API pluginów V2 (`export default { id, setup }`, jak `kit-loop.js`); `bash-guard`,
+Plugin podpina się pod `tool.execute.before`: `shell` (dawniej `bash`) → git-guard, `read` /
+`edit` / `write` / `multiedit` → sensitive-files-guard, `patch` → sensitive-files-guard dla każdego
+pliku z `patchText` (także celu `Move to`). Nazwy i pola narzędzi sprawdzone na opencode 2.0.24.
+Działa niezależnie od `permission` w `opencode.json`, także przy `allow` na bash i edycje. Przy
+deny narzędzie kończy się błędem, a model widzi `Zablokowane przez guard kita — <powód z guarda>`
+i dobiera inną drogę. Awaria guarda, timeout (10 s) albo wejście bez oczekiwanego pola
+(`command`, `path`) = deny. `grep` i `glob` nie są pilnowane — tak samo jak w Claude Code.
+Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko API pluginów V2 (`export default { id, setup }`, jak `kit-loop.js`); `bash-guard`,
 `linters-guard` i `rtk-check` zostają tylko w Claude Code.
 
 Guardy są w `.mjs` i idą przez `node` — bez basha, więc bez wykrywania Git Basha na

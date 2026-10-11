@@ -113,21 +113,26 @@ done
 echo "OK  [cursor] polityka bez ask (ADR 0006)"
 
 # --- OpenCode: payload pluginu { tool, input } -> { decision, reason } ---------
+# Plugin podaje nazwę narzędzia Claude w --tool; V2 (2.0.24) ma `path`, starsze `filePath`.
 expect_opencode() {
-  local payload="$1" guard="$2" expect="$3" out dec
-  out=$(printf '%s' "$payload" | node "$ADAPTER" "$guard" --to opencode)
+  local payload="$1" guard="$2" tool="$3" expect="$4" out dec
+  out=$(printf '%s' "$payload" | node "$ADAPTER" "$guard" --to opencode --tool "$tool")
   dec=$(printf '%s' "$out" | field decision)
   [[ "$dec" == "$expect" ]] || fail "opencode: expected=$expect got=${dec:-empty} payload=$payload out=$out"
   echo "OK  [opencode/$expect] $payload"
 }
-expect_opencode '{"tool":"bash","input":{"command":"git status"}}' git-guard.mjs allow
-expect_opencode '{"tool":"bash","input":{"command":"git reset --hard"}}' git-guard.mjs deny
-expect_opencode '{"tool":"bash","input":{"command":"git push origin master"}}' git-guard.mjs deny
-expect_opencode '{"tool":"read","input":{"filePath":".env"}}' sensitive-files-guard.mjs deny
-expect_opencode '{"tool":"read","input":{"filePath":"uv.lock"}}' sensitive-files-guard.mjs allow
-expect_opencode '{"tool":"write","input":{"filePath":"uv.lock","content":""}}' sensitive-files-guard.mjs deny
-expect_opencode '{"tool":"edit","input":{"filePath":"src/.env.local"}}' sensitive-files-guard.mjs deny
-out=$(printf '{"tool":"bash","input":{"command":"git reset --hard"}}' | node "$ADAPTER" git-guard.mjs --to opencode)
+expect_opencode '{"tool":"shell","input":{"command":"git status"}}' git-guard.mjs Bash allow
+expect_opencode '{"tool":"shell","input":{"command":"git reset --hard"}}' git-guard.mjs Bash deny
+expect_opencode '{"tool":"shell","input":{"command":"git push origin master"}}' git-guard.mjs Bash deny
+expect_opencode '{"tool":"read","input":{"path":".env"}}' sensitive-files-guard.mjs Read deny
+expect_opencode '{"tool":"read","input":{"filePath":".env"}}' sensitive-files-guard.mjs Read deny
+expect_opencode '{"tool":"read","input":{"path":"uv.lock"}}' sensitive-files-guard.mjs Read allow
+expect_opencode '{"tool":"write","input":{"path":"uv.lock","content":""}}' sensitive-files-guard.mjs Write deny
+expect_opencode '{"tool":"edit","input":{"path":"src/.env.local"}}' sensitive-files-guard.mjs Edit deny
+# Pole, którego adapter nie zna, nie może przepuścić narzędzia (fail-closed).
+expect_opencode '{"tool":"shell","input":{}}' git-guard.mjs Bash deny
+expect_opencode '{"tool":"read","input":{"file":".env"}}' sensitive-files-guard.mjs Read deny
+out=$(printf '{"tool":"shell","input":{"command":"git reset --hard"}}' | node "$ADAPTER" git-guard.mjs --to opencode --tool Bash)
 printf '%s' "$out" | field reason | grep -q . || fail "opencode deny bez reason: $out"
 out=$(printf '{}' | node "$ADAPTER" nie-ma-takiego.sh --to opencode)
 [[ "$(printf '%s' "$out" | field decision)" == "deny" ]] || fail "opencode fail-closed: $out"

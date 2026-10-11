@@ -1,31 +1,37 @@
 // Guardy kita w opencode V2 — odpowiednik hooków PreToolUse z Claude Code.
-// Przed każdym narzędziem woła `node .opencode/hooks/invoke-hook.js <guard> --to opencode`;
+// Przed narzędziem woła `node .opencode/hooks/invoke-hook.js <guard> --to opencode --tool <X>`;
 // deny = rzucony błąd, który opencode oddaje modelowi jako wynik narzędzia. Działa
 // niezależnie od `permission` w opencode.json, także przy `allow` na bash i edycje.
 //
-// bash → git-guard, read/edit/write/multiedit → sensitive-files-guard (jak matchery
-// w .claude/settings.json). Awaria guarda albo adaptera = deny (fail-closed).
+// Nazwy narzędzi sprawdzone na opencode 2.0.24 (`shell`, `read`/`write`/`edit` z `path`,
+// `patch` z `patchText`); `bash`, `multiedit` i `filePath` to starsze nazwy z dokumentacji.
+// Awaria guarda albo adaptera = deny (fail-closed).
 
 // Bez importu @opencode/plugin — patrz kit-loop.js.
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 const ADAPTER = fileURLToPath(new URL("../hooks/invoke-hook.js", import.meta.url))
+const GIT = ["git-guard.mjs", "Bash"]
+const FILES = "sensitive-files-guard.mjs"
+// narzędzie opencode → [guard, nazwa narzędzia Claude, którą rozumie guard]
 const GUARDS = {
-  bash: "git-guard.mjs",
-  read: "sensitive-files-guard.mjs",
-  edit: "sensitive-files-guard.mjs",
-  write: "sensitive-files-guard.mjs",
-  multiedit: "sensitive-files-guard.mjs",
+  shell: GIT,
+  bash: GIT,
+  read: [FILES, "Read"],
+  edit: [FILES, "Edit"],
+  multiedit: [FILES, "Edit"],
+  write: [FILES, "Write"],
+  patch: [FILES, "Write"],
 }
 
 function check(tool, input) {
-  const guard = GUARDS[tool]
-  if (!guard) return
+  const [guard, claudeTool] = GUARDS[tool]
   // `node`, nie process.execPath — opencode działa na Bunie, guardy to skrypty Node.
-  const result = spawnSync("node", [ADAPTER, guard, "--to", "opencode"], {
+  const result = spawnSync("node", [ADAPTER, guard, "--to", "opencode", "--tool", claudeTool], {
     input: JSON.stringify({ tool, input }),
     encoding: "utf8",
+    timeout: 10000,
     windowsHide: true,
   })
   let verdict
@@ -39,9 +45,18 @@ function check(tool, input) {
   }
 }
 
+// Patch dotyka wielu plików — każdy (także cel `Move to`) idzie przez guard osobno.
+const patchPaths = (text) =>
+  [...String(text || "").matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)].map((m) => m[1].trim())
+
 export default {
   id: "kit-guards",
   async setup(ctx) {
-    await ctx.tool.hook("execute.before", async (event) => check(event.tool, event.input || {}))
+    await ctx.tool.hook("execute.before", async (event) => {
+      const input = event.input || {}
+      if (!GUARDS[event.tool]) return
+      if (event.tool !== "patch") return check(event.tool, input)
+      for (const path of patchPaths(input.patchText)) check("patch", { path })
+    })
   },
 }

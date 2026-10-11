@@ -632,7 +632,6 @@ class TestModelTiers(_BootstrapTestCase):
             self.assertIn("models.claude.turbo", str(ctx.exception))
 
 
-
 class TestOpencodeGuards(_BootstrapTestCase):
     """`--clients opencode` kładzie plugin guardów i guardy w `.opencode/` (#166)."""
 

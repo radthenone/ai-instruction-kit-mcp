@@ -101,18 +101,26 @@ if (stdin.charCodeAt(0) === 0xfeff) {
   stdin = stdin.slice(1);
 }
 
-// OpenCode: `{ tool, input }` → kształt Claude Code (`tool_name`, `tool_input`).
+// OpenCode: `{ tool, input }` → kształt Claude Code. Nazwę narzędzia Claude podaje plugin
+// w `--tool`; pole ścieżki to `path` (opencode 2.x) albo `filePath` (starsze). Brak pola,
+// którego Guard potrzebuje, = deny — zmiana schematu narzędzi nie może przepuścić komendy.
 if (target === OPENCODE) {
+  let payload;
   try {
-    const { tool = "", input = {} } = JSON.parse(stdin || "{}");
-    const names = { bash: "Bash", read: "Read", write: "Write", edit: "Edit", multiedit: "MultiEdit" };
-    stdin = JSON.stringify({
-      tool_name: names[tool] || tool,
-      tool_input: { command: input.command, file_path: input.filePath },
-    });
+    payload = JSON.parse(stdin || "{}");
   } catch {
-    // Nieczytelny payload przekazujemy dalej — Guard sam odpowie deny.
+    emitDeny("nieczytelny payload opencode");
   }
+  const input = payload.input || {};
+  const name = toolName || String(payload.tool || "");
+  const toolInput = name === "Bash"
+    ? { command: input.command }
+    : { file_path: input.path ?? input.filePath };
+  if (!Object.values(toolInput)[0]) {
+    emitDeny(`brak ${name === "Bash" ? "command" : "path/filePath"} w wejściu narzędzia ${payload.tool || "?"}`);
+  }
+  stdin = JSON.stringify({ tool_name: name, tool_input: toolInput });
+  toolName = "";
 }
 
 // `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.
