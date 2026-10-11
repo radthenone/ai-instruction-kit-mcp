@@ -618,13 +618,17 @@ PY
 # nazwy pominiętych agentów (do sprzątnięcia z poprzedniego Bootstrapu).
 stage_shared_agents() {
   local dest="$1"
-  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
+  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" HEADLESS="$HEADLESS" "$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
 
 chosen = set(os.environ["TIERS"].split())
 dest = Path(os.environ["DEST"])
 for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
+    # /headless ma sens dopiero przy dwóch klientach z trybem headless (#169).
+    if src.stem == "headless" and os.environ["HEADLESS"] != "1":
+        print(src.stem)
+        continue
     lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
     end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
     tier = next(
@@ -641,6 +645,46 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
     ]
     (dest / src.name).write_text("".join(kept), encoding="utf-8", newline="\n")
 PY
+}
+
+# /headless (#169): wrapper wspólny dla hostów + `@KIT_HOST@` w pliku agenta każdego
+# klienta, żeby wrapper wiedział, kto woła (wykonawca != host). Wykonawcy = klienci
+# z trybem headless i guardami kita — ta sama lista co EXECUTORS w headless.mjs.
+HEADLESS_EXECUTORS="claude opencode"
+
+headless_enabled() {
+  local c n=0
+  for c in "${CLIENTS_LIST[@]}"; do
+    [[ " $HEADLESS_EXECUTORS " == *" $c "* ]] && n=$((n + 1))
+  done
+  [[ "$n" -ge 2 && "$SKIP_AGENTS" -eq 0 ]]
+}
+
+install_headless() {
+  local c rel
+  if [[ "$HEADLESS" != "1" ]]; then
+    kit_rm .ai/headless.mjs
+    return 0
+  fi
+  cp "$KIT_ROOT/templates/shared/headless/headless.mjs" "$TARGET/.ai/headless.mjs"
+  for c in "${CLIENTS_LIST[@]}"; do
+    case "$c" in
+      cursor) set -- .cursor/agents/headless.md ;;
+      claude) set -- .claude/agents/headless.md .claude/commands/headless.md ;;
+      codex) set -- .codex/skills/headless/SKILL.md ;;
+      vscode) set -- .github/prompts/headless.prompt.md ;;
+      kiro) set -- .kiro/agents/headless.md ;;
+      kilo) set -- .kilocode/workflows/headless.md ;;
+      antigravity) set -- .agents/skills/headless/SKILL.md ;;
+      opencode) set -- .opencode/command/headless.md ;;
+    esac
+    for rel in "$@"; do
+      [[ -f "$TARGET/$rel" ]] || continue
+      # Bez `sed -i` — GNU i BSD różnią się składnią.
+      sed "s/@KIT_HOST@/$c/g" "$TARGET/$rel" > "$TARGET/$rel.tmp" && mv "$TARGET/$rel.tmp" "$TARGET/$rel"
+    done
+  done
+  echo "  + .ai/headless.mjs (/headless — wykonawcy: $HEADLESS_EXECUTORS)"
 }
 
 # Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
@@ -1101,6 +1145,7 @@ remove_kit() {
   strip_gitignore_section
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
+  kit_rm .ai/headless.mjs
   echo ""
   echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
 }
@@ -1130,6 +1175,8 @@ if [[ "$SKIP_AGENTS" -eq 0 ]]; then
   "$PYTHON_BIN" "$KIT_ROOT/scripts/model_tiers.py" sync "$TARGET/.ai/project.profile.yaml" "$SHARED_AGENTS"
 fi
 PROFILE_TIERS="$(profile_tiers)"
+HEADLESS=0
+if headless_enabled; then HEADLESS=1; fi
 STAGED_AGENTS="$(mktemp -d)"
 trap 'rm -rf "$STAGED_AGENTS"' EXIT
 SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
@@ -1163,6 +1210,8 @@ for c in "${CLIENTS_LIST[@]}"; do
       ;;
   esac
 done
+
+install_headless
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.md" ]]; then
