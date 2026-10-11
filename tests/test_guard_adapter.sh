@@ -112,4 +112,25 @@ for cmd in "git stash" "git restore x" "rm -rf node_modules" "git commit --no-ve
 done
 echo "OK  [cursor] polityka bez ask (ADR 0006)"
 
+# --- OpenCode: payload pluginu { tool, input } -> { decision, reason } ---------
+expect_opencode() {
+  local payload="$1" guard="$2" expect="$3" out dec
+  out=$(printf '%s' "$payload" | node "$ADAPTER" "$guard" --to opencode)
+  dec=$(printf '%s' "$out" | field decision)
+  [[ "$dec" == "$expect" ]] || fail "opencode: expected=$expect got=${dec:-empty} payload=$payload out=$out"
+  echo "OK  [opencode/$expect] $payload"
+}
+expect_opencode '{"tool":"bash","input":{"command":"git status"}}' git-guard.mjs allow
+expect_opencode '{"tool":"bash","input":{"command":"git reset --hard"}}' git-guard.mjs deny
+expect_opencode '{"tool":"bash","input":{"command":"git push origin master"}}' git-guard.mjs deny
+expect_opencode '{"tool":"read","input":{"filePath":".env"}}' sensitive-files-guard.mjs deny
+expect_opencode '{"tool":"read","input":{"filePath":"uv.lock"}}' sensitive-files-guard.mjs allow
+expect_opencode '{"tool":"write","input":{"filePath":"uv.lock","content":""}}' sensitive-files-guard.mjs deny
+expect_opencode '{"tool":"edit","input":{"filePath":"src/.env.local"}}' sensitive-files-guard.mjs deny
+out=$(printf '{"tool":"bash","input":{"command":"git reset --hard"}}' | node "$ADAPTER" git-guard.mjs --to opencode)
+printf '%s' "$out" | field reason | grep -q . || fail "opencode deny bez reason: $out"
+out=$(printf '{}' | node "$ADAPTER" nie-ma-takiego.sh --to opencode)
+[[ "$(printf '%s' "$out" | field decision)" == "deny" ]] || fail "opencode fail-closed: $out"
+echo "OK  [opencode] deny niesie reason, brak polityki = deny"
+
 echo "All guard adapter checks passed."

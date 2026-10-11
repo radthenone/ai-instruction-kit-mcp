@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Adapter kontraktu hooka dla Cursora.
+ * Adapter kontraktu hooka dla Cursora i OpenCode.
  *
  * Guardy w templates/shared/guards/*.mjs mówią jednym dialektem — kontraktem
  * Claude Code (`hookSpecificOutput.permissionDecision`). Claude Code woła je
@@ -14,7 +14,11 @@
  * `.file_path` + `.content` bez nazwy narzędzia — `--tool` dopisuje `tool_name`,
  * żeby Guard odróżnił odczyt od zapisu. `preToolUse` już niesie `tool_name`.
  *
- * Wyjście: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
+ * OpenCode (`--to opencode`, woła go plugin `.opencode/plugins/kit-guards.js`):
+ * wejście `{ tool, input }` z `tool.execute.before` (`input.command`, `input.filePath`),
+ * wyjście `{ decision, reason }` — plugin przy deny rzuca błąd z powodem dla modelu.
+ *
+ * Wyjście Cursora: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
  * exit 0 — przy failClosed: true niezerowy kod ukrywa payload (Cursor traktuje to
  * jak awarię hooka). Awaria adaptera = deny (fail-closed).
  */
@@ -26,6 +30,7 @@ const path = require("path");
 
 const CLAUDE = "claude";
 const CURSOR = "cursor";
+const OPENCODE = "opencode";
 
 const argv = process.argv.slice(2);
 const scriptName = argv.shift();
@@ -48,6 +53,9 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function render(decision, reason) {
+  if (target === OPENCODE) {
+    return JSON.stringify({ decision, reason });
+  }
   if (target === CURSOR) {
     if (decision === "allow") {
       return '{ "permission": "allow" }';
@@ -93,6 +101,20 @@ if (stdin.charCodeAt(0) === 0xfeff) {
   stdin = stdin.slice(1);
 }
 
+// OpenCode: `{ tool, input }` → kształt Claude Code (`tool_name`, `tool_input`).
+if (target === OPENCODE) {
+  try {
+    const { tool = "", input = {} } = JSON.parse(stdin || "{}");
+    const names = { bash: "Bash", read: "Read", write: "Write", edit: "Edit", multiedit: "MultiEdit" };
+    stdin = JSON.stringify({
+      tool_name: names[tool] || tool,
+      tool_input: { command: input.command, file_path: input.filePath },
+    });
+  } catch {
+    // Nieczytelny payload przekazujemy dalej — Guard sam odpowie deny.
+  }
+}
+
 // `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.
 if (toolName) {
   try {
@@ -121,7 +143,7 @@ if (!out) {
   emitDeny(err);
 }
 
-if (target !== CURSOR) {
+if (target !== CURSOR && target !== OPENCODE) {
   process.stdout.write(out);
   process.exit(0);
 }
