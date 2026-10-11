@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from _shell import is_ci, resolve_bash
@@ -655,6 +656,63 @@ class TestOpencodeGuards(_BootstrapTestCase):
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
             self.assertFalse((workspace / ".opencode").exists())
+
+
+
+class TestOpencodeDefaultModel(_BootstrapTestCase):
+    """Projektowy `opencode.json` dziedziczy `model` z globalnego configu (#167)."""
+
+    def _run(self, home: Path, workspace: Path) -> dict:
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(home)}):
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
+        return json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))
+
+    def _global(self, home: Path, name: str, text: str) -> None:
+        (home / "opencode").mkdir(parents=True, exist_ok=True)
+        (home / "opencode" / name).write_text(text, encoding="utf-8")
+
+    def test_missing_project_model_is_copied_from_global(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark", "theme": "x"}')
+            data = self._run(home, workspace)
+            self.assertEqual(data["model"], "opencode/muse-spark")
+            self.assertNotIn("theme", data)
+
+    def test_project_model_is_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
+            self._run(home, workspace)
+            path = workspace / "opencode.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["model"] = "anthropic/claude-x"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            self.assertEqual(self._run(home, workspace)["model"], "anthropic/claude-x")
+
+    def test_no_global_config_or_model_leaves_field_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self.assertNotIn("model", self._run(home, workspace))
+            self._global(home, "opencode.json", '{"theme": "x"}')
+            self.assertNotIn("model", self._run(home, workspace))
+            self._global(home, "opencode.json", "{ zepsuty")
+            self.assertNotIn("model", self._run(home, workspace))
+
+    def test_jsonc_global_config_with_comments_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            workspace.mkdir()
+            self._global(
+                home,
+                "opencode.jsonc",
+                '{\n  // domyślny\n  "$schema": "https://opencode.ai/config.json",\n'
+                '  /* darmowy */ "model": "opencode/muse-spark",\n}\n',
+            )
+            self.assertEqual(self._run(home, workspace)["model"], "opencode/muse-spark")
 
 
 if __name__ == "__main__":

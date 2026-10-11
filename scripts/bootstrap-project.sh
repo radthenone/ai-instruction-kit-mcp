@@ -957,10 +957,52 @@ install_antigravity() {
   copy_shared_skills antigravity "$TARGET/.agents/skills"
 }
 
+# `model` z globalnego configu opencode (`$XDG_CONFIG_HOME` albo `~/.config`, także na
+# Windows), gdy projektowy `opencode.json` go nie ma (#167). Własny `model` projektu wygrywa;
+# brak globalnego configu, pola albo nieczytelny plik = brak pola, bez błędu.
+inherit_opencode_model() {
+  DEST="$TARGET/opencode.json" CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" "$PYTHON_BIN" - <<'PY'
+import json
+import os
+import re
+from pathlib import Path
+
+dest = Path(os.environ["DEST"])
+STRING = r'("(?:\\.|[^"\\])*")'
+
+
+def load_jsonc(text: str):
+    # Komentarze `//` i `/* */` oraz przecinki końcowe — poza stringami.
+    text = re.sub(STRING + r"|//[^\n]*|/\*.*?\*/", lambda m: m.group(1) or "", text, flags=re.S)
+    text = re.sub(STRING + r"|,(\s*[}\]])", lambda m: m.group(1) or m.group(2), text)
+    return json.loads(text)
+
+
+try:
+    project = json.loads(dest.read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    raise SystemExit(0)
+if not isinstance(project, dict) or "model" in project:
+    raise SystemExit(0)
+for name in ("opencode.json", "opencode.jsonc"):
+    path = Path(os.environ["CONFIG_HOME"]) / "opencode" / name
+    try:
+        model = load_jsonc(path.read_text(encoding="utf-8")).get("model")
+    except (OSError, ValueError, AttributeError):
+        continue
+    if isinstance(model, str) and model:
+        project["model"] = model
+        dest.write_text(json.dumps(project, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+        print(f"  + opencode.json: model {model} (z {path})")
+        break
+PY
+}
+
 install_opencode() {
   mkdir -p "$TARGET/.opencode"
   fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
   echo "  + opencode.json"
+  inherit_opencode_model
   render_agent_commands opencode "$TARGET/.opencode/command"
   apply_model_tiers opencode "$TARGET/.opencode/command"
   copy_shared_skills opencode "$TARGET/.opencode/command"
