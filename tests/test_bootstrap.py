@@ -584,5 +584,53 @@ class TestTestNamePolicy(_BootstrapTestCase):
             self.assertIn("blocking bug", rule)
 
 
+
+class TestModelTiers(_BootstrapTestCase):
+    """`models:` / `agents:` w Profilu → `model:` u Claude i opencode (#168)."""
+
+    def _install(self, workspace: Path, profile_extra: str = "") -> None:
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+        if profile_extra:
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(profile.read_text(encoding="utf-8") + profile_extra, encoding="utf-8")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+
+    def test_without_models_agents_have_no_model_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace)
+            profile = (workspace / ".ai" / "project.profile.yaml").read_text(encoding="utf-8")
+            self.assertIn("\nagents:\n  light: ", profile)
+            for rel in (".claude/agents/git-start.md", ".opencode/command/git-start.md"):
+                text = (workspace / rel).read_text(encoding="utf-8")
+                self.assertNotIn("model:", text.split("---")[1], rel)
+                self.assertNotIn("model-tier", text, rel)
+
+    def test_models_mapping_renders_model_for_claude_and_opencode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(
+                workspace,
+                "\nmodels:\n  claude:\n    light: haiku\n  opencode:\n    light: anthropic/claude-haiku-5-5\n",
+            )
+            read = lambda rel: (workspace / rel).read_text(encoding="utf-8")  # noqa: E731
+            self.assertIn("\nmodel: haiku\n---", read(".claude/agents/git-start.md"))
+            self.assertIn(
+                "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/command/git-start.md")
+            )
+            self.assertNotIn("model:", read(".claude/commands/git-start.md").split("---")[1])
+            self.assertNotIn("model:", read(".claude/agents/night-run.md").split("---")[1])
+
+    def test_invalid_agents_block_fails_with_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            with self.assertRaises(BootstrapError) as ctx:
+                self._install(workspace, "\nmodels:\n  claude:\n    turbo: haiku\n")
+            self.assertIn("models.claude.turbo", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -400,6 +400,44 @@ decisions:
 
 Bundle liczone są z Tierów: `get_bundle backend` zawiera Stack z Tieru `backend`, pusty profil daje sam core. Nierozpoznana wartość Tieru nie wywraca serwera — ląduje w „Nierozpoznanych decyzjach" w `get_index` (ADR-0004). Stare klucze `stacks:` / `patterns:` czytane są nadal.
 
+### Model tiers agentów (`models:` / `agents:`)
+
+Każdy agent kita ma w template `model-tier:` (`light` / `standard` / `heavy`; osobny klucz
+od `tier:` Stacku). Profil mapuje tier na model per klient:
+
+```yaml
+models:                  # ręcznie; reload tego bloku nie rusza
+  claude:
+    light: haiku
+    standard: sonnet
+    heavy: opus
+  opencode:
+    light: anthropic/claude-haiku-5-5
+
+agents:                  # synchronizuje reload
+  light: git-start,git-commit,git-end,git-check,cleanup
+  standard: create-task,create-skill
+  heavy: night-run,review-edge
+```
+
+- Brak klienta albo tieru w `models:` = brak pola `model` (agent dziedziczy model sesji).
+  Bez `models:` pliki agentów są takie jak przed tą funkcją.
+- `agents:` przy reloadzie: blok powstaje, gdy go nie ma; brakujący agenci kita trafiają
+  do tieru z template; agenta już przypisanego reload nie przenosi (Profil wygrywa);
+  nazwy spoza kita znikają. Każde dopisanie (`+ agents.<tier>: <agent>`) i usunięcie (`-`)
+  jest w wyjściu reloadu. Reload przepisuje tylko blok `agents:` — komentarze w nim giną.
+- Nieznany tier (w `models:` albo `agents:`), tier bez modelu, agent w dwóch tierach i zapis
+  w jednej linii (`models: {…}`) przerywają reload z opisem błędu. Oba bloki pisz z wcięciami,
+  jak wyżej; `agents:` obejmuje wszystkich agentów kita, także Tierów Stacku spoza Profilu.
+
+| Klient | Wspiera `model` | Plik | Format nazwy modelu | Przykład |
+|--------|-----------------|------|---------------------|----------|
+| Claude Code | tak | `.claude/agents/<agent>.md` | alias (`haiku`/`sonnet`/`opus`) albo pełne id | `models.claude.light: haiku` |
+| opencode | tak | `.opencode/command/<agent>.md` | `provider/model` | `models.opencode.light: anthropic/claude-haiku-5-5` |
+| Cursor, Codex, VS Code, Kiro, Kilo, Antigravity | nie — pole pomijane | — | — | — |
+
+Komendy `/nazwa` Claude (`.claude/commands/`) zostają bez `model:` — działają w sesji głównej.
+
 ### Katalog pytań o projekt (`list_questions`)
 
 `manifest.yaml` → `questions:` trzyma pytania o projekt (Tiery, warianty, `codegen`, Docker,

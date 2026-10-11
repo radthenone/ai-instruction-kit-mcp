@@ -3,6 +3,7 @@ name: subagent-backend
 description: Backend reviewer do pracy w dwóch okienkach razem z subagent-frontend. Use when robisz cross-review backend/frontend w dwóch osobnych oknach Cursor. Wywołuj jako /subagent-backend.
 readonly: true
 tier: backend
+model-tier: standard
 ---
 
 ## Reguły wspólne (obowiązkowe)

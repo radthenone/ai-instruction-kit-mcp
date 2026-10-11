@@ -157,7 +157,8 @@ for name in kit-project-begin kit-project-edit; do
   done
 done
 echo "OK  kit-project-begin/edit u wszystkich klientów"
-keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$ROOT/templates/shared/agents/night-run.md" | tr '\n' ' ')"
+# Plik u klienta, nie template — template ma jeszcze `model-tier:`, który wycina staging.
+keys="$(awk '/^---$/{n++; next} n==1{print $1}' "$TMP/skills/.cursor/agents/night-run.md" | tr '\n' ' ')"
 test "$keys" = "name: description: " || { echo "FAIL night-run frontmatter: $keys" >&2; exit 1; }
 echo "OK  night-run u wszystkich klientów, frontmatter tylko name + description"
 
