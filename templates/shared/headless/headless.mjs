@@ -15,6 +15,7 @@
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
+import { constants } from "node:os"
 import { delimiter, join } from "node:path"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
@@ -48,7 +49,12 @@ const EXECUTORS = {
     // `--standalone`: prywatny serwer jako proces potomny, nie usługa w tle — inaczej
     // ubicie drzewa nie sięga LSP i MCP wykonawcy.
     bins: ["opencode2", "opencode"],
-    args: (model, prompt) => ["run", "--standalone", "--auto", ...(model ? ["--model", model] : []), prompt],
+    // Treść od `-` (np. lista markdown) parser opencode wziąłby za flagę — nowa linia na
+    // początku tego nie zmienia dla modelu.
+    args: (model, prompt) => [
+      "run", "--standalone", "--auto", ...(model ? ["--model", model] : []),
+      prompt.startsWith("-") ? `\n${prompt}` : prompt,
+    ],
     stdin: false,
   },
 }
@@ -76,26 +82,33 @@ function profileClients() {
   } catch {
     fail("brak .ai/project.profile.yaml — uruchom z roota projektu z kitem")
   }
-  const raw = (/^clients:[ \t]*['"]?([^'"#\n]*)/m.exec(text)?.[1] || "").trim()
-  const list = raw.split(",").map((c) => c.trim().toLowerCase()).filter(Boolean)
+  // `clients: a,b`, `clients: [a, b]` albo lista blokowa `- a` — jak `_clients_value` w cli.py.
+  const match = /^clients:[ \t]*([^#\n]*)((?:\n[ \t]+-[^\n]*)*)/m.exec(text)
+  const raw = match ? `${match[1]},${match[2].replace(/^[ \t]+-/gm, ",")}` : ""
+  const list = raw.split(/[,\n]/).map((c) => c.replace(/[[\]'"\s]/g, "").toLowerCase()).filter(Boolean)
   return list.includes("all") ? KNOWN_CLIENTS : list.map((c) => (c === "copilot" ? "vscode" : c))
 }
 
 function parse(argv) {
   const opts = { host: "", executor: "", model: "", timeoutMin: DEFAULT_TIMEOUT_MIN, words: [] }
+  // Wartość flagi nie może być kolejną flagą — `--model --timeout 5` to błąd, nie model.
+  const value = (i) => {
+    const v = argv[i + 1]
+    if (!v || v.startsWith("--")) fail(`${argv[i]} wymaga wartości`)
+    return v
+  }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg === "--host") opts.host = String(argv[++i] || "").toLowerCase()
-    else if (arg === "--model") opts.model = String(argv[++i] || "")
+    if (arg === "--host") opts.host = value(i++).toLowerCase()
+    else if (arg === "--model") opts.model = value(i++)
     else if (arg === "--timeout") {
-      opts.timeoutMin = Number(argv[++i])
+      opts.timeoutMin = Number(value(i++))
       if (!(opts.timeoutMin > 0)) fail(`--timeout wymaga liczby minut > 0, dostał: ${argv[i]}`)
     } else if (arg === "--") opts.words.push(...argv.splice(i + 1))
     else if (arg.startsWith("--")) fail(`nieznana flaga ${arg}. Dozwolone: ${FLAGS.join(", ")}`)
     else if (!opts.executor) opts.executor = arg.toLowerCase()
     else opts.words.push(arg)
   }
-  if (opts.model === "" && argv.includes("--model")) fail("--model wymaga nazwy modelu")
   return opts
 }
 
@@ -162,7 +175,13 @@ prompt += FOOTER
 
 const executor = EXECUTORS[opts.executor]
 const bin = executor.bins.map(which).find(Boolean)
-if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH`)
+// `.cmd`/`.bat` (shim npm na Windows) idzie przez cmd.exe, który rozbija wieloliniowy
+// argument i interpretuje `& | >` — treść w argumencie byłaby niebezpieczna.
+const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin || "")
+if (needsShell && !executor.stdin) {
+  fail(`${bin} to skrypt cmd — treść w argumencie nie przejdzie bezpiecznie. Dodaj do PATH binarkę .exe ${opts.executor}`)
+}
+if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
 
 const args = executor.args(opts.model, prompt)
 process.stdout.write(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
@@ -171,11 +190,24 @@ process.stdout.write(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${arg
 // wymaga powłoki; drzewo i tak sprząta taskkill /T.
 const child = spawn(bin, args, {
   detached: process.platform !== "win32",
-  shell: process.platform === "win32" && /\.(cmd|bat)$/i.test(bin),
+  shell: needsShell,
   stdio: [executor.stdin ? "pipe" : "ignore", "inherit", "inherit"],
   windowsHide: true,
 })
-if (executor.stdin) child.stdin.end(prompt)
+if (executor.stdin) {
+  // Wykonawca, który skończy przed odczytem treści, daje EPIPE — nie może wywrócić wrappera.
+  child.stdin.on("error", () => {})
+  child.stdin.end(prompt)
+}
+
+// Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
+// z uprawnieniami na edycje i bash.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    killTree(child)
+    process.exit(128 + constants.signals[signal])
+  })
+}
 
 const poll = process.platform === "win32" ? setInterval(() => snapshotDescendants(child.pid), 5000) : undefined
 if (poll) snapshotDescendants(child.pid)
@@ -193,7 +225,7 @@ try {
       process.stderr.write(`[headless] nie uruchomiono ${bin}: ${err.message}\n`)
       resolve(2)
     })
-    child.on("exit", (status, signal) => resolve(status ?? (signal ? 1 : 0)))
+    child.on("exit", (status, signal) => resolve(status ?? 128 + (constants.signals[signal] || 0)))
   })
 } finally {
   clearTimeout(timer)

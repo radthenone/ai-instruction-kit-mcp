@@ -788,8 +788,10 @@ class TestHeadlessAgent(_BootstrapTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             workspace.mkdir()
-            self._install(workspace, "claude,opencode")
-            self._install(workspace, "claude")
+            self._install(workspace, "claude,opencode,antigravity")
+            self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
+            self._install(workspace, "claude,antigravity")
+            self.assertFalse((workspace / ".agents/skills/headless").exists())
             self.assertFalse((workspace / ".ai/headless.mjs").exists())
             self.assertFalse((workspace / ".claude/agents/headless.md").exists())
             self.assertFalse((workspace / ".claude/commands/headless.md").exists())

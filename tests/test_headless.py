@@ -116,6 +116,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "opencode", "claude", "x")
         self.assertEqual(result.returncode, 2)
         self.assertIn("claude", result.stderr)
+        self.assertIn("Dozwoleni wykonawcy", result.stderr)
 
     # --- sprzątanie drzewa procesów -----------------------------------------
 
@@ -135,6 +136,27 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 124)
         self.assertLess(time.time() - started, 15)
         self.assertIn("timeout", result.stdout + result.stderr)
+        self.assert_tree_killed()
+
+    def test_tree_is_killed_when_wrapper_is_terminated(self) -> None:
+        node_dir = str(Path(shutil.which("node") or "node").parent)
+        proc = subprocess.Popen(
+            ["node", str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={
+                "PATH": os.pathsep.join([str(self.bin), node_dir, "/usr/bin", "/bin"]),
+                "HEADLESS_TEST_DIR": str(self.root),
+                "FAKE_SLEEP": "30",
+            },
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        self.assertEqual(proc.wait(timeout=10), 143)
         self.assert_tree_killed()
 
     # --- flagi i reguły -----------------------------------------------------
@@ -173,6 +195,27 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.profile("all")
         result = self.run_wrapper("--host", "codex", "claude", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_flag_without_value_does_not_swallow_next_flag(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "--model", "--timeout", "5", "x")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--model", result.stderr)
+        self.assertFalse((self.root / "argv").exists())
+
+    def test_clients_as_yaml_list_are_read(self) -> None:
+        for clients in ("[claude, opencode]", "\n  - claude\n  - opencode"):
+            with self.subTest(clients=clients):
+                self.profile(clients)
+                result = self.run_wrapper("--host", "claude", "opencode", "x")
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_opencode_prompt_starting_with_dash_is_not_a_flag(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", stdin="- popraw test\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.argv()
+        # Argument zaczyna się od nowej linii, więc parser opencode nie widzi w nim flagi.
+        self.assertEqual(argv[4], "")
+        self.assertEqual(argv[5], "- popraw test")
 
     def test_missing_prompt_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode")

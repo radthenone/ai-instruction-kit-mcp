@@ -35,6 +35,10 @@ Ten klient (host): `@KIT_HOST@`. Host nie wywołuje sam siebie.
    HEADLESS_EOF
    ```
 
+   Bez basha (np. PowerShell): treść jako jeden argument po flagach —
+   `node .ai/headless.mjs --host @KIT_HOST@ <wykonawca> [flagi] '<treść>'` (w PowerShell
+   apostrof w treści podwój: `''`).
+
    Zadanie trwa zwykle dłużej niż limit pojedynczej komendy (10 min) — jeśli klient pozwala,
    uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Wrapper po
    zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.

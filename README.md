@@ -1156,7 +1156,7 @@ agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wyko
 | Warstwa | Skąd model |
 |---------|------------|
 | Agent `/headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
-| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167) → domyślny model wykonawcy |
+| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy |
 | Agenci kitu wołani w sesji wykonawcy | `models.<wykonawca>.<tier>` w Profilu, bez mapowania — model sesji wykonawcy |
 
 **Sprzątanie procesów.** Wrapper uruchamia wykonawcę we własnej grupie procesów (Unix)
@@ -1164,7 +1164,10 @@ i po zakończeniu, błędzie albo timeoucie zabija całe drzewo — z LSP i serw
 (Windows: `taskkill /T /F /PID` na wykonawcy i na potomkach zebranych w trakcie przez
 `Get-CimInstance Win32_Process` co 5 s — Windows nie ma grup procesów, a po wyjściu rodzica
 `/T` nie widzi już dzieci). OpenCode leci z `--standalone`, żeby jego serwer był procesem
-potomnym, a nie usługą w tle. Proces żyjący krócej niż 5 s może umknąć snapshotowi. Sesje wykonawców zostają na
+potomnym, a nie usługą w tle. Proces żyjący krócej niż 5 s może umknąć snapshotowi.
+Zabicie samego wrappera (SIGINT / SIGTERM / SIGHUP — np. koniec sesji hosta) też sprząta
+drzewo wykonawcy. Na Windows OpenCode musi być w PATH jako `.exe`: shim `.cmd` z npm idzie
+przez `cmd.exe`, który rozbija wieloliniową treść w argumencie, więc wrapper go odrzuca. Sesje wykonawców zostają na
 dysku (historia `claude` i `opencode`); wrapper ich nie usuwa.
 
 ## Guardrails — bezpieczeństwo

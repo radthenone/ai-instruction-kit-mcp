@@ -697,7 +697,7 @@ prune_tier_agents() {
       "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
       "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
       "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
-    rm -rf "$TARGET/.codex/skills/$name"
+    rm -rf "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
   done
 }
 
