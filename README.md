@@ -1166,8 +1166,10 @@ i po zakończeniu, błędzie albo timeoucie zabija całe drzewo — z LSP i serw
 `/T` nie widzi już dzieci). OpenCode leci z `--standalone`, żeby jego serwer był procesem
 potomnym, a nie usługą w tle. Proces żyjący krócej niż 5 s może umknąć snapshotowi.
 Zabicie samego wrappera (SIGINT / SIGTERM / SIGHUP — np. koniec sesji hosta) też sprząta
-drzewo wykonawcy. Na Windows OpenCode musi być w PATH jako `.exe`: shim `.cmd` z npm idzie
-przez `cmd.exe`, który rozbija wieloliniową treść w argumencie, więc wrapper go odrzuca. Sesje wykonawców zostają na
+drzewo wykonawcy. Na Windows shim `.cmd` z npm (`opencode2.cmd`) wrapper zamienia na
+binarkę `.exe`, którą shim wskazuje (`"%dp0%\…\x.exe"`), i uruchamia ją bez powłoki. Shim
+bez `.exe` jest odrzucany: `cmd.exe` rozbiłby wieloliniową treść w argumencie. Nazwa binarki
+działa jak nazwa wykonawcy (`/headless opencode2` = `/headless opencode`). Sesje wykonawców zostają na
 dysku (historia `claude` i `opencode`); wrapper ich nie usuwa.
 
 ## Guardrails — bezpieczeństwo
