@@ -1107,17 +1107,35 @@ Z dowolnego klienta kitu (host) zlecasz zadanie innemu klientowi uruchomionemu b
 interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wynik.
 
 ```text
-/headless <wykonawca> [--model <id>] [--timeout <min>] "<treść>"
+/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
 | Flaga | Znaczenie |
 |-------|-----------|
 | `--model <id>` | Model sesji wykonawcy w jego formacie (`haiku`, `anthropic/claude-haiku-5-5`) |
 | `--timeout <min>` | Limit w minutach, domyślnie 30; po nim drzewo procesów jest zabijane (kod `124`) |
+| `--heartbeat <min>` | Co ile minut linia stanu `[headless] ♥` w wyjściu i logu, domyślnie 10 |
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
-stopka: nie commituj, odpal testy, raport `## Zmiany` / `## Testy` / `## Problemy`. Commit
-robi host (`/git-commit`) po review diffa.
+stopka: katalog runu na logi testów i pliki robocze, zakaz `git stash` / `git checkout` /
+`git reset` (porównanie z bazą przez `git worktree add --detach <katalog runu>/base <ref>`
+i `git worktree remove` na końcu), pełna suita testów raz (po poprawce
+najpierw pliki, które padły), lokalny commit po każdym zielonym tasku planu, raport
+`## Zmiany` / `## Testy` / `## Problemy`. Push i PR robi host (`/git-end`) po review commitów.
+
+**Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
+do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie);
+ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
+`[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
+a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
+(bez zabijania; to robi `--timeout`). Liczy to Node, nie model — zero tokenów. Podgląd na żywo
+w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
+`grep '^\[headless\]' <log> | tail -1`.
+
+**Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
+--short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
+`git stash list` z ostrzeżeniem `UWAGA` (bez auto-`pop` — konflikt) i ostatnie 20 linii
+wykonawcy. Agent `/headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.
 
 **Reguły.** Wykonawca musi być w `clients:` Profilu, mieć tryb headless z guardami kita
 i być **inny niż host** — `/headless <host>` z tego samego hosta kończy się błędem z listą
@@ -1166,8 +1184,10 @@ i po zakończeniu, błędzie albo timeoucie zabija całe drzewo — z LSP i serw
 `/T` nie widzi już dzieci). OpenCode leci z `--standalone`, żeby jego serwer był procesem
 potomnym, a nie usługą w tle. Proces żyjący krócej niż 5 s może umknąć snapshotowi.
 Zabicie samego wrappera (SIGINT / SIGTERM / SIGHUP — np. koniec sesji hosta) też sprząta
-drzewo wykonawcy. Na Windows OpenCode musi być w PATH jako `.exe`: shim `.cmd` z npm idzie
-przez `cmd.exe`, który rozbija wieloliniową treść w argumencie, więc wrapper go odrzuca. Sesje wykonawców zostają na
+drzewo wykonawcy. Na Windows shim `.cmd` z npm (`opencode2.cmd`) wrapper zamienia na
+binarkę `.exe`, którą shim wskazuje (`"%dp0%\…\x.exe"`), i uruchamia ją bez powłoki. Shim
+bez `.exe` jest odrzucany: `cmd.exe` rozbiłby wieloliniową treść w argumencie. Nazwa binarki
+działa jak nazwa wykonawcy (`/headless opencode2` = `/headless opencode`). Sesje wykonawców zostają na
 dysku (historia `claude` i `opencode`); wrapper ich nie usuwa.
 
 ## Guardrails — bezpieczeństwo
