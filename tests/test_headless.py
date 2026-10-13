@@ -23,7 +23,9 @@ sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
 echo "wynik wykonawcy"
 if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "praca wykonawcy"; fi
+if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
+if [ -n "$FAKE_PARTIAL" ]; then printf 'bez nowej linii'; fi
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 exit "${FAKE_CODE:-0}"
 """
@@ -149,6 +151,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("claude", result.stderr)
         self.assertIn("Dozwoleni wykonawcy", result.stderr)
+        self.assertFalse((self.root / ".ai/headless-runs").exists())
 
     # --- sprzątanie drzewa procesów -----------------------------------------
 
@@ -175,12 +178,15 @@ class HeadlessWrapperTest(unittest.TestCase):
         proc = subprocess.Popen(
             ["node", str(WRAPPER), "--host", "claude", "opencode", "x"],
             cwd=self.root,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
             env={
                 "PATH": os.pathsep.join([str(self.bin), node_dir, "/usr/bin", "/bin"]),
                 "HEADLESS_TEST_DIR": str(self.root),
                 "FAKE_SLEEP": "30",
+                "FAKE_PARTIAL": "1",
             },
         )
         deadline = time.time() + 10
@@ -188,8 +194,12 @@ class HeadlessWrapperTest(unittest.TestCase):
             time.sleep(0.05)
         time.sleep(0.2)
         proc.terminate()
-        self.assertEqual(proc.wait(timeout=10), 143)
+        out, _ = proc.communicate(timeout=10)
+        self.assertEqual(proc.returncode, 143)
         self.assert_tree_killed()
+        # Raport końcowy także po SIGTERM, z niedokończoną linią wykonawcy (#183).
+        report = out.split("[headless] raport końcowy", 1)[1]
+        self.assertIn("bez nowej linii", report)
 
     # --- flagi i reguły -----------------------------------------------------
 
@@ -264,7 +274,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
     }
 
-    def git_repo(self) -> None:
+    def git_repo(self, stash: bool = False) -> None:
         def git(*args: str) -> None:
             subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, env={**os.environ, **self.GIT_ENV})
 
@@ -272,6 +282,9 @@ class HeadlessWrapperTest(unittest.TestCase):
         (self.root / "tracked.txt").write_text("a\n", encoding="utf-8")
         git("add", "tracked.txt")
         git("commit", "-qm", "start")
+        if stash:
+            (self.root / "tracked.txt").write_text("b\n", encoding="utf-8")
+            git("stash", "push", "-qm", "stary wpis")
 
     def log_path(self, result: subprocess.CompletedProcess) -> Path:
         first = result.stdout.splitlines()[0]
@@ -296,11 +309,11 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         log = self.log_path(result).read_text(encoding="utf-8")
         for text in (result.stdout, log):
-            beat = next(line for line in text.splitlines() if line.startswith("[headless] ♥"))
-            self.assertIn("min", beat)
-            self.assertIn("pliki:", beat)
-            self.assertIn("commity: 1", beat)
-            self.assertIn("wynik wykonawcy", beat)
+            beats = [line for line in text.splitlines() if line.startswith("[headless] ♥")]
+            self.assertTrue(
+                any("min |" in b and "pliki:" in b and "commity: 1" in b and "wynik wykonawcy" in b for b in beats),
+                beats,
+            )
             self.assertIn("[headless] możliwe zacięcie: brak wyjścia od", text)
 
     def test_timeout_report_shows_commits_status_and_stash_warning(self) -> None:
@@ -319,8 +332,17 @@ class HeadlessWrapperTest(unittest.TestCase):
             self.assertIn("UWAGA", text)
             self.assertIn("wynik wykonawcy", text.split("[headless] raport końcowy", 1)[1])
 
+    def test_stash_warning_lists_new_entries_by_hash_not_count(self) -> None:
+        # Wykonawca zdejmuje stary wpis i dodaje nowy — liczba wpisów bez zmian.
+        self.git_repo(stash=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_DROP="1", FAKE_STASH="1", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        warning = result.stdout.split("UWAGA", 1)[1].split("## ostatnie", 1)[0]
+        self.assertIn("stash@{0}", warning)
+        self.assertNotIn("stary wpis", warning)
+
     def test_report_without_git_repo_does_not_fail(self) -> None:
-        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", GIT_CEILING_DIRECTORIES=str(self.root.parent))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("[headless] raport końcowy", result.stdout)
         self.assertNotIn("stash@", result.stdout)
@@ -330,7 +352,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         prompt = (self.root / "stdin").read_text(encoding="utf-8")
         self.assertIn(str(self.log_path(result).parent), prompt)
-        for rule in ("git stash", "git checkout", "git reset", "git worktree", "commit", "Nie pushuj"):
+        for rule in ("git stash", "git checkout", "git reset", "git worktree add --detach", "git worktree remove", "commit", "Nie pushuj"):
             self.assertIn(rule, prompt)
 
     def test_bad_heartbeat_is_error(self) -> None:

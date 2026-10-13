@@ -35,7 +35,7 @@ const footer = (runDir) => `
 ---
 Zasady tej sesji (headless, bez użytkownika):
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
-- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą przez \`git worktree\` w katalogu runu.
+- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`git worktree add --detach ${join(runDir, "base")} <ref>\`, na końcu \`git worktree remove ${join(runDir, "base")}\`.
 - Testy: pełna suita raz; po poprawce najpierw pliki, które padły, pełna na końcu.
 - Lokalny commit po każdym zielonym tasku planu. Nie pushuj i nie otwieraj PR — zrobi to host po review.
 - Na końcu raport w tym formacie:
@@ -186,8 +186,10 @@ function killTree(child) {
 }
 
 // Git w katalogu roboczym; poza repo (albo bez gita) — null, raport pomija pola.
+// `--no-optional-locks`: `status` z heartbeatu nie bierze index.lock, więc nie wywraca
+// commita wykonawcy. Limit 15 s — zawieszony git nie blokuje event loop ani `--timeout`.
 function git(...args) {
-  const r = spawnSync("git", args, { encoding: "utf8", windowsHide: true })
+  const r = spawnSync("git", ["--no-optional-locks", ...args], { encoding: "utf8", windowsHide: true, timeout: 15_000, killSignal: "SIGKILL" })
   return r.status === 0 ? r.stdout.trimEnd() : null
 }
 
@@ -215,14 +217,6 @@ async function main() {
   if (!prompt && !process.stdin.isTTY) prompt = readFileSync(0, "utf8")
   prompt = prompt.trim()
   if (!prompt) fail("pusta treść zadania — podaj ją w cudzysłowie albo na stdin")
-  // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
-  const runsDir = resolve(".ai", "headless-runs")
-  const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
-  mkdirSync(runDir, { recursive: true })
-  writeFileSync(join(runsDir, ".gitignore"), "*\n")
-  const logPath = join(runDir, "headless.log")
-  prompt += footer(runDir)
-
   const executor = EXECUTORS[opts.executor]
   const found = executor.bins.map(which).find(Boolean)
   const bin = (process.platform === "win32" && /\.(cmd|bat)$/i.test(found || "") && resolveShim(found)) || found
@@ -234,6 +228,14 @@ async function main() {
   }
   if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
 
+  // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
+  const runsDir = resolve(".ai", "headless-runs")
+  const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
+  mkdirSync(runDir, { recursive: true })
+  writeFileSync(join(runsDir, ".gitignore"), "*\n")
+  const logPath = join(runDir, "headless.log")
+  prompt += footer(runDir)
+
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
     stream.write(text)
@@ -244,7 +246,7 @@ async function main() {
   log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
-  const startStash = lines(git("stash", "list")).length
+  const startStash = new Set(lines(git("stash", "list", "--format=%H")))
   const started = Date.now()
 
   // Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: powłoka tylko dla
@@ -256,24 +258,29 @@ async function main() {
     windowsHide: true,
   })
   const closed = new Promise((done) => child.on("close", done))
-  // Ostatnie linie wykonawcy do heartbeatu i raportu; `partial` = linia bez `\n` jeszcze.
+  // Ostatnie linie wykonawcy do heartbeatu i raportu; `partial` = linia bez `\n` jeszcze,
+  // osobno per strumień. `setEncoding` nie tnie znaków UTF-8 na granicy chunków.
   const tail = []
-  let partial = ""
+  const partial = new Map()
   let lastOutput = Date.now()
   let stallReported = false
-  const onData = (stream) => (chunk) => {
-    const text = chunk.toString()
-    log(text, stream)
-    lastOutput = Date.now()
-    stallReported = false
-    const parts = (partial + text).split(/\r?\n/)
-    partial = parts.pop()
-    tail.push(...parts.filter((l) => l.trim()))
-    tail.splice(0, tail.length - TAIL_LINES)
+  const capture = (source, stream) => {
+    source.setEncoding("utf8")
+    partial.set(source, "")
+    source.on("data", (text) => {
+      log(text, stream)
+      lastOutput = Date.now()
+      stallReported = false
+      const parts = (partial.get(source) + text).split(/\r?\n/)
+      partial.set(source, parts.pop())
+      tail.push(...parts.filter((l) => l.trim()))
+      tail.splice(0, tail.length - TAIL_LINES)
+    })
   }
-  child.stdout.on("data", onData(process.stdout))
-  child.stderr.on("data", onData(process.stderr))
-  const lastLine = () => (partial.trim() ? partial : tail.at(-1) || "").trim()
+  capture(child.stdout, process.stdout)
+  capture(child.stderr, process.stderr)
+  const fullTail = () => [...tail, ...[...partial.values()].filter((l) => l.trim())]
+  const lastLine = () => (fullTail().at(-1) || "").trim()
   const minutes = (ms) => Math.round(ms / 6000) / 10
 
   const heartbeatMs = opts.heartbeatMin * 60_000
@@ -300,7 +307,7 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => {
       killTree(child)
-      log(finalReport({ startHead, startStash, tail }))
+      log(finalReport({ startHead, startStash, tail: fullTail() }))
       process.exit(128 + constants.signals[signal])
     })
   }
@@ -336,9 +343,10 @@ async function main() {
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
     code = 124
   }
-  log(finalReport({ startHead, startStash, tail: partial.trim() ? [...tail, partial] : tail }))
+  log(finalReport({ startHead, startStash, tail: fullTail() }))
   log(`[headless] kod wyjścia: ${code}\n`)
-  process.exit(code)
+  // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
+  process.stdout.write("", () => process.exit(code))
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
@@ -348,8 +356,11 @@ function finalReport({ startHead, startStash, tail }) {
   const status = git("status", "--short")
   if (status !== null) out.push("## git status --short", status || "(czysto)")
   if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")
-  const stash = lines(git("stash", "list"))
-  const added = stash.slice(0, stash.length - startStash)
+  // Po hashach, nie po liczbie — `drop` + nowy wpis nie zmienia liczby.
+  const added = lines(git("stash", "list", "--format=%H%x09%gd: %gs"))
+    .map((l) => l.split("\t"))
+    .filter(([hash]) => !startStash.has(hash))
+    .map(([, entry]) => entry)
   if (added.length) {
     out.push("## UWAGA: nowe wpisy stasha — praca wykonawcy może tam być; nie zdjęte automatycznie (`git stash pop` ręcznie)", ...added)
   }

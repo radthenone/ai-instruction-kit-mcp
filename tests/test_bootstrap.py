@@ -98,6 +98,18 @@ class TestDryRun(_BootstrapTestCase):
             self.assertEqual(_snapshot(workspace), before)
             self.assertIn(".cursor/mcp.json", plan.deleted)
 
+    def test_dry_run_skips_headless_runs(self) -> None:
+        """Logi i worktree runów /headless (#183) nie są kopiowane do sandboxu planu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            run = workspace / ".ai" / "headless-runs" / "r1"
+            run.mkdir(parents=True)
+            (run / "headless.log").write_text("log\n", encoding="utf-8")
+
+            plan = plan_bootstrap(workspace_root=workspace, kit_root=KIT_ROOT, clients="claude")
+            listed = plan.created + plan.modified + plan.deleted + plan.unchanged
+            self.assertFalse([rel for rel in listed if "headless-runs" in rel], listed)
+
 
 class TestRealRun(_BootstrapTestCase):
     def test_run_installs_hooks_settings_and_stamp(self) -> None:

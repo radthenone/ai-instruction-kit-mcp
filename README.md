@@ -1118,7 +1118,8 @@ interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wyn
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
 stopka: katalog runu na logi testów i pliki robocze, zakaz `git stash` / `git checkout` /
-`git reset` (porównanie z bazą przez `git worktree`), pełna suita testów raz (po poprawce
+`git reset` (porównanie z bazą przez `git worktree add --detach <katalog runu>/base <ref>`
+i `git worktree remove` na końcu), pełna suita testów raz (po poprawce
 najpierw pliki, które padły), lokalny commit po każdym zielonym tasku planu, raport
 `## Zmiany` / `## Testy` / `## Problemy`. Push i PR robi host (`/git-end`) po review commitów.
 
@@ -1131,7 +1132,7 @@ a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak w
 w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 `grep '^\[headless\]' <log> | tail -1`.
 
-**Raport końcowy** — zawsze, także po timeoucie (`124`) i po zabiciu wrappera: `git status
+**Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
 `git stash list` z ostrzeżeniem `UWAGA` (bez auto-`pop` — konflikt) i ostatnie 20 linii
 wykonawcy. Agent `/headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.

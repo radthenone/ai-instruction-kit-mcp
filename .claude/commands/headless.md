@@ -56,6 +56,8 @@ Ten klient (host): `claude`. Host nie wywołuje sam siebie.
    końcowy wrappera (`[headless] raport końcowy`): `git status --short`, commity wykonawcy
    od startu, nowe wpisy stasha i ostatnie linie wykonawcy. Ostrzeżenie o stashu (`UWAGA`)
    przenieś do raportu dla użytkownika — tam może leżeć praca wykonawcy; sam go nie zdejmuj.
+   Wyjście ucięte przez klienta — raport jest w logu:
+   `sed -n '/^\[headless\] raport końcowy/,$p' <log>`.
 
 4. Raport dla użytkownika:
 

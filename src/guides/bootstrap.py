@@ -226,7 +226,8 @@ def _seed_sandbox(workspace_root: Path, sandbox: Path) -> None:
         dest = sandbox / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
-            shutil.copytree(src, dest, dirs_exist_ok=True)
+            # Runy /headless (#183): logi i worktree wykonawcy — nie kitowa powierzchnia.
+            shutil.copytree(src, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("headless-runs"))
         else:
             shutil.copy2(src, dest)
 
