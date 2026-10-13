@@ -2,7 +2,7 @@
 /**
  * Wrapper `/headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
  *
- *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [treść…]
+ *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [treść…]
  *
  * Treść: argumenty po fladze albo (bez nich) stdin — słowo w słowo, plus stała stopka.
  * `--host` wstawia bootstrap w pliku agenta każdego klienta; wykonawca musi być w tabeli
@@ -12,23 +12,32 @@
  * Po zakończeniu, błędzie albo timeoucie wrapper zabija całe drzewo procesów wykonawcy
  * (Unix: grupa procesów, Windows: `taskkill /T /F`) — razem z jego LSP i serwerami MCP.
  * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie.
+ *
+ * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `.ai/headless-runs/<start>/`
+ * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
+ * po 2 interwałach ciszy ostrzeżenie o zacięciu. Na końcu (także 124) raport: status, commity
+ * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
-import { existsSync, readFileSync, realpathSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
-import { basename, delimiter, dirname, join } from "node:path"
+import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
-const FLAGS = ["--model", "--timeout"]
+const FLAGS = ["--model", "--timeout", "--heartbeat"]
 const DEFAULT_TIMEOUT_MIN = 30
+const DEFAULT_HEARTBEAT_MIN = 10
+const TAIL_LINES = 20
 
-const FOOTER = `
+const footer = (runDir) => `
 
 ---
 Zasady tej sesji (headless, bez użytkownika):
-- Nie commituj i nie pushuj — commit zrobi host.
-- Po zmianach odpal testy projektu.
+- Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
+- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą przez \`git worktree\` w katalogu runu.
+- Testy: pełna suita raz; po poprawce najpierw pliki, które padły, pełna na końcu.
+- Lokalny commit po każdym zielonym tasku planu. Nie pushuj i nie otwieraj PR — zrobi to host po review.
 - Na końcu raport w tym formacie:
 ## Zmiany
 <pliki i co w nich zmieniono>
@@ -109,7 +118,7 @@ function profileClients() {
 }
 
 function parse(argv) {
-  const opts = { host: "", executor: "", model: "", timeoutMin: DEFAULT_TIMEOUT_MIN, words: [] }
+  const opts = { host: "", executor: "", model: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
   // Wartość flagi nie może być kolejną flagą — `--model --timeout 5` to błąd, nie model.
   const value = (i) => {
     const v = argv[i + 1]
@@ -123,6 +132,9 @@ function parse(argv) {
     else if (arg === "--timeout") {
       opts.timeoutMin = Number(value(i++))
       if (!(opts.timeoutMin > 0)) fail(`--timeout wymaga liczby minut > 0, dostał: ${argv[i]}`)
+    } else if (arg === "--heartbeat") {
+      opts.heartbeatMin = Number(value(i++))
+      if (!(opts.heartbeatMin > 0)) fail(`--heartbeat wymaga liczby minut > 0, dostał: ${argv[i]}`)
     } else if (arg === "--") opts.words.push(...argv.splice(i + 1))
     else if (arg.startsWith("--")) fail(`nieznana flaga ${arg}. Dozwolone: ${FLAGS.join(", ")}`)
     else if (!opts.executor) opts.executor = arg.toLowerCase()
@@ -173,6 +185,14 @@ function killTree(child) {
   }
 }
 
+// Git w katalogu roboczym; poza repo (albo bez gita) — null, raport pomija pola.
+function git(...args) {
+  const r = spawnSync("git", args, { encoding: "utf8", windowsHide: true })
+  return r.status === 0 ? r.stdout.trimEnd() : null
+}
+
+const lines = (text) => (text ? text.split("\n") : [])
+
 async function main() {
   const opts = parse(process.argv.slice(2))
   // Nazwa binarki (`opencode2`) działa jak nazwa wykonawcy.
@@ -195,7 +215,13 @@ async function main() {
   if (!prompt && !process.stdin.isTTY) prompt = readFileSync(0, "utf8")
   prompt = prompt.trim()
   if (!prompt) fail("pusta treść zadania — podaj ją w cudzysłowie albo na stdin")
-  prompt += FOOTER
+  // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
+  const runsDir = resolve(".ai", "headless-runs")
+  const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
+  mkdirSync(runDir, { recursive: true })
+  writeFileSync(join(runsDir, ".gitignore"), "*\n")
+  const logPath = join(runDir, "headless.log")
+  prompt += footer(runDir)
 
   const executor = EXECUTORS[opts.executor]
   const found = executor.bins.map(which).find(Boolean)
@@ -208,17 +234,61 @@ async function main() {
   }
   if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
 
+  // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
+  const log = (text, stream = process.stdout) => {
+    stream.write(text)
+    appendFileSync(logPath, text)
+  }
+  process.stdout.write(`[headless] log: ${logPath}\n`)
   const args = executor.args(opts.model, prompt)
-  process.stdout.write(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+  log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+
+  const startHead = git("rev-parse", "HEAD")
+  const startStash = lines(git("stash", "list")).length
+  const started = Date.now()
 
   // Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: powłoka tylko dla
   // shima `.cmd` bez exe (wykonawca ze stdin); drzewo i tak sprząta taskkill /T.
   const child = spawn(bin, args, {
     detached: process.platform !== "win32",
     shell: needsShell,
-    stdio: [executor.stdin ? "pipe" : "ignore", "inherit", "inherit"],
+    stdio: [executor.stdin ? "pipe" : "ignore", "pipe", "pipe"],
     windowsHide: true,
   })
+  const closed = new Promise((done) => child.on("close", done))
+  // Ostatnie linie wykonawcy do heartbeatu i raportu; `partial` = linia bez `\n` jeszcze.
+  const tail = []
+  let partial = ""
+  let lastOutput = Date.now()
+  let stallReported = false
+  const onData = (stream) => (chunk) => {
+    const text = chunk.toString()
+    log(text, stream)
+    lastOutput = Date.now()
+    stallReported = false
+    const parts = (partial + text).split(/\r?\n/)
+    partial = parts.pop()
+    tail.push(...parts.filter((l) => l.trim()))
+    tail.splice(0, tail.length - TAIL_LINES)
+  }
+  child.stdout.on("data", onData(process.stdout))
+  child.stderr.on("data", onData(process.stderr))
+  const lastLine = () => (partial.trim() ? partial : tail.at(-1) || "").trim()
+  const minutes = (ms) => Math.round(ms / 6000) / 10
+
+  const heartbeatMs = opts.heartbeatMin * 60_000
+  const heartbeat = setInterval(() => {
+    const status = git("status", "--short")
+    const commits = startHead ? git("rev-list", "--count", `${startHead}..HEAD`) : null
+    log(`[headless] ♥ ${minutes(Date.now() - started)} min | pliki: ${status === null ? "?" : lines(status).length}`
+      + ` | commity: ${commits ?? "?"} | ostatnio: ${lastLine() || "—"}\n`)
+    const silent = Date.now() - lastOutput
+    // Tylko ostrzeżenie — zabija `--timeout`. Raz na okres ciszy, żeby host budził się raz.
+    if (silent >= 2 * heartbeatMs && !stallReported) {
+      stallReported = true
+      log(`[headless] możliwe zacięcie: brak wyjścia od ${minutes(silent)} min\n`)
+    }
+  }, heartbeatMs)
   if (executor.stdin) {
     // Wykonawca, który skończy przed odczytem treści, daje EPIPE — nie może wywrócić wrappera.
     child.stdin.on("error", () => {})
@@ -230,6 +300,7 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => {
       killTree(child)
+      log(finalReport({ startHead, startStash, tail }))
       process.exit(128 + constants.signals[signal])
     })
   }
@@ -255,14 +326,35 @@ async function main() {
   } finally {
     clearTimeout(timer)
     clearInterval(poll)
+    clearInterval(heartbeat)
     killTree(child)
   }
+  // Po ubiciu drzewa potoki się zamykają — dociągamy resztę wyjścia (maks. 3 s).
+  // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
+  await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
   if (timedOut) {
-    process.stdout.write(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
+    log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
     code = 124
   }
-  process.stdout.write(`[headless] kod wyjścia: ${code}\n`)
+  log(finalReport({ startHead, startStash, tail: partial.trim() ? [...tail, partial] : tail }))
+  log(`[headless] kod wyjścia: ${code}\n`)
   process.exit(code)
+}
+
+// Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
+// i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
+function finalReport({ startHead, startStash, tail }) {
+  const out = ["[headless] raport końcowy"]
+  const status = git("status", "--short")
+  if (status !== null) out.push("## git status --short", status || "(czysto)")
+  if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")
+  const stash = lines(git("stash", "list"))
+  const added = stash.slice(0, stash.length - startStash)
+  if (added.length) {
+    out.push("## UWAGA: nowe wpisy stasha — praca wykonawcy może tam być; nie zdjęte automatycznie (`git stash pop` ręcznie)", ...added)
+  }
+  out.push(`## ostatnie ${TAIL_LINES} linii wykonawcy`, ...tail.slice(-TAIL_LINES))
+  return `${out.join("\n")}\n`
 }
 
 // Import (testy `resolveShim`) nie uruchamia wykonawcy — tylko start wprost z `node`.
