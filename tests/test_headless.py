@@ -286,6 +286,32 @@ class HeadlessWrapperTest(unittest.TestCase):
     def test_npm_shim_with_missing_exe_resolves_to_nothing(self) -> None:
         self.assertEqual(self.resolve_shim(NPM_EXE_SHIM), "null")
 
+    def test_legacy_shim_with_tilde_dp0_resolves_to_real_exe(self) -> None:
+        exe = self.root / "node_modules/@opencode/cli/bin/opencode.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"")
+        self.assertEqual(self.resolve_shim(NPM_EXE_SHIM.replace("%dp0%", "%~dp0")), str(exe))
+
+    def test_wrapper_runs_via_symlink_with_preserve_symlinks_main(self) -> None:
+        link = self.root / "headless.mjs"
+        link.symlink_to(WRAPPER)
+        node_dir = str(Path(shutil.which("node") or "node").parent)
+        result = subprocess.run(
+            ["node", "--preserve-symlinks-main", str(link), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+            env={
+                "PATH": os.pathsep.join([str(self.bin), node_dir, "/usr/bin", "/bin"]),
+                "HEADLESS_TEST_DIR": str(self.root),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("kod wyjścia: 0", result.stdout)
+        self.assertEqual(self.argv()[0], "opencode2")
+
 
 if __name__ == "__main__":
     unittest.main()

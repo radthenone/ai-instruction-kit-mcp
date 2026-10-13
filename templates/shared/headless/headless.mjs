@@ -17,7 +17,7 @@ import { execFile, spawn, spawnSync } from "node:child_process"
 import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { constants } from "node:os"
 import { basename, delimiter, dirname, join } from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
 const FLAGS = ["--model", "--timeout"]
@@ -76,7 +76,8 @@ function which(bin) {
   return null
 }
 
-// Shim npm (`opencode2.cmd`) wskazuje prawdziwą binarkę jako `"%dp0%\…\x.exe"`. Uruchomiona
+// Shim npm (`opencode2.cmd`) wskazuje prawdziwą binarkę jako `"%dp0%\…\x.exe"` (stary
+// cmd-shim, pnpm, yarn: `"%~dp0\…\x.exe"`). Uruchomiona
 // wprost omija cmd.exe — Node od CVE-2024-27980 nie startuje `.cmd` bez powłoki, a powłoka
 // rozbiłaby wieloliniową treść. `%dp0%\node.exe` to sonda shima skryptu JS, nie wykonawca.
 export function resolveShim(shim) {
@@ -86,7 +87,7 @@ export function resolveShim(shim) {
   } catch {
     return null
   }
-  for (const [, rel] of text.matchAll(/"%dp0%\\([^"%]+\.exe)"/gi)) {
+  for (const [, rel] of text.matchAll(/"%(?:~dp0|dp0%)\\([^"%]+\.exe)"/gi)) {
     const exe = join(dirname(shim), ...rel.split("\\"))
     if (basename(exe).toLowerCase() !== "node.exe" && existsSync(exe)) return exe
   }
@@ -210,8 +211,8 @@ async function main() {
   const args = executor.args(opts.model, prompt)
   process.stdout.write(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
-  // Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: `.cmd` z npm
-  // wymaga powłoki; drzewo i tak sprząta taskkill /T.
+  // Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: powłoka tylko dla
+  // shima `.cmd` bez exe (wykonawca ze stdin); drzewo i tak sprząta taskkill /T.
   const child = spawn(bin, args, {
     detached: process.platform !== "win32",
     shell: needsShell,
@@ -265,9 +266,15 @@ async function main() {
 }
 
 // Import (testy `resolveShim`) nie uruchamia wykonawcy — tylko start wprost z `node`.
+// Porównanie realpath, nie URL: `--preserve-symlinks-main` zostawia w URL ścieżkę symlinka,
+// a Windows różni się wielkością liter (litera dysku).
+const norm = (p) => {
+  const real = realpathSync(p)
+  return process.platform === "win32" ? real.toLowerCase() : real
+}
 const isMain = (() => {
   try {
-    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+    return !!process.argv[1] && norm(fileURLToPath(import.meta.url)) === norm(process.argv[1])
   } catch {
     return false
   }
