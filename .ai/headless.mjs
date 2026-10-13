@@ -14,9 +14,10 @@
  * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { constants } from "node:os"
-import { delimiter, join } from "node:path"
+import { basename, delimiter, dirname, join } from "node:path"
+import { pathToFileURL } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
 const FLAGS = ["--model", "--timeout"]
@@ -71,6 +72,23 @@ function which(bin) {
       const path = join(dir, bin + ext.toLowerCase())
       if (dir && existsSync(path)) return path
     }
+  }
+  return null
+}
+
+// Shim npm (`opencode2.cmd`) wskazuje prawdziwą binarkę jako `"%dp0%\…\x.exe"`. Uruchomiona
+// wprost omija cmd.exe — Node od CVE-2024-27980 nie startuje `.cmd` bez powłoki, a powłoka
+// rozbiłaby wieloliniową treść. `%dp0%\node.exe` to sonda shima skryptu JS, nie wykonawca.
+export function resolveShim(shim) {
+  let text = ""
+  try {
+    text = readFileSync(shim, "utf8")
+  } catch {
+    return null
+  }
+  for (const [, rel] of text.matchAll(/"%dp0%\\([^"%]+\.exe)"/gi)) {
+    const exe = join(dirname(shim), ...rel.split("\\"))
+    if (basename(exe).toLowerCase() !== "node.exe" && existsSync(exe)) return exe
   }
   return null
 }
@@ -154,87 +172,104 @@ function killTree(child) {
   }
 }
 
-const opts = parse(process.argv.slice(2))
-if (!KNOWN_CLIENTS.includes(opts.host)) fail(`--host musi być klientem kitu (${KNOWN_CLIENTS.join(", ")}), dostał: ${opts.host || "brak"}`)
-const allowed = profileClients().filter((c) => c !== opts.host && EXECUTORS[c])
-if (!opts.executor) fail(`podaj wykonawcę. Dozwoleni z ${opts.host}: ${allowed.join(", ") || "brak"}`)
-if (!allowed.includes(opts.executor)) {
-  const why = opts.executor === opts.host
-    ? `${opts.host} nie wywołuje sam siebie`
-    : !EXECUTORS[opts.executor]
-      ? `${opts.executor} nie ma trybu headless z guardami kita`
-      : `${opts.executor} nie jest w clients: Profilu`
-  fail(`${why}. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ") || "brak"}`)
-}
+async function main() {
+  const opts = parse(process.argv.slice(2))
+  // Nazwa binarki (`opencode2`) działa jak nazwa wykonawcy.
+  if (!EXECUTORS[opts.executor]) {
+    opts.executor = Object.keys(EXECUTORS).find((k) => EXECUTORS[k].bins.includes(opts.executor)) || opts.executor
+  }
+  if (!KNOWN_CLIENTS.includes(opts.host)) fail(`--host musi być klientem kitu (${KNOWN_CLIENTS.join(", ")}), dostał: ${opts.host || "brak"}`)
+  const allowed = profileClients().filter((c) => c !== opts.host && EXECUTORS[c])
+  if (!opts.executor) fail(`podaj wykonawcę. Dozwoleni z ${opts.host}: ${allowed.join(", ") || "brak"}`)
+  if (!allowed.includes(opts.executor)) {
+    const why = opts.executor === opts.host
+      ? `${opts.host} nie wywołuje sam siebie`
+      : !EXECUTORS[opts.executor]
+        ? `${opts.executor} nie ma trybu headless z guardami kita`
+        : `${opts.executor} nie jest w clients: Profilu`
+    fail(`${why}. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ") || "brak"}`)
+  }
 
-let prompt = opts.words.join(" ")
-if (!prompt && !process.stdin.isTTY) prompt = readFileSync(0, "utf8")
-prompt = prompt.trim()
-if (!prompt) fail("pusta treść zadania — podaj ją w cudzysłowie albo na stdin")
-prompt += FOOTER
+  let prompt = opts.words.join(" ")
+  if (!prompt && !process.stdin.isTTY) prompt = readFileSync(0, "utf8")
+  prompt = prompt.trim()
+  if (!prompt) fail("pusta treść zadania — podaj ją w cudzysłowie albo na stdin")
+  prompt += FOOTER
 
-const executor = EXECUTORS[opts.executor]
-const bin = executor.bins.map(which).find(Boolean)
-// `.cmd`/`.bat` (shim npm na Windows) idzie przez cmd.exe, który rozbija wieloliniowy
-// argument i interpretuje `& | >` — treść w argumencie byłaby niebezpieczna.
-const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin || "")
-if (needsShell && !executor.stdin) {
-  fail(`${bin} to skrypt cmd — treść w argumencie nie przejdzie bezpiecznie. Dodaj do PATH binarkę .exe ${opts.executor}`)
-}
-if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
+  const executor = EXECUTORS[opts.executor]
+  const found = executor.bins.map(which).find(Boolean)
+  const bin = (process.platform === "win32" && /\.(cmd|bat)$/i.test(found || "") && resolveShim(found)) || found
+  // `.cmd`/`.bat` (shim npm na Windows) idzie przez cmd.exe, który rozbija wieloliniowy
+  // argument i interpretuje `& | >` — treść w argumencie byłaby niebezpieczna.
+  const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin || "")
+  if (needsShell && !executor.stdin) {
+    fail(`${bin} to skrypt cmd — treść w argumencie nie przejdzie bezpiecznie. Dodaj do PATH binarkę .exe ${opts.executor}`)
+  }
+  if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
 
-const args = executor.args(opts.model, prompt)
-process.stdout.write(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+  const args = executor.args(opts.model, prompt)
+  process.stdout.write(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
-// Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: `.cmd` z npm
-// wymaga powłoki; drzewo i tak sprząta taskkill /T.
-const child = spawn(bin, args, {
-  detached: process.platform !== "win32",
-  shell: needsShell,
-  stdio: [executor.stdin ? "pipe" : "ignore", "inherit", "inherit"],
-  windowsHide: true,
-})
-if (executor.stdin) {
-  // Wykonawca, który skończy przed odczytem treści, daje EPIPE — nie może wywrócić wrappera.
-  child.stdin.on("error", () => {})
-  child.stdin.end(prompt)
-}
-
-// Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
-// z uprawnieniami na edycje i bash.
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  process.on(signal, () => {
-    killTree(child)
-    process.exit(128 + constants.signals[signal])
+  // Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: `.cmd` z npm
+  // wymaga powłoki; drzewo i tak sprząta taskkill /T.
+  const child = spawn(bin, args, {
+    detached: process.platform !== "win32",
+    shell: needsShell,
+    stdio: [executor.stdin ? "pipe" : "ignore", "inherit", "inherit"],
+    windowsHide: true,
   })
-}
+  if (executor.stdin) {
+    // Wykonawca, który skończy przed odczytem treści, daje EPIPE — nie może wywrócić wrappera.
+    child.stdin.on("error", () => {})
+    child.stdin.end(prompt)
+  }
 
-const poll = process.platform === "win32" ? setInterval(() => snapshotDescendants(child.pid), 5000) : undefined
-if (poll) snapshotDescendants(child.pid)
-
-let timedOut = false
-const timer = setTimeout(() => {
-  timedOut = true
-  killTree(child)
-}, opts.timeoutMin * 60_000)
-
-let code
-try {
-  code = await new Promise((resolve) => {
-    child.on("error", (err) => {
-      process.stderr.write(`[headless] nie uruchomiono ${bin}: ${err.message}\n`)
-      resolve(2)
+  // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
+  // z uprawnieniami na edycje i bash.
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => {
+      killTree(child)
+      process.exit(128 + constants.signals[signal])
     })
-    child.on("exit", (status, signal) => resolve(status ?? 128 + (constants.signals[signal] || 0)))
-  })
-} finally {
-  clearTimeout(timer)
-  clearInterval(poll)
-  killTree(child)
+  }
+
+  const poll = process.platform === "win32" ? setInterval(() => snapshotDescendants(child.pid), 5000) : undefined
+  if (poll) snapshotDescendants(child.pid)
+
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    killTree(child)
+  }, opts.timeoutMin * 60_000)
+
+  let code
+  try {
+    code = await new Promise((resolve) => {
+      child.on("error", (err) => {
+        process.stderr.write(`[headless] nie uruchomiono ${bin}: ${err.message}\n`)
+        resolve(2)
+      })
+      child.on("exit", (status, signal) => resolve(status ?? 128 + (constants.signals[signal] || 0)))
+    })
+  } finally {
+    clearTimeout(timer)
+    clearInterval(poll)
+    killTree(child)
+  }
+  if (timedOut) {
+    process.stdout.write(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
+    code = 124
+  }
+  process.stdout.write(`[headless] kod wyjścia: ${code}\n`)
+  process.exit(code)
 }
-if (timedOut) {
-  process.stdout.write(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
-  code = 124
-}
-process.stdout.write(`[headless] kod wyjścia: ${code}\n`)
-process.exit(code)
+
+// Import (testy `resolveShim`) nie uruchamia wykonawcy — tylko start wprost z `node`.
+const isMain = (() => {
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+  } catch {
+    return false
+  }
+})()
+if (isMain) await main()

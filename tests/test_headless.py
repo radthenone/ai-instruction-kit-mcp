@@ -26,6 +26,35 @@ exit "${FAKE_CODE:-0}"
 """
 
 
+# Shimy generowane przez npm (cmd-shim) dla binarki natywnej i dla skryptu JS.
+NPM_EXE_SHIM = """@ECHO off\r
+GOTO start\r
+:find_dp0\r
+SET dp0=%~dp0\r
+EXIT /b\r
+:start\r
+SETLOCAL\r
+CALL :find_dp0\r
+"%dp0%\\node_modules\\@opencode\\cli\\bin\\opencode.exe"   %*\r
+"""
+NPM_JS_SHIM = """@ECHO off\r
+GOTO start\r
+:find_dp0\r
+SET dp0=%~dp0\r
+EXIT /b\r
+:start\r
+SETLOCAL\r
+CALL :find_dp0\r
+IF EXIST "%dp0%\\node.exe" (\r
+  SET "_prog=%dp0%\\node.exe"\r
+) ELSE (\r
+  SET "_prog=node"\r
+  SET PATHEXT=%PATHEXT:;.JS;=;%\r
+)\r
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\opencode-ai\\bin\\opencode" %*\r
+"""
+
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -220,6 +249,42 @@ class HeadlessWrapperTest(unittest.TestCase):
     def test_missing_prompt_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode")
         self.assertEqual(result.returncode, 2)
+
+    def test_binary_name_is_alias_of_executor(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode2", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[0], "opencode2")
+
+    # --- shim npm `.cmd` na Windows (#182) ----------------------------------
+
+    def resolve_shim(self, body: str) -> str:
+        shim = self.root / "opencode2.cmd"
+        shim.write_text(body, encoding="utf-8")
+        script = "const m = await import(process.env.WRAPPER_URL); console.log(m.resolveShim(process.env.SHIM))"
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            env={**os.environ, "WRAPPER_URL": WRAPPER.as_uri(), "SHIM": str(shim)},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def test_npm_shim_resolves_to_real_exe(self) -> None:
+        exe = self.root / "node_modules/@opencode/cli/bin/opencode.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"")
+        self.assertEqual(self.resolve_shim(NPM_EXE_SHIM), str(exe))
+
+    def test_npm_shim_without_exe_resolves_to_nothing(self) -> None:
+        # Shim skryptu JS: jedyny exe to sonda `%dp0%\node.exe`, nie wykonawca.
+        (self.root / "node.exe").write_bytes(b"")
+        self.assertEqual(self.resolve_shim(NPM_JS_SHIM), "null")
+
+    def test_npm_shim_with_missing_exe_resolves_to_nothing(self) -> None:
+        self.assertEqual(self.resolve_shim(NPM_EXE_SHIM), "null")
 
 
 if __name__ == "__main__":
