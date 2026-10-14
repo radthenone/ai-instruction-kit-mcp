@@ -66,6 +66,9 @@ Cały wywiad od zera: /kit-project-begin
    `reload_workspace(dry_run=True)`; błąd → przywróć oryginał, pokaż błąd. OK →
    `reload_workspace(dry_run=False)`. Zmiana tylko w `.ai/project.md` → bez reloadu
    (serwer czyta overlay na żywo).
+4. **Etykiety** — tylko gdy Tier zmienił się z `none` na Stack: MCP
+   `ensure_labels(dry_run=True)`, lista nowych `scope: *`, zgoda →
+   `ensure_labels(dry_run=False)`. Brak zgody → pomiń i podaj `kit-ai labels --apply`.
 
 ## Tryb B — odstępstwo od modułu
 

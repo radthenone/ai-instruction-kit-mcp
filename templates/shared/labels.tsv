@@ -1,0 +1,20 @@
+type: feature	0E8A16	Nowa funkcjonalność widoczna dla użytkownika	always
+type: fix	D73A4A	Poprawka błędu w kodzie	always
+type: refactor	6F42C1	Zmiana kodu bez zmiany zachowania aplikacji	always
+type: performance	FBCA04	Optymalizacja szybkości, pamięci lub zapytań	always
+type: security	B60205	Luka bezpieczeństwa lub podatność	always
+type: docs	0052CC	Zmiany wyłącznie w dokumentacji — README, docstring, wiki	always
+type: test	BFD4F2	Dodanie lub naprawa testów jednostkowych/e2e	always
+type: style	BFD4F2	Formatowanie, spacje, średniki — bez zmiany logiki	always
+type: chore	6A737D	Zadania utrzymaniowe: zależności, konfiguracja, narzędzia — zależności, config, CI	always
+scope: backend	064D5C	API, bazy danych, logika biznesowa, worker-y	backend
+scope: frontend:web	064D5C	Aplikacja webowa (React, Vue, HTML/CSS)	web
+scope: frontend:mobile	064D5C	Aplikacja mobilna (React Native, Flutter, Swift, Kotlin, Expo)	mobile
+scope: devops	064D5C	Konfiguracja Docker, Terraform, deploymenty, CI/CD	always
+needs-triage	FBCA04	Nowe zgłoszenie wymagające oceny i przypisania.	always
+needs-info	D93F0B	Oczekuje na dodatkowe szczegóły lub logi od autora.	always
+ready-for-agent	7057FF	Zadanie w pełni opisane, gotowe do samodzielnego wykonania przez AI.	always
+ready-for-human	0075CA	Wymaga decyzji człowieka, architektury lub wsparcia po AI.	always
+wontfix	FFFFFF	Zadanie odrzucone lub niezgodne z planem projektu.	always
+bug	D73A4A	Coś nie działa — kategoria triage, obok type: fix / type: security	always
+enhancement	A2EEEF	Nowa funkcja lub ulepszenie — kategoria triage, obok type: feature / type: performance	always

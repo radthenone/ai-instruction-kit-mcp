@@ -24,6 +24,7 @@ import yaml
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
 from guides.clients import KNOWN_CLIENTS, expand_clients, format_clients_arg, parse_clients
 from guides.kit_status import STAMP_REL_PATH, check_kit_updates, direct_url_info
+from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
 from guides.resolver import PROFILE_REL_PATH, normalize_language
 
@@ -486,6 +487,10 @@ def main(argv: list[str] | None = None) -> int:
     remove.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
     remove.add_argument("--dry-run", action="store_true", help="Pokaż, co zniknie, nic nie usuwaj")
 
+    labels = sub.add_parser("labels", help="Załóż brakujące etykiety kita w repo GitHuba")
+    labels.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+    labels.add_argument("--apply", action="store_true", help="Załóż (bez flagi: tylko plan)")
+
     status = sub.add_parser("status", help="Czy kit zmienił się od ostatniego Bootstrapu")
     status.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
 
@@ -508,9 +513,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "remove":
             result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
+        elif args.command == "labels":
+            print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
-    except (SetupError, BootstrapError, ValueError) as exc:
+    except (SetupError, BootstrapError, LabelsError, ValueError) as exc:
         print(f"kit-ai: {exc}", file=sys.stderr)
         return 1
     return 0

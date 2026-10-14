@@ -105,11 +105,25 @@ LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefNam
 Etykieta i tablica — odczyty, **nigdy** nie przerywają tworzenia PR; flagę dodajesz tylko,
 gdy jest dopasowanie:
 
-- **Etykieta:** `type: *` z issue (`gh issue view <N> --json labels -q '.labels[].name'`), a gdy
-  jej nie ma — z typu w tytule PR (`feat` → `type: feature`, `perf` → `type: performance`,
-  `hotfix` → `type: fix`, `ci`/`build`/`release` → `type: chore`, reszta `type: <typ>`). Użyj
-  jej tylko, jeśli jest w `gh label list --limit 100 --json name -q '.[].name'`. Nie zakładaj
-  etykiety bez osobnej zgody.
+- **Etykiety:** z issue (`gh issue view <N> --json labels -q '.labels[].name'`) kopiujesz
+  `type: *`, kategorię (`bug` / `enhancement`) i `scope: *` — etykiet stanu (`ready-for-*`,
+  `needs-*`, `wontfix`) na PR nie przenosisz.
+  - `type: *` — gdy issue go nie ma: z typu w tytule PR (`feat` → `type: feature`, `perf` →
+    `type: performance`, `hotfix` → `type: fix`, `ci`/`build`/`release` → `type: chore`,
+    reszta `type: <typ>`).
+  - Kategoria — gdy issue jej nie ma, wyliczona z `type: *`:
+    `type: fix`, `type: security` → `bug`;
+    `type: feature`, `type: performance` → `enhancement`;
+    `type: refactor`, `type: docs`, `type: test`, `type: style`, `type: chore` → brak.
+    Rozjazd na issue (np. `bug` + `type: feature`) — nie poprawiasz sam, dopisz jedną linię
+    do body PR.
+  - `scope: *` — gdy issue go nie ma: z prefiksów plików w diffie PR (`.ai/project.md
+    ## Ścieżki`: `backend:` → `scope: backend`, `web:` → `scope: frontend:web`, `mobile:` →
+    `scope: frontend:mobile`; infra — `Dockerfile*`, `docker-compose*`, `.github/workflows/`,
+    `Taskfile*`, `taskfiles/`, `terraform/` → `scope: devops`).
+
+  Każdej używasz tylko, jeśli jest w `gh label list --limit 200 --json name -q '.[].name'`;
+  brakującej nie zakładasz — jedna linijka „brak etykiety X — uruchom `kit-ai labels --apply`”.
 - **Tablica:** ta o nazwie repo, porównanie bez wielkości liter, poza tym identyczne:
 
 ```bash
@@ -124,7 +138,8 @@ zapytaj użytkownika. Brak scope `project` → pomiń krok i jedna linijka: `gh 
 
 ```bash
 gh pr create --base <target> --title "<typ>: <opis>" \
-  [--label "<type: …>"] [--project "<title tablicy>"] --body "$(cat <<'EOF'
+  [--label "<type: …>"] [--label "<kategoria>"] [--label "<scope: …>"] \
+  [--project "<title tablicy>"] --body "$(cat <<'EOF'
 ## Summary
 …
 

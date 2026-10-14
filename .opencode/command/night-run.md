@@ -11,7 +11,8 @@ Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` 
 
 # /night-run — lista issue bez człowieka
 
-Przerabiasz listę issue z celu (`/goal`) albo argumentów, jeden po drugim, aż każde jest
+Przerabiasz listę issue z celu (`/goal`) albo argumentów (bez listy — kolejkę
+`ready-for-agent`), jeden po drugim, aż każde jest
 **zmergowane** albo ma komentarz **needs-human**. Człowiek śpi. Issue są wygrillowane za
 dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 
@@ -82,14 +83,26 @@ Ostatni przebieg CI na bazie:
 `gh run list --branch $BASE --limit 1 --json conclusion,headSha`. Czerwony → **halt**
 (przypadek C). Brak CI → bramki szybkie na `origin/$BASE` odpala krótki subagent.
 
-### 4. Kolejność
+### 4. Kolejka
+
+Nazwy etykiet stanu: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik.
+W komendach niżej stoją nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie.
+
+- Cel ani argumenty nie podają listy →
+  `gh issue list --state open --label ready-for-agent --json number,title --limit 50`.
+  Pusta lista → NIGHT-RUN REPORT „brak ready-for-agent” i koniec.
+- Issue z listy ręcznej z etykietą `ready-for-human` / `needs-info` / `needs-triage` /
+  `wontfix` → pomijasz, w raporcie `skipped: <etykieta>`. Bez etykiety stanu → bierzesz
+  (zgodność wstecz).
+
+### 5. Kolejność
 
 Dla każdego issue z listy:
 `gh api repos/<owner>/<repo>/issues/<N>/dependencies/blocked_by --jq '.[].number'`.
 Kolejność topologiczna; przy remisie kolejność z celu. Blokujący spoza listy i otwarty →
 ticket dostaje needs-human „zablokowany przez #X spoza listy”.
 
-### 5. Plik kontekstu nocy
+### 6. Plik kontekstu nocy
 
 `CTX=/tmp/night-run-<repo>-<data>/context.md` — raz na noc, poniżej ~150 linii, sekcje:
 
@@ -104,7 +117,7 @@ ticket dostaje needs-human „zablokowany przez #X spoza listy”.
   pauzy (od–do), wznowienia per ticket. Nadpisujesz **Ty** przy każdej zmianie kroku; tik
   czyta ją jako pierwszą.
 
-### 6. Heartbeat (tylko Claude Code)
+### 7. Heartbeat (tylko Claude Code)
 
 `CronCreate`, recurring `13,33,53 * * * *`, prompt z wpisaną na sztywno ścieżką CTX:
 `night-run heartbeat: przeczytaj sekcję „Heartbeat” w /night-run i „## Stan” w <CTX>,
@@ -137,6 +150,8 @@ Przekazujesz go subagentowi bez skracania.
 ```markdown
 Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, zamiast
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
+Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
+`gh issue view <N> --comments`.
 
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
@@ -227,6 +242,12 @@ model/pole/serwis/endpoint, z którego korzysta inny — treść issue + „Prze
   udanym tiku heartbeat: teraz < koniec nocy (domyślnie 08:00 lokalnie albo `koniec:` z celu)
   **i** pauzy ≤ 2 → łańcuch od kroku z `## Stan`; inaczej halt C.
 
+Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
+sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
+`gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
+(`needs-info` zamiast `ready-for-human`, gdy stoi na brakujących danych od zgłaszającego,
+nie na decyzji). Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
+
 ### Decyzja odwracalna — nie blokuj
 
 Niejasność odwracalna (nazwa, kształt odpowiedzi nowego endpointu, wartość domyślna),
@@ -307,7 +328,8 @@ Wznowienia per ticket: <#N: liczba>
 | Ticket | Stan | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- |
 | #N | MERGED | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
-| #M | needs-human | <link do komentarza> | … |
+| #M | needs-human → ready-for-human | <link do komentarza> | … |
+| #J | skipped: <etykieta> | etykieta stanu z listy ręcznej | — |
 | #K | halted | <link do komentarza night-run halted> | … |
 
 Założenia: <co przyjęto bez danych z repo>
