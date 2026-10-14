@@ -35,6 +35,12 @@ class TestUiStructureModule(unittest.TestCase):
         self.assertNotIn(MODULE_ID, _bundle_ids(backend="django"))
         self.assertNotIn(MODULE_ID, _bundle_ids())
 
+    def test_mapped_into_every_client_stack(self) -> None:
+        tiers = load_manifest(KIT_ROOT).mappings.tiers
+        for tier in ("web", "mobile"):
+            for stack, modules in tiers[tier].items():
+                self.assertIn(MODULE_ID, modules, f"{tier}: {stack}")
+
     def test_content_rules_and_spec_format(self) -> None:
         text = load_manifest(KIT_ROOT).modules[MODULE_ID].path.read_text(encoding="utf-8")
         for needle in (
@@ -47,6 +53,8 @@ class TestUiStructureModule(unittest.TestCase):
             "## Nowe / zmienione tokeny",
             "design-tokens",
             "docs(design): layout spec for #<N>",
+            "Angular",
+            "od roota repo",
         ):
             self.assertIn(needle, text)
         for tool in DESIGN_TOOLS:
@@ -66,6 +74,11 @@ class TestDesignQuestions(unittest.TestCase):
         self.assertNotIn("routes-web", self._active(mobile="expo"))
         self.assertFalse({"design-tokens", "routes-web", "routes-mobile"} & self._active())
 
+    def test_routes_web_default_for_expo(self) -> None:
+        question = load_manifest(KIT_ROOT).questions["routes-web"]
+        values = {"backend": "none", "web": "expo", "mobile": "none", "codegen": "none"}
+        self.assertEqual(question.default_for(values), "app/")
+
     def test_answers_go_to_paths_section(self) -> None:
         questions = load_manifest(KIT_ROOT).questions
         for qid in ("design-tokens", "routes-web", "routes-mobile"):
@@ -77,12 +90,24 @@ class TestAgentsUseDesignSpec(unittest.TestCase):
         text = (AGENTS / "night-run.md").read_text(encoding="utf-8")
         prompt = text[text.index("## Prompt ticketu") : text.index("## Testy — piramida")]
         self.assertIn("docs/design/<N>.md", prompt)
-        self.assertIn("Nowe ekrany", text[text.index("## NIGHT-RUN REPORT") :])
+        report = text[text.index("## NIGHT-RUN REPORT") :]
+        self.assertIn("Nowe ekrany", report)
+        self.assertIn('select(.status=="added")', report)
 
     def test_review_frontend_checks_rules(self) -> None:
         text = (AGENTS / "review-frontend.md").read_text(encoding="utf-8")
-        for needle in ("token", "route", "docs/design/<N>.md"):
+        for needle in (
+            "stack:frontend:ui-structure",
+            "literał zamiast tokenu w komponencie",
+            "API albo logika w pliku route'a",
+            "`docs/design/<N>.md` istnieje dla issue",
+        ):
             self.assertIn(needle, text)
+
+    def test_kit_project_edit_drops_inactive_paths(self) -> None:
+        text = (AGENTS / "kit-project-edit.md").read_text(encoding="utf-8")
+        self.assertIn("routes-web", text)
+        self.assertIn("design-tokens", text)
 
 
 if __name__ == "__main__":

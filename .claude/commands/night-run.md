@@ -152,9 +152,9 @@ Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, z
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
 Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
 `gh issue view <N> --comments`.
-Frontend: `git cat-file -e origin/<BASE>:docs/design/<N>.md` przechodzi → layout wyłącznie
-według `docs/design/<N>.md`; rozbieżność = hand-back needs-human. Brak speca → layout
-domyślny z bundla (`stack:frontend:ui-structure`).
+Frontend: po kroku 1 plik `docs/design/<N>.md` jest w drzewie (z <BASE> albo z istniejącego
+brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżność = hand-back
+needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
 
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
@@ -345,8 +345,9 @@ Pomiar per agent: <wiersze ze snippetu>
 ```
 
 **Nowe ekrany:** pliki dodane w katalogach `routes-web` / `routes-mobile` (`.ai/project.md
-## Ścieżki`) przez PR-y zmergowane tej nocy — `gh pr diff <PR> --name-only` przeciw tym
-ścieżkom (tylko pliki nowe). Lista do decyzji człowieka; issue nie zakładasz. Brak kluczy
+## Ścieżki`) przez PR-y zmergowane tej nocy — tylko pliki nowe:
+`gh api repos/<owner>/<repo>/pulls/<PR>/files --jq '.[] | select(.status=="added") | .filename'`
+przeciw tym ścieżkom. Lista do decyzji człowieka; issue nie zakładasz. Brak kluczy
 `routes-*` → „brak routes-* w ## Ścieżki”.
 
 Każdy ticket z listy ma w tabeli dokładnie jeden wiersz. Brak dowodu = ticket nie jest skończony.

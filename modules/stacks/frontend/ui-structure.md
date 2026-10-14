@@ -3,14 +3,16 @@
 Wspólny dla każdego Stacka web i mobile. Cel: działający ekran (dane, stany, formularze,
 nawigacja) w neutralnym wyglądzie, a późniejsza zmiana layoutu nie rusza logiki. Ścieżki
 z `.ai/project.md ## Ścieżki`: `design-tokens` (źródło tokenów), `routes-web` /
-`routes-mobile` (katalog plików route'ów). Brak klucza — reguły działają, bez wskazania ścieżki.
+`routes-mobile` (katalog plików route'ów) — ścieżki od roota repo (w monorepo np.
+`frontend/web/app/`). Brak klucza — reguły działają, bez wskazania ścieżki.
 
 ## Tylko tokeny
 
 Kolory, fonty, rozmiary, spacing, radiusy i cienie wyłącznie przez tokeny: CSS custom
 properties, theme frameworka albo pakiet tokenów — źródło `design-tokens`. Żadnych literałów
 w komponentach (`#333`, `16px`, `font-family: …`, `rgba(…)`). Brakuje tokenu → dodaj go
-w źródle tokenów, nie wpisuj wartości w komponencie.
+w źródle tokenów, nie wpisuj wartości w komponencie. Przy specu: token z sekcji „Nowe /
+zmienione tokeny” dodajesz; tokenu spoza speca i źródła — hand-back.
 
 ## Sekcja / strona
 
@@ -20,6 +22,9 @@ w źródle tokenów, nie wpisuj wartości w komponencie.
   błąd), formularze. Nie ustala swojego położenia na stronie: bez marginesów zewnętrznych,
   gridu rodzica i `position` względem strony.
 - Zmiana layoutu = zmiana pliku route'a + CSS layoutu. Sekcje zostają.
+- Angular: konfiguracja `Routes` (`app.routes.ts`) to routing, a „plik route'a” to komponent
+  strony wskazany w `Routes` — on komponuje sekcje i niesie layout; serwisy i komponenty
+  sekcji siedzą w `features/`.
 
 ## Layout domyślny
 
@@ -28,9 +33,9 @@ z tokenów. Bez wymyślania „ładnego” layoutu — wygląd przyjdzie ze spec
 
 ## Spec layoutu — `docs/design/<N>.md`
 
-Spec istnieje dla bieżącego issue → layout **wyłącznie** według speca. Rozbieżność (sekcji
-nie da się ułożyć jak w specu, brak tokenu, sprzeczność z kodem) = hand-back needs-human,
-nie improwizacja.
+Spec istnieje dla bieżącego issue (na bazie albo na już wypchniętym branchu issue) → layout
+**wyłącznie** według speca. Rozbieżność (sekcji nie da się ułożyć jak w specu, token spoza
+speca i źródła, sprzeczność z kodem) = hand-back needs-human, nie improwizacja.
 
 Format (agent piszący spec bierze go stąd; w projekcie nie ma pliku szablonu):
 

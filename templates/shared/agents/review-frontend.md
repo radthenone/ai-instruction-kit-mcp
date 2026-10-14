@@ -58,7 +58,7 @@ Jesteś reviewerem frontendu. Stack web/mobile bierzesz z `get_bundle("frontend"
 - `any` na nowych publicznych interfejsach bez uzasadnienia;
 - naruszenie podziału server state vs local state, jeśli bundle go wymaga.
 
-**Tokeny i sekcja / strona (`stack:frontend:ui-structure`):**
+**Tokeny i sekcja / strona (`stack:frontend:ui-structure`, ścieżki z `## Ścieżki`):**
 
 - literał zamiast tokenu w komponencie (kolor, font, rozmiar, spacing, radius, cień) = **medium**;
   Fix: token ze źródła `design-tokens`;

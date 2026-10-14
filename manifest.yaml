@@ -525,7 +525,8 @@ mappings:
         - stack:flask:backend-instructions
         - stack:flask:testing
     # Moduły layoutu (`stack:frontend:*`) nie wchodzą do Bundli — są podpowiedzią
-    # ścieżek w `layouts:` niżej (MCP `list_questions`).
+    # ścieżek w `layouts:` niżej (MCP `list_questions`). Wyjątek: `stack:frontend:ui-structure`
+    # (reguły kodu, nie układ katalogów) — wpisany w każdy Stack web i mobile.
     web:
       react:
         - stack:react
@@ -813,7 +814,7 @@ questions:
 
   # Reguły `stack:frontend:ui-structure`: źródło tokenów i katalogi plików route'ów.
   design-tokens:
-    question: Gdzie jest źródło design tokenów (kolory, fonty, spacing)?
+    question: Gdzie jest źródło design tokenów (kolory, fonty, spacing)? Ścieżka od roota repo — zapisz katalog faktycznego trafienia
     sets: paths.design-tokens
     default: src/theme/
     when: {any: {web: ["!none"], mobile: ["!none"]}}
@@ -823,17 +824,21 @@ questions:
       - {glob: "**/src/theme/**", value: src/theme/}
 
   routes-web:
-    question: Gdzie leżą pliki route'ów web (jeden plik = jeden ekran)?
+    question: Gdzie leżą pliki route'ów web (jeden plik = jeden ekran)? Ścieżka od roota repo — zapisz katalog faktycznego trafienia
     sets: paths.routes-web
     default: src/app/
+    defaults:
+      - when: {all: {web: [expo]}}
+        value: app/
     when: {all: {web: ["!none"]}}
     detect:
+      - {glob: "**/app/_layout.tsx", value: app/}
       - {glob: "**/app/**/page.tsx", value: app/}
       - {glob: "**/src/routes/**", value: src/routes/}
       - {glob: "**/src/pages/**", value: src/pages/}
 
   routes-mobile:
-    question: Gdzie leżą pliki route'ów mobile (jeden plik = jeden ekran)?
+    question: Gdzie leżą pliki route'ów mobile (jeden plik = jeden ekran)? Ścieżka od roota repo — zapisz katalog faktycznego trafienia
     sets: paths.routes-mobile
     default: app/
     when: {all: {mobile: ["!none"]}}
