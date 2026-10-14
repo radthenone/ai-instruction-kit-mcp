@@ -174,7 +174,7 @@ class TestEnsureLabels(unittest.TestCase):
         self.assertIn("scope: frontend:web", gh.created())
         self.assertNotIn("scope: frontend:mobile", gh.created())
         self.assertNotIn("scope: backend", gh.created())
-        self.assertIn("skipped (Tier none): 2", report)
+        self.assertIn("skipped (Tier none / bez claude): 2", report)
 
     def test_when_list_matches_any_tier(self) -> None:
         ws = _workspace(self.root, mobile="expo")

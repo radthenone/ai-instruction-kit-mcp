@@ -279,6 +279,13 @@ osi nie zgadujesz — pomijasz ją i dajesz jedną linijkę „brak etykiety X �
 - **stan** — dokładnie jeden, z bloku Gotowość w FAZIE 3 (uzupełnia `/triage`, nie zastępuje).
   Nazwy: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik; inaczej
   `needs-info`, `ready-for-agent`, `ready-for-human`.
+- **design** — sesja designu w Claude Code (Claude Design; przebieg w
+  `docs/agents/design-handoff.md`):
+  - karta dotyka Tieru web/mobile i dodaje **nowy ekran** → na karcie linia
+    `Design: teraz | później (domyślnie)`. `później` → bez `design: *`, layout domyślny
+    (`stack:frontend:ui-structure`). `teraz` → `design: layout` + stan wymuszony
+    `ready-for-human` („czeka na sesję designu w Claude Code”), niezależnie od bloku Gotowość;
+  - zmiana wyłącznie wyglądu całej aplikacji → `design: tokens` + `ready-for-human`.
 
 ## Zakazy
 
