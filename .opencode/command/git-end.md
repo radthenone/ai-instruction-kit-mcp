@@ -124,7 +124,7 @@ gdy jest dopasowanie:
     `scope: frontend:mobile`; infra — `Dockerfile*`, `docker-compose*`, `.github/workflows/`,
     `Taskfile*`, `taskfiles/`, `terraform/` → `scope: devops`).
 
-  Każdej używasz tylko, jeśli jest w `gh label list --limit 100 --json name -q '.[].name'`;
+  Każdej używasz tylko, jeśli jest w `gh label list --limit 200 --json name -q '.[].name'`;
   brakującej nie zakładasz — jedna linijka „brak etykiety X — uruchom `kit-ai labels --apply`”.
 - **Tablica:** ta o nazwie repo, porównanie bez wielkości liter, poza tym identyczne:
 

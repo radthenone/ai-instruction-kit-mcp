@@ -84,8 +84,8 @@ Ostatni przebieg CI na bazie:
 
 ### 4. Kolejka
 
-Nazwy etykiet stanu: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik
-(niżej nazwy domyślne).
+Nazwy etykiet stanu: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik.
+W komendach niżej stoją nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie.
 
 - Cel ani argumenty nie podają listy →
   `gh issue list --state open --label ready-for-agent --json number,title --limit 50`.
@@ -242,7 +242,7 @@ model/pole/serwis/endpoint, z którego korzysta inny — treść issue + „Prze
   **i** pauzy ≤ 2 → łańcuch od kroku z `## Stan`; inaczej halt C.
 
 Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
-sam komentarz):
+sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
 `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
 (`needs-info` zamiast `ready-for-human`, gdy stoi na brakujących danych od zgłaszającego,
 nie na decyzji). Merge nie rusza etykiet — zamknięte issue wypada z kolejki.

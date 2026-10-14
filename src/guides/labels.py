@@ -18,8 +18,16 @@ from guides.resolver import TIER_NONE, resolve_workspace_profile
 LABELS_REL_PATH = Path("templates/shared/labels.tsv")
 TRIAGE_REL_PATH = Path("docs/agents/triage-labels.md")
 STATE_LABELS = ("needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix")
+# Ten sam limit w agentach (`gh label list --limit 200`) — inaczej agent i provisioning
+# różnie widzą, co istnieje.
+LIST_LIMIT = "200"
+_GH_TIMEOUT_SECONDS = 30
 
 Runner = Callable[[list[str]], subprocess.CompletedProcess]
+
+
+class LabelsError(RuntimeError):
+    """``gh`` niedostępne, bez auth/remote albo nie odpowiada — komunikat w jednej linii."""
 
 
 @dataclass(frozen=True)
@@ -35,13 +43,23 @@ class Label:
         """Etykieta potrzebna przy tych Tierach (którykolwiek z ``when`` ≠ ``none``)."""
         if self.when == "always":
             return True
-        return any(tiers.get(tier, TIER_NONE) != TIER_NONE for tier in self.when.split(","))
+        return any(
+            tiers.get(tier.strip(), TIER_NONE) != TIER_NONE for tier in self.when.split(",")
+        )
 
 
 def read_label_set(kit_root: Path) -> list[Label]:
     """Kanoniczny zestaw etykiet kita."""
-    text = (kit_root / LABELS_REL_PATH).read_text(encoding="utf-8")
-    return [Label(*line.split("\t")) for line in text.splitlines() if line.strip()]
+    path = kit_root / LABELS_REL_PATH
+    labels = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        cols = line.split("\t")
+        if len(cols) != 4:
+            raise ValueError(f"{path}:{number}: oczekiwane 4 kolumny (TAB), jest {len(cols)}")
+        labels.append(Label(*cols))
+    return labels
 
 
 def triage_names(root: Path) -> dict[str, str]:
@@ -57,16 +75,34 @@ def triage_names(root: Path) -> dict[str, str]:
     return names
 
 
-def _gh(run: Runner, args: list[str]) -> subprocess.CompletedProcess | str:
-    """Wywołaj ``gh``; błąd jako jedna linia tekstu zamiast wyjątku."""
+def _gh(run: Runner, args: list[str]) -> subprocess.CompletedProcess:
+    """Wywołaj ``gh``; każdy błąd jako :class:`LabelsError` z jedną linią."""
     try:
         result = run(["gh", *args])
     except FileNotFoundError:
-        return "labels: brak `gh` — zainstaluj GitHub CLI i `gh auth login`."
+        raise LabelsError("labels: brak `gh` — zainstaluj GitHub CLI i `gh auth login`.") from None
+    except subprocess.TimeoutExpired:
+        raise LabelsError(
+            f"labels: `gh {args[0]} {args[1]}` nie odpowiada po {_GH_TIMEOUT_SECONDS} s."
+        ) from None
     if result.returncode != 0:
         first = next((ln for ln in (result.stderr or "").splitlines() if ln.strip()), "")
-        return f"labels: `gh {args[0]} {args[1]}` nie działa (auth / remote GitHub?): {first.strip()}"
+        raise LabelsError(
+            f"labels: `gh {args[0]} {args[1]}` nie działa (auth / remote GitHub?): {first.strip()}"
+        )
     return result
+
+
+def _run_gh(workspace: Path) -> Runner:
+    def run(args: list[str]) -> subprocess.CompletedProcess:
+        # stdin=DEVNULL: pod serwerem MCP dziecko dziedziczy potok bez EOF i `gh`
+        # czekające na wejście wisi (ten sam powód co w kit_status._git).
+        return subprocess.run(
+            args, cwd=workspace, capture_output=True, text=True, check=False,
+            stdin=subprocess.DEVNULL, timeout=_GH_TIMEOUT_SECONDS,
+        )
+
+    return run
 
 
 def ensure_labels(
@@ -88,12 +124,12 @@ def ensure_labels(
         tiers: Tiery projektu; ``None`` = z Profilu.
 
     Returns:
-        str: Licznik ``created/to create, existing, skipped (Tier none)`` + nazwy;
-            przy braku ``gh``/auth/remote — jedna linia.
+        str: Licznik ``created/to create, existing, skipped (Tier none)`` + nazwy.
+
+    Raises:
+        LabelsError: Brak ``gh``, auth albo remote GitHub, timeout.
     """
-    if run is None:
-        def run(args: list[str]) -> subprocess.CompletedProcess:
-            return subprocess.run(args, cwd=workspace, capture_output=True, text=True, check=False)
+    run = run or _run_gh(workspace)
 
     if tiers is None:
         tiers = resolve_workspace_profile(workspace, kit_root=kit_root).tiers
@@ -102,18 +138,17 @@ def ensure_labels(
     wanted = [lb for lb in labels if lb.active(tiers)]
     skipped = [lb for lb in labels if not lb.active(tiers)]
 
-    listed = _gh(run, ["label", "list", "--limit", "200", "--json", "name"])
-    if isinstance(listed, str):
-        return listed
+    listed = _gh(run, ["label", "list", "--limit", LIST_LIMIT, "--json", "name"])
     existing = {item["name"].lower() for item in json.loads(listed.stdout or "[]")}
     missing = [lb for lb in wanted if lb.name.lower() not in existing]
 
     if not dry_run:
         for count, lb in enumerate(missing):
-            done = _gh(run, ["label", "create", lb.name, "--color", lb.color,
-                             "--description", lb.description])
-            if isinstance(done, str):
-                return f"{done} (utworzone wcześniej: {count})"
+            try:
+                _gh(run, ["label", "create", lb.name, "--color", lb.color,
+                          "--description", lb.description])
+            except LabelsError as exc:
+                raise LabelsError(f"{exc} (utworzone wcześniej: {count})") from None
 
     verb = "to create" if dry_run else "created"
     lines = [

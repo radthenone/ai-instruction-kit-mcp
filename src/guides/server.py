@@ -17,7 +17,7 @@ from guides.clients import (
     parse_clients,
 )
 from guides.kit_status import check_kit_updates
-from guides.labels import Runner
+from guides.labels import LabelsError, Runner
 from guides.labels import ensure_labels as ensure_repo_labels
 from guides.manifest import load_manifest
 from guides.questions import render_catalog
@@ -374,11 +374,12 @@ def ensure_labels(dry_run: bool = True) -> str:
     """
     try:
         workspace = _require_workspace()
-    except BootstrapError as exc:
+        resolved = _get_resolved()
+        report = ensure_repo_labels(
+            workspace, resolved.kit_root, dry_run=dry_run, run=_gh_runner, tiers=resolved.tiers
+        )
+    except (BootstrapError, LabelsError, ValueError, OSError) as exc:
         return f"# ensure_labels: błąd\n\n{exc}"
-    report = ensure_repo_labels(
-        workspace, _get_resolved().kit_root, dry_run=dry_run, run=_gh_runner
-    )
     if dry_run:
         return f"# ensure_labels — dry run (nic nie utworzono)\n\n{report}\n\n" \
             "Żeby założyć brakujące: wywołaj ponownie z `dry_run=False`."

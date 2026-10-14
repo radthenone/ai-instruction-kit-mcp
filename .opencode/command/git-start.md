@@ -165,7 +165,7 @@ Oba kroki to odczyty i **nigdy** nie przerywają tworzenia issue — najwyżej p
 nie zmienia):
 
 ```bash
-gh label list --limit 100 --json name -q '.[].name'
+gh label list --limit 200 --json name -q '.[].name'
 ```
 
 Typ → `type: <typ>`, z wyjątkami: `feat` → `type: feature`, `perf` → `type: performance`,

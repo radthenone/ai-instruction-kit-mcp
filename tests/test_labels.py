@@ -10,7 +10,14 @@ import unittest
 from pathlib import Path
 
 from guides import server
-from guides.labels import STATE_LABELS, LABELS_REL_PATH, ensure_labels, read_label_set, triage_names
+from guides.labels import (
+    LABELS_REL_PATH,
+    STATE_LABELS,
+    LabelsError,
+    ensure_labels,
+    read_label_set,
+    triage_names,
+)
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 AGENTS = KIT_ROOT / "templates" / "shared" / "agents"
@@ -33,15 +40,21 @@ CATEGORY = {
 class FakeGh:
     """Atrapa `gh`: zwraca listę etykiet i zapisuje każde wywołanie."""
 
-    def __init__(self, existing: list[str], *, fail: str | None = None, missing: bool = False):
+    def __init__(
+        self, existing: list[str], *, fail: str | None = None, missing: bool = False,
+        hang: bool = False,
+    ):
         self.existing = existing
         self.fail = fail
         self.missing = missing
+        self.hang = hang
         self.calls: list[list[str]] = []
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess:
         if self.missing:
             raise FileNotFoundError("gh")
+        if self.hang:
+            raise subprocess.TimeoutExpired(args, 30)
         self.calls.append(args)
         if self.fail:
             return subprocess.CompletedProcess(args, 1, "", self.fail)
@@ -114,6 +127,7 @@ class TestAgentsUseLabels(unittest.TestCase):
         text = self._text("night-run.md")
         self.assertIn("--label ready-for-agent", text)
         self.assertIn("--remove-label ready-for-agent --add-label ready-for-human", text)
+        self.assertIn("nazwy z `triage-labels.md` projektu, nie dosłownie", text)
         self.assertIn("skipped: <etykieta>", text)
         self.assertIn("AGENT-BRIEF", text)
 
@@ -187,11 +201,26 @@ class TestEnsureLabels(unittest.TestCase):
         call = next(c for c in gh.calls if c[3:4] == ["agent:ready"])
         self.assertIn("7057FF", call)
 
-    def test_gh_missing_or_failing_is_one_line(self) -> None:
+    def test_gh_missing_failing_or_hanging_raises_one_line(self) -> None:
         ws = _workspace(self.root)
-        for gh in (FakeGh([], missing=True), FakeGh([], fail="gh auth login\nmore")):
-            report = ensure_labels(ws, KIT_ROOT, dry_run=False, run=gh)
-            self.assertEqual(len(report.strip().splitlines()), 1, report)
+        for gh in (
+            FakeGh([], missing=True),
+            FakeGh([], fail="gh auth login\nmore"),
+            FakeGh([], hang=True),
+        ):
+            with self.assertRaises(LabelsError) as ctx:
+                ensure_labels(ws, KIT_ROOT, dry_run=False, run=gh)
+            self.assertEqual(len(str(ctx.exception).strip().splitlines()), 1)
+
+    def test_when_tolerates_spaces(self) -> None:
+        ws = _workspace(self.root, mobile="expo")
+        tsv = self.root / "kit" / LABELS_REL_PATH
+        tsv.parent.mkdir(parents=True)
+        tsv.write_text("x: both\t000000\td\tweb, mobile\n", encoding="utf-8")
+        gh = FakeGh([])
+        tiers = {"backend": "none", "web": "none", "mobile": "expo"}
+        ensure_labels(ws, self.root / "kit", dry_run=False, run=gh, tiers=tiers)
+        self.assertEqual(gh.created(), ["x: both"])
 
 
 class TestMcpEnsureLabels(unittest.TestCase):
@@ -208,6 +237,18 @@ class TestMcpEnsureLabels(unittest.TestCase):
             self.assertEqual(gh.created(), [])
             self.assertIn("dry_run=False", report)
 
+    def test_errors_are_reported_not_raised(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = _workspace(Path(tmp))
+            saved = (server._kit_root, server._workspace_root, server._gh_runner)
+            server._kit_root, server._workspace_root = KIT_ROOT, ws
+            server._gh_runner = FakeGh([], missing=True)
+            try:
+                report = server.ensure_labels()
+            finally:
+                server._kit_root, server._workspace_root, server._gh_runner = saved
+            self.assertIn("ensure_labels: błąd", report)
+
 
 class TestCliLabels(unittest.TestCase):
     def test_dry_run_unless_apply(self) -> None:
@@ -219,6 +260,15 @@ class TestCliLabels(unittest.TestCase):
             with mock.patch.object(cli, "ensure_labels", return_value="ok") as fake:
                 self.assertEqual(cli.main(argv), 0)
             self.assertEqual(fake.call_args.kwargs["dry_run"], dry)
+
+    def test_gh_error_exits_non_zero(self) -> None:
+        from unittest import mock
+
+        from guides import cli
+        from guides.labels import LabelsError
+
+        with mock.patch.object(cli, "ensure_labels", side_effect=LabelsError("labels: brak `gh`")):
+            self.assertEqual(cli.main(["labels", "."]), 1)
 
 
 if __name__ == "__main__":

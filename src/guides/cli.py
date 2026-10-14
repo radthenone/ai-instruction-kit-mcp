@@ -24,7 +24,7 @@ import yaml
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
 from guides.clients import KNOWN_CLIENTS, expand_clients, format_clients_arg, parse_clients
 from guides.kit_status import STAMP_REL_PATH, check_kit_updates, direct_url_info
-from guides.labels import ensure_labels
+from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
 from guides.resolver import PROFILE_REL_PATH, normalize_language
 
@@ -517,7 +517,7 @@ def main(argv: list[str] | None = None) -> int:
             print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
-    except (SetupError, BootstrapError, ValueError) as exc:
+    except (SetupError, BootstrapError, LabelsError, ValueError) as exc:
         print(f"kit-ai: {exc}", file=sys.stderr)
         return 1
     return 0

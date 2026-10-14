@@ -62,7 +62,7 @@ Zanim cokolwiek powiesz, czytaj. Nie pytaj o nic, czego możesz dowiedzieć się
 | --- | --- | --- |
 | Konwencje repo | Czy pomysł nie łamie ustalonych zasad | `cat AGENTS.md` (lub `CLAUDE.md`), `ls docs/` |
 | Istniejące issue | Czy to już zgłoszone | `gh issue list --state all --search "<słowa kluczowe>" --limit 20` |
-| Etykiety | Żeby nie wymyślać nieistniejących | `gh label list --limit 50` |
+| Etykiety | Żeby nie wymyślać nieistniejących | `gh label list --limit 200` |
 | Kod dotykany przez pomysł | Czy to już istnieje, czy jest gdzie wpiąć | `grep -r`, `ls` po katalogach |
 | Świeże commity | Czy ktoś tego właśnie nie robi | `git log --oneline -20` |
 
