@@ -613,16 +613,29 @@ PY
 }
 
 # Agenci z `tier:` we frontmatterze trafiają do klienta tylko przy wybranym Tierze
-# (`backend` / `client` = web lub mobile). Staging w katalogu tymczasowym, bez linii
-# `tier:` — wszystkie instalatory niżej czytają już przefiltrowany zestaw. Na stdout:
-# nazwy pominiętych agentów (do sprzątnięcia z poprzedniego Bootstrapu).
+# (`backend` / `client` = web lub mobile). Bloki `<!-- clients: a,b -->…<!-- /clients -->`
+# zostają (bez znaczników) tylko, gdy któryś z wymienionych klientów jest w `--clients`
+# projektu (#189). Staging w katalogu tymczasowym, bez linii `tier:` — wszystkie
+# instalatory niżej czytają już przefiltrowany zestaw. Na stdout: nazwy pominiętych
+# agentów (do sprzątnięcia z poprzedniego Bootstrapu).
 stage_shared_agents() {
   local dest="$1"
-  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" HEADLESS="$HEADLESS" "$PYTHON_BIN" - <<'PY'
+  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" HEADLESS="$HEADLESS" \
+    CLIENTS="${CLIENTS_LIST[*]}" "$PYTHON_BIN" - <<'PY'
 import os
+import re
 from pathlib import Path
 
 chosen = set(os.environ["TIERS"].split())
+clients = set(os.environ["CLIENTS"].split())
+BLOCK = re.compile(r"<!-- clients: ([\w ,-]+) -->\n(.*?)<!-- /clients -->\n?", re.DOTALL)
+
+
+def gate(match: re.Match) -> str:
+    names = {name.strip() for name in match.group(1).split(",")}
+    return match.group(2) if names & clients else ""
+
+
 dest = Path(os.environ["DEST"])
 for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
     # /headless ma sens dopiero przy dwóch klientach z trybem headless (#169).
@@ -643,8 +656,26 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
         line for i, line in enumerate(lines)
         if not (0 < i < end and line.startswith(("tier:", "model-tier:")))
     ]
-    (dest / src.name).write_text("".join(kept), encoding="utf-8", newline="\n")
+    (dest / src.name).write_text(BLOCK.sub(gate, "".join(kept)), encoding="utf-8", newline="\n")
 PY
+}
+
+# Dokument przekazania sesji designu (#189) — tylko z `claude` w `--clients` i Tierem
+# web/mobile. Inaczej znika przy reloadzie, o ile to nietknięta kopia kita.
+DESIGN_HANDOFF=docs/agents/design-handoff.md
+design_handoff_pristine() {
+  [[ -f "$TARGET/$DESIGN_HANDOFF" ]] \
+    && cmp -s "$TARGET/$DESIGN_HANDOFF" "$KIT_ROOT/templates/shared/docs/design-handoff.md"
+}
+
+install_design_handoff() {
+  if [[ " ${CLIENTS_LIST[*]} " == *" claude "* && " $PROFILE_TIERS " == *" client "* ]]; then
+    mkdir -p "$TARGET/docs/agents"
+    cp "$KIT_ROOT/templates/shared/docs/design-handoff.md" "$TARGET/$DESIGN_HANDOFF"
+    echo "  + $DESIGN_HANDOFF (sesja designu: Claude Code)"
+  elif design_handoff_pristine; then
+    kit_rm "$DESIGN_HANDOFF"
+  fi
 }
 
 # /headless (#169): wrapper wspólny dla hostów + `@KIT_HOST@` w pliku agenta każdego
@@ -1146,6 +1177,7 @@ remove_kit() {
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
   kit_rm .ai/headless.mjs
+  if design_handoff_pristine; then kit_rm "$DESIGN_HANDOFF"; fi
   echo ""
   echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
 }
@@ -1212,6 +1244,7 @@ for c in "${CLIENTS_LIST[@]}"; do
 done
 
 install_headless
+install_design_handoff
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.md" ]]; then

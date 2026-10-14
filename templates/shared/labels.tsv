@@ -18,3 +18,5 @@ ready-for-human	0075CA	Wymaga decyzji człowieka, architektury lub wsparcia po A
 wontfix	FFFFFF	Zadanie odrzucone lub niezgodne z planem projektu.	always
 bug	D73A4A	Coś nie działa — kategoria triage, obok type: fix / type: security	always
 enhancement	A2EEEF	Nowa funkcja lub ulepszenie — kategoria triage, obok type: feature / type: performance	always
+design: layout	F9A8D4	Układ ekranu do zaprojektowania przed implementacją	web,mobile
+design: tokens	F9A8D4	Zmiana design tokenów (fonty, kolory, spacing) dla całej aplikacji	web,mobile

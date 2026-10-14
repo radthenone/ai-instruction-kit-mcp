@@ -292,6 +292,11 @@ z `docs/agents/triage-labels.md` projektu, jeśli jest). Zestaw leży w
 `templates/shared/labels.tsv`; brakujące zakłada `ensure_labels(dry_run=False)` albo
 `kit-ai labels --apply` (istniejących nie zmienia). `/kit-project-begin` proponuje to po
 reloadzie.
+Etykiety `design: layout` / `design: tokens` dochodzą tylko przy Tierze web/mobile **i**
+`claude` w `clients:` — sesję designu robi człowiek w Claude Code (opis:
+`docs/agents/design-handoff.md`, instalowany przy tych samych warunkach). Treść agentów tylko
+dla takich projektów siedzi w blokach `<!-- clients: claude -->…<!-- /clients -->`; bootstrap
+zostawia je (bez znaczników) albo wycina według `clients:`.
 
 **Gdzie żyje konfiguracja AI po instalacji:** wszystko poza `.claude/settings.local.json`
 i `.agents/skills/` idzie do repo — bootstrap wstawia do `.gitignore` sekcję między

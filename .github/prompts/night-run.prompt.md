@@ -92,6 +92,10 @@ W komendach niżej stoją nazwy domyślne — wstawiaj nazwy z `triage-labels.md
 - Issue z listy ręcznej z etykietą `ready-for-human` / `needs-info` / `needs-triage` /
   `wontfix` → pomijasz, w raporcie `skipped: <etykieta>`. Bez etykiety stanu → bierzesz
   (zgodność wstecz).
+- Etykiety designu (każdy klient, także z `ready-for-agent` — zabezpieczenie przed źle
+  przełączonym stanem): `design: layout` bez `docs/design/<N>.md` na bazie
+  (`git cat-file -e origin/$BASE:docs/design/<N>.md` pada) → `skipped: design spec missing`;
+  `design: tokens` → `skipped: design: tokens`.
 
 ### 5. Kolejność
 
@@ -347,5 +351,19 @@ Pomiar per agent: <wiersze ze snippetu>
 `gh api repos/<owner>/<repo>/pulls/<PR>/files --jq '.[] | select(.status=="added") | .filename'`
 przeciw tym ścieżkom. Lista do decyzji człowieka; issue nie zakładasz. Brak kluczy
 `routes-*` → „brak routes-* w ## Ścieżki”.
+
+**Follow-up „zaprojektuj layout”** (sesję designu robi człowiek w Claude Code — Claude Design,
+`/design-sync`; przebieg w `docs/agents/design-handoff.md`). Zmergowany ticket **bez**
+`design: *` dodał plik w `routes-web` / `routes-mobile` → po merge'u zakładasz issue:
+
+- tytuł: `refactor: design layout for <ekran>` (`refactor` ↔ `type: refactor` ↔ branch
+  `refactor/N-…`);
+- body: link do PR, route, komponenty sekcji z diffa, odnośnik do formatu speca w bundlu
+  (`stack:frontend:ui-structure`), linia „Sesja designu: Claude Code”;
+- etykiety (tylko istniejące w `gh label list --limit 200`): `design: layout`,
+  `ready-for-human`, `type: refactor`, `scope: frontend:web` albo `scope: frontend:mobile`.
+
+Brak klucza `routes-*`, brak etykiety `design: layout` albo `--dry-run` → tylko wiersz
+w „Nowe ekrany”. Do tabeli „Nowe ekrany” dopisz kolumnę `Follow-up` z numerem issue.
 
 Każdy ticket z listy ma w tabeli dokładnie jeden wiersz. Brak dowodu = ticket nie jest skończony.
