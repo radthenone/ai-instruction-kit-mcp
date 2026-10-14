@@ -28,7 +28,7 @@ Gdy user poda `--help`, `help` lub `-h` — **nie oceniaj i nie twórz**, wypisz
 
 ## Co robi
 Ocenia pomysl na tle repo, dopytuje o braki, sklada karte issue
-(tytul EN, opis w jezyku MCP, etykieta, kryterium ukonczenia, skrocony plan)
+(tytul EN, opis w jezyku MCP, etykiety, gotowosc, kryterium ukonczenia, skrocony plan)
 i tworzy issue dopiero po Twojej akceptacji. Nie zaklada brancha.
 
 ## Wywolanie
@@ -118,7 +118,9 @@ w GitHubie. Zasada: **nic, czego nie ma na karcie, nie zostanie ustawione.**
 ```text
 ╭─ KARTA ISSUE ────────────────────────────────────────────────╮
 Tytul      Add CSV export to orders list
-Etykieta   type: feature                  [istnieje w repo]
+Etykiety   type: feature, enhancement     [istnieja w repo]
+           scope: backend, scope: frontend:web
+           ready-for-agent                [z bloku Gotowosc]
 Assignee   @me                            [brak przy --no-assign]
 Rodzic     brak                           [#88 przy --parent]
 ──────────────────────── TRESC ────────────────────────────────
@@ -145,8 +147,20 @@ To szkic kierunku, nie specyfikacja.
 <skad sie wzielo> + <konkret z repo: numer issue, sciezka, commit>
 ╰──────────────────────────────────────────────────────────────╯
 
+## Gotowość
+- [x] Kryterium ukończenia sprawdzalne komendą/testem
+- [x] Zakres wskazuje pliki/moduły
+- [x] Brak „Otwarte pytanie”
+- [x] Nie dotyka auth / ACL / płatności / migracji danych
+→ ready-for-agent | ready-for-human | needs-info
+
 [t] tworze   [a] anuluj   albo napisz, co zmienic
 ```
+
+Blok **Gotowość** jest częścią karty, nie treści issue. Wszystkie pola zaznaczone →
+`ready-for-agent`. Otwarte pytanie do zgłaszającego albo brak danych do reprodukcji →
+`needs-info`. Pozostałe → `ready-for-human` i jedno zdanie „dlaczego” pod blokiem.
+Użytkownik może nadpisać stan w FAZIE 4.
 
 **Zakres** działa dopiero razem z „poza zakresem". **Kryterium** to jedyny sposób zamknąć
 issue bez kłótni z sobą. **Plan** (3–5 punktów) dowodzi, że wiadomo **jak**, nie tylko **co**.
@@ -167,7 +181,7 @@ Dopiero tutaj lecą komendy zapisujące i raportujesz każdą. Repo `gh` bierze 
 ```bash
 gh issue create \
   --title "<title EN>" \
-  --label "<etykieta z karty>" \
+  --label "<type: …>" --label "<kategoria>" --label "<scope: …>" --label "<stan>" \
   --assignee @me \
   --body-file - <<'BODY'
 …tresc z karty…
@@ -178,6 +192,7 @@ gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues \
   -F sub_issue_id=$(gh api repos/<owner>/<repo>/issues/<N> --jq .id)
 ```
 
+Jedno `--label` na etykietę z karty; oś bez etykiety w repo po prostu odpada.
 Przy `--no-assign` opuszczasz `--assignee @me`; karta ma wtedy `Assignee brak`.
 
 Numer bierz **tylko z outputu `create`** — nigdy `gh issue list --limit 1`. Jeśli druga
@@ -209,7 +224,9 @@ o tym, co się zmieniło. Zmiana nie jest przyjmowana na słowo — to sedno tej
 1. **Istnieje i pasuje** — podmień, jedno zdanie potwierdzenia.
 2. **Istnieje, ale nie pasuje** — podmień i **powiedz, dlaczego to podejrzane**. Nie blokuj.
    To repo użytkownika.
-3. **Nie istnieje** — nie zmyślaj i nie twórz po cichu. Wypisz istniejące, zaproponuj
+3. **Nie istnieje** — nie zmyślaj i nie twórz po cichu. Etykieta z zestawu kita (`type: *`,
+   `bug`/`enhancement`, `scope: *`, stan) → podaj `kit-ai labels --apply` i nic więcej.
+   Inna → wypisz istniejące, zaproponuj
    `gh label create <nazwa> --description "…" --color <hex>` i **zapytaj osobno**: etykieta
    jest bytem repo, nie polem issue — powstaje raz i zostaje dla przyszłych zgłoszeń. To
    **jedyny** zapis dozwolony przed `t`. Przy `--dry-run` nie tworzysz jej mimo zgody.
@@ -234,22 +251,40 @@ gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by
   -F issue_id=$(gh api repos/<owner>/<repo>/issues/<blocker> --jq .id)
 ```
 
-Karta jest jedna na issue i akceptujesz je **pojedynczo**. Zbiorcze „tak" na trzy karty naraz
+Karta jest jedna na issue, z własnym blokiem Gotowość, i akceptujesz je **pojedynczo**. Zbiorcze „tak" na trzy karty naraz
 znaczy, że przeczytana została jedna.
 
 ## Etykiety
 
-Wybierasz **jedną** etykietę z istniejących (`gh label list`) — tę, która odpowiada typowi
-Conventional z `.cursor/rules/git-branch-pr.mdc`, żeby `/git-start` → `/git-commit` →
-`/git-end` się nie rozjechało. Zestaw `type: *`: `type: feature` znaczy `feat/N-slug`
-i commity `feat:`. Bez tego zestawu bierzesz najbliższą istniejącą i mówisz, że mapowanie
-jest przybliżone — **nie** zakładasz własnego. Etykiet triage z
-`docs/agents/triage-labels.md` w GitHubie może nie być; sprawdzaj, nie zakładaj.
+Trzy osie plus kategoria. Każda tylko z etykiet istniejących w `gh label list`; brakującej
+osi nie zgadujesz — pomijasz ją i dajesz jedną linijkę „brak etykiety X — uruchom
+`kit-ai labels --apply`”. `--dry-run` pokazuje etykiety na karcie i niczego nie tworzy.
+
+- **type** — dokładnie jedna, typ Conventional z `.cursor/rules/git-branch-pr.mdc`
+  (`type: feature` znaczy `feat/N-slug` i commity `feat:`), żeby `/git-start` →
+  `/git-commit` → `/git-end` się nie rozjechało.
+- **kategoria** (słownik `/triage` mattpocock) — nigdy wybierana osobno, zawsze wyliczona
+  z `type: *`:
+
+  | `type: *` | kategoria |
+  | --- | --- |
+  | `type: fix`, `type: security` | `bug` |
+  | `type: feature`, `type: performance` | `enhancement` |
+  | `type: refactor`, `type: docs`, `type: test`, `type: style`, `type: chore` | brak |
+
+- **scope** — jedna lub kilka, z Tierów, których dotyczy karta: prefiksy ścieżek z
+  `.ai/project.md ## Ścieżki` (`backend:` → `scope: backend`, `web:` → `scope: frontend:web`,
+  `mobile:` → `scope: frontend:mobile`). Pliki infra (`Dockerfile*`, `docker-compose*`,
+  `.github/workflows/`, `Taskfile*`, `taskfiles/`, `terraform/`) → `scope: devops`.
+- **stan** — dokładnie jeden, z bloku Gotowość w FAZIE 3 (uzupełnia `/triage`, nie zastępuje).
+  Nazwy: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik; inaczej
+  `needs-info`, `ready-for-agent`, `ready-for-human`.
 
 ## Zakazy
 
 - Nie twórz issue ani niczego w GitHubie przed `t` w FAZIE 4. Jedyny wyjątek: `gh label
-  create` po osobnej zgodzie (etykieta — przypadek 3), i nie przy `--dry-run`.
+  create` etykiety spoza zestawu kita po osobnej zgodzie (etykieta — przypadek 3), i nie
+  przy `--dry-run`.
 - Nie zakładaj brancha i nie pisz kodu — od tego jest `/git-start`.
 - Nie przyjmuj zmiany z FAZY 4 na słowo, bez weryfikacji.
 - Nie wymyślaj etykiet ani rodziców, których nie ma.

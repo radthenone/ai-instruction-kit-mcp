@@ -17,6 +17,8 @@ from guides.clients import (
     parse_clients,
 )
 from guides.kit_status import check_kit_updates
+from guides.labels import Runner
+from guides.labels import ensure_labels as ensure_repo_labels
 from guides.manifest import load_manifest
 from guides.questions import render_catalog
 from guides.resolver import (
@@ -34,7 +36,8 @@ mcp = FastMCP(
         "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
         "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
         "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
-        "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace — "
+        "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace, "
+        "a brakujące etykiety GitHuba zakłada ensure_labels — "
         "jedyne narzędzia zapisujące, domyślnie dry_run=True."
     ),
 )
@@ -45,6 +48,7 @@ _extra_overlays: list[Path] = []
 _language_override: str | None = None
 _clients: list[str] = ["all"]
 _legacy_config: bool = False
+_gh_runner: Runner | None = None
 
 
 def _get_resolved():
@@ -350,6 +354,35 @@ def reload_workspace(dry_run: bool = True) -> str:
         ["# reload_workspace — odświeżono", "", *header, "```", result, "```", ""]
         + ["- Zrestartuj IDE w repo aplikacji, żeby wczytało hooki i komendy."]
     )
+
+
+@mcp.tool()
+def ensure_labels(dry_run: bool = True) -> str:
+    """
+    Załóż w repo GitHuba brakujące etykiety kita (to samo co ``kit-ai labels``).
+
+    Zestaw ``type: *``, kategorie triage, ``scope: *`` według Tierów Profilu i etykiety
+    stanu (nazwy z ``docs/agents/triage-labels.md`` projektu, gdy jest). Istniejących
+    nie modyfikuje. Zapisuje w GitHubie, nie na dysku — stąd ta sama bramka co
+    ``bootstrap_workspace``: ``dry_run=True`` (domyślnie) tylko planuje.
+
+    Args:
+        dry_run: ``True`` — tylko plan. ``False`` — ``gh label create`` dla brakujących.
+
+    Returns:
+        str: Licznik i nazwy etykiet albo jedna linia o braku ``gh``/auth/remote.
+    """
+    try:
+        workspace = _require_workspace()
+    except BootstrapError as exc:
+        return f"# ensure_labels: błąd\n\n{exc}"
+    report = ensure_repo_labels(
+        workspace, _get_resolved().kit_root, dry_run=dry_run, run=_gh_runner
+    )
+    if dry_run:
+        return f"# ensure_labels — dry run (nic nie utworzono)\n\n{report}\n\n" \
+            "Żeby założyć brakujące: wywołaj ponownie z `dry_run=False`."
+    return f"# ensure_labels — zastosowano\n\n{report}"
 
 
 @mcp.tool()
