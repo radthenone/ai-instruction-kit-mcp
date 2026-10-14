@@ -252,6 +252,12 @@ modules:
     title: Frontend — React + RN split
     tags: [frontend, react, mobile]
 
+  # Wspólny dla każdego Stacka web/mobile (wpięty w mappings.tiers niżej).
+  stack:frontend:ui-structure:
+    path: modules/stacks/frontend/ui-structure.md
+    title: Frontend — tokeny, sekcja / strona i spec layoutu
+    tags: [frontend]
+
   # ─── Stacks: React (web) ────────────────────────────
   stack:react:
     path: modules/stacks/react/overview.md
@@ -519,26 +525,32 @@ mappings:
         - stack:flask:backend-instructions
         - stack:flask:testing
     # Moduły layoutu (`stack:frontend:*`) nie wchodzą do Bundli — są podpowiedzią
-    # ścieżek w `layouts:` niżej (MCP `list_questions`).
+    # ścieżek w `layouts:` niżej (MCP `list_questions`). Wyjątek: `stack:frontend:ui-structure`
+    # (reguły kodu, nie układ katalogów) — wpisany w każdy Stack web i mobile.
     web:
       react:
         - stack:react
         - stack:react:modern
+        - stack:frontend:ui-structure
       react@legacy:
         - stack:react
         - stack:react:legacy
+        - stack:frontend:ui-structure
       angular:
         - stack:angular
         - stack:angular:modern
+        - stack:frontend:ui-structure
       angular@rxjs:
         - stack:angular
         - stack:angular:legacy
+        - stack:frontend:ui-structure
       expo:
         - stack:expo-router
         - stack:expo-router:structure
         - stack:expo-router:frontend-instructions
         - stack:expo-router:web-target
         - stack:expo-router:testing
+        - stack:frontend:ui-structure
     mobile:
       expo:
         - stack:expo-router
@@ -546,11 +558,13 @@ mappings:
         - stack:expo-router:frontend-instructions
         - stack:expo-router:mobile-native
         - stack:expo-router:testing
+        - stack:frontend:ui-structure
       react-native:
         - stack:react-native
         - stack:react-native:structure
         - stack:react-native:mobile-instructions
         - stack:react-native:testing
+        - stack:frontend:ui-structure
 
   capabilities:
     auth: capability:auth
@@ -797,6 +811,40 @@ questions:
       - when: {all: {web: [expo], mobile: [expo]}}
         value: frontend/
     when: {all: {mobile: ["!none"]}}
+
+  # Reguły `stack:frontend:ui-structure`: źródło tokenów i katalogi plików route'ów.
+  design-tokens:
+    question: Gdzie jest źródło design tokenów (kolory, fonty, spacing)? Ścieżka od roota repo — zapisz katalog faktycznego trafienia
+    sets: paths.design-tokens
+    default: src/theme/
+    when: {any: {web: ["!none"], mobile: ["!none"]}}
+    detect:
+      - {glob: "**/packages/tokens/package.json", value: packages/tokens/}
+      - {glob: "**/tokens.css", value: tokens.css}
+      - {glob: "**/src/theme/**", value: src/theme/}
+
+  routes-web:
+    question: Gdzie leżą pliki route'ów web (jeden plik = jeden ekran)? Ścieżka od roota repo — zapisz katalog faktycznego trafienia
+    sets: paths.routes-web
+    default: src/app/
+    defaults:
+      - when: {all: {web: [expo]}}
+        value: app/
+    when: {all: {web: ["!none"]}}
+    detect:
+      - {glob: "**/app/_layout.tsx", value: app/}
+      - {glob: "**/app/**/page.tsx", value: app/}
+      - {glob: "**/src/routes/**", value: src/routes/}
+      - {glob: "**/src/pages/**", value: src/pages/}
+
+  routes-mobile:
+    question: Gdzie leżą pliki route'ów mobile (jeden plik = jeden ekran)? Ścieżka od roota repo — zapisz katalog faktycznego trafienia
+    sets: paths.routes-mobile
+    default: app/
+    when: {all: {mobile: ["!none"]}}
+    detect:
+      - {glob: "**/app/_layout.tsx", value: app/}
+      - {glob: "**/src/screens/**", value: src/screens/}
 
 # Podpowiedzi układu katalogów (moduły layoutu spoza Bundli). `list_questions` pokazuje
 # każdy pasujący wpis — warunki klienta (web/mobile) wzajemnie się wykluczają, backend

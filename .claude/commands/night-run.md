@@ -152,6 +152,9 @@ Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, z
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
 Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
 `gh issue view <N> --comments`.
+Frontend: po kroku 1 plik `docs/design/<N>.md` jest w drzewie (z <BASE> albo z istniejącego
+brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżność = hand-back
+needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
 
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
@@ -334,6 +337,17 @@ Wznowienia per ticket: <#N: liczba>
 
 Założenia: <co przyjęto bez danych z repo>
 Pomiar per agent: <wiersze ze snippetu>
+
+### Nowe ekrany
+| PR | Route |
+| --- | --- |
+| #<PR> | <plik dodany w routes-web / routes-mobile> |
 ```
+
+**Nowe ekrany:** pliki dodane w katalogach `routes-web` / `routes-mobile` (`.ai/project.md
+## Ścieżki`) przez PR-y zmergowane tej nocy — tylko pliki nowe:
+`gh api repos/<owner>/<repo>/pulls/<PR>/files --jq '.[] | select(.status=="added") | .filename'`
+przeciw tym ścieżkom. Lista do decyzji człowieka; issue nie zakładasz. Brak kluczy
+`routes-*` → „brak routes-* w ## Ścieżki”.
 
 Każdy ticket z listy ma w tabeli dokładnie jeden wiersz. Brak dowodu = ticket nie jest skończony.
