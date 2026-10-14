@@ -68,6 +68,18 @@ class TestAgentBlocks(unittest.TestCase):
         self.assertIn("Design: teraz | później", inside)
         self.assertIn("design: tokens", inside)
 
+    def test_blocks_are_balanced_and_flat(self) -> None:
+        for path in AGENTS.glob("*.md"):
+            depth = 0
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("<!-- clients:"):
+                    depth += 1
+                    self.assertEqual(depth, 1, f"{path.name}: zagnieżdżony blok")
+                elif line == "<!-- /clients -->":
+                    depth -= 1
+                    self.assertEqual(depth, 0, f"{path.name}: zamknięcie bez otwarcia")
+            self.assertEqual(depth, 0, f"{path.name}: niezamknięty blok")
+
     def test_claude_only_names_live_in_blocks(self) -> None:
         for path in AGENTS.glob("*.md"):
             outside = BLOCK.sub("", path.read_text(encoding="utf-8"))
@@ -76,9 +88,9 @@ class TestAgentBlocks(unittest.TestCase):
 
 
 class TestBootstrapGate(_BootstrapTestCase):
-    def _run(self, workspace: Path, clients: str, web: str = "react") -> None:
+    def _run(self, workspace: Path, clients: str, web: str = "react", **kwargs: bool) -> None:
         _profile(workspace, clients=clients, web=web)
-        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients)
+        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients, **kwargs)
 
     def test_claude_keeps_block_without_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,6 +121,22 @@ class TestBootstrapGate(_BootstrapTestCase):
             self.assertTrue((workspace / HANDOFF).is_file())
             self._run(workspace, "opencode")
             self.assertFalse((workspace / HANDOFF).exists())
+
+    def test_edited_handoff_still_removed_without_claude(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._run(workspace, "claude,opencode")
+            with (workspace / HANDOFF).open("a", encoding="utf-8") as fh:
+                fh.write("stara wersja kita\n")
+            self._run(workspace, "opencode")
+            self.assertFalse((workspace / HANDOFF).exists())
+
+    def test_keep_unselected_clients_keeps_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            self._run(workspace, "claude,opencode")
+            self._run(workspace, "opencode", keep_unselected_clients=True)
+            self.assertTrue((workspace / HANDOFF).is_file())
 
     def test_no_client_tier_no_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -656,24 +656,28 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
         line for i, line in enumerate(lines)
         if not (0 < i < end and line.startswith(("tier:", "model-tier:")))
     ]
-    (dest / src.name).write_text(BLOCK.sub(gate, "".join(kept)), encoding="utf-8", newline="\n")
+    text = BLOCK.sub(gate, "".join(kept))
+    # Literówka w znaczniku nie może po cichu wypuścić treści bloku do innych klientów.
+    if "<!-- clients" in text or "<!-- /clients" in text:
+        raise SystemExit(f"{src.name}: niedomknięty albo zagnieżdżony blok <!-- clients: … -->")
+    (dest / src.name).write_text(text, encoding="utf-8", newline="\n")
 PY
 }
 
-# Dokument przekazania sesji designu (#189) — tylko z `claude` w `--clients` i Tierem
-# web/mobile. Inaczej znika przy reloadzie, o ile to nietknięta kopia kita.
+# Dokument przekazania sesji designu (#189) — plik kita jak agenci: nadpisywany przy
+# każdym bootstrapie, tylko z `claude` w `--clients` i Tierem web/mobile. Bez Tieru
+# znika; bez `claude` znika razem z resztą plików claude (nie przy --keep-unselected-clients).
 DESIGN_HANDOFF=docs/agents/design-handoff.md
-design_handoff_pristine() {
-  [[ -f "$TARGET/$DESIGN_HANDOFF" ]] \
-    && cmp -s "$TARGET/$DESIGN_HANDOFF" "$KIT_ROOT/templates/shared/docs/design-handoff.md"
-}
-
 install_design_handoff() {
-  if [[ " ${CLIENTS_LIST[*]} " == *" claude "* && " $PROFILE_TIERS " == *" client "* ]]; then
-    mkdir -p "$TARGET/docs/agents"
-    cp "$KIT_ROOT/templates/shared/docs/design-handoff.md" "$TARGET/$DESIGN_HANDOFF"
-    echo "  + $DESIGN_HANDOFF (sesja designu: Claude Code)"
-  elif design_handoff_pristine; then
+  if [[ " ${CLIENTS_LIST[*]} " == *" claude "* ]]; then
+    if [[ " $PROFILE_TIERS " == *" client "* ]]; then
+      mkdir -p "$TARGET/docs/agents"
+      cp "$KIT_ROOT/templates/shared/docs/design-handoff.md" "$TARGET/$DESIGN_HANDOFF"
+      echo "  + $DESIGN_HANDOFF (sesja designu: Claude Code)"
+    else
+      kit_rm "$DESIGN_HANDOFF"
+    fi
+  elif [[ "$PRUNE_CLIENTS" -eq 1 ]]; then
     kit_rm "$DESIGN_HANDOFF"
   fi
 }
@@ -1177,7 +1181,7 @@ remove_kit() {
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
   kit_rm .ai/headless.mjs
-  if design_handoff_pristine; then kit_rm "$DESIGN_HANDOFF"; fi
+  kit_rm "$DESIGN_HANDOFF"
   echo ""
   echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
 }

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from guides.clients import expand_clients, parse_clients
+from guides.clients import expand_clients, parse_clients, profile_clients_arg
 from guides.resolver import PROFILE_REL_PATH, TIER_NONE, resolve_workspace_profile
 
 LABELS_REL_PATH = Path("templates/shared/labels.tsv")
@@ -89,9 +89,7 @@ def project_clients(workspace: Path) -> set[str]:
     path = workspace / PROFILE_REL_PATH
     data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else None
     raw = data.get("clients") if isinstance(data, dict) else None
-    if isinstance(raw, list):
-        raw = ",".join(str(item) for item in raw)
-    return set(expand_clients(parse_clients(str(raw) if raw else None)))
+    return set(expand_clients(parse_clients(profile_clients_arg(raw))))
 
 
 def _gh(run: Runner, args: list[str]) -> subprocess.CompletedProcess:
