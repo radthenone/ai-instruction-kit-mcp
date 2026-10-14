@@ -140,12 +140,13 @@ brancha (krok 2–3), nie tylko w raporcie.
 
 **B) Utwórz:**
 
-Najpierw etykieta i tablica (sekcja „Etykieta i tablica” niżej). Flagę dodajesz tylko,
-gdy jest dopasowanie.
+Najpierw etykiety i tablica (sekcja „Etykieta i tablica” niżej). Flagę dodajesz tylko,
+gdy jest dopasowanie; `--label` powtarzasz, po jednym na etykietę.
 
 ```bash
 URL=$(gh issue create --title "<title EN>" --body "…" \
-  [--label "<type: …>"] [--project "<title tablicy>"])
+  [--label "<type: …>"] [--label "<kategoria>"] [--label "<scope: …>"] \
+  [--project "<title tablicy>"])
 # Numer TYLKO z create — nie używaj `gh issue list --limit 1`
 N=$(printf '%s' "$URL" | grep -Eo '[0-9]+$')
 ```
@@ -158,17 +159,34 @@ Albo (gdy CLI wspiera): `gh issue create … --json number,url -q .number`.
 
 Oba kroki to odczyty i **nigdy** nie przerywają tworzenia issue — najwyżej pole zostaje puste.
 
-**Etykieta — jedna, tylko z istniejących:**
+**Etykiety — tylko z istniejących** (dotyczy tylko nowego issue; `/git-start N` etykiet
+nie zmienia):
 
 ```bash
-gh label list --limit 100 --json name -q '.[].name'
+gh label list --limit 200 --json name -q '.[].name'
 ```
 
 Typ → `type: <typ>`, z wyjątkami: `feat` → `type: feature`, `perf` → `type: performance`,
 `hotfix` → `type: fix`, `ci` / `build` / `release` → `type: chore`. Nazwa jest na liście →
 `--label "<nazwa>"`. Nie ma → najbliższa istniejąca tylko wtedy, gdy znaczy to samo, i powiedz,
-że mapowanie jest przybliżone; inaczej bez `--label`. Nie zakładaj etykiety (`gh label create`)
-bez osobnej zgody.
+że mapowanie jest przybliżone; inaczej bez `--label`.
+
+Kategoria (słownik `/triage` mattpocock) idzie **obok** `type: *`, nigdy wybierana osobno:
+
+| `type: *` | kategoria |
+| --- | --- |
+| `type: fix`, `type: security` | `bug` |
+| `type: feature`, `type: performance` | `enhancement` |
+| `type: refactor`, `type: docs`, `type: test`, `type: style`, `type: chore` | brak |
+
+Scope (tryb auto-diff) — z prefiksów zmienionych plików: prefiksy ścieżek z `.ai/project.md ## Ścieżki` (`backend:` → `scope: backend`, `web:` →
+`scope: frontend:web`, `mobile:` → `scope: frontend:mobile`); pliki infra (`Dockerfile*`,
+`docker-compose*`, `.github/workflows/`, `Taskfile*`, `taskfiles/`, `terraform/`) →
+`scope: devops`. Kilka dozwolonych; bez dopasowania → bez
+scope. **Bez** etykiety stanu (`ready-for-*`, `needs-*`) — nad issue właśnie pracuje człowiek.
+
+Brakująca etykieta → pomiń ją i jedna linijka „brak etykiety X — uruchom
+`kit-ai labels --apply`”. Nie zakładaj etykiet (`gh label create`) w locie.
 
 **Tablica (GitHub Project) — ta o nazwie repo:**
 

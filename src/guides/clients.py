@@ -77,6 +77,13 @@ def parse_clients(value: str | None) -> list[str]:
     return [c for c in KNOWN_CLIENTS if c in seen]
 
 
+def profile_clients_arg(raw: object) -> str:
+    """``clients:`` z Profilu (string albo lista YAML; brak = ``all``) jako wartość ``--clients``."""
+    if isinstance(raw, list):
+        raw = ",".join(str(item) for item in raw)
+    return format_clients_arg(parse_clients(str(raw) if raw else None))
+
+
 def expand_clients(clients: list[str]) -> list[str]:
     """
     Rozwiń ``all`` do pełnej listy ``KNOWN_CLIENTS``.

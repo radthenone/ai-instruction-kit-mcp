@@ -61,11 +61,20 @@ Cały wywiad od zera: /kit-project-begin
    zmiana `clients` **usuwa** pliki kita klientów spoza listy (własne pliki zostają);
    zmiana Tieru może włączyć pytania zależne (np. `codegen`, warianty) — wymień je i podaj
    gotowe kolejne `/kit-project-edit` (jedna zmiana na wywołanie); Tier → `none` usuwa
-   w tym samym podglądzie jego linię `- <tier>:` z `## Ścieżki` w `.ai/project.md`.
+   w tym samym podglądzie jego linię `- <tier>:` z `## Ścieżki` w `.ai/project.md` oraz linie
+   pytań, które przestają być aktywne (`routes-web` / `routes-mobile`, `design-tokens` gdy
+   web i mobile są `none` — `list_questions` po zmianie). Tier `none` → Stack web/mobile:
+   zaproponuj kolejne `/kit-project-edit` na `design-tokens` i `routes-*` z wykryciem
+   z `detect:` katalogu.
 3. **Zapis** jednej linii (komentarze i reszta pliku nietknięte) → MCP
    `reload_workspace(dry_run=True)`; błąd → przywróć oryginał, pokaż błąd. OK →
    `reload_workspace(dry_run=False)`. Zmiana tylko w `.ai/project.md` → bez reloadu
    (serwer czyta overlay na żywo).
+4. **Etykiety** — gdy Tier zmienił się z `none` na Stack albo do `clients` doszedł `claude`
+   (przy Tierze web/mobile — etykiety `design: *`): MCP `ensure_labels(dry_run=True)`, lista
+   nowych etykiet, zgoda → `ensure_labels(dry_run=False)`. Brak zgody → pomiń i podaj
+   `kit-ai labels --apply`. Usunięcie `claude` niczego nie kasuje — jedna linia, że etykiety
+   `design: *` zostają bez użycia.
 
 ## Tryb B — odstępstwo od modułu
 

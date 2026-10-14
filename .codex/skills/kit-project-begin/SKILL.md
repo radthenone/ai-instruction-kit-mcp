@@ -80,7 +80,7 @@ Gdzie trafia odpowiedź — linia `Zapis` w katalogu:
 | --- | --- |
 | klucz Profilu (`backend`, `web`, `mobile`, `codegen`) | Ta jedna linia w Profilu |
 | `include:` / `patterns:` (pytania tak/nie) | „tak" → dopisz wpisy do listy w Profilu (bez duplikatów); „nie" → usuń te same wpisy, jeśli są |
-| `paths.<tier>` | Linia `- <tier>: \`<ścieżka>\`` w sekcji `## Ścieżki` w `.ai/project.md`; Tier `none` → usuń jego linię |
+| `paths.<klucz>` (`backend`, `web`, `mobile`, `design-tokens`, `routes-web`, `routes-mobile`) | Linia `- <klucz>: \`<ścieżka>\`` w sekcji `## Ścieżki` w `.ai/project.md`; pytanie nieaktywne (Tier `none`) → usuń jego linię |
 
 Sekcja `## Układ katalogów` z katalogu to podpowiedź — pokaż ją przy pytaniach `paths-*`
 i dopasuj do realnych katalogów repo. Ostrzeżenie (⚠) cytuj użytkownikowi dosłownie.
@@ -97,7 +97,7 @@ i dopasuj do realnych katalogów repo. Ostrzeżenie (⚠) cytuj użytkownikowi d
 .ai/project.md — ## Ścieżki
   - backend: `backend/`
   - web: `frontend/web/`
-Potem: reload_workspace (agenci Tierów, BUGBOT.md)
+Potem: reload_workspace (agenci Tierów, BUGBOT.md), etykiety GitHuba (za zgodą)
 ╰──────────────────────────────────────────────────────────────╯
 Akceptujesz? [tak / zmień N / anuluj]
 ```
@@ -116,6 +116,10 @@ Karta pokazuje **każdą** zmianę, którą zapiszesz — nic spoza karty nie tr
    `reload_workspace(dry_run=False)`.
 4. Kontrola: dla każdego wybranego Tieru `get_bundle` odpowiedniego bundla zawiera moduły
    wybranego Stacka. Nie zawiera → powiedz wprost, nie ukrywaj.
+5. Etykiety GitHuba: MCP `ensure_labels(dry_run=True)` — pokaż listę do założenia
+   (`type: *`, `bug`/`enhancement`, `scope: *` według Tierów, etykiety stanu) i zapytaj
+   o zgodę. Zgoda → `ensure_labels(dry_run=False)`. Brak zgody albo błąd `gh` → pomiń
+   i podaj komendę na później: `kit-ai labels --apply`.
 
 ## Raport
 
@@ -124,6 +128,7 @@ Karta pokazuje **każdą** zmianę, którą zapiszesz — nic spoza karty nie tr
 - Profil: backend=… web=… mobile=… codegen=… (+ include/patterns)
 - .ai/project.md: zmienione sekcje …
 - Reload: N nowych, M nadpisanych, K usuniętych
+- Etykiety: created N, existing M (albo „pominięte — `kit-ai labels --apply`”)
 - Zrestartuj okno klienta (nowi agenci Tierów). Jedna zmiana później: /kit-project-edit
 ```
 

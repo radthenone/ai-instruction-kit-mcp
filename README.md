@@ -57,6 +57,7 @@ uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev    
 cd /m/projects/moja-appka                  # repo aplikacji
 kit-ai install                             # bez ścieżki = bieżący katalog
 kit-ai reload | kit-ai status | kit-ai remove [--dry-run]
+kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --apply = plan)
 
 # jednorazowo, bez instalowania narzędzia:
 uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp kit-ai install
@@ -283,6 +284,19 @@ Nie chcesz oglądać planu na sucho? Z poziomu agenta:
 reload_workspace()                  # dry run — lista plików nowych/nadpisanych/usuniętych
 reload_workspace(dry_run=False)     # odświeżenie z Profilu (= kit-ai reload)
 ```
+
+**Etykiety GitHuba.** Agenci kita używają tylko istniejących etykiet: `type: *`, kategorii
+`bug` / `enhancement` (słownik `/triage`), `scope: *` według Tierów i etykiet stanu
+(`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — nazwy
+z `docs/agents/triage-labels.md` projektu, jeśli jest). Zestaw leży w
+`templates/shared/labels.tsv`; brakujące zakłada `ensure_labels(dry_run=False)` albo
+`kit-ai labels --apply` (istniejących nie zmienia). `/kit-project-begin` proponuje to po
+reloadzie.
+Etykiety `design: layout` / `design: tokens` dochodzą tylko przy Tierze web/mobile **i**
+`claude` w `clients:` — sesję designu robi człowiek w Claude Code (opis:
+`docs/agents/design-handoff.md`, instalowany przy tych samych warunkach). Treść agentów tylko
+dla takich projektów siedzi w blokach `<!-- clients: claude -->…<!-- /clients -->`; bootstrap
+zostawia je (bez znaczników) albo wycina według `clients:`.
 
 **Gdzie żyje konfiguracja AI po instalacji:** wszystko poza `.claude/settings.local.json`
 i `.agents/skills/` idzie do repo — bootstrap wstawia do `.gitignore` sekcję między
