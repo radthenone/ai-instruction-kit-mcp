@@ -171,7 +171,7 @@ Kroki:
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
    Końcowy `/git-commit` z kroku 5 zostaje.
 4. Lokalnie tylko testy dotknięte ticketem + bramki szybkie z <CTX>. Pełny zestaw: CI.
-   `uv run` zawsze z `--no-sync`.
+   Na VPS (bundle z `infra:vps-lightweight`) `uv run` zawsze z `--no-sync`.
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
 6. Poprawki z review, `/git-end` — review już zrobione, bramka review potwierdzona, nie
@@ -226,6 +226,8 @@ dodane modele, serwisy, endpointy, migracje; założenia.
   przepływu na API”, tak nazwany w raporcie. Na VPS (bundle z `infra:vps-lightweight`)
   nowe e2e piszesz, ale nie uruchamiasz lokalnie (guard je odrzuca) — w raporcie i opisie
   PR oznaczasz „nieuruchomione lokalnie (VPS), weryfikuje CI”.
+- Liczby **z komend**: `pytest <pliki> -m <marker> --co -q`. Brak markerów → per plik
+  (`pytest <plik> --co -q`) + „brak markerów”. Trafiają do opisu PR i `Final report`.
 
 ## VPS (tylko gdy bundle zawiera `infra:vps-lightweight`)
 
@@ -234,10 +236,7 @@ dodane modele, serwisy, endpointy, migracje; założenia.
   z `--no-sync`.
 - brak CI = brak merge (krok 6 promptu): PR zostaje otwarty, ticket dostaje
   needs-human „brak CI na <BASE>”, w raporcie przypadek A.
-- Nowe e2e: test pisany, ale w raporcie i opisie PR „nieuruchomiony lokalnie (VPS),
-  weryfikuje CI”.
-- Liczby **z komend**: `pytest <pliki> -m <marker> --co -q`. Brak markerów → per plik
-  (`pytest <plik> --co -q`) + „brak markerów”. Trafiają do opisu PR i `Final report`.
+- Nowe e2e: test pisany, nieuruchomiony lokalnie (sekcja „Testy” wyżej).
 
 ## Zakazy
 
