@@ -40,15 +40,15 @@ DEFAULTS: tuple[dict[str, str], ...] = (
      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
     {"id": "podman", "kind": "deny", "pattern": r"^\s*podman(?=\s|$)",
      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
-    {"id": "docker-ps", "kind": "allow", "pattern": r"^\s*docker\s+(ps|images|inspect|version|info)(?=\s|$)",
+    {"id": "docker-ps", "kind": "allow", "pattern": r"^\s*(?:docker|podman)\s+(?:ps|images|inspect|version|info)(?=\s|$)",
      "reason": "odczyt stanu kontenerów"},
-    {"id": "docker-logs", "kind": "allow", "pattern": r"^\s*docker\s+logs(?=\s|$)(?!.*(?:-f|--follow)\b)",
+    {"id": "docker-logs", "kind": "allow", "pattern": r"^\s*(?:docker|podman)\s+logs(?=\s|$)(?!.*\s(?:-[a-zA-Z]*f[a-zA-Z]*|--follow)(?=\s|$))",
      "reason": "odczyt logów bez follow"},
-    {"id": "docker-logs-follow", "kind": "deny", "pattern": r"^\s*docker\s+logs(?=\s|$).*?(?:-f|--follow)\b",
+    {"id": "docker-logs-follow", "kind": "deny", "pattern": r"^\s*(?:docker|podman)\s+logs(?=\s|$).*\s(?:-[a-zA-Z]*f[a-zA-Z]*|--follow)(?=\s|$)",
      "reason": "follow logów trzyma proces i strumień — użyj `docker logs` bez `-f`"},
-    {"id": "docker-compose-ps", "kind": "deny", "pattern": r"^\s*docker\s+compose\s+config(?=\s|$)",
+    {"id": "docker-compose-config", "kind": "deny", "pattern": r"^\s*docker\s+compose\s+config(?=\s|$)",
      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
-    {"id": "docker-compose-ps-allow", "kind": "allow", "pattern": r"^\s*docker(?:\s+|-)compose\s+ps(?=\s|$)",
+    {"id": "docker-compose-ps", "kind": "allow", "pattern": r"^\s*(?:docker|podman)(?:\s+|-)compose\s+ps(?=\s|$)",
      "reason": "odczyt stanu kontenerów"},
     # Paczki — instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI.
     {"id": "uv-sync", "kind": "deny", "pattern": r"^\s*uv\s+(sync|add|remove|lock)(?=\s|$)",
@@ -80,9 +80,9 @@ DEFAULTS: tuple[dict[str, str], ...] = (
      "reason": "build produkcyjny tylko w CI"},
     {"id": "vite-build", "kind": "deny", "pattern": r"^\s*vite\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI"},
-    {"id": "turbo-build", "kind": "deny", "pattern": r"^\s*turbo\s+(run\s+)?build(?=\s|$)",
+    {"id": "turbo-build", "kind": "deny", "pattern": r"^\s*turbo(?:\s+run)?(?:\s+[^-\s]\S*)*?\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`"},
-    {"id": "turbo-lint", "kind": "allow", "pattern": r"^\s*turbo\s+run\s+(lint|typecheck)(?=\s|$)",
+    {"id": "turbo-lint", "kind": "allow", "pattern": r"^\s*turbo\s+run(?:\s+(?:lint|typecheck))+(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s*$",
      "reason": "lekkie bramki na VPS"},
     # Przeglądarki / e2e — setki MB na instancję, tylko w CI.
     {"id": "playwright", "kind": "deny", "pattern": r"^\s*(npx\s+|bunx\s+|yarn\s+dlx\s+|pnpm\s+dlx\s+)?playwright(?=\s|$)",
@@ -92,21 +92,38 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "maestro", "kind": "deny", "pattern": r"^\s*maestro(?=\s|$)",
      "reason": "testy mobilne tylko w CI"},
     # Mnożenie procesów na słabym CPU.
-    {"id": "pytest-xdist", "kind": "deny", "pattern": r"^\s*pytest(?=\s|$).*?(?:-n\b|--numprocesses\b)",
+    {"id": "pytest-xdist", "kind": "deny", "pattern": r"^\s*pytest(?=\s|$).*\s(?:-n|--numprocesses)(?=[\s=\d]|$)",
      "reason": "xdist mnoży procesy na słabym CPU — użyj `pytest` bez `-n`"},
 )
 
-_SEGMENT_SPLIT = re.compile(r"&&|\|\||[;|&()\n]")
-_BASH_C = re.compile(r"(?:^|\s)(?:bash|sh)\s+-c\s+(?:\"([^\"]*)\"|'([^']*)'|(\S+))")
+_HEREDOC = re.compile(r"<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+_SHELL_C = re.compile(
+    r"(?:^|\s)(?:\S*/)?(?:bash|sh|zsh|dash)\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*c[a-zA-Z]*\s+"
+    r"(?:\"([^\"]*)\"|'([^']*)'|(\S+))"
+)
 _SUBSHELL = re.compile(r"\$\(\s*(.*?)\s*\)")
+_BACKTICK = re.compile(r"`([^`]*)`")
+_ASSIGN = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|'[^']*'|\S*)\s+")
+_LOOKUP_FLAG = re.compile(r"^\s*(?:\S*/)?command\s+-[a-zA-Z]*[vV]")
 
 _PREFIXES = (
-    re.compile(r"^\s*sudo\b\s*(?:(?:-[ugpCDhrtU]\s+\S+|-\S+)\s+)*"),
-    re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)+"),
-    re.compile(r"^\s*env\b\s*"),
-    re.compile(r"^\s*(?:nice|ionice|nohup|time|command|exec|xargs)\b\s*(?:-\S+(?:\s+\d+)?\s+)*"),
-    re.compile(r"^\s*timeout\b\s*(?:(?:-[^\s]+|[\d.]+[smhd]?)\s+)*"),
+    re.compile(r"^\s*(?:\S*/)?sudo\b\s*(?:(?:-[ugpCDhrtU]\s+\S+|-\S+)\s+)*"),
+    re.compile(r"^\s*(?:\S*/)?env(?:\s+(?:-[uC]\s+\S+|-\S+))*\s+"),
+    re.compile(r"^\s*(?:\S*/)?(?:nice|ionice|nohup|time|command|exec|xargs|eval)\b\s*(?:-\S+(?:\s+\d+)?\s+)*"),
+    re.compile(r"^\s*(?:\S*/)?timeout(?:\s+(?:-[sk]\s+\S+|-\S+))*\s+[\d.]+[smhd]?\s+"),
+    re.compile(r"^\s*[\"']+"),
+    re.compile(r"^(\s*)(?:[^\s/'\"]*/)+(?=\S)"),
 )
+
+# Opcje z argumentem — reszta po `run` / launcherze to właściwa komenda.
+_UV_GLOBAL_ARG = frozenset(("--directory", "--project", "--config-file", "--cache-dir", "--python", "-p"))
+_UV_RUN_ARG = frozenset((
+    "--with", "--with-requirements", "--python", "-p", "--package", "--env-file", "--group",
+    "--extra", "--directory", "--project", "--index", "--index-url",
+))
+_JS_PM_ARG = frozenset(("--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"))
+_NPX_ARG = frozenset(("-p", "--package"))
+_PYTHON = re.compile(r"python(?:\d+(?:\.\d+)?)?")
 
 
 def warn(message: str) -> None:
@@ -114,30 +131,162 @@ def warn(message: str) -> None:
     print(f"server-guard: {message}", file=sys.stderr)
 
 
+def _skip_heredocs(command: str, i: int, pending: list[tuple[bool, str]]) -> int:
+    """Przeskocz treść heredoców od pozycji ``i`` (początek linii) do ich ograniczników."""
+    for strip_tabs, delim in pending:
+        while i < len(command):
+            end = command.find("\n", i)
+            line = command[i:] if end < 0 else command[i:end]
+            i = len(command) if end < 0 else end + 1
+            if (line.lstrip("\t") if strip_tabs else line).strip() == delim:
+                break
+    return i
+
+
 def split_segments(command: str) -> list[str]:
-    """Podziel komendę na segmenty + wnętrza `bash -c` / `$(…)`."""
-    segments = [seg for seg in _SEGMENT_SPLIT.split(command.replace("\r", " ")) if seg.strip()]
+    """Podziel komendę na segmenty + wnętrza `bash -c` / `$(…)` / backticków.
+
+    Separatory (`&&`, `||`, `;`, `|`, `&`, `(`, `)`, nowa linia) liczą się tylko poza
+    cudzysłowami; treść heredoca jest pomijana — to dane, nie komendy.
+    """
+    segments: list[str] = []
+    buf: list[str] = []
+    pending: list[tuple[bool, str]] = []
+    quote = ""
+    i = 0
+    n = len(command)
+
+    def flush() -> None:
+        seg = "".join(buf)
+        if seg.strip():
+            segments.append(seg)
+        buf.clear()
+
+    while i < n:
+        c = command[i]
+        if quote:
+            buf.append(c)
+            if c == "\\" and quote == '"' and i + 1 < n:
+                buf.append(command[i + 1])
+                i += 1
+            elif c == quote:
+                quote = ""
+            i += 1
+            continue
+        if c in "\"'":
+            quote = c
+            buf.append(c)
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            buf.append(" " if command[i + 1] == "\n" else command[i : i + 2])
+            i += 2
+            continue
+        heredoc = _HEREDOC.match(command, i)
+        if heredoc:
+            pending.append((heredoc.group(1) == "-", heredoc.group(3)))
+            buf.append(heredoc.group(0))
+            i = heredoc.end()
+            continue
+        if c == "\n":
+            flush()
+            i = _skip_heredocs(command, i + 1, pending)
+            pending = []
+            continue
+        if command.startswith(("&&", "||"), i):
+            flush()
+            i += 2
+            continue
+        if c in ";|&()\r":
+            flush()
+            i += 1
+            continue
+        buf.append(c)
+        i += 1
+    flush()
+
     extra: list[str] = []
     for seg in segments:
-        for match in _BASH_C.finditer(seg):
+        for match in _SHELL_C.finditer(seg):
             inner = next((g for g in match.groups() if g), "")
             if inner.strip():
                 extra.extend(split_segments(inner))
-        for match in _SUBSHELL.finditer(seg):
-            if match.group(1).strip():
-                extra.extend(split_segments(match.group(1)))
+        for regex in (_SUBSHELL, _BACKTICK):
+            for match in regex.finditer(seg):
+                if match.group(1).strip():
+                    extra.extend(split_segments(match.group(1)))
     return segments + extra
 
 
-def strip_prefixes(segment: str) -> str:
-    """Zdejmij prefiksy uruchamiające inną komendę (`sudo`, `env`, `timeout`, …)."""
+def strip_prefixes(segment: str) -> tuple[str, dict[str, str]]:
+    """Zdejmij prefiksy uruchamiające inną komendę i ścieżkę binarki.
+
+    Returns:
+        tuple: ``(komenda, przypisania VAR=… z linii)``. Sprawdzenie dostępności
+            (`command -v docker`) zwraca pustą komendę — niczego nie uruchamia.
+    """
+    assigns: dict[str, str] = {}
     previous = None
     current = segment
     while previous != current:
         previous = current
+        if _LOOKUP_FLAG.match(current):
+            return "", assigns
+        match = _ASSIGN.match(current)
+        if match:
+            assigns[match.group(1)] = match.group(2).strip("'\"")
+            current = current[match.end():]
+            continue
         for pattern in _PREFIXES:
-            current = pattern.sub("", current, count=1)
-    return current
+            current = pattern.sub(r"\1" if pattern.groups else "", current, count=1)
+    return current, assigns
+
+
+def _skip_flags(toks: list[str], i: int, with_arg: frozenset[str]) -> int:
+    while i < len(toks) and toks[i].startswith("-"):
+        i += 2 if toks[i] in with_arg else 1
+    return i
+
+
+def command_forms(segment: str) -> tuple[list[str], dict[str, str]]:
+    """Formy segmentu do dopasowania: sama komenda + to, co uruchamia launcher.
+
+    `uv [opcje] run [flagi] X`, `npx`/`bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X`
+    dokładają formę `X`; opcje `uv` przed podkomendą i `--filter`/`--cwd` menedżerów JS
+    są zdejmowane, żeby wzorce (`uv run`, wrappery `bun run x`) widziały komendę wprost.
+    """
+    command, assigns = strip_prefixes(segment)
+    toks = command.split()
+    if not toks:
+        return [], assigns
+    head = toks[0]
+    forms = [command]
+    rest: list[str] = []
+    if head == "uv":
+        i = _skip_flags(toks, 1, _UV_GLOBAL_ARG)
+        toks = ["uv", *toks[i:]]
+        forms = [" ".join(toks)]
+        if len(toks) > 1 and toks[1] == "run":
+            rest = toks[_skip_flags(toks, 2, _UV_RUN_ARG):]
+    elif head in ("npx", "bunx"):
+        rest = toks[_skip_flags(toks, 1, _NPX_ARG):]
+    elif head in ("bun", "npm", "pnpm", "yarn"):
+        i = _skip_flags(toks, 1, _JS_PM_ARG)
+        sub = toks[i:i + 1]
+        if sub in (["run"], ["run-script"]):
+            toks = [head, sub[0], *toks[_skip_flags(toks, i + 1, _JS_PM_ARG):]]
+        else:
+            toks = [head, *toks[i:]]
+        forms = [" ".join(toks)]
+        if len(toks) > 1 and toks[1] in ("dlx", "exec", "x"):
+            rest = toks[_skip_flags(toks, 2, _NPX_ARG):]
+    elif _PYTHON.fullmatch(head) and len(toks) > 2 and toks[1] == "-m":
+        rest = toks[2:]
+    if rest:
+        inner, inner_assigns = command_forms(" ".join(rest))
+        forms.extend(inner)
+        assigns.update(inner_assigns)
+    return forms, assigns
 
 
 def literal_pattern(command: str) -> str:
@@ -145,37 +294,48 @@ def literal_pattern(command: str) -> str:
     return r"^\s*" + r"\s+".join(re.escape(tok) for tok in command.split()) + r"(?=\s|$)"
 
 
-def match_rules(
-    segment: str,
-    rules: list[dict[str, str]],
-) -> tuple[dict[str, str] | None, dict[str, str] | None]:
-    """Pierwszy pasujący deny i pierwszy pasujący allow w segmencie."""
-    stripped = strip_prefixes(segment)
-    deny_hit = allow_hit = None
-    for rule in rules:
-        try:
-            matched = re.search(rule["pattern"], stripped) is not None
-        except re.error:
-            continue
-        if not matched:
-            continue
-        if rule["kind"] == "allow" and allow_hit is None:
-            allow_hit = rule
-        elif rule["kind"] == "deny" and deny_hit is None:
-            deny_hit = rule
-    return deny_hit, allow_hit
+def rule_origin(rule: dict[str, str]) -> str:
+    """Reguła kita, od której pochodzi odmowa (dla wrappera — reguła z jego wnętrza)."""
+    return rule.get("rule") or rule["id"]
 
 
 def check_command(
     command: str,
     rules: list[dict[str, str]],
+    no_sync: bool = False,
 ) -> tuple[bool, dict[str, str] | None, str]:
-    """Czy komenda denied? Zwraca `(denied, reguła, segment)` — allow wygrywa z deny."""
+    """Czy komenda denied? Zwraca `(denied, reguła, segment)` — allow wygrywa z deny.
+
+    `uv-run` (także wrapper z `uv run` w środku) odpada przy `UV_NO_SYNC=1` z env
+    albo z przypisania w linii. Gdy pasuje kilka odmów, inna reguła wygrywa z `uv-run`
+    — `UV_NO_SYNC` nie może przepuścić `docker` z tego samego wrappera.
+    """
+    fallback: tuple[bool, dict[str, str] | None, str] = (False, None, "")
     for segment in split_segments(command):
-        deny_hit, allow_hit = match_rules(segment, rules)
-        if deny_hit is not None and allow_hit is None:
-            return True, deny_hit, segment.strip()
-    return False, None, ""
+        forms, assigns = command_forms(segment)
+        segment_no_sync = no_sync or assigns.get("UV_NO_SYNC") == "1"
+        for form in forms:
+            deny_hit = allow_hit = None
+            for rule in rules:
+                if segment_no_sync and rule_origin(rule) == "uv-run":
+                    continue
+                try:
+                    matched = re.search(rule["pattern"], form) is not None
+                except re.error:
+                    continue
+                if not matched:
+                    continue
+                if rule["kind"] == "allow":
+                    allow_hit = allow_hit or rule
+                elif deny_hit is None:
+                    deny_hit = rule
+            if deny_hit is None or allow_hit is not None:
+                continue
+            if rule_origin(deny_hit) != "uv-run":
+                return True, deny_hit, segment.strip()
+            if not fallback[0]:
+                fallback = (True, deny_hit, segment.strip())
+    return fallback
 
 
 # --- Profil (`server:`) -------------------------------------------------------
@@ -236,131 +396,164 @@ def parse_server_section(text: str) -> dict:
 
 # --- Taskfile / package.json --------------------------------------------------
 
+_TASKFILE_NAMES = ("Taskfile.yml", "Taskfile.yaml", "taskfile.yml", "taskfile.yaml")
+_BLOCK_SCALAR = frozenset(("|", "|-", "|+", ">", ">-", ">+"))
 
-def collect_taskfile_commands(path: Path, seen: set[Path] | None = None) -> dict[str, list[str]]:
-    """Task → komendy shellowe (z `includes`, rekurencyjnie przez `task:`, cyklo-odpornie)."""
+
+def _unquote(value: str) -> str:
+    return value.strip().strip("'\"").strip()
+
+
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def find_taskfile(path: Path) -> Path:
+    """Katalog → pierwszy istniejący `Taskfile.yml` / `.yaml` w nim; plik bez zmian."""
+    if path.is_dir():
+        for name in _TASKFILE_NAMES:
+            if (path / name).is_file():
+                return path / name
+    return path
+
+
+def collect_taskfile_commands(
+    path: Path, seen: set[Path] | None = None, namespace: str = ""
+) -> dict[str, list[str]]:
+    """Task → komendy shellowe; `task:` i `deps:` jako `task <pełna nazwa>`.
+
+    Tolerancyjny podzbiór YAML Taskfile v3: `includes` (krótkie, `{taskfile: …}`
+    i blok z kluczem `taskfile:`), `cmds` jako napisy, `- cmd: …`, `- task: …`
+    i block scalar (`- |`), `deps` jako lista albo `[a, b]`. Odwołania z dołączonego
+    pliku dostają jego przestrzeń nazw (`:x` = task z roota). Cykle w includes pomijane.
+    """
     seen = seen if seen is not None else set()
-    resolved = path.resolve()
+    resolved = find_taskfile(path).resolve()
     if resolved in seen or not resolved.is_file():
         return {}
     seen.add(resolved)
     try:
-        text = resolved.read_text(encoding="utf-8")
+        lines = resolved.read_text(encoding="utf-8").splitlines()
     except OSError:
         return {}
 
-    section: str | None = None
-    current_task: str | None = None
-    in_cmds = False
-    cmds_indent = 0
-    raw: dict[str, list] = {}
-    includes: dict[str, str] = {}
+    def full(name: str) -> str:
+        if name.startswith(":"):
+            return name[1:]
+        return f"{namespace}:{name}" if namespace else name
 
-    for line in text.splitlines():
+    tasks: dict[str, list[str]] = {}
+    includes: dict[str, str] = {}
+    section = task = include = None
+    block = ""  # `cmds` albo `deps`
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        indent = len(line) - len(line.lstrip(" "))
-        if indent == 0 and stripped in ("tasks:", "includes:"):
-            section = stripped[:-1]
-            current_task = None
-            in_cmds = False
+        indent = _indent(line)
+        if indent == 0:
+            section = stripped[:-1] if stripped in ("tasks:", "includes:") else None
+            task = include = None
+            block = ""
             continue
-        if section == "includes" and indent == 2 and ":" in stripped:
-            name, _, value = stripped.partition(":")
-            includes[name.strip()] = value.strip().strip("'\"")
-        elif section == "tasks" and indent == 2 and stripped.endswith(":"):
-            current_task = stripped[:-1].strip()
-            raw.setdefault(current_task, [])
-            in_cmds = False
-        elif section == "tasks" and current_task and indent == 4 and stripped == "cmds:":
-            in_cmds = True
-            cmds_indent = indent
-        elif section == "tasks" and current_task and in_cmds and indent > cmds_indent:
-            if stripped.startswith("- "):
-                item = stripped[2:].strip().strip("'\"")
-                if item.startswith("task:"):
-                    raw[current_task].append({"task": item[5:].strip().strip("'\"")})
-                else:
-                    raw[current_task].append(item)
-            elif stripped.startswith("task:"):
-                raw[current_task].append({"task": stripped[5:].strip().strip("'\"")})
-            elif stripped.startswith("cmd:"):
-                raw[current_task].append(stripped[4:].strip().strip("'\""))
-        elif indent <= 2:
-            in_cmds = False
-            if indent == 0:
-                section = None
+        if section == "includes":
+            if indent == 2:
+                include, _, value = (part.strip() for part in stripped.partition(":"))
+                if value.startswith("{"):
+                    match = re.search(r"taskfile\s*:\s*([^,}]+)", value)
+                    value = match.group(1) if match else ""
+                includes[include] = _unquote(value)
+            elif include and stripped.startswith("taskfile:"):
+                includes[include] = _unquote(stripped[len("taskfile:"):])
+            continue
+        if section != "tasks":
+            continue
+        if indent == 2:
+            task = _unquote(stripped[:-1]) if stripped.endswith(":") else None
+            if task is not None:
+                tasks.setdefault(full(task), [])
+            block = ""
+            continue
+        if task is None:
+            continue
+        cmds = tasks[full(task)]
+        if indent == 4:
+            key, _, value = (part.strip() for part in stripped.partition(":"))
+            block = key if key in ("cmds", "deps") else ""
+            if block == "deps" and value.startswith("["):
+                cmds.extend(f"task {full(_unquote(d))}" for d in value.strip("[]").split(",") if d.strip())
+            continue
+        if not block:
+            continue
+        if stripped.startswith("-"):
+            item = stripped[1:].strip()
+        elif stripped.startswith(("cmd:", "task:")):
+            item = stripped
+        else:
+            continue
+        if block == "deps":
+            if item and not item.startswith(("task:", "vars:")):
+                cmds.append(f"task {full(_unquote(item))}")
+        if item.startswith("task:"):
+            cmds.append(f"task {full(_unquote(item[len('task:'):]))}")
+            continue
+        if block == "deps":
+            continue
+        if item.startswith("cmd:"):
+            item = item[len("cmd:"):].strip()
+        if item in _BLOCK_SCALAR:
+            while i < len(lines) and (not lines[i].strip() or _indent(lines[i]) > indent):
+                if lines[i].strip():
+                    cmds.append(lines[i].strip())
+                i += 1
+            continue
+        if item:
+            cmds.append(_unquote(item))
 
-    tasks: dict[str, list[str]] = {}
     base = resolved.parent
     for name, ref in includes.items():
-        ref_path = (base / ref).resolve()
-        if ref_path.is_dir():
-            ref_path = ref_path / "Taskfile.yml"
-        for task, cmds in collect_taskfile_commands(ref_path, seen).items():
-            tasks[f"{name}:{task}"] = cmds
-
-    local: dict[str, tuple[list[str], list[str]]] = {}
-    for task, items in raw.items():
-        shell = [i for i in items if isinstance(i, str)]
-        refs = [i["task"] for i in items if isinstance(i, dict)]
-        local[task] = (shell, refs)
-
-    def expand(task: str, stack: tuple = ()) -> list[str]:
-        if task in stack:
-            return []
-        shell, refs = local.get(task, ([], []))
-        out = list(shell)
-        for ref in refs:
-            out.extend(expand(ref, (*stack, task)))
-        return out
-
-    for task in raw:
-        tasks[task] = expand(task)
+        if ref:
+            tasks.update(collect_taskfile_commands(base / ref, seen, full(name)))
     return tasks
 
 
 def collect_package_scripts(workspace: Path) -> dict[str, dict[str, str]]:
     """Relatywna ścieżka `package.json` → `{skrypt: komenda}` (poza `node_modules`)."""
     found: dict[str, dict[str, str]] = {}
-    for path in workspace.rglob("package.json"):
+    for path in sorted(workspace.rglob("package.json")):
         if "node_modules" in path.parts:
             continue
         try:
             rel = path.relative_to(workspace).as_posix()
-        except ValueError:
-            continue
-        try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        scripts = data.get("scripts")
+        scripts = data.get("scripts") if isinstance(data, dict) else None
         if isinstance(scripts, dict):
             found[rel] = {k: str(v) for k, v in scripts.items() if isinstance(v, str)}
     return found
 
 
-_TURBO_RUN = re.compile(r"turbo\s+run\s+([A-Za-z0-9_:@#/-]+)")
-
-
-def expand_turbo(command: str, packages: dict[str, dict[str, str]]) -> list[str]:
-    """Rozwiń `turbo run <x>` do skryptów `<x>` ze wszystkich pakietów workspace."""
-    names = _TURBO_RUN.findall(command)
-    if not names:
-        return [command]
-    # Skrypty pakietów przed samą komendą — łańcuch odmowy dochodzi do `next build`,
-    # a nie kończy się na `turbo run build`.
-    expanded = []
-    for name in names:
-        for scripts in packages.values():
-            # Pomijamy skrypt-orkiestrator (root `build: turbo run build`) — to nie liść.
-            if name in scripts and not _TURBO_RUN.search(scripts[name]):
-                expanded.append(scripts[name])
-    return [*expanded, command]
-
-
 # --- Render -------------------------------------------------------------------
+
+_NPM_SHORT = frozenset(("test", "start", "stop", "restart"))
+
+
+def _script_forms(name: str) -> list[tuple[str, str]]:
+    """Wywołania skryptu `package.json` przez menedżery JS → `(forma, wzorzec)`."""
+    forms = [f"bun run {name}", f"npm run {name}", f"npm run-script {name}",
+             f"pnpm {name}", f"pnpm run {name}", f"yarn {name}", f"yarn run {name}"]
+    if name in _NPM_SHORT:
+        forms.append(f"npm {name}")
+    return [(form, literal_pattern(form)) for form in forms]
+
+
+def _turbo_pattern(name: str) -> str:
+    """`turbo run a b …` z `name` wśród zadań."""
+    return r"^\s*turbo\s+run\s+(?:\S+\s+)*" + re.escape(name) + r"(?=\s|$)"
 
 
 def render_config(
@@ -368,51 +561,83 @@ def render_config(
     packages: dict[str, dict[str, str]],
     server: dict,
 ) -> dict:
-    """Złóż JSON guarda: lista kita + rozwinięte wrappery + sekcja `server` z Profilu."""
+    """Złóż JSON guarda: lista kita + rozwinięte wrappery + sekcja `server` z Profilu.
+
+    Wrappery (`task x`, `bun run x`, `turbo run x`, …) to też reguły, więc rozwijanie
+    iteruje do stabilizacji: `ci: bun run build` → `turbo run build` → `next build`
+    wychodzi z łańcuchem. Odmowa z `uv-run` przegrywa z każdą inną.
+    """
     project_deny = [str(x) for x in server.get("deny", []) if str(x).strip()]
     project_allow = [str(x) for x in server.get("allow", []) if str(x).strip()]
 
-    rules: list[dict[str, str]] = [dict(r) for r in DEFAULTS]
+    base: list[dict[str, str]] = [dict(r) for r in DEFAULTS]
     for item in project_deny:
-        rules.append({"id": f"project-deny:{item}", "kind": "deny",
-                      "pattern": literal_pattern(item),
-                      "reason": f"dodatkowy deny projektu (`server.deny`: {item})"})
+        base.append({"id": f"project-deny:{item}", "kind": "deny",
+                     "pattern": literal_pattern(item),
+                     "reason": f"dodatkowy deny projektu (`server.deny`: {item})"})
     for item in project_allow:
-        rules.append({"id": f"project-allow:{item}", "kind": "allow",
-                      "pattern": literal_pattern(item),
-                      "reason": f"wyjątek projektu (`server.allow`: {item})"})
+        base.append({"id": f"project-allow:{item}", "kind": "allow",
+                     "pattern": literal_pattern(item),
+                     "reason": f"wyjątek projektu (`server.allow`: {item})"})
 
-    by_pattern: dict[str, dict[str, str]] = {}
-
-    def add_wrapper(pattern: str, reason: str, chain: str, rule_id: str) -> None:
-        # `rule` pozwala guardowi przepuścić wrapper z `uv run`, gdy `UV_NO_SYNC=1` —
-        # dlatego inna ciężka reguła w tym samym wrapperze nadpisuje `uv-run`.
-        known = by_pattern.get(pattern)
-        if known is None or (known["rule"] == "uv-run" and rule_id != "uv-run"):
-            by_pattern[pattern] = {"pattern": pattern, "reason": reason, "chain": chain, "rule": rule_id}
-
-    for task, cmds in tasks.items():
-        for cmd in cmds:
-            for expanded in expand_turbo(cmd, packages):
-                denied, rule, _ = check_command(expanded, rules)
-                if denied and rule is not None:
-                    pattern = literal_pattern(f"task {task}")
-                    chain = f"task {task} → {cmd}" if expanded == cmd else f"task {task} → {cmd} → {expanded}"
-                    add_wrapper(pattern, rule["reason"], f"{chain} (reguła: {rule['id']})", rule["id"])
-                    break
-
+    # Źródło wrappera: (wywołania jako (forma, wzorzec), komendy w środku).
+    sources: list[tuple[list[tuple[str, str]], list[str]]] = [
+        ([(f"task {name}", literal_pattern(f"task {name}"))], cmds) for name, cmds in tasks.items()
+    ]
+    names: dict[str, list[str]] = {}
     for scripts in packages.values():
         for name, cmd in scripts.items():
-            for expanded in expand_turbo(cmd, packages):
-                denied, rule, _ = check_command(expanded, rules)
-                if denied and rule is not None:
-                    chain_mid = f" → {cmd}" if expanded != cmd else ""
-                    base_chain = f"{expanded} (reguła: {rule['id']})"
-                    for form in (f"bun run {name}", f"npm run {name}",
-                                 f"pnpm {name}", f"yarn {name}"):
-                        add_wrapper(literal_pattern(form), rule["reason"],
-                                    f"{form}{chain_mid} → {base_chain}", rule["id"])
-                    break
+            sources.append((_script_forms(name), [cmd]))
+            names.setdefault(name, []).append(cmd)
+    for name, cmds in names.items():
+        sources.append(([(f"turbo run {name}", _turbo_pattern(name))], cmds))
+
+    wrappers: dict[str, dict[str, str]] = {}
+    scores: dict[str, tuple[bool, int]] = {}
+
+    def links(rule: dict[str, str]) -> list[str]:
+        return rule["chain"].split(" → ") if rule.get("chain") else []
+
+    def score(rule: dict[str, str]) -> tuple[bool, int]:
+        # Lepsza odmowa: nie `uv-run`, potem dłuższy łańcuch (do liścia, np. `next build`).
+        return rule_origin(rule) != "uv-run", len(links(rule))
+
+    # Punkt stały: wrapper może wejść w łańcuch innego dopiero po swoim rozwinięciu.
+    # Łańcuch nie zawiera własnej formy (cykle `task a ↔ task b`), więc długości są
+    # ograniczone, a wynik rośnie ściśle — pętla się kończy.
+    changed = True
+    while changed:
+        changed = False
+        rules = [*wrappers.values(), *base]
+        for forms, cmds in sources:
+            own_forms = {form for form, _ in forms}
+            own_rules = [
+                r for r in rules
+                if r["pattern"] not in {pattern for _, pattern in forms} and not own_forms & set(links(r))
+            ]
+            best: tuple[dict[str, str], str] | None = None
+            for cmd in cmds:
+                denied, rule, _ = check_command(cmd, own_rules)
+                if denied and rule is not None and (best is None or score(rule) > score(best[0])):
+                    best = (rule, cmd)
+            if best is None:
+                continue
+            rule, cmd = best
+            tail = links(rule)
+            inner = tail if tail and tail[0] == cmd.strip() else [cmd.strip(), *tail]
+            for form, pattern in forms:
+                if pattern in scores and score(rule) <= scores[pattern]:
+                    continue
+                scores[pattern] = score(rule)
+                wrappers[pattern] = {
+                    "id": "wrapper",
+                    "kind": "deny",
+                    "pattern": pattern,
+                    "reason": rule["reason"],
+                    "chain": " → ".join([form, *inner]),
+                    "rule": rule_origin(rule),
+                }
+                changed = True
 
     return {
         "version": CONFIG_VERSION,
@@ -420,7 +645,7 @@ def render_config(
         "defaults": [dict(r) for r in DEFAULTS],
         "project_deny": project_deny,
         "project_allow": project_allow,
-        "wrappers": list(by_pattern.values()),
+        "wrappers": list(wrappers.values()),
     }
 
 
@@ -442,7 +667,7 @@ def main(argv: list[str]) -> int:
         warn(message)
 
     try:
-        tasks = collect_taskfile_commands(workspace / "Taskfile.yml")
+        tasks = collect_taskfile_commands(workspace)
     except OSError as exc:
         warn(f"nie czytam Taskfile: {exc}")
         tasks = {}
