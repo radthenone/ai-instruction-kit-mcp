@@ -13,6 +13,18 @@ mobile: none
 
 codegen: orval
 
+# Server guard (VPS) — twarda blokada ciężkich komend tylko na słabym hoście
+# serwerowym (decyzja w runtime, normalnie nic nie ustawiasz). Brak sekcji
+# = `guard: auto`, sama lista kita + rozwinięte wrappery. Po zmianie Taskfile
+# albo `package.json` uruchom `kit-ai reload` (guard bez reloadu działa na starej
+# liście wrapperów). Szczegóły: README „Server guard (VPS)”.
+# server:
+#   guard: auto        # auto (domyślnie) | off
+#   deny:              # dodatki projektu, których automat nie wykryje
+#     - "bunx eas-cli"
+#   allow:             # wyjątki, wygrywają z deny
+#     - "task lints:backend:ruff:check"
+
 # Model per tier agenta (light / standard / heavy) i klient — README „Model tiers”.
 # Bez tego bloku agenci jadą na modelu sesji. Blok `agents:` dopisuje reload.
 # models:

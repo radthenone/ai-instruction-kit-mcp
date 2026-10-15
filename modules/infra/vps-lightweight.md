@@ -47,11 +47,15 @@ Kit nie wie, które taski Twojego repo są lekkie. Dopisz to w overlay, np.:
 Podział edytujesz przez `/kit-project-edit` (jedna zmiana na wywołanie),
 np. `/kit-project-edit "w VPS lekkie to…"`. Overlay ma pierwszeństwo przed bundlem.
 
-## Bez hooka blokującego
+## Twardy guard: server-guard
 
-Świadomie brak twardego hooka — reguła jest tekstowa. Hook mógłby zablokować
-celowe operacje (deploy, ręczny restart, automatyzację), a tu chodzi o domyślne
-zachowanie agenta, nie o zakaz systemowy.
+Tekst powyżej to domyślne zachowanie agenta. Twardą blokadę egzekwuje
+**server-guard** (`templates/shared/guards/server-guard.mjs`, szczegóły: README
+„Server guard (VPS)" i ADR 0009): na VPS odrzuca kontenery, instalację paczek,
+buildy produkcyjne, przeglądarki/e2e i `pytest -xdist` — także schowane w tasku,
+skrypcie `package.json`, `turbo run` albo za `sudo`. Wprowadzony po incydencie
+z 2026-10-15 (restart serwera po `uv run` bez `--no-sync`), kiedy okazało się,
+że sama reguła tekstowa nie wystarcza dla subagentów.
 
 ## Powiązane
 

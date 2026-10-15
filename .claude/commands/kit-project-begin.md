@@ -83,6 +83,7 @@ Gdzie trafia odpowiedź — linia `Zapis` w katalogu:
 | klucz Profilu (`backend`, `web`, `mobile`, `codegen`) | Ta jedna linia w Profilu |
 | `include:` / `patterns:` (pytania tak/nie) | „tak" → dopisz wpisy do listy w Profilu (bez duplikatów); „nie" → usuń te same wpisy, jeśli są |
 | `paths.<klucz>` (`backend`, `web`, `mobile`, `design-tokens`, `routes-web`, `routes-mobile`) | Linia `- <klucz>: \`<ścieżka>\`` w sekcji `## Ścieżki` w `.ai/project.md`; pytanie nieaktywne (Tier `none`) → usuń jego linię |
+| `server:` (server-guard na VPS — tylko na życzenie użytkownika) | Sekcja `server` w Profilu (`guard: auto` albo `off`, listy `deny`/`allow`); jedna zmiana przez `/kit-project-edit` |
 
 Sekcja `## Układ katalogów` z katalogu to podpowiedź — pokaż ją przy pytaniach `paths-*`
 i dopasuj do realnych katalogów repo. Ostrzeżenie (⚠) cytuj użytkownikowi dosłownie.

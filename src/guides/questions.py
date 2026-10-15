@@ -85,7 +85,19 @@ def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
             ]
         )
 
-    lines.extend(["## Układ katalogów", ""])
+    lines.extend(
+        [
+            "## Sekcja `server:` (server-guard na VPS)",
+            "",
+            "Nie pytaj o nią w wywiadzie — brak sekcji to `guard: auto` i lista kita. Zapisz "
+            "ją w `.ai/project.profile.yaml` tylko na życzenie użytkownika: `guard: auto` albo "
+            "`off`, `deny` / `allow` jako listy dosłownych wywołań (`allow` wygrywa). "
+            "Schemat i propozycje: README „Server guard (VPS)”.",
+            "",
+            "## Układ katalogów",
+            "",
+        ]
+    )
     hints = layout_hints(manifest, values)
     for hint in hints:
         if hint.warning:

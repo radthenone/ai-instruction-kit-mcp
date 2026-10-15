@@ -113,10 +113,13 @@ if (target === OPENCODE) {
   }
   const input = payload.input || {};
   const name = toolName || String(payload.tool || "");
+  // Narzędzia MCP (np. Playwright → server-guard) idą z wejściem bez zmian — guard
+  // decyduje po samej nazwie narzędzia.
+  const mcp = name.startsWith("mcp__");
   const toolInput = name === "Bash"
     ? { command: input.command }
-    : { file_path: input.path ?? input.filePath };
-  if (!Object.values(toolInput)[0]) {
+    : mcp ? input : { file_path: input.path ?? input.filePath };
+  if (!mcp && !Object.values(toolInput)[0]) {
     emitDeny(`brak ${name === "Bash" ? "command" : "path/filePath"} w wejściu narzędzia ${payload.tool || "?"}`);
   }
   stdin = JSON.stringify({ tool_name: name, tool_input: toolInput });
@@ -146,6 +149,19 @@ if (result.error) {
 }
 
 const out = (result.stdout || "").trim();
+let calledTool = "";
+try {
+  calledTool = String(JSON.parse(stdin || "{}").tool_name || "");
+} catch {
+  calledTool = "";
+}
+// Guard bez decyzji dla narzędzia MCP (np. server-guard poza VPS) = nie wtrąca się.
+if (!out && calledTool.startsWith("mcp__") && target !== CURSOR && target !== OPENCODE) {
+  process.exit(0);
+}
+if (!out && calledTool.startsWith("mcp__")) {
+  emitAndExit("allow", "guard bez decyzji dla narzędzia MCP");
+}
 if (!out) {
   const err = (result.stderr || "").trim().slice(0, 160) || "pusty stdout";
   emitDeny(err);

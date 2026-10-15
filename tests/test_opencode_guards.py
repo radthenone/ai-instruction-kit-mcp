@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -46,6 +47,17 @@ await run("shell", { command: "git status" })
 await run("read", { path: "src/app.py" })
 await run("patch", { patchText: "*** Begin Patch\\n*** Add File: src/ok.py\\n+x\\n*** End Patch" })
 await run("glob", { pattern: "**/*.py" })
+// Narzędzia Playwright MCP na PC przechodzą (server-guard nieaktywny).
+await run("playwright_browser_navigate", { url: "http://x" })
+console.log("ok")
+"""
+
+VPS_SCRIPT = SCRIPT.split("// Nazwy i pola")[0] + """
+await denied("shell", { command: "docker compose up" }, /server-guard/)
+await denied("bash", { command: "sudo uv sync" }, /server-guard/)
+await denied("playwright_browser_navigate", { url: "http://x" }, /server-guard/)
+await run("shell", { command: "git status" })
+await run("shell", { command: "uv run --no-sync ruff check ." })
 console.log("ok")
 """
 
@@ -53,6 +65,12 @@ console.log("ok")
 @unittest.skipUnless(shutil.which("node"), "brak node")
 class KitGuardsPluginTest(unittest.TestCase):
     def test_guards_block_dangerous_tools_and_pass_safe_ones(self) -> None:
+        self._run(SCRIPT, {"KIT_HOST_PROFILE": "local"})
+
+    def test_server_guard_on_vps(self) -> None:
+        self._run(VPS_SCRIPT, {"KIT_HOST_PROFILE": "vps", "UV_NO_SYNC": ""})
+
+    def _run(self, script: str, env: dict[str, str]) -> None:
         # Układ jak po bootstrapie: .opencode/plugins/ obok .opencode/hooks/.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / ".opencode"
@@ -61,8 +79,9 @@ class KitGuardsPluginTest(unittest.TestCase):
             plugin = root / "plugins" / PLUGIN.name
             shutil.copy(PLUGIN, plugin)
             result = subprocess.run(
-                ["node", "--input-type=module", "-e", SCRIPT, str(plugin)],
+                ["node", "--input-type=module", "-e", script, str(plugin)],
                 capture_output=True,
+                env={**os.environ, **env},
                 text=True,
                 encoding="utf-8",
             )
