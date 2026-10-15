@@ -6,6 +6,11 @@
         "command": "node .cursor/hooks/invoke-hook.js git-guard.mjs --to cursor",
         "matcher": "git\\s+(push|reset|clean|branch|checkout)|\\brm\\s+-[a-zA-Z]*r|\\b(mv|cp|install|ln|dd|shred|truncate|touch|mkdir|rmdir|chmod|chown|chgrp|tee|unlink|sed)\\b|>",
         "failClosed": true
+      },
+      {
+        "command": "node .cursor/hooks/invoke-hook.js server-guard.mjs --to cursor",
+        "matcher": "\\b(docker|podman|docker-compose)\\b|\\b(uv|pip|pip3|bun|npm|pnpm|yarn|npx|bunx)\\b|\\b(next|expo|eas|vite|turbo|playwright|cypress|maestro|pytest)\\b|\\btask\\b",
+        "failClosed": true
       }
     ],
     "beforeReadFile": [
@@ -18,6 +23,11 @@
       {
         "command": "node .cursor/hooks/invoke-hook.js sensitive-files-guard.mjs --to cursor --tool Write",
         "matcher": "Write",
+        "failClosed": true
+      },
+      {
+        "command": "node .cursor/hooks/invoke-hook.js server-guard.mjs --to cursor",
+        "matcher": "mcp__.*playwright.*|playwright.*",
         "failClosed": true
       }
     ]

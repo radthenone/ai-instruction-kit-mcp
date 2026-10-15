@@ -1214,6 +1214,7 @@ dokładnie te same reguły.
 |-------|--------|------------|
 | `git-guard.mjs` | Claude, Cursor, OpenCode | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
 | `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `server-guard.mjs` | Claude, Cursor, OpenCode | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
@@ -1257,6 +1258,95 @@ Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko API plug
 
 Guardy są w `.mjs` i idą przez `node` — bez basha, więc bez wykrywania Git Basha na
 Windows i bez otwartych okien konsoli.
+
+## Server guard (VPS) — twarda blokada ciężkich komend
+
+Po incydencie z 2026-10-15 (restart VPS po `uv run` bez `--no-sync`, ADR 0009)
+sama reguła tekstowa z `infra:vps-lightweight` nie wystarcza — subagent pod
+night-run nie czyta overlayu tak uważnie jak sesja interaktywna. Dlatego kit ma
+twardy guard `templates/shared/guards/server-guard.mjs`: na VPS odrzuca tylko
+komendy, które mogą zawiesić serwer albo uderzyć w inne usługi na nim. Reszta
+pracy (edycja, git, lint, typecheck, testy) przechodzi.
+
+**Kiedy guard jest aktywny.** Decyzja zapada w momencie wywołania, nie przy
+instalacji — Profil i `.claude/settings.json` są commitowane i wspólne dla PC
+i VPS. Kolejność: `server.guard: off` w Profilu → allow; `KIT_HOST_PROFILE` /
+`GUIDES_HOST_PROFILE` = `vps` / `local` → wymuszenie (tylko gdy heurystyka się
+myli; normalnie niczego nie eksportujesz); heurystyka 1:1 z `host_profile.py`
+(Linux, nie CI, nie WSL, CPU ≤ 2, RAM ≤ 8 GB, swap 0, wirtualizacja albo brak
+desktopu) → aktywny; w pozostałych przypadkach → allow. Na PC i w CI ten sam
+zainstalowany guard przepuszcza wszystko.
+
+**Domyślne deny kita** (każde z powodem i alternatywą; `allow` wygrywa z `deny`):
+
+| Kategoria | Deny | Allow (świadomie) | Powód / alternatywa |
+|---|---|---|---|
+| Kontenery | `docker`, `docker-compose`, `docker compose`, `podman` — każda podkomenda poza allow obok (także `stop`, `rm`, `down`, `kill`, `restart`, `prune`, `compose config`) | `ps`, `images`, `inspect`, `logs` bez `-f`, `version`, `info`, `compose ps` | budowanie i uruchamianie kontenerów tylko w CI; na hoście działają cudze kontenery |
+| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv pip install`, `pip install`, `uv run` bez `--no-sync` (przepuszcza, gdy `UV_NO_SYNC=1` w env), `bun install` / `bun add` / `bun remove`, `npm install` / `npm ci`, `pnpm install` / `pnpm add`, `yarn install` / `yarn add` | `uv run --no-sync …`, `uvx` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| Buildy | `next build`, `expo prebuild`, `expo export`, `eas build --local`, `vite build`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
+| Przeglądarki / e2e | `playwright`, `cypress`, `maestro`, narzędzia Playwright MCP | — | przeglądarka to setki MB na instancję; e2e tylko w CI |
+| Mnożenie procesów | `pytest -n` / `--numprocesses` | `pytest` bez xdist | xdist mnoży procesy na słabym CPU |
+
+Obejścia też łapie: każdy segment po `&&`, `||`, `;`, `|`, `&` sprawdzany osobno
+(także wnętrze `bash -c` / `sh -c` i `$( … )`), a przed dopasowaniem zdejmowane
+są prefiksy `sudo` (z flagami), `env` i przypisania `VAR=…`, `nice`, `ionice`,
+`timeout`, `nohup`, `time`, `command`, `exec`, `xargs`. Dopasowanie po tokenach
+od początku segmentu (`task` nie łapie `taskfoo`).
+
+**Rozwijanie wrapperów przy `reload`.** Guard widzi tylko tekst komendy, więc
+`kit-ai reload` / bootstrap czyta `Taskfile.yml` (z `includes`, rekurencyjnie
+przez `task:` w `cmds`), `scripts` z każdego `package.json` w repo (poza
+`node_modules`) i rozwija `turbo run <x>` do skryptów `<x>` we wszystkich
+pakietach workspace. Task / skrypt, którego komendy (po rozwinięciu) pasują do
+deny kita albo `server.deny`, ląduje jako deny (`task <nazwa>`, `bun run`,
+`npm run`, `pnpm`, `yarn`) z łańcuchem w powodzie
+(`bun run build → turbo run build → next build`). Projekt nie wypisuje tasków
+ręcznie. Po zmianie Taskfile albo `package.json` trzeba `kit-ai reload`; guard
+bez reloadu działa na starej liście.
+
+**Konfiguracja w Profilu** (`.ai/project.profile.yaml`, opcjonalna; brak sekcji
+= `guard: auto`, sama lista kita + wrappery):
+
+```yaml
+server:
+  guard: auto        # auto (domyślnie) | off
+  deny:              # dodatki projektu, których automat nie wykryje
+    - "bunx eas-cli"
+  allow:             # wyjątki, wygrywają z deny
+    - "task lints:backend:ruff:check"
+```
+
+`kit-ai reload` / bootstrap renderuje listę kita, wrappery i sekcję `server` do
+`server-guard.json` obok guarda w katalogu hooków każdego klienta (guard nie
+parsuje YAML-a). Nieznany klucz albo zły typ w `server` jest zgłaszany, ale nie
+przerywa działania (ADR 0004). Gotowe propozycje dodatków do `server.deny`:
+dev serwery i watchery, `pytest` bez ścieżki, `systemctl` / `pkill` — na serwerze
+z kilkoma GB RAM nie zawieszają go same z siebie, więc nie ma ich na liście
+domyślnej.
+
+**`UV_NO_SYNC` per maszyna.** Task, który w środku woła `uv run` bez flagi,
+przechodzi tylko gdy klient na serwerze ma w env `UV_NO_SYNC=1`. Dla Claude
+miejscem per maszyna jest niecommitowany `.claude/settings.local.json` (`env`).
+OpenCode nie ma odpowiednika per maszyna, więc rozwinięcie wrapperów traktuje
+`uv run` bez `--no-sync` w środku taska jako deny.
+
+**Ręczne sprawdzenie guarda:**
+
+```sh
+echo '{"tool_input":{"command":"docker compose up"}}' | KIT_HOST_PROFILE=vps node .claude/hooks/server-guard.mjs
+```
+
+**Relacja z CI.** Na VPS przechodzą szybkie bramki (lint, typecheck, unit);
+pełna weryfikacja (kontenery, migracje, integracje, e2e, build) należy do CI.
+
+**Czego guard tekstowy nie złapie** (agent zapisuje własny skrypt i go odpala)
+i zalecenia dla hosta: wyłącz plugin Playwright MCP na serwerze (guard blokuje
+narzędzia, ale proces MCP i tak startuje), użytkownik agenta poza grupą `docker`
+i bez `sudo` bez hasła, limit pamięci na sesję agenta, jeśli host na to pozwala.
+
+**Migracja z lokalnego guarda projektu:** podbij wersję kita w projekcie,
+`kit-ai reload`, usuń własny plugin guarda; listy „nie uruchamiaj" z overlayu
+zastępuje guard.
 
 Regresja: `uv run python -m unittest tests.test_guards` (tabela allow/deny każdego Guarda)
 i `bash tests/test_guard_adapter.sh` (tłumaczenie kontraktu) — odpalane też przez CI
