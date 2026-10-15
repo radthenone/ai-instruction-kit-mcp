@@ -1288,19 +1288,30 @@ zainstalowany guard przepuszcza wszystko.
 | Mnożenie procesów | `pytest -n` / `--numprocesses` | `pytest` bez xdist | xdist mnoży procesy na słabym CPU |
 
 Obejścia też łapie: każdy segment po `&&`, `||`, `;`, `|`, `&` sprawdzany osobno
-(także wnętrze `bash -c` / `sh -c` i `$( … )`), a przed dopasowaniem zdejmowane
-są prefiksy `sudo` (z flagami), `env` i przypisania `VAR=…`, `nice`, `ionice`,
-`timeout`, `nohup`, `time`, `command`, `exec`, `xargs`. Dopasowanie po tokenach
-od początku segmentu (`task` nie łapie `taskfoo`).
+(także wnętrze `bash -c` / `bash -lc` / `sh -c`, `$( … )` i backticków), a przed
+dopasowaniem zdejmowane są prefiksy `sudo` (z flagami), `env` (z flagami)
+i przypisania `VAR=…`, `nice`, `ionice`, `timeout`, `nohup`, `time`, `command`,
+`exec`, `xargs`, `eval` oraz ścieżka binarki (`/usr/bin/docker` → `docker`).
+Sprawdzana jest też komenda za launcherem: `uv [opcje] run [flagi] X`, `npx` /
+`bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X` — `uv run --no-sync pytest -n 4`
+to deny, `uv run --no-sync ruff` allow. Separatory w cudzysłowach i treść heredoca
+to dane, nie komendy (`git commit -m "…; docker …"` i body PR przez heredoc
+przechodzą). Dopasowanie po tokenach od początku segmentu (`task` nie łapie
+`taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
+MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
+pozostałe guardy kita.
 
 **Rozwijanie wrapperów przy `reload`.** Guard widzi tylko tekst komendy, więc
-`kit-ai reload` / bootstrap czyta `Taskfile.yml` (z `includes`, rekurencyjnie
-przez `task:` w `cmds`), `scripts` z każdego `package.json` w repo (poza
-`node_modules`) i rozwija `turbo run <x>` do skryptów `<x>` we wszystkich
-pakietach workspace. Task / skrypt, którego komendy (po rozwinięciu) pasują do
-deny kita albo `server.deny`, ląduje jako deny (`task <nazwa>`, `bun run`,
-`npm run`, `pnpm`, `yarn`) z łańcuchem w powodzie
-(`bun run build → turbo run build → next build`). Projekt nie wypisuje tasków
+`kit-ai reload` / bootstrap czyta `Taskfile.yml` / `.yaml` (z `includes`
+krótkimi i z kluczem `taskfile:`, `cmds` jako napisy, `- cmd:`, `- task:`, block
+scalar `- |`, `deps`), `scripts` z każdego `package.json` w repo (poza
+`node_modules`) i `turbo run <x>` (wszystkie nazwy) do skryptów `<x>` we
+wszystkich pakietach workspace. Poziomy łączą się dowolnie (task → `bun run` →
+`turbo run` → skrypt pakietu), rozwijanie iteruje do stabilizacji. Task / skrypt,
+którego komendy (po rozwinięciu) pasują do deny kita albo `server.deny`, ląduje
+jako deny (`task <nazwa>`, `bun run`, `npm run` / `run-script`, `npm test|start`,
+`pnpm [run]`, `yarn [run]`, `turbo run <x>`, także z `--filter` / `--cwd`)
+z łańcuchem w powodzie (`bun run build → turbo run build → next build`). Projekt nie wypisuje tasków
 ręcznie. Po zmianie Taskfile albo `package.json` trzeba `kit-ai reload`; guard
 bez reloadu działa na starej liście.
 
