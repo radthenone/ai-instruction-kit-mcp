@@ -57,7 +57,7 @@ skrypcie `package.json`, `turbo run` albo za `sudo`. Wprowadzony po incydencie
 z 2026-10-15 (restart serwera po `uv run` bez `--no-sync`), kiedy okazało się,
 że sama reguła tekstowa nie wystarcza dla subagentów.
 
-## Night-run na VPS
+## Night-run na VPS (dotyczy /night-run)
 
 - CTX, `## Stan` i logi pracy w tle w `~/.cache/night-run-<repo>-<data>/`, nigdy
   w `/tmp` (restart kontenera kasuje `/tmp`). Commit po każdym zielonym kroku —

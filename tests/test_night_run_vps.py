@@ -48,6 +48,22 @@ class TestNightRunTemplate(unittest.TestCase):
     def test_report_has_host_line(self) -> None:
         self.assertIn("Host: <vps | local>", self.text)
 
+    def test_ctx_header_decides_host(self) -> None:
+        self.assertIn("**Nagłówek:** BASE, `Host: vps | local`", self.text)
+
+    def test_vps_without_ci_skips_merge(self) -> None:
+        self.assertIn("kroki 7–8 pomijasz", self.text)
+
+    def test_e2e_marked_not_run_on_vps(self) -> None:
+        self.assertIn("nieuruchomione lokalnie (VPS), weryfikuje CI", self.text)
+
+    def test_no_sync_only_in_vps_branch(self) -> None:
+        outside = self.text.split("## VPS (tylko", 1)[0]
+        lines = [ln for ln in outside.splitlines() if "zawsze z `--no-sync`" in ln]
+        self.assertNotEqual(lines, [])
+        for line in lines:
+            self.assertIn("Host: vps", line)
+
     def test_reload_refreshed_client_copies(self) -> None:
         # Parytet bajt w bajt sprawdza test_generated_artifacts; tu tylko, że kopie są po #195.
         for rel in COPIES:
