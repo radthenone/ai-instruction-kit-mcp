@@ -48,7 +48,7 @@ DEFAULTS: tuple[dict[str, str], ...] = (
      "reason": "follow logów trzyma proces i strumień — użyj `docker logs` bez `-f`"},
     {"id": "docker-compose-ps", "kind": "deny", "pattern": r"^\s*docker\s+compose\s+config(?=\s|$)",
      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
-    {"id": "docker-compose-ps-allow", "kind": "allow", "pattern": r"^\s*docker\s+compose\s+ps(?=\s|$)",
+    {"id": "docker-compose-ps-allow", "kind": "allow", "pattern": r"^\s*docker(?:\s+|-)compose\s+ps(?=\s|$)",
      "reason": "odczyt stanu kontenerów"},
     # Paczki — instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI.
     {"id": "uv-sync", "kind": "deny", "pattern": r"^\s*uv\s+(sync|add|remove|lock)(?=\s|$)",
@@ -101,10 +101,10 @@ _BASH_C = re.compile(r"(?:^|\s)(?:bash|sh)\s+-c\s+(?:\"([^\"]*)\"|'([^']*)'|(\S+
 _SUBSHELL = re.compile(r"\$\(\s*(.*?)\s*\)")
 
 _PREFIXES = (
-    re.compile(r"^\s*sudo\b\s*(?:-[^\s]+\s+)*"),
+    re.compile(r"^\s*sudo\b\s*(?:(?:-[ugpCDhrtU]\s+\S+|-\S+)\s+)*"),
     re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)+"),
     re.compile(r"^\s*env\b\s*"),
-    re.compile(r"^\s*(?:nice|ionice|nohup|time|command|exec|xargs)\b\s*(?:-[^\s]+\s+)*"),
+    re.compile(r"^\s*(?:nice|ionice|nohup|time|command|exec|xargs)\b\s*(?:-\S+(?:\s+\d+)?\s+)*"),
     re.compile(r"^\s*timeout\b\s*(?:(?:-[^\s]+|[\d.]+[smhd]?)\s+)*"),
 )
 
@@ -349,12 +349,15 @@ def expand_turbo(command: str, packages: dict[str, dict[str, str]]) -> list[str]
     names = _TURBO_RUN.findall(command)
     if not names:
         return [command]
-    expanded = [command]
+    # Skrypty pakietów przed samą komendą — łańcuch odmowy dochodzi do `next build`,
+    # a nie kończy się na `turbo run build`.
+    expanded = []
     for name in names:
         for scripts in packages.values():
-            if name in scripts:
+            # Pomijamy skrypt-orkiestrator (root `build: turbo run build`) — to nie liść.
+            if name in scripts and not _TURBO_RUN.search(scripts[name]):
                 expanded.append(scripts[name])
-    return expanded
+    return [*expanded, command]
 
 
 # --- Render -------------------------------------------------------------------
@@ -379,13 +382,14 @@ def render_config(
                       "pattern": literal_pattern(item),
                       "reason": f"wyjątek projektu (`server.allow`: {item})"})
 
-    wrappers: list[dict[str, str]] = []
-    seen_patterns: set[str] = set()
+    by_pattern: dict[str, dict[str, str]] = {}
 
-    def add_wrapper(pattern: str, reason: str, chain: str) -> None:
-        if pattern not in seen_patterns:
-            seen_patterns.add(pattern)
-            wrappers.append({"pattern": pattern, "reason": reason, "chain": chain})
+    def add_wrapper(pattern: str, reason: str, chain: str, rule_id: str) -> None:
+        # `rule` pozwala guardowi przepuścić wrapper z `uv run`, gdy `UV_NO_SYNC=1` —
+        # dlatego inna ciężka reguła w tym samym wrapperze nadpisuje `uv-run`.
+        known = by_pattern.get(pattern)
+        if known is None or (known["rule"] == "uv-run" and rule_id != "uv-run"):
+            by_pattern[pattern] = {"pattern": pattern, "reason": reason, "chain": chain, "rule": rule_id}
 
     for task, cmds in tasks.items():
         for cmd in cmds:
@@ -394,7 +398,7 @@ def render_config(
                 if denied and rule is not None:
                     pattern = literal_pattern(f"task {task}")
                     chain = f"task {task} → {cmd}" if expanded == cmd else f"task {task} → {cmd} → {expanded}"
-                    add_wrapper(pattern, rule["reason"], f"{chain} (reguła: {rule['id']})")
+                    add_wrapper(pattern, rule["reason"], f"{chain} (reguła: {rule['id']})", rule["id"])
                     break
 
     for scripts in packages.values():
@@ -407,7 +411,7 @@ def render_config(
                     for form in (f"bun run {name}", f"npm run {name}",
                                  f"pnpm {name}", f"yarn {name}"):
                         add_wrapper(literal_pattern(form), rule["reason"],
-                                    f"{form}{chain_mid} → {base_chain}")
+                                    f"{form}{chain_mid} → {base_chain}", rule["id"])
                     break
 
     return {
@@ -416,7 +420,7 @@ def render_config(
         "defaults": [dict(r) for r in DEFAULTS],
         "project_deny": project_deny,
         "project_allow": project_allow,
-        "wrappers": wrappers,
+        "wrappers": list(by_pattern.values()),
     }
 
 

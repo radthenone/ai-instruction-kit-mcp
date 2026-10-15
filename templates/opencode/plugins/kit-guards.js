@@ -30,7 +30,8 @@ const GUARDS = {
 const PLAYWRIGHT_TOOL = /playwright/i
 
 function check(tool, input) {
-  const guards = GUARDS[tool] || (PLAYWRIGHT_TOOL.test(tool) ? [SERVER] : null)
+  // Nazwa w stylu Claude (`mcp__playwright__…`) — po niej server-guard rozpoznaje narzędzie.
+  const guards = GUARDS[tool] || (PLAYWRIGHT_TOOL.test(tool) ? [["server-guard.mjs", `mcp__playwright__${tool}`]] : null)
   if (!guards) return
   for (const [guard, claudeTool] of guards) {
     // `node`, nie process.execPath — opencode działa na Bunie, guardy to skrypty Node.

@@ -49,7 +49,7 @@ const EMBEDDED_DEFAULTS = [
   { id: "docker-logs", kind: "allow", pattern: "^\\s*docker\\s+logs(?=\\s|$)(?!.*(?:-f|--follow)\\b)", reason: "odczyt logów bez follow" },
   { id: "docker-logs-follow", kind: "deny", pattern: "^\\s*docker\\s+logs(?=\\s|$).*?(?:-f|--follow)\\b", reason: "follow logów trzyma proces i strumień — użyj `docker logs` bez `-f`" },
   { id: "docker-compose-ps", kind: "deny", pattern: "^\\s*docker\\s+compose\\s+config(?=\\s|$)", reason: "kontenery tylko w CI — na hoście działają cudze kontenery" },
-  { id: "docker-compose-ps-allow", kind: "allow", pattern: "^\\s*docker\\s+compose\\s+ps(?=\\s|$)", reason: "odczyt stanu kontenerów" },
+  { id: "docker-compose-ps-allow", kind: "allow", pattern: "^\\s*docker(?:\\s+|-)compose\\s+ps(?=\\s|$)", reason: "odczyt stanu kontenerów" },
   { id: "uv-sync", kind: "deny", pattern: "^\\s*uv\\s+(sync|add|remove|lock)(?=\\s|$)", reason: "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI" },
   { id: "uv-pip-install", kind: "deny", pattern: "^\\s*uv\\s+pip\\s+install(?=\\s|$)", reason: "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI" },
   { id: "pip-install", kind: "deny", pattern: "^\\s*pip3?\\s+install(?=\\s|$)", reason: "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI" },
@@ -114,7 +114,7 @@ const defaults = Array.isArray(config?.defaults) && config.defaults.length ? con
 const wrappers = Array.isArray(config?.wrappers) ? config.wrappers : [];
 const rules = [...defaults];
 for (const w of wrappers) {
-  if (w && w.pattern) rules.push({ id: `wrapper:${w.chain || w.pattern}`, kind: "deny", pattern: w.pattern, reason: w.reason || "ciężki wrapper (Taskfile/package.json)", chain: w.chain });
+  if (w && w.pattern) rules.push({ id: "wrapper", kind: "deny", pattern: w.pattern, reason: w.reason || "ciężki wrapper (Taskfile/package.json)", chain: w.chain, via: w.rule });
 }
 for (const item of config?.project_deny || []) {
   rules.push({ id: `project-deny:${item}`, kind: "deny", pattern: literalPattern(item), reason: `dodatkowy deny projektu (\`server.deny\`: ${item})` });
@@ -241,10 +241,10 @@ function stripPrefixes(segment) {
   let prev = null;
   let cur = segment;
   const patterns = [
-    /^\s*sudo\b\s*(?:-[^\s]+\s+)*/,
+    /^\s*sudo\b\s*(?:(?:-[ugpCDhrtU]\s+\S+|-\S+)\s+)*/,
     /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)+/,
     /^\s*env\b\s*/,
-    /^\s*(?:nice|ionice|nohup|time|command|exec|xargs)\b\s*(?:-[^\s]+\s+)*/,
+    /^\s*(?:nice|ionice|nohup|time|command|exec|xargs)\b\s*(?:-\S+(?:\s+\d+)?\s+)*/,
     /^\s*timeout\b\s*(?:(?:-[^\s]+|[\d.]+[smhd]?)\s+)*/,
   ];
   while (prev !== cur) {
@@ -261,7 +261,8 @@ function checkCommand(cmd) {
     let denyHit = null;
     let allowHit = null;
     for (const rule of rules) {
-      if (rule.id === "uv-run" && noSync && /^\s*uv\s+run(?=\s|$)/.test(stripped)) continue;
+      if (noSync && rule.id === "uv-run" && /^\s*uv\s+run(?=\s|$)/.test(stripped)) continue;
+      if (noSync && rule.via === "uv-run") continue;
       let matched = false;
       try {
         matched = new RegExp(rule.pattern).test(stripped);

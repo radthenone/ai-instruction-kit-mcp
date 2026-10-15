@@ -113,10 +113,13 @@ if (target === OPENCODE) {
   }
   const input = payload.input || {};
   const name = toolName || String(payload.tool || "");
+  // Narzędzia MCP (np. Playwright → server-guard) idą z wejściem bez zmian — guard
+  // decyduje po samej nazwie narzędzia.
+  const mcp = name.startsWith("mcp__");
   const toolInput = name === "Bash"
     ? { command: input.command }
-    : { file_path: input.path ?? input.filePath };
-  if (!Object.values(toolInput)[0]) {
+    : mcp ? input : { file_path: input.path ?? input.filePath };
+  if (!mcp && !Object.values(toolInput)[0]) {
     emitDeny(`brak ${name === "Bash" ? "command" : "path/filePath"} w wejściu narzędzia ${payload.tool || "?"}`);
   }
   stdin = JSON.stringify({ tool_name: name, tool_input: toolInput });
