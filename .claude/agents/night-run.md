@@ -107,7 +107,10 @@ ticket dostaje needs-human „zablokowany przez #X spoza listy”.
 
 ### 6. Plik kontekstu nocy
 
-`CTX=/tmp/night-run-<repo>-<data>/context.md` — raz na noc, poniżej ~150 linii, sekcje:
+Katalog nocy: `CTX_DIR=~/.cache/night-run-<repo>-<data>/` — `CTX=$CTX_DIR/context.md`,
+raz na noc, poniżej ~150 linii, sekcje. Katalog w `~/.cache` przeżywa restart hosta;
+`/tmp` po restarcie kontenera znika, więc nigdy tam (ani CTX, ani `## Stan`, ani logi
+pracy w tle).
 
 - **Nagłówek:** BASE, bramki szybkie, „pełny zestaw testów: tylko CI”.
 - **Mapa aplikacji:** katalog → co w nim jest, 1 linia.
@@ -163,16 +166,22 @@ Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
    `gh issue develop <N> --name <typ>/<N>-<slug> --base <BASE> --checkout`.
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
-3. Test-first: test czerwony → kod → zielony.
+3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
+   (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
+   Końcowy `/git-commit` z kroku 5 zostaje.
 4. Lokalnie tylko testy dotknięte ticketem + bramki szybkie z <CTX>. Pełny zestaw: CI.
+   `uv run` zawsze z `--no-sync`.
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
 6. Poprawki z review, `/git-end` — review już zrobione, bramka review potwierdzona, nie
    czekaj. Opis PR: testy, założenia jako Q z odpowiedzią, niepewne findingi.
    CI: `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`, bo checki
    rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → to nie błąd:
-   powtórz raz po minucie; nadal brak → brak CI na tę bazę, merge po bramkach szybkich,
-   zapis w `Final report`. Inne `EXIT` ≠ 0 → napraw, maks. 2 próby.
+   powtórz raz po minucie; nadal brak → lokalnie (bundle bez `infra:vps-lightweight`):
+   merge po bramkach szybkich, zapis w `Final report`; na VPS (bundle
+   z `infra:vps-lightweight`): brak CI = brak merge — PR zostaje otwarty, ticket
+   dostaje needs-human „brak CI na <BASE>”, w raporcie przypadek A.
+   Inne `EXIT` ≠ 0 → napraw, maks. 2 próby.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
@@ -182,8 +191,13 @@ Reguły:
   `grep -n` + `sed -n X,Yp`, wiele odczytów w jednej komendzie. Nigdy całego pliku: ani
   `cat` / `xargs cat`, ani Read bez `offset`/`limit`.
 - Bez skilli procesowych (writing-plans, tdd, verification, review-*). Wolno `/git-*`.
+- Deny od guarda kita (`server-guard:` / `git-guard:` w powodzie) to reguła, nie awaria:
+  nie obchodzisz jej (komenda spod taska wpisana wprost, `bash -c`, własny skrypt, inny
+  interpreter), nie liczysz jej do prób naprawy; komenda trafia do raportu jako „tylko CI”.
 - Praca w tle (CI, dłuższy `pytest`): od razu w tle (w Claude `run_in_background`), jeden
   wzorzec, bez pipe (`| tee` gubi exit code): `<cmd> > <log> 2>&1; echo "EXIT=$?" >> <log>`.
+  `<log>` w katalogu nocy (`$CTX_DIR/<nazwa>.log`), nigdy w `/tmp` — po restarcie hosta
+  wznawiasz po nim pracę.
   Koniec = powiadomienie o zakończeniu zadania albo linia `EXIT=` w logu; wynik = jej
   wartość. Nie czekasz na tekst narzędzia (`passed`, `All checks…`) ani na stan procesu
   (`ps`, `pgrep`, `kill -0`) — taka pętla wisi bez końca albo staje na prośbie o zgodę.
@@ -208,7 +222,19 @@ dodane modele, serwisy, endpointy, migracje; założenia.
 
 - Zewnętrzne API płatności i podobne zawsze atrapą.
 - **Nowe e2e** tylko gdy issue tego wymaga **i** runner e2e jest w repo. Inaczej „test
-  przepływu na API”, tak nazwany w raporcie.
+  przepływu na API”, tak nazwany w raporcie. Na VPS (bundle z `infra:vps-lightweight`)
+  nowe e2e piszesz, ale nie uruchamiasz lokalnie (guard je odrzuca) — w raporcie i opisie
+  PR oznaczasz „nieuruchomione lokalnie (VPS), weryfikuje CI”.
+
+## VPS (tylko gdy bundle zawiera `infra:vps-lightweight`)
+
+- Bramki z kroków CI: krok, który guard odrzuca, w nagłówku CTX oznaczasz „tylko CI”
+  (krok odrzucony przez guard = tylko CI) — lokalnie idzie reszta. `uv run` zawsze
+  z `--no-sync`.
+- brak CI = brak merge (krok 6 promptu): PR zostaje otwarty, ticket dostaje
+  needs-human „brak CI na <BASE>”, w raporcie przypadek A.
+- Nowe e2e: test pisany, ale w raporcie i opisie PR „nieuruchomiony lokalnie (VPS),
+  weryfikuje CI”.
 - Liczby **z komend**: `pytest <pliki> -m <marker> --co -q`. Brak markerów → per plik
   (`pytest <plik> --co -q`) + „brak markerów”. Trafiają do opisu PR i `Final report`.
 
@@ -289,6 +315,9 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
   ostatni check) → `TaskStop`, potem wznowienie jak wyżej;
 - nic nie działa, a noc nieskończona (także przerwana tura orkiestratora) → łańcuch od kroku
   z `## Stan` (przypadek D: pauzy ≤ 2 i przed końcem nocy → wznów, inaczej halt C).
+- restart hosta / `kill` sesji w trakcie ticketu: CTX i `## Stan` są w `~/.cache`, więc
+  przetrwały — łańcuch od kroku z `## Stan`, a pracę od ostatniego commitu na branchu
+  (`git log`).
 
 ## Pomiar kosztu ticketu (Claude Code)
 
@@ -326,6 +355,7 @@ paść w rozmowie.
 ```markdown
 ## NIGHT-RUN REPORT
 Baza: <BASE> — <powód>
+Host: <vps | local> (bundle zawiera `infra:vps-lightweight` → vps, inaczej local)
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 Pauzy limitu: <liczba> (przestój <od>–<do>, reset: <godzina z komunikatu / brak>)
