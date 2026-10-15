@@ -57,6 +57,17 @@ skrypcie `package.json`, `turbo run` albo za `sudo`. Wprowadzony po incydencie
 z 2026-10-15 (restart serwera po `uv run` bez `--no-sync`), kiedy okazało się,
 że sama reguła tekstowa nie wystarcza dla subagentów.
 
+## Night-run na VPS (dotyczy /night-run)
+
+- CTX, `## Stan` i logi pracy w tle w `~/.cache/night-run-<repo>-<data>/`, nigdy
+  w `/tmp` (restart kontenera kasuje `/tmp`). Commit po każdym zielonym kroku —
+  restart nie gubi pracy.
+- Bramki z kroków CI: krok odrzucony przez guard = tylko CI — w nagłówku CTX oznaczasz
+  go „tylko CI”, lokalnie idzie reszta. `uv run` zawsze z `--no-sync`.
+- brak CI = brak merge: PR zostaje otwarty, ticket dostaje needs-human
+  „brak CI na <BASE>”, w raporcie przypadek A.
+- Nowe e2e: test piszesz, ale oznaczasz „nieuruchomione lokalnie (VPS), weryfikuje CI”.
+
 ## Powiązane
 
 - `arch:ci-cd` — gdzie ląduje pełna weryfikacja
