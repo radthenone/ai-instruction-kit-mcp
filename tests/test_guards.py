@@ -324,6 +324,41 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("nice -n 10 next build", "deny"),
     ("git status && docker compose up -d", "deny"),
     ("echo $(docker compose up)", "deny"),
+    # Launchery (review #1): komenda za `uv run` / `npx` / `python -m` też jest sprawdzana.
+    ("uv run --no-sync pytest -n auto", "deny"),
+    ("uv run --no-sync python -m pytest -n 4", "deny"),
+    ("python -m pytest -n 4", "deny"),
+    ("python3 -m pytest tests/", "allow"),
+    ("npx next build", "deny"),
+    ("bunx --bun next build", "deny"),
+    ("pnpm dlx playwright test", "deny"),
+    ("uv --directory x run ruff", "deny"),
+    ("uv --directory x run --no-sync ruff", "allow"),
+    ("uv run --no-sync ruff check .", "allow"),
+    # Powłoki i prefiksy (review #5).
+    ('bash -lc "docker compose up"', "deny"),
+    ("sh -ec 'uv sync'", "deny"),
+    ("/usr/bin/docker compose up", "deny"),
+    ("env -i docker compose up", "deny"),
+    ("env -u HOME docker compose up", "deny"),
+    ("timeout -s KILL 60 uv sync", "deny"),
+    ("FOO= docker compose up", "deny"),
+    ('eval "docker compose up"', "deny"),
+    ("echo `docker compose up`", "deny"),
+    # Cudzysłowy i heredoki to dane, nie komendy (review #7).
+    ('git commit -m "x; docker compose up later"', "allow"),
+    ("git commit -m 'fix | docker stop x'", "allow"),
+    ("gh pr create --body \"$(cat <<'EOF'\nUruchom docker compose up\nuv sync\nEOF\n)\"", "allow"),
+    ("cat <<EOF > notes.md\ndocker compose up\nEOF\ngit status", "allow"),
+    ("cat <<EOF > notes.md\ntext\nEOF\ndocker compose up", "deny"),
+    # Przypisanie w linii (review #8) i drobne (review #10).
+    ("UV_NO_SYNC=1 uv run ruff", "allow"),
+    ("command -v docker", "allow"),
+    ("docker logs -tf app", "deny"),
+    ("docker logs --tail 50 app", "allow"),
+    ("podman ps", "allow"),
+    ("podman logs app", "allow"),
+    ("podman run x", "deny"),
 ]
 
 VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": ""}
@@ -342,7 +377,7 @@ def run_server_guard(payload: dict, env: dict[str, str], config: dict | None = N
             env={**os.environ, **env}, check=False,
         )
     assert proc.returncode == 0, proc.stderr
-    return json.loads(proc.stdout).get("hookSpecificOutput", {})
+    return json.loads(proc.stdout).get("hookSpecificOutput", {}) if proc.stdout.strip() else {}
 
 
 def decision(command: str, env: dict[str, str] = VPS, config: dict | None = None) -> str:
@@ -397,8 +432,38 @@ class ServerGuardTest(unittest.TestCase):
             with self.subTest(tool=tool):
                 out = run_server_guard({"tool_name": tool, "tool_input": {"url": "http://x"}}, VPS)
                 self.assertEqual(out.get("permissionDecision"), "deny")
+        # Poza VPS bez decyzji — jawne `allow` zatwierdzałoby narzędzie MCP bez pytania.
         out = run_server_guard({"tool_name": "mcp__playwright__browser_click", "tool_input": {}}, {**VPS, "KIT_HOST_PROFILE": "local"})
-        self.assertEqual(out.get("permissionDecision"), "allow")
+        self.assertEqual(out, {})
+
+    def test_unreadable_payload_allowed_off_vps(self) -> None:
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / "server-guard.mjs")], input="{nope", capture_output=True, text=True,
+            env={**os.environ, **VPS, "KIT_HOST_PROFILE": "local"}, check=False,
+        )
+        self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "allow")
+
+    def test_embedded_defaults_match_python(self) -> None:
+        from guides.server_guard import DEFAULTS
+
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / "server-guard.mjs")], input="", capture_output=True, text=True,
+            env={**os.environ, "SERVER_GUARD_DUMP_DEFAULTS": "1"}, check=True,
+        )
+        self.assertEqual(json.loads(proc.stdout), [dict(r) for r in DEFAULTS])
+
+    def test_dev_containers_are_local(self) -> None:
+        from guides.host_profile import detect_host_profile
+
+        env = {"KIT_HOST_PROFILE": "", "GUIDES_HOST_PROFILE": "", "CODESPACES": "true", "GUARD_PLATFORM": "linux",
+               "GUARD_CPU_COUNT": "2", "GUARD_MEM_BYTES": str(4 * 1024**3), "GUARD_SWAP_BYTES": "0",
+               "GUARD_VIRT": "docker", "GUARD_HAS_DESKTOP": "0", "GUARD_IS_CI": "0", "GUARD_IS_WSL": "0"}
+        self.assertEqual(
+            detect_host_profile(env={"CODESPACES": "true"}, platform="linux", cpu_count=2, mem_total_bytes=4 * 1024**3,
+                                swap_total_bytes=0, virt="docker", has_desktop=False, is_ci=False, is_wsl=False),
+            "local",
+        )
+        self.assertEqual(decision("docker compose up", env), "allow")
 
     def test_heuristic_parity_with_detect_host_profile(self) -> None:
         from guides.host_profile import detect_host_profile
@@ -444,50 +509,96 @@ class ServerGuardWrappersTest(unittest.TestCase):
         from guides.server_guard import collect_package_scripts, collect_taskfile_commands, render_config
 
         return render_config(
-            tasks=collect_taskfile_commands(root / "Taskfile.yml"),
+            tasks=collect_taskfile_commands(root),
             packages=collect_package_scripts(root),
             server={"guard": "auto", "deny": [], "allow": []},
         )
 
+    def _write(self, root: Path, rel: str, text: str) -> None:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+
     def test_taskfile_and_monorepo_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "taskfiles").mkdir()
-            (root / "Taskfile.yml").write_text(
-                "version: '3'\n"
-                "includes:\n  test: ./taskfiles/test.yml\n"
-                "tasks:\n"
-                "  lint:\n    cmds:\n      - uv run --no-sync ruff check .\n"
-                "  sync:\n    cmds:\n      - uv run pytest tests/\n",
-                encoding="utf-8",
-            )
-            (root / "taskfiles" / "test.yml").write_text(
-                "version: '3'\n"
-                "tasks:\n"
-                "  backend:\n    cmds:\n      - task: db\n"
-                "  db:\n    cmds:\n      - docker-compose -f compose.yml run --rm api pytest\n",
-                encoding="utf-8",
-            )
-            (root / "package.json").write_text(json.dumps({"scripts": {"build": "turbo run build", "lint": "turbo run lint"}}), encoding="utf-8")
-            (root / "apps" / "web").mkdir(parents=True)
-            (root / "apps" / "web" / "package.json").write_text(json.dumps({"scripts": {"build": "next build", "lint": "eslint src"}}), encoding="utf-8")
-            (root / "node_modules" / "x").mkdir(parents=True)
-            (root / "node_modules" / "x" / "package.json").write_text(json.dumps({"scripts": {"boom": "docker build ."}}), encoding="utf-8")
+            self._write(root, "Taskfile.yml", """version: '3'
+includes:
+  test: ./taskfiles/test.yml
+  backend:
+    taskfile: ./backend
+    dir: ./backend
+  web: {taskfile: ./taskfiles/web.yml, dir: ./web}
+tasks:
+  lint:
+    cmds:
+      - uv run --no-sync ruff check .
+  sync:
+    cmds:
+      - uv run pytest tests/
+  mixed:
+    cmds:
+      - uv run pytest && docker compose up
+  up:
+    cmds:
+      - cmd: docker compose up -d
+  script:
+    cmds:
+      - |
+        echo start
+        docker compose build
+  all:
+    deps: [up]
+  ci:
+    cmds:
+      - task: backend:test
+  front:
+    cmds:
+      - bun run build
+""")
+            self._write(root, "taskfiles/test.yml", """version: '3'
+tasks:
+  backend:
+    cmds:
+      - task: db
+  db:
+    cmds:
+      - docker-compose -f compose.yml run --rm api pytest
+""")
+            self._write(root, "backend/Taskfile.yml", "version: '3'\ntasks:\n  test:\n    cmds:\n      - docker compose run api pytest\n")
+            self._write(root, "taskfiles/web.yml", "version: '3'\ntasks:\n  e2e:\n    cmds:\n      - npx playwright test\n")
+            self._write(root, "package.json", json.dumps({"scripts": {
+                "build": "turbo run build", "lint": "turbo run lint", "ci": "bun run build",
+                "test": "turbo run test", "check": "turbo run lint typecheck"}}))
+            self._write(root, "apps/web/package.json", json.dumps({"scripts": {
+                "build": "next build", "lint": "eslint src", "test": "playwright test", "typecheck": "tsc --noEmit"}}))
+            self._write(root, "node_modules/x/package.json", json.dumps({"scripts": {"boom": "docker build ."}}))
 
             config = self._render(root)
 
-        self.assertEqual(decision("task test:backend", VPS, config), "deny")
-        self.assertEqual(decision("task test:db", VPS, config), "deny")
-        self.assertEqual(decision("task lint", VPS, config), "allow")
-        self.assertEqual(decision("bun run lint", VPS, config), "allow")
-        self.assertEqual(decision("bun run boom", VPS, config), "allow")
-        out = run_server_guard({"tool_input": {"command": "bun run build"}}, VPS, config)
-        self.assertEqual(out.get("permissionDecision"), "deny")
-        self.assertIn("bun run build → turbo run build → next build", out.get("permissionDecisionReason", ""))
-        # Task z `uv run` bez flagi przechodzi tylko z `UV_NO_SYNC=1` po stronie klienta.
-        self.assertEqual(decision("task sync", VPS, config), "deny")
-        self.assertEqual(decision("task sync", {**VPS, "UV_NO_SYNC": "1"}, config), "allow")
-        self.assertEqual(decision("task test:backend", {**VPS, "UV_NO_SYNC": "1"}, config), "deny")
+        deny = {
+            "task test:backend", "task test:db", "task up", "task script", "task all", "task ci",
+            "task backend:test", "task web:e2e", "task front", "task sync", "task mixed",
+            "bun run build", "npm run build", "pnpm run build", "yarn run build", "yarn build",
+            "bun --filter web run build", "bun run ci", "npm test", "turbo run test", "turbo run lint test",
+        }
+        allow = {"task lint", "bun run lint", "bun run boom", "turbo run lint", "bun run check", "npm run typecheck"}
+        for command in sorted(deny):
+            with self.subTest(command=command):
+                self.assertEqual(decision(command, VPS, config), "deny")
+        for command in sorted(allow):
+            with self.subTest(command=command):
+                self.assertEqual(decision(command, VPS, config), "allow")
+
+        out = run_server_guard({"tool_input": {"command": "bun run ci"}}, VPS, config)
+        self.assertIn("bun run ci → bun run build → turbo run build → next build", out.get("permissionDecisionReason", ""))
+        out = run_server_guard({"tool_input": {"command": "task ci"}}, VPS, config)
+        self.assertIn("task ci → task backend:test → docker compose run api pytest", out.get("permissionDecisionReason", ""))
+
+        # Task z samym `uv run` bez flagi przechodzi tylko z `UV_NO_SYNC=1`; ciężki obok — nie.
+        no_sync = {**VPS, "UV_NO_SYNC": "1"}
+        self.assertEqual(decision("task sync", no_sync, config), "allow")
+        self.assertEqual(decision("task mixed", no_sync, config), "deny")
+        self.assertEqual(decision("task test:backend", no_sync, config), "deny")
 
 
 if __name__ == "__main__":
