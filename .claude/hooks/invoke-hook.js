@@ -24,6 +24,16 @@
  * `file_path`: ścieżki z nagłówków `*** Add|Update|Delete File:` / `*** Move to:` idą
  * przez guard po kolei (pierwszy deny wygrywa); patch bez ścieżek = deny.
  *
+ * Copilot (`--to copilot`, `.github/hooks/kit-guards.json` PreToolUse): plik hooków używa
+ * PascalCase `PreToolUse` (ten sam kształt czyta VS Code Local i Copilot CLI), więc payload
+ * przychodzi jak w Claude Code (`tool_name` + `tool_input`). Różnice: nazwa narzędzia bywa
+ * runtime'owa (`bash` / `powershell` / `view` / `create` / `edit` / `grep` / `glob`), a
+ * `tool_input` potrafi przyjść jako string JSON oraz ze ścieżką w `filePath`/`path`.
+ * Adapter sprowadza to do kształtu, który rozumieją guardy — inaczej guard nie zobaczyłby
+ * `command`/`file_path` i przepuściłby komendę (fail-open). Wyjście zostaje w kontrakcie
+ * Claude Code: przy PascalCase `PreToolUse` obie powierzchnie czytają
+ * `hookSpecificOutput.permissionDecision`, a `deny` blokuje wywołanie.
+ *
  * Wyjście Cursora: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
  * exit 0 — przy failClosed: true niezerowy kod ukrywa payload (Cursor traktuje to
  * jak awarię hooka). Awaria adaptera = deny (fail-closed).
@@ -38,6 +48,26 @@ const CLAUDE = "claude";
 const CURSOR = "cursor";
 const OPENCODE = "opencode";
 const CODEX = "codex";
+const COPILOT = "copilot";
+
+// Copilot: nazwa runtime → nazwa Claude, którą operują guardy. Tabela z GitHub
+// Copilot hooks reference (bash|powershell → Bash, view → Read, create → Write,
+// edit|str_replace_editor|apply_patch → Edit, grep|rg → Grep, glob → Glob).
+const COPILOT_TOOLS = {
+  bash: "Bash",
+  powershell: "Bash",
+  shell: "Bash",
+  view: "Read",
+  read: "Read",
+  create: "Write",
+  write: "Write",
+  edit: "Edit",
+  str_replace_editor: "Edit",
+  apply_patch: "Edit",
+  grep: "Grep",
+  rg: "Grep",
+  glob: "Glob",
+};
 
 const argv = process.argv.slice(2);
 const scriptName = argv.shift();
@@ -175,6 +205,40 @@ if (target === CODEX) {
     }
     emitAndExit("allow", `apply_patch: ${paths.length} plik(ów) bez zastrzeżeń`);
   }
+}
+
+// Copilot: nazwa runtime → Claude, `tool_input` string-JSON → obiekt, ścieżka `filePath`/
+// `path` → `file_path`, `cmd`/`argv` → `command`. PascalCase `PreToolUse` daje snake_case
+// `tool_name`/`tool_input`, camelCase `preToolUse` daje `toolName`/`toolArgs` — bierzemy oba.
+if (target === COPILOT) {
+  let payload;
+  try {
+    payload = JSON.parse(stdin || "{}");
+  } catch {
+    emitDeny("nieczytelny payload copilot");
+  }
+  let input = payload.tool_input ?? payload.toolArgs ?? {};
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch {
+      // Nie-JSON (np. goła komenda/ścieżka) — guard ma z czego wybrać.
+      input = { command: input, file_path: input };
+    }
+  }
+  if (!input || typeof input !== "object") input = {};
+  const sourceName = String(payload.tool_name || payload.toolName || "");
+  const name = COPILOT_TOOLS[sourceName.toLowerCase()] || sourceName;
+  const normalized = { ...input };
+  if (name === "Bash" && normalized.command === undefined) {
+    const raw = input.cmd ?? input.argv;
+    if (raw !== undefined) normalized.command = Array.isArray(raw) ? raw.join(" ") : String(raw);
+  }
+  if (["Read", "Write", "Edit"].includes(name) && normalized.file_path === undefined) {
+    const p = input.filePath ?? input.path ?? input.file;
+    if (p !== undefined) normalized.file_path = p;
+  }
+  stdin = JSON.stringify({ ...payload, tool_name: name, tool_input: normalized });
 }
 
 // `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.

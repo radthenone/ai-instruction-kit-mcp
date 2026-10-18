@@ -32,6 +32,9 @@
 .codex/*
 !.codex/skills/
 !.codex/skills/**
+!.codex/hooks/
+!.codex/hooks/**
+!.codex/hooks.json
 
 # --- GitHub Copilot (VS Code) ------------------------------------------------
 # Pliki kita pod .github/ — instrukcje i prompty Copilota, nie stan IDE (MCP Copilota

@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "node .github/hooks/invoke-hook.js git-guard.mjs --to copilot",
+        "cwd": ".",
+        "timeout": 5
+      },
+      {
+        "type": "command",
+        "command": "node .github/hooks/invoke-hook.js server-guard.mjs --to copilot",
+        "cwd": ".",
+        "timeout": 5
+      },
+      {
+        "type": "command",
+        "command": "node .github/hooks/invoke-hook.js sensitive-files-guard.mjs --to copilot",
+        "cwd": ".",
+        "timeout": 5
+      }
+    ]
+  }
+}
