@@ -1165,8 +1165,8 @@ działają dalej: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166). 
 = wiersz w `EXECUTORS` w `templates/shared/headless/headless.mjs` i w `HEADLESS_EXECUTORS`
 w `scripts/bootstrap-project.sh`.
 
-Codex ma guardy kitowe przez PreToolUse (`node .codex/hooks/invoke-hook.js <guard>.mjs
---to codex`, #199) — nie jest jeszcze wykonawcą headless (patrz `EXECUTORS` w `headless.mjs`),
+Codex ma guardy kitowe przez PreToolUse (`node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js"
+<guard>.mjs --to codex`, #199) — nie jest jeszcze wykonawcą headless (patrz `EXECUTORS` w `headless.mjs`),
 ale może być **hostem** i wywoływać `claude` lub `opencode` jako wykonawcę.
 Codex odpala projektowy `.codex/hooks.json` dopiero po zaufaniu hookom repo (`/hooks` w Codexie);
 bez tego guardy leżą na dysku, ale nie działają.
@@ -1242,7 +1242,7 @@ wie o różnicy między klientami.
 | Claude Code | `node .claude/hooks/<guard>.mjs` | natywny, bez adaptera |
 | Cursor | `node .cursor/hooks/invoke-hook.js <guard>.mjs --to cursor [--tool Read\|Write]` | tłumaczony przez adapter |
 | OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
-| Codex | `node .codex/hooks/invoke-hook.js <guard>.mjs --to codex` | taki sam jak Claude Code (`hookSpecificOutput.permissionDecision`) |
+| Codex | `node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js" <guard>.mjs --to codex` | tłumaczony przez adapter; wyjście jak Claude Code (`hookSpecificOutput.permissionDecision`) |
 
 Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
 (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
@@ -1260,6 +1260,16 @@ Działa niezależnie od `permission` w `opencode.json`, także przy `allow` na b
 deny narzędzie kończy się błędem, a model widzi `Zablokowane przez guard kita — <powód z guarda>`
 i dobiera inną drogę. Awaria guarda, timeout (10 s) albo wejście bez oczekiwanego pola
 (`command`, `path`) = deny. `grep` i `glob` nie są pilnowane — tak samo jak w Claude Code.
+
+Codex (`--clients codex`): bootstrap kładzie guardy, `invoke-hook.js` i `server-guard.json`
+w `.codex/hooks/` oraz `.codex/hooks.json` (PreToolUse). Powłoka (`Bash` / `shell` /
+`local_shell` / `exec_command`, `command` jako string albo argv) → git-guard + server-guard;
+Playwright MCP → server-guard; `apply_patch` i `Read|Edit|Write|…` → sensitive-files-guard,
+dla `apply_patch` po kolei na każdej ścieżce z nagłówków `*** Add|Update|Delete File:` /
+`*** Move to:` (patch bez ścieżek = deny). Ścieżka hooka liczona od roota repo
+(`git rev-parse --show-toplevel`), więc sesja z podkatalogu też jest pilnowana. Nazwy narzędzi
+i pola payloadu nie są sprawdzone na żywym Codexie — adapter przyjmuje warianty wyżej.
+Bootstrap nadpisuje `.codex/hooks.json` (`cp`) — własne wpisy dopisz po każdym reloadzie.
 Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko API pluginów V2 (`export default { id, setup }`, jak `kit-loop.js`); `bash-guard`,
 `linters-guard` i `rtk-check` zostają tylko w Claude Code.
 
