@@ -105,5 +105,5 @@ Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Revie
 Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
 Format stack review: `Severity | Location | Finding | Fix`.  
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
-Guardy (zero `ask`): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na main/master/dev, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile).
+Guardy (zero `ask`): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na main/master/dev, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile), `server-guard.mjs` (tylko VPS: deny kontenery, instalacja paczek, buildy, e2e, `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn` z `reload`).
 Bootstrap: `scripts/bootstrap-project.sh`.

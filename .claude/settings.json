@@ -27,7 +27,20 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/server-guard.mjs\""
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bash-guard.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_playwright_.*|mcp__playwright__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/server-guard.mjs\""
           }
         ]
       },

@@ -288,6 +288,8 @@ class TestRealRun(_BootstrapTestCase):
                 ".codex/skills/skill-authoring/SKILL.md",
                 ".cursor/hooks.json",
                 ".github/copilot-instructions.md",
+                ".agents/hooks/git-guard.mjs",
+                ".agents/hooks.json",
             ):
                 with self.subTest(versioned=rel):
                     self.assertEqual(
@@ -674,6 +676,38 @@ class TestOpencodeGuards(_BootstrapTestCase):
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
             self.assertFalse((workspace / ".opencode").exists())
+
+
+class TestServerGuardInstall(_BootstrapTestCase):
+    """Server-guard i jego JSON trafiają do hooków claude, cursor i opencode (#194)."""
+
+    def test_guard_wired_and_config_rendered_for_each_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / ".ai").mkdir(parents=True)
+            (workspace / ".ai/project.profile.yaml").write_text(
+                'server:\n  deny:\n    - "bunx eas-cli"\n', encoding="utf-8"
+            )
+            (workspace / "Taskfile.yml").write_text(
+                "version: '3'\ntasks:\n  up:\n    cmds:\n      - docker compose up -d\n", encoding="utf-8"
+            )
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,cursor,opencode")
+            for hooks in (".claude/hooks", ".cursor/hooks", ".opencode/hooks"):
+                with self.subTest(hooks=hooks):
+                    self.assertEqual(
+                        (workspace / hooks / "server-guard.mjs").read_bytes(),
+                        (KIT_ROOT / "templates/shared/guards/server-guard.mjs").read_bytes(),
+                    )
+                    config = json.loads((workspace / hooks / "server-guard.json").read_text(encoding="utf-8"))
+                    self.assertEqual(config["project_deny"], ["bunx eas-cli"])
+                    self.assertTrue(any("task up" in w["chain"] for w in config["wrappers"]))
+            settings = json.loads((workspace / ".claude/settings.json").read_text(encoding="utf-8"))
+            pre = settings["hooks"]["PreToolUse"]
+            bash = next(e for e in pre if e["matcher"] == "Bash")
+            self.assertTrue(any("server-guard.mjs" in h["command"] for h in bash["hooks"]))
+            self.assertTrue(any("playwright" in e["matcher"] and "server-guard.mjs" in e["hooks"][0]["command"] for e in pre))
+            self.assertIn("server-guard.mjs", (workspace / ".cursor/hooks.json").read_text(encoding="utf-8"))
+            self.assertIn("server-guard.mjs", (workspace / ".opencode/plugins/kit-guards.js").read_text(encoding="utf-8"))
 
 
 class TestOpencodeDefaultModel(_BootstrapTestCase):

@@ -120,7 +120,9 @@ Guardy — jedno źródło w `templates/shared/guards/`, instalowane per `--clie
 `ask`** (ADR 0006): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na
 main/master/dev, `branch -D`, `checkout .`/`--`, rekursywne `rm` na szerokiej ścieżce,
 mutacje w katalogach systemowych), `sensitive-files-guard.mjs` (deny odczyt/zapis
-sekretów, deny ręczna edycja lockfile), tylko Claude: `bash-guard.mjs` (Windows: Git Bash,
+sekretów, deny ręczna edycja lockfile), `server-guard.mjs` (tylko VPS, decyzja
+w runtime: deny kontenery, instalacja paczek, buildy, e2e, `pytest -n`; wrappery
+`task`/`bun|npm|pnpm|yarn` renderowane przy `reload`), tylko Claude: `bash-guard.mjs` (Windows: Git Bash,
 nie pwsh/cmd), `linters-guard.mjs` (format+lint po edycji, wynik do modelu),
 `rtk-check.mjs` (SessionStart: przypomnienie o `rtk init -g`).
 Polityka mówi kontraktem Claude Code; `invoke-hook.js --to cursor` tłumaczy dla Cursora.

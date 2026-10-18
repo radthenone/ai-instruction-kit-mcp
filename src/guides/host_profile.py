@@ -33,6 +33,8 @@ _CI_ENV_VARS = (
     "TF_BUILD",
 )
 
+_DEV_CONTAINER_ENV_VARS = ("CODESPACES", "REMOTE_CONTAINERS")
+
 _DESKTOP_ENV_VARS = (
     "DISPLAY",
     "WAYLAND_DISPLAY",
@@ -199,6 +201,10 @@ def detect_host_profile(
 
     wsl = _is_wsl(env) if is_wsl is None else is_wsl
     if wsl:
+        return LOCAL_PROFILE
+
+    # Codespaces / devcontainer: mały kontener bez desktopu, ale to stacja deweloperska.
+    if any(str(env.get(var, "")).strip() for var in _DEV_CONTAINER_ENV_VARS):
         return LOCAL_PROFILE
 
     cpu = os.cpu_count() if cpu_count is None else cpu_count

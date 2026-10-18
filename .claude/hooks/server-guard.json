@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "guard": "auto",
+  "defaults": [
+    {
+      "id": "docker",
+      "kind": "deny",
+      "pattern": "^\\s*docker(?=\\s|$)",
+      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"
+    },
+    {
+      "id": "docker-compose",
+      "kind": "deny",
+      "pattern": "^\\s*docker\\s+compose(?=\\s|$)",
+      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"
+    },
+    {
+      "id": "docker-compose-bin",
+      "kind": "deny",
+      "pattern": "^\\s*docker-compose(?=\\s|$)",
+      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"
+    },
+    {
+      "id": "podman",
+      "kind": "deny",
+      "pattern": "^\\s*podman(?=\\s|$)",
+      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"
+    },
+    {
+      "id": "docker-ps",
+      "kind": "allow",
+      "pattern": "^\\s*(?:docker|podman)\\s+(?:ps|images|inspect|version|info)(?=\\s|$)",
+      "reason": "odczyt stanu kontenerów"
+    },
+    {
+      "id": "docker-logs",
+      "kind": "allow",
+      "pattern": "^\\s*(?:docker|podman)\\s+logs(?=\\s|$)(?!.*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--follow)(?=\\s|$))",
+      "reason": "odczyt logów bez follow"
+    },
+    {
+      "id": "docker-logs-follow",
+      "kind": "deny",
+      "pattern": "^\\s*(?:docker|podman)\\s+logs(?=\\s|$).*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--follow)(?=\\s|$)",
+      "reason": "follow logów trzyma proces i strumień — użyj `docker logs` bez `-f`"
+    },
+    {
+      "id": "docker-compose-config",
+      "kind": "deny",
+      "pattern": "^\\s*docker\\s+compose\\s+config(?=\\s|$)",
+      "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"
+    },
+    {
+      "id": "docker-compose-ps",
+      "kind": "allow",
+      "pattern": "^\\s*(?:docker|podman)(?:\\s+|-)compose\\s+ps(?=\\s|$)",
+      "reason": "odczyt stanu kontenerów"
+    },
+    {
+      "id": "uv-sync",
+      "kind": "deny",
+      "pattern": "^\\s*uv\\s+(sync|add|remove|lock)(?=\\s|$)",
+      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"
+    },
+    {
+      "id": "uv-pip-install",
+      "kind": "deny",
+      "pattern": "^\\s*uv\\s+pip\\s+install(?=\\s|$)",
+      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"
+    },
+    {
+      "id": "pip-install",
+      "kind": "deny",
+      "pattern": "^\\s*pip3?\\s+install(?=\\s|$)",
+      "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "uv-run",
+      "kind": "deny",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)",
+      "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"
+    },
+    {
+      "id": "uv-run-no-sync",
+      "kind": "allow",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$).*?--no-sync",
+      "reason": "uruchomienie bez synchronizacji"
+    },
+    {
+      "id": "uvx",
+      "kind": "allow",
+      "pattern": "^\\s*uvx(?=\\s|$)",
+      "reason": "jednorazowe narzędzia bez instalacji do projektu"
+    },
+    {
+      "id": "bun-pkg",
+      "kind": "deny",
+      "pattern": "^\\s*bun\\s+(install|add|remove)(?=\\s|$)",
+      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "npm-pkg",
+      "kind": "deny",
+      "pattern": "^\\s*npm\\s+(install|i|ci)(?=\\s|$)",
+      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "pnpm-pkg",
+      "kind": "deny",
+      "pattern": "^\\s*pnpm\\s+(install|i|add)(?=\\s|$)",
+      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "yarn-pkg",
+      "kind": "deny",
+      "pattern": "^\\s*yarn\\s+(install|add)(?=\\s|$)",
+      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "next-build",
+      "kind": "deny",
+      "pattern": "^\\s*next\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"
+    },
+    {
+      "id": "expo-build",
+      "kind": "deny",
+      "pattern": "^\\s*expo\\s+(prebuild|export)(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI"
+    },
+    {
+      "id": "eas-build",
+      "kind": "deny",
+      "pattern": "^\\s*eas\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI"
+    },
+    {
+      "id": "vite-build",
+      "kind": "deny",
+      "pattern": "^\\s*vite\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI"
+    },
+    {
+      "id": "turbo-build",
+      "kind": "deny",
+      "pattern": "^\\s*turbo(?:\\s+run)?(?:\\s+[^-\\s]\\S*)*?\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`"
+    },
+    {
+      "id": "turbo-lint",
+      "kind": "allow",
+      "pattern": "^\\s*turbo\\s+run(?:\\s+(?:lint|typecheck))+(?:\\s+-\\S+(?:\\s+[^-\\s]\\S*)?)*\\s*$",
+      "reason": "lekkie bramki na VPS"
+    },
+    {
+      "id": "playwright",
+      "kind": "deny",
+      "pattern": "^\\s*(npx\\s+|bunx\\s+|yarn\\s+dlx\\s+|pnpm\\s+dlx\\s+)?playwright(?=\\s|$)",
+      "reason": "przeglądarka to setki MB na instancję — e2e tylko w CI"
+    },
+    {
+      "id": "cypress",
+      "kind": "deny",
+      "pattern": "^\\s*(npx\\s+|bunx\\s+)?cypress(?=\\s|$)",
+      "reason": "przeglądarka to setki MB na instancję — e2e tylko w CI"
+    },
+    {
+      "id": "maestro",
+      "kind": "deny",
+      "pattern": "^\\s*maestro(?=\\s|$)",
+      "reason": "testy mobilne tylko w CI"
+    },
+    {
+      "id": "pytest-xdist",
+      "kind": "deny",
+      "pattern": "^\\s*pytest(?=\\s|$).*\\s(?:-n|--numprocesses)(?=[\\s=\\d]|$)",
+      "reason": "xdist mnoży procesy na słabym CPU — użyj `pytest` bez `-n`"
+    }
+  ],
+  "project_deny": [],
+  "project_allow": [],
+  "wrappers": [
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*bun\\s+run\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "bun run build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*npm\\s+run\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "npm run build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*npm\\s+run\\-script\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "npm run-script build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*pnpm\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "pnpm build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*pnpm\\s+run\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "pnpm run build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*yarn\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "yarn build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*yarn\\s+run\\s+build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "yarn run build → turbo run build → turbo run build",
+      "rule": "turbo-build"
+    },
+    {
+      "id": "wrapper",
+      "kind": "deny",
+      "pattern": "^\\s*turbo\\s+run\\s+(?:\\S+\\s+)*build(?=\\s|$)",
+      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`",
+      "chain": "turbo run build → turbo run build",
+      "rule": "turbo-build"
+    }
+  ]
+}

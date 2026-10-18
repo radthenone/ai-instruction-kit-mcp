@@ -185,6 +185,30 @@ class TestKitStatus(unittest.TestCase):
             self.assertIn("templates/shared/guards/git-guard.mjs", out)
             self.assertIn("Re-bootstrap wciągnie sam", out)
 
+    def test_client_hooks_json_change_is_reported(self) -> None:
+        """hooks.json Codexa, Antigravity, Cursora i Copilota bootstrap nadpisuje — zmiana wymusza reload."""
+        for rel in (
+            "templates/codex/hooks.json",
+            "templates/antigravity/hooks.json",
+            "templates/cursor/hooks.json",
+            "templates/vscode/github/hooks/kit-guards.json",
+        ):
+            with self.subTest(rel=rel), tempfile.TemporaryDirectory() as tmp:
+                kit_root = Path(tmp) / "kit"
+                workspace = Path(tmp) / "workspace"
+                _init_kit_repo(kit_root)
+                _write_stamp(workspace, kit_commit=_head(kit_root))
+
+                target = kit_root / rel
+                target.parent.mkdir(parents=True)
+                target.write_text("{}\n", encoding="utf-8")
+                _git(kit_root, "add", "-A")
+                _git(kit_root, "commit", "-q", "-m", "add hooks.json")
+
+                out = check_kit_updates(kit_root, workspace)
+                self.assertIn(f"- `{rel}`", out)
+                self.assertIn("Re-bootstrap wciągnie sam", out)
+
     def test_net_zero_change_shows_no_tracked_diff(self) -> None:
         """Commit + revert netto się znoszą — diff --name-only nic nie pokaże."""
         with tempfile.TemporaryDirectory() as tmp:

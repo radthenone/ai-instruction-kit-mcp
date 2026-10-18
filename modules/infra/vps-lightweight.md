@@ -47,11 +47,35 @@ Kit nie wie, które taski Twojego repo są lekkie. Dopisz to w overlay, np.:
 Podział edytujesz przez `/kit-project-edit` (jedna zmiana na wywołanie),
 np. `/kit-project-edit "w VPS lekkie to…"`. Overlay ma pierwszeństwo przed bundlem.
 
-## Bez hooka blokującego
+## Twardy guard: server-guard
 
-Świadomie brak twardego hooka — reguła jest tekstowa. Hook mógłby zablokować
-celowe operacje (deploy, ręczny restart, automatyzację), a tu chodzi o domyślne
-zachowanie agenta, nie o zakaz systemowy.
+Tekst powyżej to domyślne zachowanie agenta. Twardą blokadę egzekwuje
+**server-guard** (`templates/shared/guards/server-guard.mjs`, szczegóły: README
+„Server guard (VPS)" i ADR 0009): na VPS odrzuca kontenery, instalację paczek,
+buildy produkcyjne, przeglądarki/e2e i `pytest -xdist` — także schowane w tasku,
+skrypcie `package.json`, `turbo run` albo za `sudo`. Wprowadzony po incydencie
+z 2026-10-15 (restart serwera po `uv run` bez `--no-sync`), kiedy okazało się,
+że sama reguła tekstowa nie wystarcza dla subagentów.
+
+Zakres jest per host: na Windows (Git Bash, PowerShell), macOS, WSL, Codespaces
+i w CI guard przepuszcza wszystko, a blokuje tylko na małym VPS / kontenerze
+serwerowym. Nic nie ustawia się per projekt — ten sam commit działa w kicie
+i w projektach aplikacyjnych na PC i na VPS. Gdy heurystyka się myli, wymuszasz
+profil per maszyna (`KIT_HOST_PROFILE=vps|local` w `~/.profile` / `~/.bashrc`;
+Windows: `setx KIT_HOST_PROFILE local`), a nie `server.guard: off` w commitowanym
+Profilu. Nową wersję guarda wdrażasz w projekcie przez aktualizację klona kita →
+`kit-ai reload` → commit podmienionych plików hooków.
+
+## Night-run na VPS (dotyczy /night-run)
+
+- CTX, `## Stan` i logi pracy w tle w `~/.cache/night-run-<repo>-<data>/`, nigdy
+  w `/tmp` (restart kontenera kasuje `/tmp`). Commit po każdym zielonym kroku —
+  restart nie gubi pracy.
+- Bramki z kroków CI: krok odrzucony przez guard = tylko CI — w nagłówku CTX oznaczasz
+  go „tylko CI”, lokalnie idzie reszta. `uv run` zawsze z `--no-sync`.
+- brak CI = brak merge: PR zostaje otwarty, ticket dostaje needs-human
+  „brak CI na <BASE>”, w raporcie przypadek A.
+- Nowe e2e: test piszesz, ale oznaczasz „nieuruchomione lokalnie (VPS), weryfikuje CI”.
 
 ## Powiązane
 

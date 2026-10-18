@@ -44,6 +44,7 @@ Cały wywiad od zera: /kit-project-begin
    | `language` | Profil | `pl` \| `en` |
    | Pytanie tak/nie (docker, taskfile, ci-cd, …) | Profil `include:` / `patterns:` | Wpisy z linii `Zapis` pytania |
    | Ścieżka Tieru, inna sekcja | `.ai/project.md` | Tekst użytkownika |
+   | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (wyjątki `allow` wygrywają z deny) |
 
    Wartość spoza dozwolonych → pokaż listę, nie zgaduj. Brak Stacka w katalogu → `none` +
    podpowiedź `/create-task` w repo kita.

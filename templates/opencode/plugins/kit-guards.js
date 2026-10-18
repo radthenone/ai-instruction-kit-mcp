@@ -13,35 +13,43 @@ import { fileURLToPath } from "node:url"
 
 const ADAPTER = fileURLToPath(new URL("../hooks/invoke-hook.js", import.meta.url))
 const GIT = ["git-guard.mjs", "Bash"]
+const SERVER = ["server-guard.mjs", "Bash"]
 const FILES = "sensitive-files-guard.mjs"
-// narzędzie opencode → [guard, nazwa narzędzia Claude, którą rozumie guard]
+// narzędzie opencode → lista [guard, nazwa narzędzia Claude, którą rozumie guard]
+// (shell przechodzi przez git-guard i server-guard; narzędzia Playwright MCP
+// tylko przez server-guard — przeglądarka to setki MB na instancję, e2e tylko w CI)
 const GUARDS = {
-  shell: GIT,
-  bash: GIT,
-  read: [FILES, "Read"],
-  edit: [FILES, "Edit"],
-  multiedit: [FILES, "Edit"],
-  write: [FILES, "Write"],
-  patch: [FILES, "Write"],
+  shell: [GIT, SERVER],
+  bash: [GIT, SERVER],
+  read: [[FILES, "Read"]],
+  edit: [[FILES, "Edit"]],
+  multiedit: [[FILES, "Edit"]],
+  write: [[FILES, "Write"]],
+  patch: [[FILES, "Write"]],
 }
+const PLAYWRIGHT_TOOL = /playwright/i
 
 function check(tool, input) {
-  const [guard, claudeTool] = GUARDS[tool]
-  // `node`, nie process.execPath — opencode działa na Bunie, guardy to skrypty Node.
-  const result = spawnSync("node", [ADAPTER, guard, "--to", "opencode", "--tool", claudeTool], {
-    input: JSON.stringify({ tool, input }),
-    encoding: "utf8",
-    timeout: 10000,
-    windowsHide: true,
-  })
-  let verdict
-  try {
-    verdict = JSON.parse(result.stdout || "")
-  } catch {
-    verdict = { decision: "deny", reason: `${guard}: brak odpowiedzi (${result.error?.message || result.stderr || "pusty stdout"})` }
-  }
-  if (verdict.decision !== "allow") {
-    throw new Error(`Zablokowane przez guard kita — ${verdict.reason || guard}`)
+  // Nazwa w stylu Claude (`mcp__playwright__…`) — po niej server-guard rozpoznaje narzędzie.
+  const guards = GUARDS[tool] || (PLAYWRIGHT_TOOL.test(tool) ? [["server-guard.mjs", `mcp__playwright__${tool}`]] : null)
+  if (!guards) return
+  for (const [guard, claudeTool] of guards) {
+    // `node`, nie process.execPath — opencode działa na Bunie, guardy to skrypty Node.
+    const result = spawnSync("node", [ADAPTER, guard, "--to", "opencode", "--tool", claudeTool], {
+      input: JSON.stringify({ tool, input }),
+      encoding: "utf8",
+      timeout: 10000,
+      windowsHide: true,
+    })
+    let verdict
+    try {
+      verdict = JSON.parse(result.stdout || "")
+    } catch {
+      verdict = { decision: "deny", reason: `${guard}: brak odpowiedzi (${result.error?.message || result.stderr || "pusty stdout"})` }
+    }
+    if (verdict.decision !== "allow") {
+      throw new Error(`Zablokowane przez guard kita — ${verdict.reason || guard}`)
+    }
   }
 }
 
@@ -54,7 +62,8 @@ export default {
   async setup(ctx) {
     await ctx.tool.hook("execute.before", async (event) => {
       const input = event.input || {}
-      if (!GUARDS[event.tool]) return
+      const known = GUARDS[event.tool] || PLAYWRIGHT_TOOL.test(event.tool)
+      if (!known) return
       if (event.tool !== "patch") return check(event.tool, input)
       for (const path of patchPaths(input.patchText)) check("patch", { path })
     })

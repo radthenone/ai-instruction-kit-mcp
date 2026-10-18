@@ -115,19 +115,28 @@ test -f "$TMP/both/.cursor/hooks/git-guard.mjs"
 echo "OK  prune: claude odznaczony sprzata po sobie"
 
 # Copilot: rtk nie ma trybu globalnego, wiec hook idzie z kita per-repo (#67).
+# Guardy kita (#200): plik hookow + guardy z jednego zrodla, obok rtk-rewrite.json.
 "$BOOT" "$TMP/vscode" --clients vscode --from "$ROOT" --skip-agents >/dev/null
 test -f "$TMP/vscode/.github/hooks/rtk-rewrite.json"
 cmp -s "$ROOT/templates/vscode/github/hooks/rtk-rewrite.json" "$TMP/vscode/.github/hooks/rtk-rewrite.json"
 grep -q 'rtk hook copilot' "$TMP/vscode/.github/hooks/rtk-rewrite.json"
 grep -q 'rtk-rewrite.json' "$TMP/vscode/.github/copilot-instructions.md"
-# Odznaczenie vscode sprzata hook i pusty katalog, nie rusza reszty .github.
+cmp -s "$ROOT/templates/vscode/github/hooks/kit-guards.json" "$TMP/vscode/.github/hooks/kit-guards.json"
+grep -q -- '--to copilot' "$TMP/vscode/.github/hooks/kit-guards.json"
+for g in invoke-hook.js git-guard.mjs sensitive-files-guard.mjs server-guard.mjs; do
+  cmp -s "$ROOT/templates/shared/guards/$g" "$TMP/vscode/.github/hooks/$g" || { echo "FAIL .github/hooks/$g" >&2; exit 1; }
+done
+test -f "$TMP/vscode/.github/hooks/server-guard.json"
+# Guardy tylko dla Claude nie trafiaja do Copilota (#200).
+test ! -e "$TMP/vscode/.github/hooks/bash-guard.mjs"
+# Odznaczenie vscode sprzata hooki i pusty katalog, nie rusza reszty .github.
 mkdir -p "$TMP/vscode/.github/workflows"
 echo "name: ci" > "$TMP/vscode/.github/workflows/ci.yml"
 "$BOOT" "$TMP/vscode" --clients cursor --from "$ROOT" --skip-agents >/dev/null
 test ! -e "$TMP/vscode/.github/hooks"
 test ! -e "$TMP/vscode/.github/copilot-instructions.md"
 test -f "$TMP/vscode/.github/workflows/ci.yml"
-echo "OK  --clients vscode (+ rtk hook copilot, prune)"
+echo "OK  --clients vscode (+ rtk hook copilot, guardy kita, prune)"
 
 "$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
 # Cztery klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
@@ -176,6 +185,32 @@ echo "moj" > "$TMP/skills/.agents/workflows/moj-workflow.md"
 test ! -e "$TMP/skills/.agents/workflows/git-start.md"
 test -f "$TMP/skills/.agents/workflows/moj-workflow.md"
 echo "OK  antigravity: agenci jako skille, stare workflow kita sprzątnięte"
+
+# Guardy kita Antigravity (#201): hooki w .agents/hooks/ + workspace'owy hooks.json
+# (nazwany hook `kit-guards`, adapter --to antigravity).
+test -f "$TMP/skills/.agents/hooks/git-guard.mjs"
+test -f "$TMP/skills/.agents/hooks/server-guard.mjs"
+test -f "$TMP/skills/.agents/hooks/sensitive-files-guard.mjs"
+cmp -s "$ROOT/templates/shared/guards/git-guard.mjs" "$TMP/skills/.agents/hooks/git-guard.mjs"
+cmp -s "$ROOT/templates/antigravity/hooks.json" "$TMP/skills/.agents/hooks.json"
+grep -q -- '--to antigravity' "$TMP/skills/.agents/hooks.json"
+grep -q 'kit-guards' "$TMP/skills/.agents/hooks.json"
+test ! -e "$TMP/skills/.agents/hooks/bash-guard.mjs"
+echo "OK  antigravity: guardy kita + hooks.json"
+
+# Merge klucza kita z cudzym hookiem, prune zdejmuje tylko klucz kita (#201).
+printf '{"moj-hook":{"PreToolUse":[{"matcher":"run_command","hooks":[{"command":"./moj.sh"}]}]}}' \
+  > "$TMP/skills/.agents/hooks.json"
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+grep -q 'moj-hook' "$TMP/skills/.agents/hooks.json"
+grep -q 'kit-guards' "$TMP/skills/.agents/hooks.json"
+"$BOOT" "$TMP/skills" --clients claude --from "$ROOT" >/dev/null
+grep -q 'moj-hook' "$TMP/skills/.agents/hooks.json"
+if grep -q 'kit-guards' "$TMP/skills/.agents/hooks.json"; then
+  echo "FAIL prune nie zdjął klucza kita z .agents/hooks.json" >&2
+  exit 1
+fi
+echo "OK  antigravity: hooks.json scalony z cudzym, prune tylko klucz kita"
 
 # .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
 # kasować po nazwach ze źródła, nie całym katalogiem.

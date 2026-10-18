@@ -184,7 +184,8 @@ client_enabled() {
 # pochodzi z tych samych funkcji co instalacja (komplet agentów, bez filtra Tierów), więc
 # prune i `--remove` nie trzymają drugiej, rozjeżdżającej się mapy ścieżek.
 # `.claude/settings.json` pomijamy — należy do użytkownika, wpisy kita zdejmuje
-# `claude_settings.py prune`.
+# `claude_settings.py prune`. Tak samo `.agents/hooks.json` Antigravity: workspace'owy
+# plik hooków użytkownika, klucz kita zdejmuje `antigravity_hooks.py prune`.
 kit_files() {
   local id="$1" sandbox
   sandbox="$(mktemp -d)"
@@ -193,7 +194,7 @@ kit_files() {
     echo "Nie udało się ustalić plików kita klienta $id" >&2
     return 1
   fi
-  (cd "$sandbox" && find . -type f ! -path ./.claude/settings.json | sed 's|^\./||' | sort)
+  (cd "$sandbox" && find . -type f ! -path ./.claude/settings.json ! -path ./.agents/hooks.json | sed 's|^\./||' | sort)
   rm -rf "$sandbox"
 }
 
@@ -263,6 +264,12 @@ prune_client() {
       for name in "$ALL_AGENTS"/*.md; do
         kit_rm ".agents/workflows/$(basename "$name")"
       done
+      # `.agents/hooks.json` należy do użytkownika — zdejmujemy tylko klucz kita
+      # (`kit-guards`); plik z cudzymi hookami zostaje, pusty znika.
+      if [[ -f "$TARGET/.agents/hooks.json" ]]; then
+        "$PYTHON_BIN" "$KIT_ROOT/scripts/antigravity_hooks.py" prune "$TARGET/.agents/hooks.json"
+      fi
+      rmdir "$TARGET/.agents" 2>/dev/null || true
       ;;
   esac
   if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
@@ -855,7 +862,13 @@ install_guards() {
   rm -f "$dest/gate-destructive.sh" "$dest/gate-push.sh" "$dest/gate-file-writes.mjs"
   cp "$SHARED_GUARDS/git-guard.mjs" "$dest/git-guard.mjs"
   cp "$SHARED_GUARDS/sensitive-files-guard.mjs" "$dest/sensitive-files-guard.mjs"
+  cp "$SHARED_GUARDS/server-guard.mjs" "$dest/server-guard.mjs"
   cp "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
+  # Lista deny kita + rozwinięte wrappery (Taskfile / package.json / turbo) + sekcja
+  # `server:` z Profilu → server-guard.json obok guarda. Guard bez reloadu działa
+  # na starej liście wrapperów. Render nigdy nie wywala bootstrapu (ADR-0004).
+  PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_server_guard.py" \
+    "$TARGET" "$dest" "$TARGET/.ai/project.profile.yaml" || echo "  ! server-guard.json nie wyrenderowany — guard działa na wbudowanej liście kita" >&2
 }
 
 install_cursor() {
@@ -956,6 +969,12 @@ install_codex_agents() {
 install_codex() {
   fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$TARGET"
   echo "  + .codex/config.toml"
+  # Guardy kita (git-guard, sensitive-files-guard, server-guard) przed każdym
+  # narzędziem Codexa — PreToolUse woła invoke-hook.js --to codex, deny działa
+  # tak samo jak w Claude Code.
+  install_guards "$TARGET/.codex/hooks"
+  cp "$KIT_ROOT/templates/codex/hooks.json" "$TARGET/.codex/hooks.json"
+  echo "  + .codex/hooks/ + .codex/hooks.json (guardy kita, PreToolUse)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # Codex czyta skille natywnie (.agents/skills i .codex/skills) — agenci i
     # skille z kita lądują jako katalogi SKILL.md, nie jako TOML-prompts
@@ -987,6 +1006,14 @@ install_vscode() {
       "$TARGET/.github/copilot-instructions.md"
     echo "  + .github/copilot-instructions.md"
   fi
+  # Guardy kita przed każdym narzędziem Copilota (VS Code Local i Copilot CLI czytają
+  # `.github/hooks/*.json`): PreToolUse woła invoke-hook.js --to copilot, deny działa
+  # jak w Claude Code. bash-guard/linters-guard/rtk-check zostają wyłącznie dla Claude
+  # Code — Copilot ma jedno narzędzie powłoki, więc nie ma czego rozdzielać.
+  install_guards "$TARGET/.github/hooks"
+  cp "$KIT_ROOT/templates/vscode/github/hooks/kit-guards.json" \
+    "$TARGET/.github/hooks/kit-guards.json"
+  echo "  + .github/hooks/ + .github/hooks/kit-guards.json (guardy kita, PreToolUse)"
   # rtk dla Copilota istnieje tylko per-repo (`rtk init --copilot` nie ma trybu globalnego),
   # a bootstrap nadpisuje copilot-instructions.md — więc hook idzie z kita, nie z `rtk init`.
   # No-op bez `rtk` w PATH: hook nie odpali, Copilot przepuszcza komendę bez zmian.
@@ -1024,6 +1051,13 @@ install_antigravity() {
   mkdir -p "$TARGET/.agents"
   fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
   echo "  + .agents/mcp_config.json"
+  # Guardy kita przed każdym narzędziem Antigravity: workspace'owy `.agents/hooks.json`
+  # (nazwany hook `kit-guards`, PreToolUse) woła invoke-hook.js --to antigravity.
+  # Plik dzielimy z użytkownikiem — scalamy wyłącznie klucz kita (`kit-guards`).
+  install_guards "$TARGET/.agents/hooks"
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/antigravity_hooks.py" install \
+    "$TARGET/.agents/hooks.json" "$KIT_ROOT/templates/antigravity/hooks.json"
+  echo "  + .agents/hooks/ + .agents/hooks.json (guardy kita, PreToolUse)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # agy (Antigravity CLI) nie zna workflow — tylko skille .agents/skills/<nazwa>/SKILL.md.
     "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills"

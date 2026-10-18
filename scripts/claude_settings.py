@@ -30,6 +30,7 @@ GUARD_MARKERS: tuple[str, ...] = (
     "git-guard.mjs",
     "bash-guard.mjs",
     "sensitive-files-guard.mjs",
+    "server-guard.mjs",
     "linters-guard.mjs",
     "rtk-check.mjs",
     # Guards v1 — tylko do prune przy reinstalacji.

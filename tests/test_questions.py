@@ -101,6 +101,10 @@ class TestCatalog(unittest.TestCase):
         self.assertIn("packages/", out)
         self.assertIn("`codegen`", out.split("## Pominięte")[1])
 
+    def test_render_mentions_server_section(self) -> None:
+        out = render_catalog(self.manifest, _values())
+        self.assertIn("## Sekcja `server:`", out)
+
 
 MONOREPO = {
     "backend/pyproject.toml": '[project]\ndependencies = ["django>=5.2"]\n',
