@@ -871,7 +871,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"` |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
-| `/night-run`  | Nocna praca na liście issue pod `/goal`              | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
+| `/night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
 
 
 
@@ -1005,9 +1005,9 @@ Kontrakt tych agentów: `readonly` — **nie edytują plików**, nie dają gotow
 
 ### `/night-run` — lista issue przez noc
 
-Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/goal` pilnuje pętli, a `/night-run` daje procedurę: na każdy ticket `/git-start` → test-first → szybkie bramki → `/git-commit` → review na diffie → `/git-end` → CI → merge → jeden raport na PR i zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
+Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/night-run` działa sam (wznawia go heartbeat `CronCreate`, `/goal` opcjonalny) i daje procedurę: na każdy ticket `/git-start` → test-first → szybkie bramki → `/git-commit` → review na diffie → `/git-end` → CI → merge → jeden raport na PR i zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
 
-Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako subagent). Sam nie czyta kodu: na ticket odpala świeżego subagenta ticketu, a review robi osobny świeży subagent na samym `git diff`. Dzięki temu żaden kontekst nie puchnie do 200k, a każda tura nie czyta go od nowa. Niczego nie dopisujesz do overlay:
+Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako subagent). Sam nie czyta kodu: na ticket odpala świeżego subagenta ticketu, a review robi osobny świeży subagent na samym `git diff` (albo — przy skillach review z argumentów — orkiestrator przez Skill, biorąc od skilla tylko tabelę findingów). Dzięki temu żaden kontekst nie puchnie do 200k, a każda tura nie czyta go od nowa. Niczego nie dopisujesz do overlay:
 
 - **Gałąź bazowa:** `dev`, jeśli `origin/dev` istnieje i nie jest w tyle za gałęzią domyślną; inaczej gałąź domyślna repo. Porzucony `dev` nie przejmie nocy.
 - **Plik kontekstu nocy** (`~/.cache/night-run-<repo>-<data>/context.md`): mapa aplikacji, konwencje, pułapki toolchainu z pamięci projektu i overlay. Po każdym tickecie orkiestrator dopisuje, co doszło (modele, serwisy, endpointy). Subagent czyta ten plik zamiast AGENTS.md, BUGBOT.md i wszystkich ADR-ów. Katalog w `~/.cache` przeżywa restart hosta (`/tmp` po restarcie kontenera znika). Commit po każdym zielonym kroku, a deny guarda (`server-guard:` / `git-guard:` w powodzie) to reguła, nie awaria — nie obchodzisz jej i nie liczysz do prób naprawy. Na VPS (bundle z `infra:vps-lightweight`) kroki odrzucane przez guard idą jako „tylko CI”, a brak checków CI = brak merge.
@@ -1016,7 +1016,15 @@ Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako 
 - **Koszt:** po każdym tickecie snippet `python3` liczy z transkryptów subagentów tury, tokeny (input / cache_creation / cache_read / output), maks. kontekst i czas. Wynik trafia do `NIGHT-RUN REPORT`.
 - Wybrana baza, bramki, model i każde założenie trafiają do `NIGHT-RUN REPORT`.
 
-Sędzia `/goal` widzi tylko transkrypt, więc warunek żąda dowodów w rozmowie:
+Bez `/goal`, z wykonawcą headless i wskazanym review:
+
+```text
+/night-run #150 #151 /headless opencode --timeout 90 "implementacja i testy" /review-edge /review-bugbot
+```
+
+`/headless` zastępuje implementację w subagencie ticketu (subagent pilnuje wrappera, sprawdza raport i commituje resztę); skille review uruchamia orkiestrator przez Skill, nieznany skill albo wykonawca (spoza `clients:` lub równy hostowi) zatrzymuje noc na starcie jako needs-human, a klient bez `/headless` wraca do implementacji subagentem. Wykonawca i review każdego ticketu trafiają do `NIGHT-RUN REPORT`.
+
+Pod `/goal` sędzia widzi tylko transkrypt, więc warunek żąda dowodów w rozmowie:
 
 ```text
 /goal Wykonaj issue #150–#157 wg /night-run, model: sonnet. Koniec, gdy w transkrypcie jest
