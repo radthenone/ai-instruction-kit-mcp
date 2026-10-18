@@ -2,7 +2,7 @@
 
 Bootstrap: `--clients antigravity` kładzie guardy kita w `.agents/hooks/` oraz
 workspace'owy `.agents/hooks.json` — nazwany hook `kit-guards` z matcherami
-`run_command`, `call_mcp_tool` i narzędziami plikowymi. `.agents/hooks.json` dzielimy
+`run_command`, `call_mcp_tool|^mcp_` i narzędziami plikowymi. `.agents/hooks.json` dzielimy
 z użytkownikiem (własne hooki), więc scala się tylko klucz kita, a `prune`
 zdejmuje wyłącznie ten klucz. Adapter `invoke-hook.js --to antigravity`
 przyjmuje payload PreToolUse Antigravity (`toolCall.name` + `toolCall.args`)
@@ -176,6 +176,23 @@ class AntigravityInvokeHookAdapterTest(unittest.TestCase):
         )
         self.assertEqual(out.get("decision"), "allow")
 
+    def test_server_guard_deny_prefixed_playwright_mcp_on_vps(self) -> None:
+        """Na wypadek nazw `mcp_<server>_<tool>` (IDE / przyszłe wersje) — matcher `^mcp_`."""
+        out = _run_hook(
+            "server-guard.mjs",
+            _antigravity("mcp_playwright_browser_click", {"element": "button"}),
+            env={**VPS, "KIT_HOST_PROFILE": "vps"},
+        )
+        self.assertEqual(out.get("decision"), "deny")
+
+    def test_server_guard_other_prefixed_mcp_allowed_on_vps(self) -> None:
+        out = _run_hook(
+            "server-guard.mjs",
+            _antigravity("mcp_github_create_issue", {"title": "x"}),
+            env={**VPS, "KIT_HOST_PROFILE": "vps"},
+        )
+        self.assertEqual(out.get("decision"), "allow")
+
     def test_mcp_without_server_name_denied(self) -> None:
         out = _run_hook(
             "server-guard.mjs",
@@ -227,6 +244,12 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
         # Guardy tylko dla Claude nie trafiają do Antigravity.
         self.assertFalse((hooks / "bash-guard.mjs").exists())
 
+    def test_kit_marker_points_at_installed_file(self) -> None:
+        from guides.cli import CLIENT_KIT_MARKERS
+
+        workspace = self._install("antigravity")
+        self.assertTrue((workspace / CLIENT_KIT_MARKERS["antigravity"]).is_file(), CLIENT_KIT_MARKERS)
+
     def test_hooks_json_is_parity_with_template_when_absent(self) -> None:
         workspace = self._install("antigravity")
         installed = workspace / ".agents" / "hooks.json"
@@ -239,8 +262,11 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
         pre = data["kit-guards"]["PreToolUse"]
         matchers = [entry["matcher"] for entry in pre]
         self.assertIn("run_command", matchers)
-        self.assertIn("call_mcp_tool", matchers)
-        file_tools = {n for m in matchers for n in m.split("|")}
+        self.assertIn("call_mcp_tool|^mcp_", matchers)
+        file_matcher = next(m for m in matchers if "view_file" in m)
+        # Zakotwiczony: `view_file` nie może łapać `view_file_outline` itp.
+        self.assertTrue(file_matcher.startswith("^(") and file_matcher.endswith(")$"), file_matcher)
+        file_tools = set(file_matcher[2:-2].split("|"))
         for tool in ("view_file", "write_to_file", "replace_file_content", "multi_replace_file_content", "edit_file"):
             with self.subTest(tool=tool):
                 self.assertIn(tool, file_tools)
@@ -258,7 +284,7 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
         ]["PreToolUse"]
         cmd_entry = next(e for e in pre if e["matcher"] == "run_command")
         self.assertTrue(any("server-guard.mjs" in h["command"] for h in cmd_entry["hooks"]), cmd_entry)
-        mcp_entry = next(e for e in pre if e["matcher"] == "call_mcp_tool")
+        mcp_entry = next(e for e in pre if e["matcher"] == "call_mcp_tool|^mcp_")
         self.assertTrue(any("server-guard.mjs" in h["command"] for h in mcp_entry["hooks"]), mcp_entry)
 
     def test_reinstall_merges_kit_key_without_clobbering_user_hooks(self) -> None:

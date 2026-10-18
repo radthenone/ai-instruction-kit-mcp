@@ -10,7 +10,7 @@ Użycie:
 użytkownika — trzyma jego własne nazwane hooki obok kitowego. Kit dokłada tam
 wyłącznie nazwany hook `kit-guards` i tylko jego zabiera przy prune;
 reinstalacja podmienia klucz kita zamiast go duplikować. Gdy plik istnieje, ale
-nie da się sparsować (uszkodzony JSON), oryginał idzie do `.bak`, a wpis kita
+nie da się sparsować (uszkodzony JSON), oryginał idzie do `.bak` (kolejne do `.bak.N`, starszy backup zostaje), a wpis kita
 piszemy od zera — cicho zgubiony plik byłby gorszy niż jawny backup.
 """
 
@@ -50,7 +50,7 @@ def main(argv: list[str]) -> int:
         if not target.is_file():
             return 0
         try:
-            data = json.loads(target.read_text(encoding="utf-8"))
+            data = json.loads(target.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             # Nie umiemy odróżnić wpisu kita od cudzego — zostawiamy plik w spokoju.
             return 0
@@ -72,13 +72,17 @@ def main(argv: list[str]) -> int:
         target.write_text(template_text, encoding="utf-8", newline="\n")
         return 0
 
-    old_text = target.read_text(encoding="utf-8")
+    old_text = target.read_text(encoding="utf-8-sig")
     try:
         data = json.loads(old_text)
         if not isinstance(data, dict):
             raise ValueError("top-level nie jest obiektem")
     except (OSError, ValueError) as exc:
         backup = target.with_name(target.name + ".bak")
+        n = 1
+        while backup.exists():  # starszego backupu nie nadpisujemy
+            backup = target.with_name(f"{target.name}.bak.{n}")
+            n += 1
         backup.write_text(old_text, encoding="utf-8", newline="\n")
         print(
             f"  ! {target.name}: nie da się scalić ({exc.__class__.__name__}) — oryginał w "
