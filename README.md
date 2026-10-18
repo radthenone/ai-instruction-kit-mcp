@@ -1345,6 +1345,45 @@ myli; normalnie niczego nie eksportujesz); heurystyka 1:1 z `host_profile.py`
 desktopu) → aktywny; w pozostałych przypadkach → allow. Na PC i w CI ten sam
 zainstalowany guard przepuszcza wszystko.
 
+**Gdzie guard działa, a gdzie nie.** Zakres jest per host i rozstrzyga się w
+runtime, tym samym plikiem hooka:
+
+- **Aktywny:** mały linuksowy VPS albo kontener serwerowy (heurystyka wyżej:
+  CPU ≤ 2, RAM ≤ 8 GB, swap 0, wirtualizacja albo brak desktopu).
+- **Nieaktywny:** Windows (także Git Bash i PowerShell), macOS, WSL, Codespaces /
+  devcontainer i CI — ten sam zainstalowany guard przepuszcza tam wszystko.
+
+Nic nie ustawia się per projekt: ten sam zacommitowany guard działa identycznie
+w repo kita i w projektach aplikacyjnych na obu maszynach — na
+PC nie blokuje, na VPS blokuje. Osobnej konfiguracji „tylko lokalnie” nie ma.
+
+**Korekta heurystyki per maszyna.** Gdy heurystyka pomyli się w którąkolwiek
+stronę, wymuś profil zmienną środowiskową na **tej maszynie** — nie w repo:
+
+```sh
+# Linux / VPS: ~/.profile albo ~/.bashrc (dotyczy tylko tego hosta)
+export KIT_HOST_PROFILE=local   # PC, który heurystyka fałszywie uznała za VPS
+export KIT_HOST_PROFILE=vps     # VPS, którego heurystyka nie rozpoznała
+```
+
+```powershell
+# Windows (PowerShell): trwała zmienna użytkownika, nowe powłoki ją widzą
+setx KIT_HOST_PROFILE local
+```
+
+Nie używaj do tego `server.guard: off` w Profilu: Profil jest commitowany, więc
+wyłączyłby guard **także na VPS**. `server.guard: off` ma sens tylko w repo, które
+nigdy nie trafia na VPS.
+
+**Wdrożenie nowej wersji guarda w projekcie.** Guardy jadą z bootstrapem/`reload`,
+nie osobno:
+
+1. Zaktualizuj klon kita (`git pull`).
+2. W projekcie uruchom `kit-ai reload` — podmienia pliki hooków i renderuje
+   `server-guard.json` na nowo.
+3. Zacommituj zmienione pliki hooków w projekcie (`.claude/hooks/…`, `.codex/…`
+   itd.) — to one jadą na VPS po `git pull`.
+
 **Domyślne deny kita** (każde z powodem i alternatywą; `allow` wygrywa z `deny`):
 
 | Kategoria | Deny | Allow (świadomie) | Powód / alternatywa |
@@ -1364,7 +1403,9 @@ Sprawdzana jest też komenda za launcherem: `uv [opcje] run [flagi] X`, `npx` /
 `bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X` — `uv run --no-sync pytest -n 4`
 to deny, `uv run --no-sync ruff` allow. Separatory w cudzysłowach i treść heredoca
 to dane, nie komendy (`git commit -m "…; docker …"` i body PR przez heredoc
-przechodzą). Dopasowanie po tokenach od początku segmentu (`task` nie łapie
+przechodzą). Backticki i `$( … )` w pojedynczych apostrofach też są danymi — bash
+ich tam nie wykonuje (``--body 'Blokuje `docker compose up`'`` przechodzi); w podwójnych
+cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` nie łapie
 `taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.

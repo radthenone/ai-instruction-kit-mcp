@@ -143,11 +143,70 @@ def _skip_heredocs(command: str, i: int, pending: list[tuple[bool, str]]) -> int
     return i
 
 
+def _mask_single_quotes(text: str) -> str:
+    """Zamień treść pojedynczych apostrofów na spacje (ta sama długość).
+
+    Bash nie wykonuje w nich podstawień `` `…` `` ani ``$( … )`` (#206), więc
+    dopasowania tych wzorców liczone na zamaskowanym tekście wskazują oryginał.
+    """
+    out: list[str] = []
+    quote = ""
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if quote in ("'", "$'"):
+            # W `$'…'` backslash escapuje także apostrof (`$'it\'s'`).
+            if quote == "$'" and c == "\\" and i + 1 < n:
+                out.append("  ")
+                i += 2
+                continue
+            out.append(" ")
+            if c == "'":
+                quote = ""
+            i += 1
+            continue
+        if quote == '"':
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                quote = ""
+            i += 1
+            continue
+        if c == "$" and text[i + 1 : i + 2] == "'":
+            quote = "$'"
+            out.append("  ")
+            i += 2
+            continue
+        if c == "'":
+            quote = "'"
+            out.append(" ")
+            i += 1
+            continue
+        if c == '"':
+            quote = '"'
+            out.append(c)
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            out.append(text[i : i + 2])
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def split_segments(command: str) -> list[str]:
     """Podziel komendę na segmenty + wnętrza `bash -c` / `$(…)` / backticków.
 
     Separatory (`&&`, `||`, `;`, `|`, `&`, `(`, `)`, nowa linia) liczą się tylko poza
-    cudzysłowami; treść heredoca jest pomijana — to dane, nie komendy.
+    cudzysłowami; treść heredoca jest pomijana — to dane, nie komendy. Podstawienia
+    `` `…` `` / ``$( … )`` w pojedynczych apostrofach też są danymi (#206); w `bash -c '…'`
+    czytamy surowy segment, bo pojedyncze apostrofy `-c` to wykonywany skrypt.
     """
     segments: list[str] = []
     buf: list[str] = []
@@ -211,8 +270,9 @@ def split_segments(command: str) -> list[str]:
             inner = next((g for g in match.groups() if g), "")
             if inner.strip():
                 extra.extend(split_segments(inner))
+        code = _mask_single_quotes(seg)
         for regex in (_SUBSHELL, _BACKTICK):
-            for match in regex.finditer(seg):
+            for match in regex.finditer(code):
                 if match.group(1).strip():
                     extra.extend(split_segments(match.group(1)))
     return segments + extra

@@ -235,6 +235,67 @@ function skipHeredocs(cmd, i, pending) {
   return i;
 }
 
+// Treść pojedynczych apostrofów to dane — bash nie wykonuje w nich podstawień
+// backticków ani `$( … )` (#206). Zamieniamy ją na spacje tej samej długości, żeby
+// dopasowania liczone na zamaskowanym tekście wskazywały oryginał.
+function maskSingleQuotes(text) {
+  let out = "";
+  let quote = "";
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (quote === "'" || quote === "$'") {
+      // W `$'…'` backslash escapuje także apostrof (`$'it\'s'`).
+      if (quote === "$'" && c === "\\" && i + 1 < text.length) {
+        out += "  ";
+        i += 2;
+        continue;
+      }
+      out += " ";
+      if (c === "'") quote = "";
+      i += 1;
+      continue;
+    }
+    if (quote === '"') {
+      out += c;
+      if (c === "\\" && i + 1 < text.length) {
+        out += text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === '"') quote = "";
+      i += 1;
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "'") {
+      quote = "$'";
+      out += "  ";
+      i += 2;
+      continue;
+    }
+    if (c === "'") {
+      quote = "'";
+      out += " ";
+      i += 1;
+      continue;
+    }
+    if (c === '"') {
+      quote = '"';
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === "\\" && i + 1 < text.length) {
+      out += text.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 function splitSegments(cmd) {
   cmd = String(cmd);
   const segments = [];
@@ -303,8 +364,11 @@ function splitSegments(cmd) {
       const inner = m[1] || m[2] || m[3] || "";
       if (inner.trim()) extra.push(...splitSegments(inner));
     }
+    // Maskowanie tylko dla podstawień: `bash -c '…'` dalej czyta surowy segment,
+    // bo pojedyncze apostrofy `-c` to skrypt wykonywany przez powłokę.
+    const code = maskSingleQuotes(seg);
     for (const regex of [SUBSHELL, BACKTICK]) {
-      for (const m of seg.matchAll(regex)) {
+      for (const m of code.matchAll(regex)) {
         if (m[1].trim()) extra.push(...splitSegments(m[1]));
       }
     }
