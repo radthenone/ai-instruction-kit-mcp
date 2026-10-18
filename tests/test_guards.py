@@ -60,6 +60,9 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git stash", "allow"),
     ("git restore src/a.py", "allow"),
     ("git commit --no-verify -m x", "allow"),
+    # Tekst w ciele heredoca z cytowanym ogranicznikiem i w apostrofach to dane (#206).
+    ("python3 - <<'EOF'\nprint(1)\ngit push origin master\nEOF", "allow"),
+    ("sed -i 's|x|git push origin master|' f.md", "allow"),
     ("find . -name '*.tmp' -delete", "allow"),
     ("rm -rf node_modules", "allow"),
     ("rm -rf build/", "allow"),
@@ -351,6 +354,13 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("gh pr create --body \"$(cat <<'EOF'\nUruchom docker compose up\nuv sync\nEOF\n)\"", "allow"),
     ("cat <<EOF > notes.md\ndocker compose up\nEOF\ngit status", "allow"),
     ("cat <<EOF > notes.md\ntext\nEOF\ndocker compose up", "deny"),
+    # Backticki w pojedynczych apostrofach to dane, nie podstawienie komendy (#206).
+    ("sed -i 's|- `uv run python -m unittest`|x|' f.md", "allow"),
+    ("gh pr create --title t --body 'Blokuje `docker compose up` na VPS'", "allow"),
+    ("cat <<'E' > f\nuv run python -m x\nE\ngit status", "allow"),
+    ('echo "uruchom docker compose up"', "allow"),
+    ("uv run python -m x", "deny"),
+    ("echo $(uv run python -m x)", "deny"),
     # Przypisanie w linii (review #8) i drobne (review #10).
     ("UV_NO_SYNC=1 uv run ruff", "allow"),
     ("command -v docker", "allow"),

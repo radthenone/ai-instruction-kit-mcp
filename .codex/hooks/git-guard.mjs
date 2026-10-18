@@ -58,18 +58,107 @@ const command = String(payload.command || (payload.tool_input || {}).command || 
 if (!command.trim()) allow();
 
 // Jedna spacja między tokenami — wzorce niżej zakładają `[ ]`, nie `\s+`.
-const cmd = command.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim();
+const collapse = (text) => text.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim();
+// Treść heredoca i pojedynczych apostrofów to dane — bash jej nie wykonuje jako
+// komend (#206). Dlatego wzorce komend gita liczymy na `code`. `cmd` (bez samego
+// ciała heredoca) zostaje dla celów mutacji: ścieżka w apostrofach to dalej ścieżka.
+const commandNoHeredoc = stripHeredocs(command);
+const code = collapse(stripSingleQuotes(commandNoHeredoc));
+const cmd = collapse(commandNoHeredoc);
 const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
 // też łapie — prefiks rtk jest przed `git`, nie w środku.
 const B = "(^|[ ;&|(])";
 
+// Usuń ciało heredoca (`<<EOF`, `<<'EOF'`, `<<-EOF`) razem z ogranicznikiem —
+// bash nie wykonuje go jako komend, więc `git push origin master` w skrypcie
+// generującym treść nie może wyzwalać deny (#206).
+function stripHeredocs(text) {
+  const HEREDOC = /<<(?!<)(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    HEREDOC.lastIndex = i;
+    const h = HEREDOC.exec(text);
+    if (!h || h.index !== i) {
+      out += text[i];
+      i += 1;
+      continue;
+    }
+    const lineEnd = text.indexOf("\n", HEREDOC.lastIndex);
+    if (lineEnd < 0) {
+      out += text.slice(i);
+      break;
+    }
+    out += text.slice(i, lineEnd + 1);
+    i = lineEnd + 1;
+    const stripTabs = h[1] === "-";
+    const delim = h[3];
+    while (i < text.length) {
+      const end = text.indexOf("\n", i);
+      const line = end < 0 ? text.slice(i) : text.slice(i, end);
+      i = end < 0 ? text.length : end + 1;
+      if ((stripTabs ? line.replace(/^\t+/, "") : line).trim() === delim) break;
+    }
+  }
+  return out;
+}
+
+// Zamień treść pojedynczych apostrofów na spacje — bash nie wykonuje w nich
+// komend ani podstawień, więc zawarty tam tekst nie jest komendą (#206).
+// Podwójne cudzysłowy zostają: bash wykonuje w nich `$( … )` i backticki.
+function stripSingleQuotes(text) {
+  let out = "";
+  let quote = "";
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (quote === "'") {
+      out += " ";
+      if (c === "'") quote = "";
+      i += 1;
+      continue;
+    }
+    if (quote === '"') {
+      out += c;
+      if (c === "\\" && i + 1 < text.length) {
+        out += text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === '"') quote = "";
+      i += 1;
+      continue;
+    }
+    if (c === "'") {
+      quote = "'";
+      out += " ";
+      i += 1;
+      continue;
+    }
+    if (c === '"') {
+      quote = '"';
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === "\\" && i + 1 < text.length) {
+      out += text.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 // --- git push ----------------------------------------------------------------
 
 // Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
 // `rm -f` obok pusha na feature branch to nie push na master ani force.
-const segments = cmd.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
+const segments = code.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
 
 function targetsProtectedRef(has) {
   const checks = [
@@ -106,11 +195,12 @@ for (const seg of segments) {
 
 // --- git: nieodwracalne ---------------------------------------------------------
 
-if (has(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
-if (has(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
+const hasCode = (re) => new RegExp(re, "i").test(code);
+if (hasCode(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
+if (hasCode(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
 // Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
-if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(cmd)) deny("git branch -D — użyj -d (tylko zmergowane)");
-if (has(`${B}git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`)) {
+if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(code)) deny("git branch -D — użyj -d (tylko zmergowane)");
+if (hasCode(`${B}git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`)) {
   deny("git checkout . / checkout -- <ścieżka> — kasuje niezacommitowane zmiany; użyj git stash");
 }
 
