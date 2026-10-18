@@ -2,7 +2,7 @@
 
 Bootstrap: `--clients antigravity` kładzie guardy kita w `.agents/hooks/` oraz
 workspace'owy `.agents/hooks.json` — nazwany hook `kit-guards` z matcherami
-`run_command`, `mcp_.*` i narzędziami plikowymi. `.agents/hooks.json` dzielimy
+`run_command`, `call_mcp_tool` i narzędziami plikowymi. `.agents/hooks.json` dzielimy
 z użytkownikiem (własne hooki), więc scala się tylko klucz kita, a `prune`
 zdejmuje wyłącznie ten klucz. Adapter `invoke-hook.js --to antigravity`
 przyjmuje payload PreToolUse Antigravity (`toolCall.name` + `toolCall.args`)
@@ -62,6 +62,13 @@ def _antigravity(tool_name: str, args: dict) -> dict:
         "toolCall": {"name": tool_name, "args": args},
         "stepIdx": 3,
     }
+
+
+def _mcp(server: str, tool: str, arguments: dict) -> dict:
+    return _antigravity(
+        "call_mcp_tool",
+        {"ServerName": server, "ToolName": tool, "Arguments": arguments, "toolAction": "x"},
+    )
 
 
 @unittest.skipUnless(NODE, "brak node")
@@ -152,10 +159,11 @@ class AntigravityInvokeHookAdapterTest(unittest.TestCase):
         self.assertEqual(out.get("decision"), "allow")
 
     def test_server_guard_deny_playwright_mcp_on_vps(self) -> None:
-        """Antigravity nazywa narzędzia MCP `mcp_<server>_<tool>` (jedno podkreślenie)."""
+        """Antigravity (agy 1.3.0) woła MCP jednym narzędziem `call_mcp_tool`
+        z `ServerName`/`ToolName`/`Arguments` — payload złapany z żywej sesji."""
         out = _run_hook(
             "server-guard.mjs",
-            _antigravity("mcp_playwright_browser_click", {"element": "button"}),
+            _mcp("playwright", "browser_click", {"element": "button"}),
             env={**VPS, "KIT_HOST_PROFILE": "vps"},
         )
         self.assertEqual(out.get("decision"), "deny")
@@ -163,10 +171,25 @@ class AntigravityInvokeHookAdapterTest(unittest.TestCase):
     def test_server_guard_other_mcp_allowed_on_vps(self) -> None:
         out = _run_hook(
             "server-guard.mjs",
-            _antigravity("mcp_github_create_issue", {"title": "x"}),
+            _mcp("context7", "resolve-library-id", {"libraryName": "react"}),
             env={**VPS, "KIT_HOST_PROFILE": "vps"},
         )
         self.assertEqual(out.get("decision"), "allow")
+
+    def test_mcp_without_server_name_denied(self) -> None:
+        out = _run_hook(
+            "server-guard.mjs",
+            _antigravity("call_mcp_tool", {"ToolName": "browser_click", "Arguments": {}}),
+            env={**VPS, "KIT_HOST_PROFILE": "vps"},
+        )
+        self.assertEqual(out.get("decision"), "deny")
+
+    def test_sensitive_guard_deny_env_edit_file(self) -> None:
+        out = _run_hook(
+            "sensitive-files-guard.mjs",
+            _antigravity("edit_file", {"TargetFile": str(KIT_ROOT / ".env")}),
+        )
+        self.assertEqual(out.get("decision"), "deny")
 
     def test_missing_policy_file_fails_closed(self) -> None:
         out = _run_hook("nie-ma-takiego.sh", _antigravity("run_command", {"CommandLine": "git status"}))
@@ -216,8 +239,11 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
         pre = data["kit-guards"]["PreToolUse"]
         matchers = [entry["matcher"] for entry in pre]
         self.assertIn("run_command", matchers)
-        self.assertTrue(any(m.startswith("mcp_") for m in matchers), matchers)
-        self.assertTrue(any("view_file" in m for m in matchers), matchers)
+        self.assertIn("call_mcp_tool", matchers)
+        file_tools = {n for m in matchers for n in m.split("|")}
+        for tool in ("view_file", "write_to_file", "replace_file_content", "multi_replace_file_content", "edit_file"):
+            with self.subTest(tool=tool):
+                self.assertIn(tool, file_tools)
         commands = " ".join(h["command"] for entry in pre for h in entry["hooks"])
         self.assertIn("--to antigravity", commands)
         self.assertIn("invoke-hook.js", commands)
@@ -232,7 +258,7 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
         ]["PreToolUse"]
         cmd_entry = next(e for e in pre if e["matcher"] == "run_command")
         self.assertTrue(any("server-guard.mjs" in h["command"] for h in cmd_entry["hooks"]), cmd_entry)
-        mcp_entry = next(e for e in pre if e["matcher"].startswith("mcp_"))
+        mcp_entry = next(e for e in pre if e["matcher"] == "call_mcp_tool")
         self.assertTrue(any("server-guard.mjs" in h["command"] for h in mcp_entry["hooks"]), mcp_entry)
 
     def test_reinstall_merges_kit_key_without_clobbering_user_hooks(self) -> None:

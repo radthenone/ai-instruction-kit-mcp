@@ -1231,7 +1231,7 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
 | `rtk-rewrite.json` | Copilot | `.github/hooks/`: PreToolUse → `rtk hook copilot` przepisuje komendy bash na `rtk <cmd>`. Copilot nie ma globalnego trybu rtk, stąd per-repo z kita. Pozostali klienci (Claude, Cursor, Codex, OpenCode) mają rtk globalnie per maszyna — instrukcja w `modules/core/tooling-rtk.md` |
 | `kit-guards.json` | Copilot | `.github/hooks/`: PreToolUse → `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` dla git-guard, server-guard i sensitive-files-guard. VS Code czyta PascalCase `PreToolUse` i `hookSpecificOutput.permissionDecision`; dla Copilot CLI zakładamy ten sam plik i top-level `permissionDecision` (niezweryfikowane). `deny` blokuje wywołanie, `allow` = pusty stdout (brak opinii, natywne potwierdzenia VS Code zostają) |
-| `.agents/hooks.json` | Antigravity | `.agents/hooks/`: PreToolUse (nazwany hook `kit-guards`) → `node hooks/invoke-hook.js <guard>.mjs --to antigravity`. Matchery: `run_command` → git-guard + server-guard; `mcp_.*` → server-guard; `view_file\|write_to_file\|replace_file_content\|multi_replace_file_content` → sensitive-files-guard. Plik dzielimy z użytkownikiem — `antigravity_hooks.py` scala i prune'uje tylko klucz `kit-guards`. `deny` blokuje wywołanie, `allow` tylko deleguje (nie auto-approve'uje) |
+| `.agents/hooks.json` | Antigravity | `.agents/hooks/`: PreToolUse (nazwany hook `kit-guards`) → `node hooks/invoke-hook.js <guard>.mjs --to antigravity`. Matchery: `run_command` → git-guard + server-guard; `call_mcp_tool` → server-guard; `view_file\|write_to_file\|replace_file_content\|multi_replace_file_content\|edit_file` → sensitive-files-guard. Plik dzielimy z użytkownikiem — `antigravity_hooks.py` scala i prune'uje tylko klucz `kit-guards`. `deny` blokuje wywołanie, `allow` tylko deleguje (nie auto-approve'uje) |
 
 **Zero `ask`** (ADR 0006): Guard odpowiada `allow` albo `deny`. W auto mode `ask` z hooka
 blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. Model dostaje
@@ -1310,11 +1310,13 @@ scala przy install i prune'uje przy odznaczeniu wyłącznie klucz `kit-guards`, 
 hooki zostają (nieparsowalny plik → `.bak` i wpis kita od zera). Komendy hooków startują
 z katalogu, w którym leży `hooks.json`, stąd `node hooks/invoke-hook.js … --to antigravity`.
 Adapter sprowadza narzędzia runtime (`run_command` z `CommandLine`, `view_file`
-z `AbsolutePath`, `write_to_file` / `replace_file_content` / `multi_replace_file_content`
-z `TargetFile`, MCP `mcp_<server>_<tool>`) do nazw i pól, które znają guardy; `run_command`
-bez `CommandLine` albo narzędzie plikowe bez ścieżki = deny. `allow` tylko deleguje do
-kolejnego hooka albo domyślnej polityki Antigravity (nie `auto_approve`), więc nie zdejmuje
-natywnych potwierdzeń. Timeout hooka (`timeout: 10`) przepuszcza wywołanie (fail-open).
+z `AbsolutePath`, `write_to_file` / `replace_file_content` / `multi_replace_file_content` /
+`edit_file` z `TargetFile`, MCP jednym narzędziem `call_mcp_tool` z `ServerName` / `ToolName` /
+`Arguments` → `mcp__<server>__<tool>`) do nazw i pól, które znają guardy; brak pola, którego
+guard potrzebuje, = deny. Sprawdzone na żywej sesji `agy` 1.3.0: `allow` nie omija polityki
+uprawnień Antigravity (w `-p` komenda i MCP dalej wymagają reguły `permissions.allow`),
+pusta decyzja i awaria hooka (exit ≠ 0) = deny, deny działa też z
+`--dangerously-skip-permissions`. Zachowanie przy przekroczeniu `timeout: 10` niesprawdzone.
 Znana luka: `grep_search`, `find_by_name` i `list_dir` nie są mapowane — sensitive-files-guard
 ich nie widzi. Wymaga `node` w PATH. Sprawdzone na `agy` 1.3.0 — `/hooks` listuje hook
 `kit-guards`; `bash-guard` / `linters-guard` / `rtk-check` zostają w Claude Code.
