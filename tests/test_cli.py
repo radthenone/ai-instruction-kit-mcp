@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 import yaml
+from _shell import posix_path, resolve_bash
 from test_bootstrap import KIT_ROOT, _BootstrapTestCase, _snapshot
 
 from guides import cli, server
@@ -237,11 +238,12 @@ class TestPruneAndRemove(_BootstrapTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / "app"
             app.mkdir()
-            (app / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+            # Bajty, nie write_text: na Windows dałby CRLF, a kit celowo zapisuje .gitignore w LF.
+            (app / ".gitignore").write_bytes(b"node_modules/\n")
             _write_user_files(app)
             before = _snapshot(app)
             self.assertEqual(_quiet_main("install", str(app), "--clients", "all")[0], 0)
-            (app / "BUGBOT.md").write_text("# moje reguły\n", encoding="utf-8")
+            (app / "BUGBOT.md").write_bytes("# moje reguły\n".encode())
             settings = app / ".claude" / "settings.json"
             data = json.loads(settings.read_text(encoding="utf-8"))
             data["permissions"] = {"allow": ["Bash(ls)"]}
@@ -300,14 +302,15 @@ class TestBashRejectsPresets(_BootstrapTestCase):
                 with self.subTest(flag=flag):
                     result = subprocess.run(
                         [
-                            "bash",
-                            str(KIT_ROOT / "scripts" / "bootstrap-project.sh"),
+                            resolve_bash() or "bash",
+                            posix_path(KIT_ROOT / "scripts" / "bootstrap-project.sh"),
                             tmp,
                             flag,
                             "x",
                         ],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
                         stdin=subprocess.DEVNULL,
                         check=False,
                     )
@@ -320,6 +323,14 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(cli.to_path("/m/projects/app", windows=True), Path("M:/projects/app"))
         self.assertEqual(cli.to_path("M:/projects/app", windows=True), Path("M:/projects/app"))
         self.assertEqual(cli.to_path("/m/projects", windows=False), Path("/m/projects"))
+
+    def test_questions_fall_back_to_defaults_on_eof(self) -> None:
+        # Windows: stdin z NUL ma isatty() == True, więc pytania padają mimo braku wejścia.
+        def eof(_prompt: str) -> str:
+            raise EOFError
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.ask_settings(None, None, interactive=True, input_fn=eof), ("pl", "all"))
 
     def test_questions_use_defaults_and_retry_invalid(self) -> None:
         answers = iter(["", "nope", "claude,codex"])

@@ -581,10 +581,15 @@ def collect_taskfile_commands(
 
 
 def collect_package_scripts(workspace: Path) -> dict[str, dict[str, str]]:
-    """Relatywna ścieżka `package.json` → `{skrypt: komenda}` (poza `node_modules`)."""
+    """Relatywna ścieżka `package.json` → `{skrypt: komenda}`.
+
+    Pomija `node_modules` i katalogi z kropką (`.ai/headless-runs`, `.worktrees`, …) —
+    to nie skrypty projektu, a różnią się między maszynami.
+    """
     found: dict[str, dict[str, str]] = {}
     for path in sorted(workspace.rglob("package.json")):
-        if "node_modules" in path.parts:
+        dirs = path.relative_to(workspace).parts[:-1]
+        if "node_modules" in dirs or any(part.startswith(".") for part in dirs):
             continue
         try:
             rel = path.relative_to(workspace).as_posix()

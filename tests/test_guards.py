@@ -176,6 +176,7 @@ def run_guard(name: str, payload: dict, env: dict[str, str] | None = None) -> di
         input=json.dumps(payload),
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env={**os.environ, **(env or {})},
         check=False,
     )
@@ -395,7 +396,7 @@ def run_server_guard(payload: dict, env: dict[str, str], config: dict | None = N
         (Path(tmp) / "server-guard.json").write_text(json.dumps(config), encoding="utf-8")
         proc = subprocess.run(
             [NODE or "node", str(Path(tmp) / "server-guard.mjs")],
-            input=json.dumps(payload), capture_output=True, text=True,
+            input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8",
             env={**os.environ, **env}, check=False,
         )
     assert proc.returncode == 0, proc.stderr
@@ -460,7 +461,7 @@ class ServerGuardTest(unittest.TestCase):
 
     def test_unreadable_payload_allowed_off_vps(self) -> None:
         proc = subprocess.run(
-            [NODE or "node", str(GUARDS / "server-guard.mjs")], input="{nope", capture_output=True, text=True,
+            [NODE or "node", str(GUARDS / "server-guard.mjs")], input="{nope", capture_output=True, text=True, encoding="utf-8",
             env={**os.environ, **VPS, "KIT_HOST_PROFILE": "local"}, check=False,
         )
         self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "allow")
@@ -469,7 +470,7 @@ class ServerGuardTest(unittest.TestCase):
         from guides.server_guard import DEFAULTS
 
         proc = subprocess.run(
-            [NODE or "node", str(GUARDS / "server-guard.mjs")], input="", capture_output=True, text=True,
+            [NODE or "node", str(GUARDS / "server-guard.mjs")], input="", capture_output=True, text=True, encoding="utf-8",
             env={**os.environ, "SERVER_GUARD_DUMP_DEFAULTS": "1"}, check=True,
         )
         self.assertEqual(json.loads(proc.stdout), [dict(r) for r in DEFAULTS])
@@ -539,6 +540,17 @@ class ServerGuardWrappersTest(unittest.TestCase):
     def _write(self, root: Path, rel: str, text: str) -> None:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8")
+
+    def test_package_json_in_dot_dirs_ignored(self) -> None:
+        from guides.server_guard import collect_package_scripts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "apps/web/package.json", json.dumps({"scripts": {"lint": "eslint src"}}))
+            self._write(root, ".ai/headless-runs/run/fixture/package.json", json.dumps({"scripts": {"build": "turbo run build"}}))
+            self._write(root, ".worktrees/x/package.json", json.dumps({"scripts": {"build": "next build"}}))
+
+            self.assertEqual(list(collect_package_scripts(root)), ["apps/web/package.json"])
 
     def test_taskfile_and_monorepo_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
