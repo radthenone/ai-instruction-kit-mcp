@@ -59,11 +59,15 @@ if (!command.trim()) allow();
 
 // Jedna spacja między tokenami — wzorce niżej zakładają `[ ]`, nie `\s+`.
 const collapse = (text) => text.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim();
-// Treść heredoca i pojedynczych apostrofów to dane — bash jej nie wykonuje jako
-// komend (#206). Dlatego wzorce komend gita liczymy na `code`. `cmd` (bez samego
-// ciała heredoca) zostaje dla celów mutacji: ścieżka w apostrofach to dalej ścieżka.
+// Powłoka czytająca heredoc wykonuje jego treść, nawet przy `<<'EOF'`.
+const SHELL_WORD = /(^|[\s;&|(])(bash|sh|zsh|dash|ksh|ssh|eval)(\s|$)/;
+
+// Treść, której bash nie wykonuje, to dane (#206): ciało heredoca z cytowanym
+// ogranicznikiem i pojedyncze apostrofy. Dlatego wzorce komend gita liczymy na `code`.
+// `cmd` (bez ciała heredoca) zostaje dla celów mutacji: ścieżka w apostrofach to dalej
+// ścieżka. Skrypty `bash -c '…'` / `eval '…'` są wykonywane — dokładamy je do `code`.
 const commandNoHeredoc = stripHeredocs(command);
-const code = collapse(stripSingleQuotes(commandNoHeredoc));
+const code = collapse([commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes).join(" ; "));
 const cmd = collapse(commandNoHeredoc);
 const has = (re) => new RegExp(re, "i").test(cmd);
 
@@ -71,76 +75,114 @@ const has = (re) => new RegExp(re, "i").test(cmd);
 // też łapie — prefiks rtk jest przed `git`, nie w środku.
 const B = "(^|[ ;&|(])";
 
-// Usuń ciało heredoca (`<<EOF`, `<<'EOF'`, `<<-EOF`) razem z ogranicznikiem —
-// bash nie wykonuje go jako komend, więc `git push origin master` w skrypcie
-// generującym treść nie może wyzwalać deny (#206).
+// Usuń ciało heredoca z cytowanym ogranicznikiem (`<<'EOF'`, `<<"EOF"`, `<<-'EOF'`),
+// gdy nie czyta go powłoka — bash nie wykonuje go jako komend (#206). Ciało bez
+// cytatu zostaje, bo bash wykonuje w nim `$( … )` i backticki; apostrofy w nim to
+// zwykłe znaki, więc je gasimy. `<<` liczymy tylko poza cudzysłowami.
 function stripHeredocs(text) {
-  const HEREDOC = /<<(?!<)(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
-  let out = "";
-  let i = 0;
-  while (i < text.length) {
-    HEREDOC.lastIndex = i;
-    const h = HEREDOC.exec(text);
-    if (!h || h.index !== i) {
-      out += text[i];
-      i += 1;
-      continue;
-    }
-    const lineEnd = text.indexOf("\n", HEREDOC.lastIndex);
-    if (lineEnd < 0) {
-      out += text.slice(i);
-      break;
-    }
-    out += text.slice(i, lineEnd + 1);
-    i = lineEnd + 1;
-    const stripTabs = h[1] === "-";
-    const delim = h[3];
-    while (i < text.length) {
-      const end = text.indexOf("\n", i);
-      const line = end < 0 ? text.slice(i) : text.slice(i, end);
-      i = end < 0 ? text.length : end + 1;
-      if ((stripTabs ? line.replace(/^\t+/, "") : line).trim() === delim) break;
-    }
-  }
-  return out;
-}
-
-// Zamień treść pojedynczych apostrofów na spacje — bash nie wykonuje w nich
-// komend ani podstawień, więc zawarty tam tekst nie jest komendą (#206).
-// Podwójne cudzysłowy zostają: bash wykonuje w nich `$( … )` i backticki.
-function stripSingleQuotes(text) {
+  const HEREDOC = /^<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/;
   let out = "";
   let quote = "";
+  let lineStart = 0;
+  let pending = [];
   let i = 0;
   while (i < text.length) {
     const c = text[i];
-    if (quote === "'") {
-      out += " ";
-      if (c === "'") quote = "";
-      i += 1;
-      continue;
-    }
-    if (quote === '"') {
+    if (quote) {
       out += c;
-      if (c === "\\" && i + 1 < text.length) {
+      if (c === "\\" && quote !== "'" && i + 1 < text.length) {
         out += text[i + 1];
         i += 2;
         continue;
       }
-      if (c === '"') quote = "";
+      if (c === quote.slice(-1)) quote = "";
       i += 1;
+      continue;
+    }
+    if (c === "\\" && i + 1 < text.length) {
+      out += text.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "'") {
+      quote = "$'";
+      out += "$'";
+      i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    const h = text.startsWith("<<", i) && text[i + 2] !== "<" ? HEREDOC.exec(text.slice(i)) : null;
+    if (h) {
+      const lineEnd = text.indexOf("\n", i);
+      const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
+      pending.push({ tabs: h[1] === "-", delim: h[3], quoted: h[2] !== "", shell: SHELL_WORD.test(line) });
+      out += h[0];
+      i += h[0].length;
+      continue;
+    }
+    out += c;
+    i += 1;
+    if (c !== "\n") continue;
+    for (const p of pending) {
+      while (i < text.length) {
+        const end = text.indexOf("\n", i);
+        const next = end < 0 ? text.length : end + 1;
+        const line = text.slice(i, next);
+        if (p.shell) out += line;
+        else if (!p.quoted) out += line.replace(/['"]/g, " ");
+        i = next;
+        const bare = line.replace(/\r?\n$/, "");
+        if ((p.tabs ? bare.replace(/^\t+/, "") : bare) === p.delim) break;
+      }
+    }
+    pending = [];
+    lineStart = i;
+  }
+  return out;
+}
+
+// Skrypty przekazane powłoce w apostrofach albo cudzysłowach (`bash -c '…'`,
+// `eval "…"`) — wykonywane, więc sprawdzamy je jak zwykłą komendę.
+function shellScripts(text) {
+  const re = /(?:^|[\s;&|(])(?:(?:ba|z|da|k)?sh(?:\s+-[A-Za-z]+)*\s+-[A-Za-z]*c[A-Za-z]*|eval)\s+(?:'([^']*)'|"((?:[^"\\]|\\.)*)")/g;
+  return [...text.matchAll(re)].map((m) => m[1] ?? m[2]);
+}
+
+// Zamień treść pojedynczych apostrofów (także `$'…'`) na spację — bash nie wykonuje
+// w nich komend ani podstawień, więc zawarty tam tekst nie jest komendą (#206).
+// Wyjątek: pojedyncze słowo (`'master'`) to zwykły argument — zostaje bez apostrofów,
+// żeby `git push origin 'master'` dalej był pushem na master.
+// Podwójne cudzysłowy zostają: bash wykonuje w nich `$( … )` i backticki.
+function stripSingleQuotes(text) {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "'") {
+      let j = i + 2;
+      while (j < text.length && text[j] !== "'") j += text[j] === "\\" ? 2 : 1;
+      out += " ";
+      i = j + 1;
       continue;
     }
     if (c === "'") {
-      quote = "'";
-      out += " ";
-      i += 1;
-      continue;
-    }
-    if (c === '"') {
-      quote = '"';
-      out += c;
-      i += 1;
+      let j = text.indexOf("'", i + 1);
+      if (j < 0) j = text.length;
+      const inner = text.slice(i + 1, j);
+      out += /^[A-Za-z0-9_.\/:@+=,-]*$/.test(inner) ? inner : " ";
+      i = j + 1;
       continue;
     }
     if (c === "\\" && i + 1 < text.length) {

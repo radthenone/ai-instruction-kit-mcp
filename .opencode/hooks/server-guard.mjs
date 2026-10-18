@@ -244,7 +244,13 @@ function maskSingleQuotes(text) {
   let i = 0;
   while (i < text.length) {
     const c = text[i];
-    if (quote === "'") {
+    if (quote === "'" || quote === "$'") {
+      // W `$'…'` backslash escapuje także apostrof (`$'it\'s'`).
+      if (quote === "$'" && c === "\\" && i + 1 < text.length) {
+        out += "  ";
+        i += 2;
+        continue;
+      }
       out += " ";
       if (c === "'") quote = "";
       i += 1;
@@ -259,6 +265,12 @@ function maskSingleQuotes(text) {
       }
       if (c === '"') quote = "";
       i += 1;
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "'") {
+      quote = "$'";
+      out += "  ";
+      i += 2;
       continue;
     }
     if (c === "'") {

@@ -155,7 +155,12 @@ def _mask_single_quotes(text: str) -> str:
     n = len(text)
     while i < n:
         c = text[i]
-        if quote == "'":
+        if quote in ("'", "$'"):
+            # W `$'…'` backslash escapuje także apostrof (`$'it\'s'`).
+            if quote == "$'" and c == "\\" and i + 1 < n:
+                out.append("  ")
+                i += 2
+                continue
             out.append(" ")
             if c == "'":
                 quote = ""
@@ -170,6 +175,11 @@ def _mask_single_quotes(text: str) -> str:
             if c == '"':
                 quote = ""
             i += 1
+            continue
+        if c == "$" and text[i + 1 : i + 2] == "'":
+            quote = "$'"
+            out.append("  ")
+            i += 2
             continue
         if c == "'":
             quote = "'"

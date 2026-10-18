@@ -63,6 +63,17 @@ GIT_GUARD: list[tuple[str, str]] = [
     # Tekst w ciele heredoca z cytowanym ogranicznikiem i w apostrofach to dane (#206).
     ("python3 - <<'EOF'\nprint(1)\ngit push origin master\nEOF", "allow"),
     ("sed -i 's|x|git push origin master|' f.md", "allow"),
+    ("cat <<A <<'B'\nx\nA\ngit push origin master\nB", "allow"),
+    # Wykonywana treść dalej łapie deny: heredoc bez cytatu, powłoka czytająca heredoc,
+    # `<<` w cudzysłowie, `$'…'`, `bash -c` / `eval`, ref w apostrofach.
+    ("cat <<EOF\n$(git reset --hard)\nEOF", "deny"),
+    ("cat <<EOF > notes.md\ndon't panic\nEOF\ngit reset --hard", "deny"),
+    ("bash <<'EOF'\ngit push origin master\nEOF", "deny"),
+    ('echo "<<EOF"\ngit reset --hard', "deny"),
+    ("echo $'it\\'s' ; git reset --hard", "deny"),
+    ("bash -c 'git push origin master'", "deny"),
+    ("eval 'git reset --hard'", "deny"),
+    ("git push origin 'master'", "deny"),
     ("find . -name '*.tmp' -delete", "allow"),
     ("rm -rf node_modules", "allow"),
     ("rm -rf build/", "allow"),
@@ -361,6 +372,7 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ('echo "uruchom docker compose up"', "allow"),
     ("uv run python -m x", "deny"),
     ("echo $(uv run python -m x)", "deny"),
+    ("echo $'a\\'b' $(uv run python -m x)", "deny"),
     # Przypisanie w linii (review #8) i drobne (review #10).
     ("UV_NO_SYNC=1 uv run ruff", "allow"),
     ("command -v docker", "allow"),
