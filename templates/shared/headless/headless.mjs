@@ -31,15 +31,13 @@ const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
 
 // Numer ticketu z brancha `typ/<N>-slug`; inny branch (dev, detached, brak gita) — linia pominięta.
-const ticketLine = () => {
-  const n = /^[a-z]+\/(\d+)-/.exec(git("branch", "--show-current") || "")?.[1]
-  return n ? `\n- Ticket #${n}: przeczytaj \`gh issue view ${n} --comments\` — to specyfikacja zadania.` : ""
-}
+const ticketNumber = () => /^[a-z]+\/(\d+)-/.exec(git("branch", "--show-current") || "")?.[1]
 
-const footer = (runDir) => `
+const footer = (runDir, ticket) => `
 
 ---
-Zasady tej sesji (headless, bez użytkownika):${ticketLine()}
+Zasady tej sesji (headless, bez użytkownika):${ticket ? `
+- Ticket #${ticket}: przeczytaj \`gh issue view ${ticket} --comments\` — to specyfikacja zadania.` : ""}
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
 - Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`git worktree add --detach ${join(runDir, "base")} <ref>\`, na końcu \`git worktree remove ${join(runDir, "base")}\`.
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
@@ -244,7 +242,8 @@ async function main() {
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runsDir, ".gitignore"), "*\n")
   const logPath = join(runDir, "headless.log")
-  prompt += footer(runDir)
+  const ticket = ticketNumber()
+  prompt += footer(runDir, ticket)
 
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
@@ -252,6 +251,8 @@ async function main() {
     appendFileSync(logPath, text)
   }
   process.stdout.write(`[headless] log: ${logPath}\n`)
+  // Prompt nie trafia do logu — numer ticketu tak, żeby run dało się przypisać do issue.
+  if (ticket) log(`[headless] ticket #${ticket}\n`)
   const args = executor.args(opts.model, prompt)
   log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 

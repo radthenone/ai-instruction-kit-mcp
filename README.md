@@ -1139,7 +1139,9 @@ plan 5–10 kroków przy tickecie z więcej niż 3 kryteriami albo więcej niż 
 test-first z lokalnym commitem po każdym zielonym kroku, lokalnie tylko testy dotknięte
 zmianą i szybkie bramki (pełny zestaw robi CI), na VPS `uv run --no-sync`, maks. 2 próby
 naprawy tego samego błędu, raport `## Zmiany` / `## Testy` / `## Problemy`. Dlatego
-`/headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza. Push i PR robi host (`/git-end`) po review commitów.
+`/headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza.
+W logu runu linia `[headless] ticket #N`.
+Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
 do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie);
