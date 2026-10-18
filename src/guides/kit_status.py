@@ -26,6 +26,7 @@ _OVERWRITTEN_GLOBS: tuple[str, ...] = (
     "templates/opencode/command/*.md",
     "templates/opencode/plugins/*.js",
     "templates/vscode/github/copilot-instructions.md",
+    "templates/vscode/github/hooks/*.json",
     "templates/cursor/rules/*.mdc",
     "scripts/bootstrap-project.sh",
     "scripts/render_agent_commands.py",
@@ -260,7 +261,7 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
             "Zaktualizuj: `kit-ai reload` z klona kita albo narzędzie MCP `reload_workspace` "
             "(dry run najpierw) — język i klienci biorą się z Profilu. "
             "**Nadpisze** `.claude/agents/`, `.claude/commands/`, `.claude/hooks/`, "
-            "`.codex/skills/`, `.github/prompts/`, `mcp.json` — jeśli je ręcznie "
+            "`.codex/skills/`, `.github/prompts/`, `.github/hooks/`, `mcp.json` — jeśli je ręcznie "
             "edytowałeś, zrób `git diff` najpierw."
         )
     if manual:

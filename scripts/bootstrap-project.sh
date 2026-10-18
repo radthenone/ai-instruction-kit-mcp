@@ -999,6 +999,14 @@ install_vscode() {
       "$TARGET/.github/copilot-instructions.md"
     echo "  + .github/copilot-instructions.md"
   fi
+  # Guardy kita przed każdym narzędziem Copilota (VS Code Local i Copilot CLI czytają
+  # `.github/hooks/*.json`): PreToolUse woła invoke-hook.js --to copilot, deny działa
+  # jak w Claude Code. bash-guard/linters-guard/rtk-check zostają wyłącznie dla Claude
+  # Code — Copilot ma jedno narzędzie powłoki, więc nie ma czego rozdzielać.
+  install_guards "$TARGET/.github/hooks"
+  cp "$KIT_ROOT/templates/vscode/github/hooks/kit-guards.json" \
+    "$TARGET/.github/hooks/kit-guards.json"
+  echo "  + .github/hooks/ + .github/hooks/kit-guards.json (guardy kita, PreToolUse)"
   # rtk dla Copilota istnieje tylko per-repo (`rtk init --copilot` nie ma trybu globalnego),
   # a bootstrap nadpisuje copilot-instructions.md — więc hook idzie z kita, nie z `rtk init`.
   # No-op bez `rtk` w PATH: hook nie odpali, Copilot przepuszcza komendę bez zmian.

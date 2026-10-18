@@ -538,7 +538,7 @@ bootstrap renderuje **ze ścieżką tej maszyny**:
 | --- | --- |
 | `.claude/{agents,commands,hooks,skills}/`, `.claude/settings.json` | `.claude/settings.local.json` (uprawnienia per maszyna) |
 | `.codex/skills/` | `.codex/config.toml` (MCP), reszta `.codex/` (stan sesji) |
-| `.github/prompts/`, `.github/copilot-instructions.md`, `.github/hooks/rtk-rewrite.json` | `.vscode/mcp.json` (MCP) |
+| `.github/prompts/`, `.github/copilot-instructions.md`, `.github/hooks/` | `.vscode/mcp.json` (MCP) |
 | `AGENTS.md`, `BUGBOT.md`, `.ai/project.md` | `.mcp.json`, `.cursor/mcp.json`, `.kiro/settings/mcp.json`, `.kilocode/mcp.json`, `.agents/mcp_config.json`, `opencode.json` (MCP), `.ai/.kit-bootstrap.json` (stamp) |
 | — | `.agents/skills/`, `skills-lock.json` (skille z `npx skills add` — instalowane globalnie w `~/.agents/skills/`, kopia w repo zaraz rozjedzie się z globalną) |
 
@@ -624,7 +624,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Cursor | `cursor` | Cursor IDE | Ustaw `--from` w `.cursor/mcp.json` jeśli nie `uvx`-owalny git remote. Hooki (`gate-*`) działają od razu — wymagają `bash` w PATH (Windows: Git Bash) |
 | Claude Code | `claude` | `claude` CLI albo desktop app | `.mcp.json` w root — Claude Code czyta go automatycznie po `cd` do repo. `.claude/commands/*.md` = prawdziwe `/nazwa`, `.claude/agents/*.md` = subagenty (Task tool) |
 | Codex CLI | `codex` | `codex` CLI | `.codex/config.toml` wymaga absolutnej ścieżki w `--workspace` (brak `${workspaceFolder}`) — bootstrap wypełnia sam z `TARGET` |
-| GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | VS Code + rozszerzenie GitHub Copilot Chat | `.vscode/mcp.json` (`servers`, nie `mcpServers`) + `.github/prompts/*.prompt.md` (Copilot Chat `/nazwa`) + `.github/copilot-instructions.md` + `.github/hooks/rtk-rewrite.json` (`rtk hook copilot` — jedyny klient bez trybu globalnego rtk, więc hook idzie z kita). Wymaga w VS Code ustawienia `chat.promptFiles: true` (część wersji ma to domyślnie) |
+| GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | VS Code + rozszerzenie GitHub Copilot Chat | `.vscode/mcp.json` (`servers`, nie `mcpServers`) + `.github/prompts/*.prompt.md` (Copilot Chat `/nazwa`) + `.github/copilot-instructions.md` + `.github/hooks/rtk-rewrite.json` (`rtk hook copilot` — jedyny klient bez trybu globalnego rtk, więc hook idzie z kita) + `.github/hooks/kit-guards.json` (guardy kita: git-guard, server-guard, sensitive-files-guard). Wymaga `node` w PATH i w VS Code ustawienia `chat.promptFiles: true` (część wersji ma to domyślnie) |
 | Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
 | Kilo Code | `kilo` | rozszerzenie Kilo Code | `.kilocode/mcp.json` + `.kilocode/workflows/*.md` (`/nazwa`, `$ARGUMENTS` wspierane) |
 | Google Antigravity | `antigravity` | Antigravity IDE | `.agents/mcp_config.json` + `.agents/workflows/*.md` (`/nazwa`; limit 12 000 znaków/plik — kit przycina) |
@@ -1170,9 +1170,12 @@ Codex ma guardy kitowe przez PreToolUse (`node "$(git rev-parse --show-toplevel)
 ale może być **hostem** i wywoływać `claude` lub `opencode` jako wykonawcę.
 Codex odpala projektowy `.codex/hooks.json` dopiero po zaufaniu hookom repo (`/hooks` w Codexie);
 bez tego guardy leżą na dysku, ale nie działają.
+VS Code (Copilot) ma guardy kitowe przez `.github/hooks/kit-guards.json`
+(`node .github/hooks/invoke-hook.js <guard>.mjs --to copilot`, #200) — nie jest wykonawcą
+ani hostem headless w instalacji kita, ale jego agent mode egzekwuje tę samą politykę.
 Cursor (`cursor-agent -p`) i Antigravity (`agy -p`) mają tryb headless, ale kit nie
-instaluje im guardów — wejdą do tabeli z osobnym issue na guardy. VS Code (Copilot),
-Kiro i Kilo — bez trybu headless w instalacji kita.
+instaluje im guardów — wejdą do tabeli z osobnym issue na guardy. Kiro i Kilo — bez trybu
+headless w instalacji kita.
 
 **Macierz host × wykonawca** (przy kliencie w `clients:`; wykonawca = klient z guardami
 kita i wpisem w `EXECUTORS`):
@@ -1213,18 +1216,19 @@ dysku (historia `claude` i `opencode`); wrapper ich nie usuwa.
 ## Guardrails — bezpieczeństwo
 
 Jedno źródło polityki: **`templates/shared/guards/`**. Bootstrap kopiuje je do katalogu
-hooków wybranego klienta (`--clients`), więc Cursor, Claude Code i OpenCode egzekwują
-dokładnie te same reguły.
+hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Codex i VS Code
+(Copilot) egzekwują dokładnie te same reguły.
 
 | Guard | Klient | Zachowanie |
 |-------|--------|------------|
-| `git-guard.mjs` | Claude, Cursor, OpenCode, Codex | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
-| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
-| `server-guard.mjs` | Claude, Cursor, OpenCode, Codex | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
+| `git-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot) | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
+| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot) | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot) | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
 | `rtk-rewrite.json` | Copilot | `.github/hooks/`: PreToolUse → `rtk hook copilot` przepisuje komendy bash na `rtk <cmd>`. Copilot nie ma globalnego trybu rtk, stąd per-repo z kita. Pozostali klienci (Claude, Cursor, Codex, OpenCode) mają rtk globalnie per maszyna — instrukcja w `modules/core/tooling-rtk.md` |
+| `kit-guards.json` | Copilot | `.github/hooks/`: PreToolUse → `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` dla git-guard, server-guard i sensitive-files-guard. VS Code czyta PascalCase `PreToolUse` i `hookSpecificOutput.permissionDecision`; dla Copilot CLI zakładamy ten sam plik i top-level `permissionDecision` (niezweryfikowane). `deny` blokuje wywołanie, `allow` = pusty stdout (brak opinii, natywne potwierdzenia VS Code zostają) |
 
 **Zero `ask`** (ADR 0006): Guard odpowiada `allow` albo `deny`. W auto mode `ask` z hooka
 blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. Model dostaje
@@ -1233,8 +1237,9 @@ w repo; poza repo pilnujemy tylko katalogów systemowych i sekretów — resztę
 natywna permission klienta (`cwd` + `additionalDirectories`).
 
 **Jeden dialekt, adapter na brzegu.** Skrypty polityki mówią wyłącznie kontraktem
-Claude Code (`hookSpecificOutput.permissionDecision`). Cursor (`permission`) i OpenCode
-(`{ tool, input }` → `{ decision, reason }`) mają własne kształty, więc `invoke-hook.js` tłumaczy — i to jedyne miejsce w kicie, które
+Claude Code (`hookSpecificOutput.permissionDecision`). Cursor (`permission`), OpenCode
+(`{ tool, input }` → `{ decision, reason }`) i Copilot (nazwy narzędzi runtime, `tool_input`
+jako string) mają własne kształty, więc `invoke-hook.js` tłumaczy — i to jedyne miejsce w kicie, które
 wie o różnicy między klientami.
 
 | Klient | Wywołanie | Kontrakt |
@@ -1243,6 +1248,7 @@ wie o różnicy między klientami.
 | Cursor | `node .cursor/hooks/invoke-hook.js <guard>.mjs --to cursor [--tool Read\|Write]` | tłumaczony przez adapter |
 | OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
 | Codex | `node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js" <guard>.mjs --to codex` | tłumaczony przez adapter; wyjście jak Claude Code (`hookSpecificOutput.permissionDecision`) |
+| Copilot (VS Code + CLI) | `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` | tłumaczony przez adapter; deny = top-level `permissionDecision` + `hookSpecificOutput`, allow = pusty stdout |
 
 Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
 (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
@@ -1272,6 +1278,25 @@ i pola payloadu nie są sprawdzone na żywym Codexie — adapter przyjmuje waria
 Bootstrap nadpisuje `.codex/hooks.json` (`cp`) — własne wpisy dopisz po każdym reloadzie.
 Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko API pluginów V2 (`export default { id, setup }`, jak `kit-loop.js`); `bash-guard`,
 `linters-guard` i `rtk-check` zostają tylko w Claude Code.
+
+Copilot (`--clients vscode`): bootstrap kładzie guardy, `invoke-hook.js` i `server-guard.json`
+w `.github/hooks/` oraz plik `kit-guards.json` (PreToolUse, obok hooka `rtk-rewrite.json`
+z #67). Plik używa PascalCase `PreToolUse`, który czyta VS Code; że ten sam plik i kształt czyta
+Copilot CLI — zakładamy, niezweryfikowane. Adapter `--to copilot` sprowadza nazwy narzędzi
+(Copilot CLI: `bash` / `view` / `create` / `edit`; VS Code: `run_in_terminal`,
+`create_and_run_task`, `read_file`, `create_file`, `replace_string_in_file`) do nazw Claude
+i parsuje `tool_input` (string JSON, `filePath`/`path`); `apply_patch` i
+`multi_replace_string_in_file` idą przez guard ścieżka po ścieżce. Narzędzie plikowe bez
+ścieżki = deny. Narzędzia MCP VS Code (`mcp_<server>_<tool>`) server-guard rozpoznaje jak
+`mcp__…`. Trzy guardy (git-guard, server-guard, sensitive-files-guard) biegną jako osobne
+wpisy `PreToolUse` bez `matcher` (native VS Code go nie zna). Deny wychodzi jako nadzbiór
+(top-level `permissionDecision` + `hookSpecificOutput`); allow to pusty stdout — jawne
+`allow` w VS Code auto-approve'owałoby każde narzędzie i wyłączało natywne potwierdzenia.
+Timeout hooka (`timeout: 5`) przepuszcza wywołanie (fail-open). Znana luka: `grep_search`
+i `file_search` nie są mapowane — sensitive-files-guard ich nie widzi. Najbardziej restrykcyjna
+decyzja wygrywa — `deny` blokuje wywołanie w agent mode. Wymaga `node` w PATH.
+`bash-guard` / `linters-guard` / `rtk-check` zostają w Claude Code — Copilot ma jedno
+narzędzie powłoki, więc nie ma czego rozdzielać.
 
 Guardy są w `.mjs` i idą przez `node` — bez basha, więc bez wykrywania Git Basha na
 Windows i bez otwartych okien konsoli.

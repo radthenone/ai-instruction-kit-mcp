@@ -186,8 +186,12 @@ class TestKitStatus(unittest.TestCase):
             self.assertIn("Re-bootstrap wciągnie sam", out)
 
     def test_client_hooks_json_change_is_reported(self) -> None:
-        """hooks.json Codexa i Cursora bootstrap nadpisuje — zmiana ma wymusić reload."""
-        for rel in ("templates/codex/hooks.json", "templates/cursor/hooks.json"):
+        """hooks.json Codexa, Cursora i Copilota bootstrap nadpisuje — zmiana wymusza reload."""
+        for rel in (
+            "templates/codex/hooks.json",
+            "templates/cursor/hooks.json",
+            "templates/vscode/github/hooks/kit-guards.json",
+        ):
             with self.subTest(rel=rel), tempfile.TemporaryDirectory() as tmp:
                 kit_root = Path(tmp) / "kit"
                 workspace = Path(tmp) / "workspace"

@@ -24,6 +24,18 @@
  * `file_path`: ścieżki z nagłówków `*** Add|Update|Delete File:` / `*** Move to:` idą
  * przez guard po kolei (pierwszy deny wygrywa); patch bez ścieżek = deny.
  *
+ * Copilot (`--to copilot`, `.github/hooks/kit-guards.json` PreToolUse): payload
+ * w kształcie Claude Code (`tool_name` + `tool_input`) albo camelCase (`toolName` +
+ * `toolArgs`). Nazwy narzędzi runtime (Copilot CLI: `bash` / `view` / `create` / `edit`;
+ * VS Code: `run_in_terminal` / `read_file` / `create_file` / `replace_string_in_file`,
+ * MCP `mcp_<server>_<tool>`) i `tool_input` jako string JSON / `filePath` sprowadzamy do
+ * kształtu guardów; `apply_patch` i `multi_replace_string_in_file` → guard na każdej
+ * ścieżce. Narzędzie plikowe bez ścieżki = deny.
+ * Wyjście: `allow` = pusty stdout (w VS Code jawne allow auto-approve'uje narzędzie i
+ * wyłącza natywne potwierdzenia). `deny` = nadzbiór: top-level `permissionDecision` /
+ * `permissionDecisionReason` (Copilot CLI — zakładamy, niezweryfikowane) plus
+ * `hookSpecificOutput` (VS Code). Timeout hooka (`timeout: 5`) przepuszcza (fail-open).
+ *
  * Wyjście Cursora: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
  * exit 0 — przy failClosed: true niezerowy kod ukrywa payload (Cursor traktuje to
  * jak awarię hooka). Awaria adaptera = deny (fail-closed).
@@ -38,6 +50,35 @@ const CLAUDE = "claude";
 const CURSOR = "cursor";
 const OPENCODE = "opencode";
 const CODEX = "codex";
+const COPILOT = "copilot";
+
+// Copilot: nazwa runtime → nazwa Claude, którą operują guardy. Tabela z GitHub
+// Copilot hooks reference (bash|powershell → Bash, view → Read, create → Write,
+// edit|str_replace_editor|apply_patch → Edit, grep|rg → Grep, glob → Glob).
+const COPILOT_TOOLS = {
+  bash: "Bash",
+  powershell: "Bash",
+  shell: "Bash",
+  view: "Read",
+  read: "Read",
+  create: "Write",
+  write: "Write",
+  edit: "Edit",
+  str_replace_editor: "Edit",
+  apply_patch: "Edit",
+  grep: "Grep",
+  rg: "Grep",
+  glob: "Glob",
+  create_and_run_task: "Bash",
+  // VS Code agent mode (wbudowane narzędzia, `filePath` w tool_input).
+  run_in_terminal: "Bash",
+  read_file: "Read",
+  create_file: "Write",
+  replace_string_in_file: "Edit",
+  multi_replace_string_in_file: "Edit",
+  insert_edit_into_file: "Edit",
+  edit_notebook_file: "Edit",
+};
 
 const argv = process.argv.slice(2);
 const scriptName = argv.shift();
@@ -60,6 +101,17 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function render(decision, reason) {
+  // Copilot: `allow` w VS Code = auto-approve narzędzia (hooki bez matchera wyłączyłyby
+  // natywne potwierdzenia terminala/MCP/fetch), więc allow = pusty stdout (brak opinii).
+  // Deny jako nadzbiór: top-level (Copilot CLI — zakładamy, niezweryfikowane) + hookSpecificOutput.
+  if (target === COPILOT) {
+    if (decision === "allow") return "";
+    return JSON.stringify({
+      permissionDecision: decision,
+      permissionDecisionReason: reason,
+      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: decision, permissionDecisionReason: reason },
+    });
+  }
   if (target === OPENCODE) {
     return JSON.stringify({ decision, reason });
   }
@@ -140,6 +192,29 @@ const runGuard = (input) => spawnSync(process.execPath, [hookPath, ...scriptArgs
   shell: false,
 });
 
+// Ścieżki z nagłówków patcha `*** Add|Update|Delete File:` / `*** Move to:`.
+const patchPaths = (text) => [...String(text || "").matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)]
+  .map((m) => m[1].trim());
+
+// Guard na każdej ścieżce po kolei (pierwszy deny wygrywa); brak ścieżek = deny.
+function guardPaths(paths, label) {
+  const files = [...new Set(paths)];
+  if (!files.length) emitDeny(`${label} bez ścieżek plików`);
+  for (const file of files) {
+    const r = runGuard(JSON.stringify({ tool_name: "Write", tool_input: { file_path: file } }));
+    let d;
+    try {
+      d = JSON.parse((r.stdout || "").trim()).hookSpecificOutput;
+    } catch {
+      emitDeny(`niepoprawne wyjście guarda dla ${file}`);
+    }
+    if (!d || d.permissionDecision !== "allow") {
+      emitAndExit(d?.permissionDecision || "deny", d?.permissionDecisionReason || `brak decyzji dla ${file}`);
+    }
+  }
+  emitAndExit("allow", `${label}: ${files.length} plik(ów) bez zastrzeżeń`);
+}
+
 // Codex: powłoka → `Bash` z komendą-stringiem; `apply_patch` → guard na każdej ścieżce.
 if (target === CODEX) {
   let payload;
@@ -158,23 +233,62 @@ if (target === CODEX) {
   } else if (name === "apply_patch") {
     const text = Object.values(input).filter((v) => typeof v === "string").join("\n")
       || (typeof payload.tool_input === "string" ? payload.tool_input : "");
-    const paths = [...text.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)]
-      .map((m) => m[1].trim());
-    if (!paths.length) emitDeny("apply_patch bez ścieżek plików w patchu");
-    for (const file of paths) {
-      const r = runGuard(JSON.stringify({ tool_name: "Write", tool_input: { file_path: file } }));
-      let d;
-      try {
-        d = JSON.parse((r.stdout || "").trim()).hookSpecificOutput;
-      } catch {
-        emitDeny(`niepoprawne wyjście guarda dla ${file}`);
-      }
-      if (!d || d.permissionDecision !== "allow") {
-        emitAndExit(d?.permissionDecision || "deny", d?.permissionDecisionReason || `brak decyzji dla ${file}`);
-      }
-    }
-    emitAndExit("allow", `apply_patch: ${paths.length} plik(ów) bez zastrzeżeń`);
+    guardPaths(patchPaths(text), "apply_patch");
   }
+}
+
+// Copilot: nazwa runtime → Claude, `tool_input` string-JSON → obiekt, ścieżka `filePath`/
+// `path` → `file_path`, `cmd`/`argv` → `command`. PascalCase `PreToolUse` daje snake_case
+// `tool_name`/`tool_input`, camelCase `preToolUse` daje `toolName`/`toolArgs` — bierzemy oba.
+if (target === COPILOT) {
+  let payload;
+  try {
+    payload = JSON.parse(stdin || "{}");
+  } catch {
+    emitDeny("nieczytelny payload copilot");
+  }
+  let input = payload.tool_input ?? payload.toolArgs ?? {};
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch {
+      // Nie-JSON (np. goła komenda/ścieżka) — guard ma z czego wybrać.
+      input = { command: input, file_path: input };
+    }
+  }
+  if (!input || typeof input !== "object") input = {};
+  const sourceName = String(payload.tool_name || payload.toolName || "");
+  const lower = sourceName.toLowerCase();
+  // apply_patch: patch w `tool_input.input`; multi_replace: ścieżki w `replacements[].filePath`.
+  if (lower === "apply_patch") {
+    const text = typeof input.input === "string"
+      ? input.input
+      : Object.values(input).filter((v) => typeof v === "string").join("\n");
+    guardPaths(patchPaths(text), "apply_patch");
+  }
+  if (lower === "multi_replace_string_in_file") {
+    const reps = Array.isArray(input.replacements) ? input.replacements : [];
+    const paths = reps.map((r) => r && (r.filePath ?? r.path ?? r.file_path));
+    guardPaths(paths.filter((p) => typeof p === "string" && p), sourceName);
+  }
+  const name = COPILOT_TOOLS[lower] || sourceName;
+  const normalized = { ...input };
+  if (name === "Bash" && normalized.command === undefined) {
+    // create_and_run_task: `task.command` + `task.args`.
+    const task = input.task && typeof input.task === "object" ? input.task : null;
+    const raw = input.cmd ?? input.argv
+      ?? (task ? [task.command, ...(Array.isArray(task.args) ? task.args : [])].filter(Boolean) : undefined);
+    if (raw !== undefined) normalized.command = Array.isArray(raw) ? raw.join(" ") : String(raw);
+  }
+  if (["Read", "Write", "Edit"].includes(name) && normalized.file_path === undefined) {
+    const p = input.filePath ?? input.path ?? input.file;
+    if (p !== undefined) normalized.file_path = p;
+  }
+  // Narzędzie plikowe bez ścieżki = deny (jak OpenCode) — zmiana schematu nie może przepuścić.
+  if (["Read", "Write", "Edit"].includes(name) && !normalized.file_path) {
+    emitDeny(`brak filePath/path w wejściu narzędzia ${sourceName || "?"}`);
+  }
+  stdin = JSON.stringify({ ...payload, tool_name: name, tool_input: normalized });
 }
 
 // `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.
@@ -201,11 +315,13 @@ try {
 } catch {
   calledTool = "";
 }
+// VS Code nazywa narzędzia MCP `mcp_<server>_<tool>`, Claude/Cursor/OpenCode `mcp__…`.
+const isMcp = calledTool.startsWith(target === COPILOT ? "mcp_" : "mcp__");
 // Guard bez decyzji dla narzędzia MCP (np. server-guard poza VPS) = nie wtrąca się.
-if (!out && calledTool.startsWith("mcp__") && target !== CURSOR && target !== OPENCODE) {
+if (!out && isMcp && target !== CURSOR && target !== OPENCODE) {
   process.exit(0);
 }
-if (!out && calledTool.startsWith("mcp__")) {
+if (!out && isMcp) {
   emitAndExit("allow", "guard bez decyzji dla narzędzia MCP");
 }
 if (!out) {
@@ -213,7 +329,7 @@ if (!out) {
   emitDeny(err);
 }
 
-if (target !== CURSOR && target !== OPENCODE) {
+if (target !== CURSOR && target !== OPENCODE && target !== COPILOT) {
   process.stdout.write(out);
   process.exit(0);
 }

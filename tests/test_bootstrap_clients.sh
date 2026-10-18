@@ -115,19 +115,28 @@ test -f "$TMP/both/.cursor/hooks/git-guard.mjs"
 echo "OK  prune: claude odznaczony sprzata po sobie"
 
 # Copilot: rtk nie ma trybu globalnego, wiec hook idzie z kita per-repo (#67).
+# Guardy kita (#200): plik hookow + guardy z jednego zrodla, obok rtk-rewrite.json.
 "$BOOT" "$TMP/vscode" --clients vscode --from "$ROOT" --skip-agents >/dev/null
 test -f "$TMP/vscode/.github/hooks/rtk-rewrite.json"
 cmp -s "$ROOT/templates/vscode/github/hooks/rtk-rewrite.json" "$TMP/vscode/.github/hooks/rtk-rewrite.json"
 grep -q 'rtk hook copilot' "$TMP/vscode/.github/hooks/rtk-rewrite.json"
 grep -q 'rtk-rewrite.json' "$TMP/vscode/.github/copilot-instructions.md"
-# Odznaczenie vscode sprzata hook i pusty katalog, nie rusza reszty .github.
+cmp -s "$ROOT/templates/vscode/github/hooks/kit-guards.json" "$TMP/vscode/.github/hooks/kit-guards.json"
+grep -q -- '--to copilot' "$TMP/vscode/.github/hooks/kit-guards.json"
+for g in invoke-hook.js git-guard.mjs sensitive-files-guard.mjs server-guard.mjs; do
+  cmp -s "$ROOT/templates/shared/guards/$g" "$TMP/vscode/.github/hooks/$g" || { echo "FAIL .github/hooks/$g" >&2; exit 1; }
+done
+test -f "$TMP/vscode/.github/hooks/server-guard.json"
+# Guardy tylko dla Claude nie trafiaja do Copilota (#200).
+test ! -e "$TMP/vscode/.github/hooks/bash-guard.mjs"
+# Odznaczenie vscode sprzata hooki i pusty katalog, nie rusza reszty .github.
 mkdir -p "$TMP/vscode/.github/workflows"
 echo "name: ci" > "$TMP/vscode/.github/workflows/ci.yml"
 "$BOOT" "$TMP/vscode" --clients cursor --from "$ROOT" --skip-agents >/dev/null
 test ! -e "$TMP/vscode/.github/hooks"
 test ! -e "$TMP/vscode/.github/copilot-instructions.md"
 test -f "$TMP/vscode/.github/workflows/ci.yml"
-echo "OK  --clients vscode (+ rtk hook copilot, prune)"
+echo "OK  --clients vscode (+ rtk hook copilot, guardy kita, prune)"
 
 "$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
 # Cztery klienty czytają skille natywnie — katalog skilla z zasobami, nie jeden plik.
