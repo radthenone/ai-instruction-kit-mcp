@@ -288,6 +288,8 @@ class TestRealRun(_BootstrapTestCase):
                 ".codex/skills/skill-authoring/SKILL.md",
                 ".cursor/hooks.json",
                 ".github/copilot-instructions.md",
+                ".agents/hooks/git-guard.mjs",
+                ".agents/hooks.json",
             ):
                 with self.subTest(versioned=rel):
                     self.assertEqual(

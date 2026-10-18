@@ -36,6 +36,15 @@
  * `permissionDecisionReason` (Copilot CLI — zakładamy, niezweryfikowane) plus
  * `hookSpecificOutput` (VS Code). Timeout hooka (`timeout: 5`) przepuszcza (fail-open).
  *
+ * Antigravity (`--to antigravity`, workspace `.agents/hooks.json`): wejście
+ * `{ toolCall: { name, args } }`. Nazwy narzędzi runtime (`run_command`, `view_file`,
+ * `write_to_file`, `replace_file_content`, `multi_replace_file_content`, MCP
+ * `mcp_<server>_<tool>`) i ich PascalCase-owe argumenty (`CommandLine`, `AbsolutePath`,
+ * `TargetFile`) sprowadzamy do kształtu guardów; nieznane narzędzie plikowe bez ścieżki
+ * albo `run_command` bez `CommandLine` = deny. Wyjście `{ decision, reason }`;
+ * `allow` w Antigravity tylko deleguje (`auto_approve` byłoby zatwierdzeniem), więc
+ * to bezpieczna odpowiedź.
+ *
  * Wyjście Cursora: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
  * exit 0 — przy failClosed: true niezerowy kod ukrywa payload (Cursor traktuje to
  * jak awarię hooka). Awaria adaptera = deny (fail-closed).
@@ -51,6 +60,7 @@ const CURSOR = "cursor";
 const OPENCODE = "opencode";
 const CODEX = "codex";
 const COPILOT = "copilot";
+const ANTIGRAVITY = "antigravity";
 
 // Copilot: nazwa runtime → nazwa Claude, którą operują guardy. Tabela z GitHub
 // Copilot hooks reference (bash|powershell → Bash, view → Read, create → Write,
@@ -114,6 +124,13 @@ function render(decision, reason) {
   }
   if (target === OPENCODE) {
     return JSON.stringify({ decision, reason });
+  }
+  if (target === ANTIGRAVITY) {
+    // `allow` tylko deleguje do kolejnego hooka / domyślnej polityki (nie auto-approve'uje),
+    // więc nie grozi zdjęciem natywnych potwierdzeń. Deny niesie powód dla modelu.
+    return decision === "allow"
+      ? JSON.stringify({ decision: "allow" })
+      : JSON.stringify({ decision, reason });
   }
   if (target === CURSOR) {
     if (decision === "allow") {
@@ -291,6 +308,49 @@ if (target === COPILOT) {
   stdin = JSON.stringify({ ...payload, tool_name: name, tool_input: normalized });
 }
 
+// Antigravity: `{ toolCall: { name, args } }` → kształt Claude Code. Nazwy runtime →
+// Claude (`run_command`→Bash, `view_file`→Read, `write_to_file`→Write, `replace_file_content`/
+// `multi_replace_file_content`→Edit), argumenty PascalCase (`CommandLine`, `AbsolutePath`,
+// `TargetFile`) → `command`/`file_path`. MCP `mcp_<server>_<tool>` idzie z args bez zmian —
+// guard decyduje po nazwie. Narzędzie plikowe bez ścieżki, `run_command` bez `CommandLine` = deny.
+if (target === ANTIGRAVITY) {
+  let payload;
+  try {
+    payload = JSON.parse(stdin || "{}");
+  } catch {
+    emitDeny("nieczytelny payload antigravity");
+  }
+  const toolCall = payload.toolCall && typeof payload.toolCall === "object" ? payload.toolCall : {};
+  const sourceName = String(toolCall.name || "");
+  const args = toolCall.args && typeof toolCall.args === "object" ? toolCall.args : {};
+  const lower = sourceName.toLowerCase();
+  let name;
+  let toolInput;
+  if (lower === "run_command") {
+    name = "Bash";
+    const raw = args.CommandLine ?? args.command ?? args.cmd;
+    toolInput = { command: Array.isArray(raw) ? raw.join(" ") : String(raw ?? "") };
+    if (!toolInput.command) emitDeny(`brak CommandLine w wejściu narzędzia ${sourceName || "?"}`);
+  } else if (lower === "view_file") {
+    name = "Read";
+    toolInput = { file_path: args.AbsolutePath ?? args.file_path ?? args.path };
+  } else if (lower === "write_to_file") {
+    name = "Write";
+    toolInput = { file_path: args.TargetFile ?? args.file_path ?? args.path };
+  } else if (lower === "replace_file_content" || lower === "multi_replace_file_content") {
+    name = "Edit";
+    toolInput = { file_path: args.TargetFile ?? args.file_path ?? args.path };
+  } else {
+    // MCP (`mcp_<server>_<tool>`) i nieznane narzędzia: guard wybiera po nazwie/polu.
+    name = sourceName;
+    toolInput = args;
+  }
+  if (["Read", "Write", "Edit"].includes(name) && !toolInput.file_path) {
+    emitDeny(`brak TargetFile/AbsolutePath w wejściu narzędzia ${sourceName || "?"}`);
+  }
+  stdin = JSON.stringify({ ...payload, tool_name: name, tool_input: toolInput });
+}
+
 // `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.
 if (toolName) {
   try {
@@ -315,10 +375,10 @@ try {
 } catch {
   calledTool = "";
 }
-// VS Code nazywa narzędzia MCP `mcp_<server>_<tool>`, Claude/Cursor/OpenCode `mcp__…`.
-const isMcp = calledTool.startsWith(target === COPILOT ? "mcp_" : "mcp__");
+// VS Code i Antigravity nazywają narzędzia MCP `mcp_<server>_<tool>`, Claude/Cursor/OpenCode `mcp__…`.
+const isMcp = calledTool.startsWith(target === COPILOT || target === ANTIGRAVITY ? "mcp_" : "mcp__");
 // Guard bez decyzji dla narzędzia MCP (np. server-guard poza VPS) = nie wtrąca się.
-if (!out && isMcp && target !== CURSOR && target !== OPENCODE) {
+if (!out && isMcp && target !== CURSOR && target !== OPENCODE && target !== ANTIGRAVITY) {
   process.exit(0);
 }
 if (!out && isMcp) {
@@ -329,7 +389,7 @@ if (!out) {
   emitDeny(err);
 }
 
-if (target !== CURSOR && target !== OPENCODE && target !== COPILOT) {
+if (target !== CURSOR && target !== OPENCODE && target !== COPILOT && target !== ANTIGRAVITY) {
   process.stdout.write(out);
   process.exit(0);
 }

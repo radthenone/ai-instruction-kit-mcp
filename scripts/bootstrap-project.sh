@@ -184,7 +184,8 @@ client_enabled() {
 # pochodzi z tych samych funkcji co instalacja (komplet agentów, bez filtra Tierów), więc
 # prune i `--remove` nie trzymają drugiej, rozjeżdżającej się mapy ścieżek.
 # `.claude/settings.json` pomijamy — należy do użytkownika, wpisy kita zdejmuje
-# `claude_settings.py prune`.
+# `claude_settings.py prune`. Tak samo `.agents/hooks.json` Antigravity: workspace'owy
+# plik hooków użytkownika, klucz kita zdejmuje `antigravity_hooks.py prune`.
 kit_files() {
   local id="$1" sandbox
   sandbox="$(mktemp -d)"
@@ -193,7 +194,7 @@ kit_files() {
     echo "Nie udało się ustalić plików kita klienta $id" >&2
     return 1
   fi
-  (cd "$sandbox" && find . -type f ! -path ./.claude/settings.json | sed 's|^\./||' | sort)
+  (cd "$sandbox" && find . -type f ! -path ./.claude/settings.json ! -path ./.agents/hooks.json | sed 's|^\./||' | sort)
   rm -rf "$sandbox"
 }
 
@@ -263,6 +264,12 @@ prune_client() {
       for name in "$ALL_AGENTS"/*.md; do
         kit_rm ".agents/workflows/$(basename "$name")"
       done
+      # `.agents/hooks.json` należy do użytkownika — zdejmujemy tylko klucz kita
+      # (`kit-guards`); plik z cudzymi hookami zostaje, pusty znika.
+      if [[ -f "$TARGET/.agents/hooks.json" ]]; then
+        "$PYTHON_BIN" "$KIT_ROOT/scripts/antigravity_hooks.py" prune "$TARGET/.agents/hooks.json"
+      fi
+      rmdir "$TARGET/.agents" 2>/dev/null || true
       ;;
   esac
   if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
@@ -1044,6 +1051,13 @@ install_antigravity() {
   mkdir -p "$TARGET/.agents"
   fill_mcp "$KIT_ROOT/templates/antigravity/mcp_config.json" "$TARGET/.agents/mcp_config.json"
   echo "  + .agents/mcp_config.json"
+  # Guardy kita przed każdym narzędziem Antigravity: workspace'owy `.agents/hooks.json`
+  # (nazwany hook `kit-guards`, PreToolUse) woła invoke-hook.js --to antigravity.
+  # Plik dzielimy z użytkownikiem — scalamy wyłącznie klucz kita (`kit-guards`).
+  install_guards "$TARGET/.agents/hooks"
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/antigravity_hooks.py" install \
+    "$TARGET/.agents/hooks.json" "$KIT_ROOT/templates/antigravity/hooks.json"
+  echo "  + .agents/hooks/ + .agents/hooks.json (guardy kita, PreToolUse)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # agy (Antigravity CLI) nie zna workflow — tylko skille .agents/skills/<nazwa>/SKILL.md.
     "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills"

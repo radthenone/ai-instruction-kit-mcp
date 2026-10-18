@@ -186,6 +186,32 @@ test ! -e "$TMP/skills/.agents/workflows/git-start.md"
 test -f "$TMP/skills/.agents/workflows/moj-workflow.md"
 echo "OK  antigravity: agenci jako skille, stare workflow kita sprzątnięte"
 
+# Guardy kita Antigravity (#201): hooki w .agents/hooks/ + workspace'owy hooks.json
+# (nazwany hook `kit-guards`, adapter --to antigravity).
+test -f "$TMP/skills/.agents/hooks/git-guard.mjs"
+test -f "$TMP/skills/.agents/hooks/server-guard.mjs"
+test -f "$TMP/skills/.agents/hooks/sensitive-files-guard.mjs"
+cmp -s "$ROOT/templates/shared/guards/git-guard.mjs" "$TMP/skills/.agents/hooks/git-guard.mjs"
+cmp -s "$ROOT/templates/antigravity/hooks.json" "$TMP/skills/.agents/hooks.json"
+grep -q -- '--to antigravity' "$TMP/skills/.agents/hooks.json"
+grep -q 'kit-guards' "$TMP/skills/.agents/hooks.json"
+test ! -e "$TMP/skills/.agents/hooks/bash-guard.mjs"
+echo "OK  antigravity: guardy kita + hooks.json"
+
+# Merge klucza kita z cudzym hookiem, prune zdejmuje tylko klucz kita (#201).
+printf '{"moj-hook":{"PreToolUse":[{"matcher":"run_command","hooks":[{"command":"./moj.sh"}]}]}}' \
+  > "$TMP/skills/.agents/hooks.json"
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+grep -q 'moj-hook' "$TMP/skills/.agents/hooks.json"
+grep -q 'kit-guards' "$TMP/skills/.agents/hooks.json"
+"$BOOT" "$TMP/skills" --clients claude --from "$ROOT" >/dev/null
+grep -q 'moj-hook' "$TMP/skills/.agents/hooks.json"
+if grep -q 'kit-guards' "$TMP/skills/.agents/hooks.json"; then
+  echo "FAIL prune nie zdjął klucza kita z .agents/hooks.json" >&2
+  exit 1
+fi
+echo "OK  antigravity: hooks.json scalony z cudzym, prune tylko klucz kita"
+
 # .agents/skills i .claude/skills dzielimy ze skillami spoza kita — prune musi
 # kasować po nazwach ze źródła, nie całym katalogiem.
 mkdir -p "$TMP/skills/.agents/skills/obcy-skill"

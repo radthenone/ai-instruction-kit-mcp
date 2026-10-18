@@ -21,6 +21,7 @@ _OVERWRITTEN_GLOBS: tuple[str, ...] = (
     "templates/*/mcp_config.json",
     "templates/codex/config.toml",
     "templates/codex/hooks.json",
+    "templates/antigravity/hooks.json",
     "templates/cursor/hooks.json",
     "templates/opencode/opencode.json",
     "templates/opencode/command/*.md",
