@@ -1428,7 +1428,7 @@ pozostałe guardy kita.
 `kit-ai reload` / bootstrap czyta `Taskfile.yml` / `.yaml` (z `includes`
 krótkimi i z kluczem `taskfile:`, `cmds` jako napisy, `- cmd:`, `- task:`, block
 scalar `- |`, `deps`), `scripts` z każdego `package.json` w repo (poza
-`node_modules`) i `turbo run <x>` (wszystkie nazwy) do skryptów `<x>` we
+`node_modules` i katalogami z kropką, np. `.ai/headless-runs`) i `turbo run <x>` (wszystkie nazwy) do skryptów `<x>` we
 wszystkich pakietach workspace. Poziomy łączą się dowolnie (task → `bun run` →
 `turbo run` → skrypt pakietu), rozwijanie iteruje do stabilizacji. Task / skrypt,
 którego komendy (po rozwinięciu) pasują do deny kita albo `server.deny`, ląduje
