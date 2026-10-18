@@ -1231,7 +1231,7 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
 | `rtk-rewrite.json` | Copilot | `.github/hooks/`: PreToolUse → `rtk hook copilot` przepisuje komendy bash na `rtk <cmd>`. Copilot nie ma globalnego trybu rtk, stąd per-repo z kita. Pozostali klienci (Claude, Cursor, Codex, OpenCode) mają rtk globalnie per maszyna — instrukcja w `modules/core/tooling-rtk.md` |
 | `kit-guards.json` | Copilot | `.github/hooks/`: PreToolUse → `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` dla git-guard, server-guard i sensitive-files-guard. VS Code czyta PascalCase `PreToolUse` i `hookSpecificOutput.permissionDecision`; dla Copilot CLI zakładamy ten sam plik i top-level `permissionDecision` (niezweryfikowane). `deny` blokuje wywołanie, `allow` = pusty stdout (brak opinii, natywne potwierdzenia VS Code zostają) |
-| `.agents/hooks.json` | Antigravity | `.agents/hooks/`: PreToolUse (nazwany hook `kit-guards`) → `node hooks/invoke-hook.js <guard>.mjs --to antigravity`. Matchery: `run_command` → git-guard + server-guard; `call_mcp_tool` → server-guard; `view_file\|write_to_file\|replace_file_content\|multi_replace_file_content\|edit_file` → sensitive-files-guard. Plik dzielimy z użytkownikiem — `antigravity_hooks.py` scala i prune'uje tylko klucz `kit-guards`. `deny` blokuje wywołanie, `allow` tylko deleguje (nie auto-approve'uje) |
+| `.agents/hooks.json` | Antigravity | `.agents/hooks/`: PreToolUse (nazwany hook `kit-guards`) → `node hooks/invoke-hook.js <guard>.mjs --to antigravity`. Matchery: `run_command` → git-guard + server-guard; `call_mcp_tool\|^mcp_` → server-guard; `^(view_file\|write_to_file\|replace_file_content\|multi_replace_file_content\|edit_file)$` → sensitive-files-guard. Plik dzielimy z użytkownikiem — `antigravity_hooks.py` scala i prune'uje tylko klucz `kit-guards`. `deny` blokuje wywołanie, `allow` tylko deleguje (nie auto-approve'uje) |
 
 **Zero `ask`** (ADR 0006): Guard odpowiada `allow` albo `deny`. W auto mode `ask` z hooka
 blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. Model dostaje
@@ -1253,7 +1253,7 @@ wie o różnicy między klientami.
 | OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
 | Codex | `node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js" <guard>.mjs --to codex` | tłumaczony przez adapter; wyjście jak Claude Code (`hookSpecificOutput.permissionDecision`) |
 | Copilot (VS Code + CLI) | `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` | tłumaczony przez adapter; deny = top-level `permissionDecision` + `hookSpecificOutput`, allow = pusty stdout |
-| Antigravity | `node .agents/hooks/invoke-hook.js <guard>.mjs --to antigravity` | tłumaczony przez adapter; wyjście `{ decision, reason }` (allow = `{"decision":"allow"}`) |
+| Antigravity | `node hooks/invoke-hook.js <guard>.mjs --to antigravity` (cwd = katalog `hooks.json`, czyli `.agents/`) | tłumaczony przez adapter; wyjście `{ decision, reason }` (allow = `{"decision":"allow"}`) |
 
 Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
 (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
@@ -1318,7 +1318,10 @@ uprawnień Antigravity (w `-p` komenda i MCP dalej wymagają reguły `permission
 pusta decyzja i awaria hooka (exit ≠ 0) = deny, deny działa też z
 `--dangerously-skip-permissions`. Zachowanie przy przekroczeniu `timeout: 10` niesprawdzone.
 Znana luka: `grep_search`, `find_by_name` i `list_dir` nie są mapowane — sensitive-files-guard
-ich nie widzi. Wymaga `node` w PATH. Sprawdzone na `agy` 1.3.0 — `/hooks` listuje hook
+ich nie widzi. Tak samo `view_file_outline` i `view_code_item` (w `agy` 1.3.0 niedostępne
+w środowisku narzędzi, argumentów nie dało się podejrzeć) — matcher plikowy jest zakotwiczony
+`^(...)$`, więc ich nie łapie. Pozostałe nazwy zapisu z binarki (`create_file`, `write_file`,
+`delete_file`) też poza mapą, bo nie pojawiły się w żywych payloadach. Wymaga `node` w PATH. Sprawdzone na `agy` 1.3.0 — `/hooks` listuje hook
 `kit-guards`; `bash-guard` / `linters-guard` / `rtk-check` zostają w Claude Code.
 
 Guardy są w `.mjs` i idą przez `node` — bez basha, więc bez wykrywania Git Basha na

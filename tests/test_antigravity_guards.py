@@ -340,3 +340,25 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AntigravityReadmeTest(unittest.TestCase):
+    """README opisuje to, co faktycznie leży w `.agents/hooks.json` (#201)."""
+
+    def setUp(self) -> None:
+        self.readme = (KIT_ROOT / "README.md").read_text(encoding="utf-8")
+
+    def test_adapter_row_uses_hooks_json_cwd(self) -> None:
+        row = next(line for line in self.readme.splitlines() if line.startswith("| Antigravity | `node "))
+        self.assertIn("`node hooks/invoke-hook.js <guard>.mjs --to antigravity`", row)
+
+    def test_matchers_match_template(self) -> None:
+        pre = json.loads(HOOKS_TEMPLATE.read_text(encoding="utf-8"))["kit-guards"]["PreToolUse"]
+        for entry in pre:
+            with self.subTest(matcher=entry["matcher"]):
+                self.assertIn(f"`{entry['matcher'].replace('|', chr(92) + '|')}`", self.readme)
+
+    def test_documents_unmapped_tools_gap(self) -> None:
+        for tool in ("grep_search", "view_file_outline", "view_code_item"):
+            with self.subTest(tool=tool):
+                self.assertIn(f"`{tool}`", self.readme)
