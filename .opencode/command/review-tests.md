@@ -1,6 +1,5 @@
 ---
 description: "Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /review-tests."
-model: opencode/muse-spark-1.3-contributor-free
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

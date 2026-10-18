@@ -1,6 +1,5 @@
 ---
 description: "Stage and create Conventional Commit(s) from local diffs. Use when /git-commit, dirty tree before /git-end. Wywołuj jako /git-commit."
-model: opencode/muse-spark-1.3-contributor-free
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
