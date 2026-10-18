@@ -1345,6 +1345,16 @@ myli; normalnie niczego nie eksportujesz); heurystyka 1:1 z `host_profile.py`
 desktopu) → aktywny; w pozostałych przypadkach → allow. Na PC i w CI ten sam
 zainstalowany guard przepuszcza wszystko.
 
+W praktyce: Windows (także Git Bash i PowerShell), macOS, WSL, Codespaces i CI —
+guard nieaktywny; mały linuksowy VPS albo kontener serwerowy — aktywny. Nic nie
+ustawiasz per projekt: ten sam commit działa w każdym repo z kitem (kit i
+projekty aplikacyjne) na obu maszynach. Gdy heurystyka myli się na konkretnej
+maszynie, ustaw tam na stałe zmienną środowiskową, nie Profil (Profil jest
+commitowany, więc `server.guard: off` wyłącza guard także na VPS):
+`export KIT_HOST_PROFILE=local` (albo `vps`) w `~/.bashrc` / `~/.profile`;
+na Windows `setx KIT_HOST_PROFILE local`. Nowa wersja guarda w projekcie: zaktualizuj
+klon kita, w projekcie `kit-ai reload`, zacommituj zmienione pliki hooków.
+
 **Domyślne deny kita** (każde z powodem i alternatywą; `allow` wygrywa z `deny`):
 
 | Kategoria | Deny | Allow (świadomie) | Powód / alternatywa |
@@ -1364,7 +1374,11 @@ Sprawdzana jest też komenda za launcherem: `uv [opcje] run [flagi] X`, `npx` /
 `bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X` — `uv run --no-sync pytest -n 4`
 to deny, `uv run --no-sync ruff` allow. Separatory w cudzysłowach i treść heredoca
 to dane, nie komendy (`git commit -m "…; docker …"` i body PR przez heredoc
-przechodzą). Dopasowanie po tokenach od początku segmentu (`task` nie łapie
+przechodzą). Znane ograniczenie (#206): backticki w **pojedynczych** apostrofach
+guard nadal traktuje jak podstawienie komendy, choć bash ich nie wykonuje — np.
+`sed` albo `gh pr create --body '…'` z nazwą komendy w backtickach dostaje deny.
+Do czasu poprawki: body PR z pliku (`--body-file`), edycje plików narzędziem
+edycji zamiast `sed`. Dopasowanie po tokenach od początku segmentu (`task` nie łapie
 `taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.
