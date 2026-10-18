@@ -1354,7 +1354,7 @@ runtime, tym samym plikiem hooka:
   devcontainer i CI — ten sam zainstalowany guard przepuszcza tam wszystko.
 
 Nic nie ustawia się per projekt: ten sam zacommitowany guard działa identycznie
-w repo kita i w projektach aplikacyjnych (np. `olivin-app`) na obu maszynach — na
+w repo kita i w projektach aplikacyjnych na obu maszynach — na
 PC nie blokuje, na VPS blokuje. Osobnej konfiguracji „tylko lokalnie” nie ma.
 
 **Korekta heurystyki per maszyna.** Gdy heurystyka pomyli się w którąkolwiek
@@ -1372,8 +1372,8 @@ setx KIT_HOST_PROFILE local
 ```
 
 Nie używaj do tego `server.guard: off` w Profilu: Profil jest commitowany, więc
-wyłączyłby guard **także na VPS**. `server.guard: off` zostaw na wypadek, gdy
-heurystyka fałszywie uzna PC za VPS, a i tak wolisz wpis w repo.
+wyłączyłby guard **także na VPS**. `server.guard: off` ma sens tylko w repo, które
+nigdy nie trafia na VPS.
 
 **Wdrożenie nowej wersji guarda w projekcie.** Guardy jadą z bootstrapem/`reload`,
 nie osobno:
@@ -1403,7 +1403,9 @@ Sprawdzana jest też komenda za launcherem: `uv [opcje] run [flagi] X`, `npx` /
 `bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X` — `uv run --no-sync pytest -n 4`
 to deny, `uv run --no-sync ruff` allow. Separatory w cudzysłowach i treść heredoca
 to dane, nie komendy (`git commit -m "…; docker …"` i body PR przez heredoc
-przechodzą). Dopasowanie po tokenach od początku segmentu (`task` nie łapie
+przechodzą). Backticki i `$( … )` w pojedynczych apostrofach też są danymi — bash
+ich tam nie wykonuje (``--body 'Blokuje `docker compose up`'`` przechodzi); w podwójnych
+cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` nie łapie
 `taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.

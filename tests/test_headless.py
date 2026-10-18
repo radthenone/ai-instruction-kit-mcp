@@ -12,7 +12,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = KIT_ROOT / "templates/shared/headless/headless.mjs"
-NODE = shutil.which("node")
+NODE = shutil.which("node") or "node"
 
 # Narzędzia, których w izolowanym PATH potrzebuje wrapper i fałszywy wykonawca
 # (`basename`/`cat`/`sleep`/`git` w FAKE, `git` w raporcie wrappera) — bez katalogów
@@ -114,7 +114,7 @@ class HeadlessWrapperTest(unittest.TestCase):
 
     def run_wrapper(self, *args: str, stdin: str = "", **env: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [NODE or "node", str(WRAPPER), *args],
+            [NODE, str(WRAPPER), *args],
             cwd=self.root,
             input=stdin,
             capture_output=True,
@@ -193,7 +193,7 @@ class HeadlessWrapperTest(unittest.TestCase):
 
     def test_tree_is_killed_when_wrapper_is_terminated(self) -> None:
         proc = subprocess.Popen(
-            [NODE or "node", str(WRAPPER), "--host", "claude", "opencode", "x"],
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
             cwd=self.root,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -418,7 +418,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         link = self.root / "headless.mjs"
         link.symlink_to(WRAPPER)
         result = subprocess.run(
-            [NODE or "node", "--preserve-symlinks-main", str(link), "--host", "claude", "opencode", "x"],
+            [NODE, "--preserve-symlinks-main", str(link), "--host", "claude", "opencode", "x"],
             cwd=self.root,
             capture_output=True,
             text=True,
