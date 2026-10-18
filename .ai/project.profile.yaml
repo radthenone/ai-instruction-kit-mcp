@@ -11,6 +11,9 @@ mobile: none
 
 codegen: none
 
+server:
+  guard: auto
+
 overlays:
   - .ai/project.md
 
@@ -24,7 +27,3 @@ models:
     light: haiku
     standard: sonnet
     heavy: opus
-  opencode:
-    light: opencode/muse-spark-1.3-contributor-free
-    standard: opencode/muse-spark-1.3-contributor-free
-    heavy: opencode/muse-spark-1.3-contributor-free
