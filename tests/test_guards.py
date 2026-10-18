@@ -540,6 +540,17 @@ class ServerGuardWrappersTest(unittest.TestCase):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8")
 
+    def test_package_json_in_dot_dirs_ignored(self) -> None:
+        from guides.server_guard import collect_package_scripts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "apps/web/package.json", json.dumps({"scripts": {"lint": "eslint src"}}))
+            self._write(root, ".ai/headless-runs/run/fixture/package.json", json.dumps({"scripts": {"build": "turbo run build"}}))
+            self._write(root, ".worktrees/x/package.json", json.dumps({"scripts": {"build": "next build"}}))
+
+            self.assertEqual(list(collect_package_scripts(root)), ["apps/web/package.json"])
+
     def test_taskfile_and_monorepo_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

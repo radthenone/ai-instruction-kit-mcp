@@ -119,3 +119,6 @@ skills-lock.json
 # <<< instruction-kit <<<
 # Runtime daemona CodeGraph (PID, pipe) — per maszyna
 .codegraph/daemon.pid
+
+# Artefakty /headless (fixture'y, logi przebiegów)
+.ai/headless-runs/
