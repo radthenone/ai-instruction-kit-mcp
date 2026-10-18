@@ -12,6 +12,12 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = KIT_ROOT / "templates/shared/headless/headless.mjs"
+NODE = shutil.which("node")
+
+# Narzędzia, których w izolowanym PATH potrzebuje wrapper i fałszywy wykonawca
+# (`basename`/`cat`/`sleep`/`git` w FAKE, `git` w raporcie wrappera) — bez katalogów
+# systemowych, żeby test „brak wykonawcy" nie znalazł prawdziwego `claude` (#205).
+TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep")
 
 # Udaje CLI wykonawcy: zapisuje argv i stdin, zostawia „LSP” w tle i kończy się kodem
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
@@ -82,6 +88,19 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.bin.mkdir()
         for name in ("claude", "opencode2", "opencode"):
             self.fake(name)
+        # Izolowany PATH (#205): tylko fałszywi wykonawcy i symlinki narzędzi, bez
+        # `/usr/bin` i `/bin`. Inaczej test „brak wykonawcy" znajduje prawdziwego
+        # `claude` z systemu i oczekiwany kod 2 nigdy nie wypada (0 != 2).
+        self.tools = self.root / "tools"
+        self.tools.mkdir()
+        for name in TOOL_SYMLINKS:
+            source = shutil.which(name)
+            if source:
+                (self.tools / name).symlink_to(source)
+
+    def path(self) -> str:
+        """PATH bez katalogów systemowych — fałszywi wykonawcy + symlinki narzędzi."""
+        return os.pathsep.join([str(self.bin), str(self.tools)])
 
     def profile(self, clients: str) -> None:
         (self.root / ".ai/project.profile.yaml").write_text(
@@ -94,9 +113,8 @@ class HeadlessWrapperTest(unittest.TestCase):
         path.chmod(0o755)
 
     def run_wrapper(self, *args: str, stdin: str = "", **env: str) -> subprocess.CompletedProcess:
-        node_dir = str(Path(shutil.which("node") or "node").parent)
         return subprocess.run(
-            ["node", str(WRAPPER), *args],
+            [NODE or "node", str(WRAPPER), *args],
             cwd=self.root,
             input=stdin,
             capture_output=True,
@@ -104,7 +122,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             encoding="utf-8",
             timeout=60,
             env={
-                "PATH": os.pathsep.join([str(self.bin), node_dir, "/usr/bin", "/bin"]),
+                "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
                 **env,
             },
@@ -174,16 +192,15 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assert_tree_killed()
 
     def test_tree_is_killed_when_wrapper_is_terminated(self) -> None:
-        node_dir = str(Path(shutil.which("node") or "node").parent)
         proc = subprocess.Popen(
-            ["node", str(WRAPPER), "--host", "claude", "opencode", "x"],
+            [NODE or "node", str(WRAPPER), "--host", "claude", "opencode", "x"],
             cwd=self.root,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             env={
-                "PATH": os.pathsep.join([str(self.bin), node_dir, "/usr/bin", "/bin"]),
+                "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
                 "FAKE_SLEEP": "30",
                 "FAKE_PARTIAL": "1",
@@ -400,16 +417,15 @@ class HeadlessWrapperTest(unittest.TestCase):
     def test_wrapper_runs_via_symlink_with_preserve_symlinks_main(self) -> None:
         link = self.root / "headless.mjs"
         link.symlink_to(WRAPPER)
-        node_dir = str(Path(shutil.which("node") or "node").parent)
         result = subprocess.run(
-            ["node", "--preserve-symlinks-main", str(link), "--host", "claude", "opencode", "x"],
+            [NODE or "node", "--preserve-symlinks-main", str(link), "--host", "claude", "opencode", "x"],
             cwd=self.root,
             capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=60,
             env={
-                "PATH": os.pathsep.join([str(self.bin), node_dir, "/usr/bin", "/bin"]),
+                "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
             },
         )
