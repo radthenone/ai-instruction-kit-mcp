@@ -1165,18 +1165,24 @@ działają dalej: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166). 
 = wiersz w `EXECUTORS` w `templates/shared/headless/headless.mjs` i w `HEADLESS_EXECUTORS`
 w `scripts/bootstrap-project.sh`.
 
-Niedostępni jako wykonawcy (mogą być hostem): Codex (`codex exec`), Cursor (`cursor-agent -p`)
-i Antigravity (`agy -p`) mają tryb headless, ale kit nie instaluje im guardów — wejdą do
-tabeli z osobnym issue na guardy. VS Code (Copilot), Kiro i Kilo — bez trybu headless
-w instalacji kita.
+Codex ma guardy kitowe przez PreToolUse (`node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js"
+<guard>.mjs --to codex`, #199) — nie jest jeszcze wykonawcą headless (patrz `EXECUTORS` w `headless.mjs`),
+ale może być **hostem** i wywoływać `claude` lub `opencode` jako wykonawcę.
+Codex odpala projektowy `.codex/hooks.json` dopiero po zaufaniu hookom repo (`/hooks` w Codexie);
+bez tego guardy leżą na dysku, ale nie działają.
+Cursor (`cursor-agent -p`) i Antigravity (`agy -p`) mają tryb headless, ale kit nie
+instaluje im guardów — wejdą do tabeli z osobnym issue na guardy. VS Code (Copilot),
+Kiro i Kilo — bez trybu headless w instalacji kita.
 
-**Macierz host × wykonawca** (przy kliencie w `clients:`):
+**Macierz host × wykonawca** (przy kliencie w `clients:`; wykonawca = klient z guardami
+kita i wpisem w `EXECUTORS`):
 
 | Host \ wykonawca | `claude` | `opencode` |
 |------------------|----------|------------|
 | Claude Code | — (sam siebie) | tak |
 | OpenCode | tak | — (sam siebie) |
-| Codex, Cursor, VS Code, Kiro, Kilo, Antigravity | tak | tak |
+| Codex | tak | tak |
+| Cursor, VS Code, Kiro, Kilo, Antigravity | tak | tak |
 
 **Instalacja.** Agent `/headless` trafia do każdego klienta z `--clients`, gdy lista zawiera
 co najmniej dwóch wykonawców (dziś: `claude` i `opencode`; `all` też). Bootstrap wpisuje w plik
@@ -1212,9 +1218,9 @@ dokładnie te same reguły.
 
 | Guard | Klient | Zachowanie |
 |-------|--------|------------|
-| `git-guard.mjs` | Claude, Cursor, OpenCode | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
-| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
-| `server-guard.mjs` | Claude, Cursor, OpenCode | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
+| `git-guard.mjs` | Claude, Cursor, OpenCode, Codex | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
+| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `server-guard.mjs` | Claude, Cursor, OpenCode, Codex | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
@@ -1236,6 +1242,7 @@ wie o różnicy między klientami.
 | Claude Code | `node .claude/hooks/<guard>.mjs` | natywny, bez adaptera |
 | Cursor | `node .cursor/hooks/invoke-hook.js <guard>.mjs --to cursor [--tool Read\|Write]` | tłumaczony przez adapter |
 | OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
+| Codex | `node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js" <guard>.mjs --to codex` | tłumaczony przez adapter; wyjście jak Claude Code (`hookSpecificOutput.permissionDecision`) |
 
 Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
 (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
@@ -1253,6 +1260,16 @@ Działa niezależnie od `permission` w `opencode.json`, także przy `allow` na b
 deny narzędzie kończy się błędem, a model widzi `Zablokowane przez guard kita — <powód z guarda>`
 i dobiera inną drogę. Awaria guarda, timeout (10 s) albo wejście bez oczekiwanego pola
 (`command`, `path`) = deny. `grep` i `glob` nie są pilnowane — tak samo jak w Claude Code.
+
+Codex (`--clients codex`): bootstrap kładzie guardy, `invoke-hook.js` i `server-guard.json`
+w `.codex/hooks/` oraz `.codex/hooks.json` (PreToolUse). Powłoka (`Bash` / `shell` /
+`local_shell` / `exec_command`, `command` jako string albo argv) → git-guard + server-guard;
+Playwright MCP → server-guard; `apply_patch` i `Read|Edit|Write|…` → sensitive-files-guard,
+dla `apply_patch` po kolei na każdej ścieżce z nagłówków `*** Add|Update|Delete File:` /
+`*** Move to:` (patch bez ścieżek = deny). Ścieżka hooka liczona od roota repo
+(`git rev-parse --show-toplevel`), więc sesja z podkatalogu też jest pilnowana. Nazwy narzędzi
+i pola payloadu nie są sprawdzone na żywym Codexie — adapter przyjmuje warianty wyżej.
+Bootstrap nadpisuje `.codex/hooks.json` (`cp`) — własne wpisy dopisz po każdym reloadzie.
 Wymaga `node` w PATH (OpenCode działa na Bunie, guardy na Node). Tylko API pluginów V2 (`export default { id, setup }`, jak `kit-loop.js`); `bash-guard`,
 `linters-guard` i `rtk-check` zostają tylko w Claude Code.
 
