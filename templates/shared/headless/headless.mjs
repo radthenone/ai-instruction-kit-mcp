@@ -30,14 +30,24 @@ const DEFAULT_TIMEOUT_MIN = 30
 const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
 
+// Numer ticketu z brancha `typ/<N>-slug`; inny branch (dev, detached, brak gita) — linia pominięta.
+const ticketLine = () => {
+  const n = /^[a-z]+\/(\d+)-/.exec(git("branch", "--show-current") || "")?.[1]
+  return n ? `\n- Ticket #${n}: przeczytaj \`gh issue view ${n} --comments\` — to specyfikacja zadania.` : ""
+}
+
 const footer = (runDir) => `
 
 ---
-Zasady tej sesji (headless, bez użytkownika):
+Zasady tej sesji (headless, bez użytkownika):${ticketLine()}
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
 - Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`git worktree add --detach ${join(runDir, "base")} <ref>\`, na końcu \`git worktree remove ${join(runDir, "base")}\`.
-- Testy: pełna suita raz; po poprawce najpierw pliki, które padły, pełna na końcu.
-- Lokalny commit po każdym zielonym tasku planu. Nie pushuj i nie otwieraj PR — zrobi to host po review.
+- Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
+- Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
+- Lokalnie tylko testy dotknięte zmianą i szybkie bramki; pełny zestaw zrobi CI.
+- Na VPS \`uv run\` zawsze z \`--no-sync\`.
+- Maks. 2 próby naprawy tego samego błędu, potem stop i opis w sekcji Problemy raportu.
+- Nie pushuj i nie otwieraj PR — zrobi to host po review.
 - Na końcu raport w tym formacie:
 ## Zmiany
 <pliki i co w nich zmieniono>

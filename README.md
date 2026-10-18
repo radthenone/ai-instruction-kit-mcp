@@ -1131,11 +1131,15 @@ interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wyn
 | `--heartbeat <min>` | Co ile minut linia stanu `[headless] ♥` w wyjściu i logu, domyślnie 10 |
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
-stopka: katalog runu na logi testów i pliki robocze, zakaz `git stash` / `git checkout` /
-`git reset` (porównanie z bazą przez `git worktree add --detach <katalog runu>/base <ref>`
-i `git worktree remove` na końcu), pełna suita testów raz (po poprawce
-najpierw pliki, które padły), lokalny commit po każdym zielonym tasku planu, raport
-`## Zmiany` / `## Testy` / `## Problemy`. Push i PR robi host (`/git-end`) po review commitów.
+stopka: na branchu `typ/<N>-slug` linia „Ticket #N: przeczytaj `gh issue view N --comments`”
+(branch bez numeru — bez tej linii), katalog runu na logi testów i pliki robocze, zakaz
+`git stash` / `git checkout` / `git reset` (porównanie z bazą przez
+`git worktree add --detach <katalog runu>/base <ref>` i `git worktree remove` na końcu),
+plan 5–10 kroków przy tickecie z więcej niż 3 kryteriami albo więcej niż jedną aplikacją,
+test-first z lokalnym commitem po każdym zielonym kroku, lokalnie tylko testy dotknięte
+zmianą i szybkie bramki (pełny zestaw robi CI), na VPS `uv run --no-sync`, maks. 2 próby
+naprawy tego samego błędu, raport `## Zmiany` / `## Testy` / `## Problemy`. Dlatego
+`/headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza. Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
 do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie);

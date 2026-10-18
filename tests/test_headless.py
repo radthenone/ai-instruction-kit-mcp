@@ -372,6 +372,25 @@ class HeadlessWrapperTest(unittest.TestCase):
         for rule in ("git stash", "git checkout", "git reset", "git worktree add --detach", "git worktree remove", "commit", "Nie pushuj"):
             self.assertIn(rule, prompt)
 
+    def footer_on_branch(self, branch: str) -> str:
+        self.git_repo()
+        subprocess.run(["git", "checkout", "-qb", branch], cwd=self.root, check=True, capture_output=True)
+        result = self.run_wrapper("--host", "opencode", "claude", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return (self.root / "stdin").read_text(encoding="utf-8")
+
+    def test_footer_names_ticket_from_branch_and_work_rules(self) -> None:
+        prompt = self.footer_on_branch("feat/212-x")
+        self.assertIn("Ticket #212: przeczytaj `gh issue view 212 --comments`", prompt)
+        for rule in ("plan 5–10 kroków", "test-first", "pełny zestaw zrobi CI", "--no-sync", "2 próby", "Nie pushuj"):
+            self.assertIn(rule, prompt)
+        self.assertNotIn("pełna suita raz", prompt)
+
+    def test_footer_without_ticket_number_skips_ticket_line(self) -> None:
+        prompt = self.footer_on_branch("dev")
+        self.assertNotIn("Ticket #", prompt)
+        self.assertIn("test-first", prompt)
+
     def test_bad_heartbeat_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--heartbeat", "0", "x")
         self.assertEqual(result.returncode, 2)
