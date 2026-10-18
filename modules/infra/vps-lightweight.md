@@ -57,6 +57,15 @@ skrypcie `package.json`, `turbo run` albo za `sudo`. Wprowadzony po incydencie
 z 2026-10-15 (restart serwera po `uv run` bez `--no-sync`), kiedy okazało się,
 że sama reguła tekstowa nie wystarcza dla subagentów.
 
+Zakres jest per host: na Windows (Git Bash, PowerShell), macOS, WSL, Codespaces
+i w CI guard przepuszcza wszystko, a blokuje tylko na małym VPS / kontenerze
+serwerowym. Nic nie ustawia się per projekt — ten sam commit działa w kicie
+i w projektach aplikacyjnych na PC i na VPS. Gdy heurystyka się myli, wymuszasz
+profil per maszyna (`KIT_HOST_PROFILE=vps|local` w `~/.profile` / `~/.bashrc`;
+Windows: `setx KIT_HOST_PROFILE local`), a nie `server.guard: off` w commitowanym
+Profilu. Nową wersję guarda wdrażasz w projekcie przez aktualizację klona kita →
+`kit-ai reload` → commit podmienionych plików hooków.
+
 ## Night-run na VPS (dotyczy /night-run)
 
 - CTX, `## Stan` i logi pracy w tle w `~/.cache/night-run-<repo>-<data>/`, nigdy
