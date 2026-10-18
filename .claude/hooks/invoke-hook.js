@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Adapter kontraktu hooka dla Cursora i OpenCode.
+ * Adapter kontraktu hooka dla Cursora, OpenCode i Codexa.
  *
  * Guardy w templates/shared/guards/*.mjs mówią jednym dialektem — kontraktem
  * Claude Code (`hookSpecificOutput.permissionDecision`). Claude Code woła je
@@ -18,6 +18,12 @@
  * wejście `{ tool, input }` z `tool.execute.before` (`input.command`, `input.filePath`),
  * wyjście `{ decision, reason }` — plugin przy deny rzuca błąd z powodem dla modelu.
  *
+ * Codex (`--to codex`, `.codex/hooks.json` PreToolUse): wyjście jak Claude Code.
+ * Wejście: narzędzie powłoki (`shell` / `local_shell` / `exec_command` / `Bash`) niesie
+ * `command` jako string albo argv — sklejamy do stringa jako `Bash`. `apply_patch` nie ma
+ * `file_path`: ścieżki z nagłówków `*** Add|Update|Delete File:` / `*** Move to:` idą
+ * przez guard po kolei (pierwszy deny wygrywa); patch bez ścieżek = deny.
+ *
  * Wyjście Cursora: `{ permission, user_message, agent_message }`. Po wypisaniu JSON zawsze
  * exit 0 — przy failClosed: true niezerowy kod ukrywa payload (Cursor traktuje to
  * jak awarię hooka). Awaria adaptera = deny (fail-closed).
@@ -31,8 +37,7 @@ const path = require("path");
 const CLAUDE = "claude";
 const CURSOR = "cursor";
 const OPENCODE = "opencode";
-// codex: brak własnego case — fallthrough do kontraktu Claude Code
-// (hookSpecificOutput.permissionDecision na stdout, exit 0).
+const CODEX = "codex";
 
 const argv = process.argv.slice(2);
 const scriptName = argv.shift();
@@ -128,6 +133,50 @@ if (target === OPENCODE) {
   toolName = "";
 }
 
+const runGuard = (input) => spawnSync(process.execPath, [hookPath, ...scriptArgs], {
+  input,
+  encoding: "utf8",
+  windowsHide: true,
+  shell: false,
+});
+
+// Codex: powłoka → `Bash` z komendą-stringiem; `apply_patch` → guard na każdej ścieżce.
+if (target === CODEX) {
+  let payload;
+  try {
+    payload = JSON.parse(stdin || "{}");
+  } catch {
+    emitDeny("nieczytelny payload codex");
+  }
+  const name = String(payload.tool_name || "");
+  const input = payload.tool_input || {};
+  if (["Bash", "shell", "local_shell", "exec_command"].includes(name)) {
+    const raw = input.command ?? input.cmd;
+    const command = Array.isArray(raw) ? raw.join(" ") : String(raw || "");
+    if (!command) emitDeny(`brak command w wejściu narzędzia ${name}`);
+    stdin = JSON.stringify({ ...payload, tool_name: "Bash", tool_input: { command } });
+  } else if (name === "apply_patch") {
+    const text = Object.values(input).filter((v) => typeof v === "string").join("\n")
+      || (typeof payload.tool_input === "string" ? payload.tool_input : "");
+    const paths = [...text.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)]
+      .map((m) => m[1].trim());
+    if (!paths.length) emitDeny("apply_patch bez ścieżek plików w patchu");
+    for (const file of paths) {
+      const r = runGuard(JSON.stringify({ tool_name: "Write", tool_input: { file_path: file } }));
+      let d;
+      try {
+        d = JSON.parse((r.stdout || "").trim()).hookSpecificOutput;
+      } catch {
+        emitDeny(`niepoprawne wyjście guarda dla ${file}`);
+      }
+      if (!d || d.permissionDecision !== "allow") {
+        emitAndExit(d?.permissionDecision || "deny", d?.permissionDecisionReason || `brak decyzji dla ${file}`);
+      }
+    }
+    emitAndExit("allow", `apply_patch: ${paths.length} plik(ów) bez zastrzeżeń`);
+  }
+}
+
 // `--tool` uzupełnia payload Cursora o to, co Claude Code daje z natury.
 if (toolName) {
   try {
@@ -139,12 +188,7 @@ if (toolName) {
   }
 }
 
-const result = spawnSync(process.execPath, [hookPath, ...scriptArgs], {
-  input: stdin,
-  encoding: "utf8",
-  windowsHide: true,
-  shell: false,
-});
+const result = runGuard(stdin);
 
 if (result.error) {
   emitDeny(result.error.message || "nie można uruchomić node");
