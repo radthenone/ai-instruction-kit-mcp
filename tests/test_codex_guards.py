@@ -204,8 +204,10 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
             for e in pre["hooks"]["PreToolUse"] if "shell" in e["matcher"].split("|")
             for h in e["hooks"] if "git-guard" in h["command"]
         )
+        bash = resolve_bash()
+        assert bash
         proc = subprocess.run(
-            [resolve_bash(), "-c", command],
+            [bash, "-c", command],
             cwd=sub,
             input=json.dumps(_codex("shell", {"command": ["bash", "-lc", "git push origin master"]})),
             capture_output=True, text=True, check=False,
