@@ -42,6 +42,8 @@
 !.github/copilot-instructions.md
 !.github/prompts/
 !.github/prompts/**
+!.github/hooks/
+!.github/hooks/**
 
 # --- Cursor ------------------------------------------------------------------
 .cursor/*
