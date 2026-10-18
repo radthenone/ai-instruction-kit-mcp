@@ -407,9 +407,14 @@ def install_summary(workspace: Path, kit_root: Path, *, language: str, clients: 
 
 
 def _ask(prompt: str, default: str, valid: Callable[[str], bool], input_fn: Callable[[str], str]) -> str:
-    """Zadaj pytanie, aż odpowiedź będzie poprawna; puste = domyślna."""
+    """Zadaj pytanie, aż odpowiedź będzie poprawna; puste albo koniec wejścia = domyślna."""
     while True:
-        answer = input_fn(f"{prompt} ({default}): ").strip() or default
+        try:
+            answer = input_fn(f"{prompt} ({default}): ").strip() or default
+        except EOFError:
+            # Windows: stdin z NUL ma isatty() == True, więc pytanie pada bez wejścia.
+            print()
+            return default
         if valid(answer):
             return answer
         print(f"  Nieprawidłowa wartość: {answer}")

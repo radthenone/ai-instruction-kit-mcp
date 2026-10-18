@@ -379,7 +379,7 @@ import json, sys, datetime as dt
 K = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
 for p in sys.argv[1:]:
     use, ts, mod = {}, [], set()
-    for line in filter(str.strip, open(p)):
+    for line in filter(str.strip, open(p, encoding="utf-8")):
         d = json.loads(line); m = d.get("message") or {}
         if d.get("timestamp"): ts.append(dt.datetime.fromisoformat(d["timestamp"].replace("Z", "+00:00")))
         if d.get("type") == "assistant" and m.get("usage") and m.get("model") != "<synthetic>":
@@ -388,7 +388,7 @@ for p in sys.argv[1:]:
     tot = [sum(u.get(k, 0) for u in use.values()) for k in K]
     ctx = max((sum(u.get(k, 0) for k in K[:3]) for u in use.values()), default=0)
     mins = (max(ts) - min(ts)).total_seconds() / 60 if ts else 0
-    row = [p.rsplit("/", 1)[-1], ",".join(sorted(mod)), len(use), *tot, ctx, f"{mins:.0f} min"]
+    row = [p.replace("\\", "/").rsplit("/", 1)[-1], ",".join(sorted(mod)), len(use), *tot, ctx, f"{mins:.0f} min"]
     print("| " + " | ".join(map(str, row)) + " |")
 ' ~/.claude/projects/*/*/subagents/agent-{<id1>,<id2>}.jsonl
 ```
