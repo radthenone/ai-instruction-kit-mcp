@@ -372,6 +372,32 @@ class HeadlessWrapperTest(unittest.TestCase):
         for rule in ("git stash", "git checkout", "git reset", "git worktree add --detach", "git worktree remove", "commit", "Nie pushuj"):
             self.assertIn(rule, prompt)
 
+    def footer_on_branch(self, branch: str) -> tuple[str, str]:
+        """Prompt wykonawcy i log runu na danym branchu."""
+        self.git_repo()
+        subprocess.run(["git", "checkout", "-qb", branch], cwd=self.root, check=True, capture_output=True)
+        result = self.run_wrapper("--host", "opencode", "claude", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = self.log_path(result).read_text(encoding="utf-8")
+        return (self.root / "stdin").read_text(encoding="utf-8"), log
+
+    def test_footer_names_ticket_from_branch_and_work_rules(self) -> None:
+        prompt, log = self.footer_on_branch("feat/212-x")
+        self.assertIn(
+            "Zasady tej sesji (headless, bez użytkownika):\n- Ticket #212: przeczytaj `gh issue view 212 --comments`",
+            prompt,
+        )
+        self.assertIn("[headless] ticket #212", log)
+        for rule in ("plan 5–10 kroków", "test-first", "pełny zestaw zrobi CI", "--no-sync", "2 próby", "Nie pushuj"):
+            self.assertIn(rule, prompt)
+        self.assertNotIn("pełna suita raz", prompt)
+
+    def test_footer_without_ticket_number_skips_ticket_line(self) -> None:
+        prompt, log = self.footer_on_branch("dev")
+        self.assertNotIn("Ticket #", prompt)
+        self.assertNotIn("ticket #", log)
+        self.assertIn("test-first", prompt)
+
     def test_bad_heartbeat_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--heartbeat", "0", "x")
         self.assertEqual(result.returncode, 2)
