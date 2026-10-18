@@ -67,6 +67,14 @@ const COPILOT_TOOLS = {
   grep: "Grep",
   rg: "Grep",
   glob: "Glob",
+  // VS Code agent mode (wbudowane narzędzia, `filePath` w tool_input).
+  run_in_terminal: "Bash",
+  read_file: "Read",
+  create_file: "Write",
+  replace_string_in_file: "Edit",
+  multi_replace_string_in_file: "Edit",
+  insert_edit_into_file: "Edit",
+  edit_notebook_file: "Edit",
 };
 
 const argv = process.argv.slice(2);

@@ -109,6 +109,17 @@ class CopilotInvokeHookAdapterTest(unittest.TestCase):
         out = _run_hook("sensitive-files-guard.mjs", _copilot("edit", {"filePath": "app/.env"}))
         self.assertEqual(out.get("permissionDecision"), "deny")
 
+    def test_vscode_agent_tool_names_are_normalized(self) -> None:
+        """VS Code agent mode: `read_file`/`create_file`/`replace_string_in_file` z `filePath`."""
+        for tool in ("read_file", "create_file", "replace_string_in_file", "insert_edit_into_file"):
+            with self.subTest(tool=tool):
+                out = _run_hook("sensitive-files-guard.mjs", _copilot(tool, {"filePath": "app/.env"}))
+                self.assertEqual(out.get("permissionDecision"), "deny")
+        out = _run_hook(
+            "git-guard.mjs", _copilot("run_in_terminal", {"command": "git push origin master"})
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
+
     def test_sensitive_guard_allow_source_file(self) -> None:
         out = _run_hook("sensitive-files-guard.mjs", _copilot("Read", {"file_path": "src/app.py"}))
         self.assertEqual(out.get("permissionDecision"), "allow")
