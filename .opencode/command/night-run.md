@@ -41,17 +41,24 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 ## Argumenty
 
 ```text
-/night-run #N1 #N2 [/headless <wykonawca> "<treść>"] [/review-* …]
+/night-run #N1 #N2 [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]
 ```
 
 `/goal` opcjonalny: noc działa sama. Wznawianie nocy = heartbeat `CronCreate` (krok 7), nie
 warunek `/goal`. Gdy noc idzie pod `/goal`, jego tekst to cel (niżej „Polecenia z tekstu celu”).
 
 - **Lista issue** — `#N` przed pierwszym argumentem z `/`. Brak → kolejka (krok 4).
-- **`/headless <wykonawca> "<treść>"`** — implementację ticketu robi wykonawca headless
-  (`EXEC`, `TREŚĆ`; treść bez zmian, cudzysłów obowiązkowy). Wariant promptu w „Prompt ticketu”.
-  Fallback — klient bez `/headless` (brak skilla/komendy `headless` albo `.ai/headless.mjs`)
-  → implementacja subagentem jak bez argumentu, w raporcie `wykonawca: subagent (brak /headless)`.
+- **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
+  headless (`EXEC`, `FLAGI`, `TREŚĆ`). Argument kończy zamykający cudzysłów treści
+  (cudzysłów obowiązkowy); treść i flagi wrappera przekazujesz bez zmian (`--timeout`
+  domyślnie 30 min — większy ticket potrzebuje więcej). Wariant promptu w „Prompt ticketu”.
+  `EXEC` sprawdzasz raz na starcie nocy, przed pierwszym ticketem:
+  - klient bez `/headless` (brak skilla/komendy `headless` albo `.ai/headless.mjs`) →
+    fallback: implementacja subagentem jak bez argumentu, w raporcie
+    `wykonawca: subagent (brak /headless)`;
+  - `EXEC` spoza `clients:` w `.ai/project.profile.yaml` albo równy hostowi (klient tej
+    sesji) → nieznany wykonawca → needs-human na starcie nocy — żaden ticket nie startuje,
+    NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
 - **Skille review z argumentów** — jeden lub kilka (`/review-edge`, `/review-bugbot`,
   `/code-review --fix`, …), z ich własnymi flagami. Bez nich → review jak dziś (łańcuch, krok 2).
   Każdy sprawdzasz raz na starcie nocy na liście skilli klienta:
@@ -161,15 +168,17 @@ Każde zakończenie nocy (wszystko MERGED, halt, raport) zaczyna się od `CronDe
 1. **Subagent ticketu** (świeży, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
    dosłownie. Wraca z hand-backiem i niewypchniętym branchem. Zapisz jego id, nadpisz
    `## Stan` w `CTX` (ticket, id, krok `ticket`). Z `/headless` kroki 2–3 promptu zastępujesz
-   linią „2–3. (z `/headless`)” z wpisanymi `EXEC` i `TREŚĆ`; bez `/headless` tę linię usuwasz.
-2. **Review.** Z argumentami skilli review: uruchamiasz je **Ty**, przez Skill (w Claude Skill,
+   linią „2–3. (z `/headless`)” z wpisanymi `EXEC`, `FLAGI` i `TREŚĆ`; bez `/headless` tę
+   linię usuwasz.
+2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
+   skillach z argumentów także nazwa bieżącego skilla). Z argumentami skilli review: uruchamiasz je **Ty**, przez Skill (w Claude Skill,
    nie Agent; skill może sam odpalać subagentów), każdy na `git diff origin/$BASE...HEAD`
-   brancha ticketu, w kolejności z argumentów. Wynik sprowadzasz do tabeli niżej; skill
+   brancha ticketu, w kolejności z argumentów. Od skilla bierzesz tylko tabelę niżej; skill
    z `--fix` poprawia sam — subagent ticketu po wznowieniu zbiera to `/git-commit`.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` +
-   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id, nadpisz `## Stan` (krok `review`).
+   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id w `## Stan`.
 3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z
    findingami: potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
    potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
@@ -182,7 +191,7 @@ Hand-back needs-human albo halt od subagenta → sekcja „Gdy ticket napotka pr
 
 ## Prompt ticketu
 
-Przekazujesz go subagentowi bez skracania.
+Przekazujesz go subagentowi dosłownie, poza wyborem wariantu kroków 2–3 (łańcuch, krok 1).
 
 ```markdown
 Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, zamiast
@@ -196,11 +205,10 @@ needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-struct
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
    `gh issue develop <N> --name <typ>/<N>-<slug> --base <BASE> --checkout`.
-2–3. (z `/headless`) `/headless <wykonawca> "<treść>"` z treścią bez zmian — reguły ticketu
-   i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera (wzorzec
-   „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`, testy dotknięte ticketem
-   uruchomione sam), resztę zbierasz `/git-commit`. Wrapper pada albo testy czerwone → maks.
-   2 próby, potem needs-human. Dalej krok 4.
+2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
+   reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
+   (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
+   → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
@@ -388,6 +396,8 @@ for p in sys.argv[1:]:
 
 Tura = unikalne `message.id` (odpowiedź zajmuje kilka linii, `output_tokens` rośnie — bierz
 maks.). Czas = wall-clock z oczekiwaniem na review. Inny klient → „brak transkryptu”.
+Z `/headless` albo skillami review z argumentów do wiersza ticketu dopisz notę
+„koszt bez wykonawcy headless i review w sesji głównej” (tych tokenów snippet nie widzi).
 
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
