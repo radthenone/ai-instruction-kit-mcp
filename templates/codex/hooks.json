@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/invoke-hook.js git-guard.mjs --to codex"
+          },
+          {
+            "type": "command",
+            "command": "node .codex/hooks/invoke-hook.js server-guard.mjs --to codex"
+          }
+        ],
+        "failClosed": true
+      },
+      {
+        "matcher": "mcp__plugin_playwright_.*|mcp__playwright__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/invoke-hook.js server-guard.mjs --to codex"
+          }
+        ],
+        "failClosed": true
+      },
+      {
+        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/invoke-hook.js sensitive-files-guard.mjs --to codex"
+          }
+        ],
+        "failClosed": true
+      }
+    ]
+  }
+}

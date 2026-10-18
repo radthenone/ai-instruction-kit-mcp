@@ -962,6 +962,12 @@ install_codex_agents() {
 install_codex() {
   fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$TARGET"
   echo "  + .codex/config.toml"
+  # Guardy kita (git-guard, sensitive-files-guard, server-guard) przed każdym
+  # narzędziem Codexa — PreToolUse woła invoke-hook.js --to codex, deny działa
+  # tak samo jak w Claude Code.
+  install_guards "$TARGET/.codex/hooks"
+  cp "$KIT_ROOT/templates/codex/hooks.json" "$TARGET/.codex/hooks.json"
+  echo "  + .codex/hooks/ + .codex/hooks.json (guardy kita, PreToolUse)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # Codex czyta skille natywnie (.agents/skills i .codex/skills) — agenci i
     # skille z kita lądują jako katalogi SKILL.md, nie jako TOML-prompts

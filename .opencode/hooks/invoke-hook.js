@@ -31,6 +31,8 @@ const path = require("path");
 const CLAUDE = "claude";
 const CURSOR = "cursor";
 const OPENCODE = "opencode";
+// codex: brak własnego case — fallthrough do kontraktu Claude Code
+// (hookSpecificOutput.permissionDecision na stdout, exit 0).
 
 const argv = process.argv.slice(2);
 const scriptName = argv.shift();
