@@ -9,6 +9,7 @@ payload PreToolUse Codexa i zwraca decyzję w kontrakcie Claude Code
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -22,9 +23,11 @@ from guides.bootstrap import run_bootstrap
 KIT_ROOT = Path(__file__).resolve().parents[1]
 GUARDS = KIT_ROOT / "templates" / "shared" / "guards"
 NODE = shutil.which("node")
+# Czyste środowisko hosta: tylko KIT_HOST_PROFILE decyduje (jak w test_guards).
+VPS = {"GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": ""}
 
 
-def _run_hook(script: str, payload: dict, target: str = "codex") -> dict:
+def _run_hook(script: str, payload: dict, target: str = "codex", env: dict | None = None) -> dict:
     """Odpal `node invoke-hook.js <script> --to <target>` z payloadem na stdin."""
     proc = subprocess.run(
         [NODE or "node", str(GUARDS / "invoke-hook.js"), script, "--to", target],
@@ -32,6 +35,7 @@ def _run_hook(script: str, payload: dict, target: str = "codex") -> dict:
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **(env or {})},
     )
     assert proc.returncode == 0, f"{script}: exit {proc.returncode}: {proc.stderr}"
     out = proc.stdout.strip()
@@ -72,6 +76,23 @@ class CodexInvokeHookAdapterTest(unittest.TestCase):
             {"tool_name": "Write", "tool_input": {"file_path": "src/app.py"}},
         )
         self.assertEqual(out.get("permissionDecision"), "allow")
+
+    def test_server_guard_deny_docker_on_vps(self) -> None:
+        out = _run_hook(
+            "server-guard.mjs",
+            {"tool_name": "Bash", "tool_input": {"command": "docker compose up"}},
+            env={**VPS, "KIT_HOST_PROFILE": "vps"},
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        self.assertIn("server-guard", out.get("permissionDecisionReason", ""))
+
+    def test_server_guard_allow_docker_on_local(self) -> None:
+        out = _run_hook(
+            "server-guard.mjs",
+            {"tool_name": "Bash", "tool_input": {"command": "docker compose up"}},
+            env={**VPS, "KIT_HOST_PROFILE": "local"},
+        )
+        self.assertNotEqual(out.get("permissionDecision"), "deny")
 
     def test_empty_payload_guard_decides(self) -> None:
         out = _run_hook("git-guard.mjs", {})
@@ -116,10 +137,11 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
         self.assertIn("--to codex", commands)
         self.assertIn("invoke-hook.js", commands)
 
-    def test_codex_hooks_json_fail_closed(self) -> None:
+    def test_codex_hooks_json_uses_claude_schema(self) -> None:
+        # Codex czyta hooks.json w kontrakcie Claude Code; `failClosed` to klucz Cursora.
         workspace = self._install("codex")
         hooks_json = (workspace / ".codex" / "hooks.json").read_text(encoding="utf-8")
-        self.assertIn('"failClosed": true', hooks_json)
+        self.assertNotIn("failClosed", hooks_json)
 
     def test_server_guard_wired_for_codex(self) -> None:
         workspace = self._install("codex")
@@ -142,6 +164,7 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
         self.assertTrue((workspace / ".codex" / "hooks" / "git-guard.mjs").is_file())
         run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
         self.assertFalse((workspace / ".codex" / "hooks.json").exists())
+        self.assertFalse((workspace / ".codex" / "hooks").exists())
 
 
 if __name__ == "__main__":

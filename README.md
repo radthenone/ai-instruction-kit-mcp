@@ -1168,6 +1168,8 @@ w `scripts/bootstrap-project.sh`.
 Codex ma guardy kitowe przez PreToolUse (`node .codex/hooks/invoke-hook.js <guard>.mjs
 --to codex`, #199) — nie jest jeszcze wykonawcą headless (patrz `EXECUTORS` w `headless.mjs`),
 ale może być **hostem** i wywoływać `claude` lub `opencode` jako wykonawcę.
+Codex odpala projektowy `.codex/hooks.json` dopiero po zaufaniu hookom repo (`/hooks` w Codexie);
+bez tego guardy leżą na dysku, ale nie działają.
 Cursor (`cursor-agent -p`) i Antigravity (`agy -p`) mają tryb headless, ale kit nie
 instaluje im guardów — wejdą do tabeli z osobnym issue na guardy. VS Code (Copilot),
 Kiro i Kilo — bez trybu headless w instalacji kita.

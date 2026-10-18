@@ -12,8 +12,7 @@
             "type": "command",
             "command": "node .codex/hooks/invoke-hook.js server-guard.mjs --to codex"
           }
-        ],
-        "failClosed": true
+        ]
       },
       {
         "matcher": "mcp__plugin_playwright_.*|mcp__playwright__.*",
@@ -22,8 +21,7 @@
             "type": "command",
             "command": "node .codex/hooks/invoke-hook.js server-guard.mjs --to codex"
           }
-        ],
-        "failClosed": true
+        ]
       },
       {
         "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
@@ -32,8 +30,7 @@
             "type": "command",
             "command": "node .codex/hooks/invoke-hook.js sensitive-files-guard.mjs --to codex"
           }
-        ],
-        "failClosed": true
+        ]
       }
     ]
   }
