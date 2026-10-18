@@ -186,9 +186,10 @@ class TestKitStatus(unittest.TestCase):
             self.assertIn("Re-bootstrap wciągnie sam", out)
 
     def test_client_hooks_json_change_is_reported(self) -> None:
-        """hooks.json Codexa, Cursora i Copilota bootstrap nadpisuje — zmiana wymusza reload."""
+        """hooks.json Codexa, Antigravity, Cursora i Copilota bootstrap nadpisuje — zmiana wymusza reload."""
         for rel in (
             "templates/codex/hooks.json",
+            "templates/antigravity/hooks.json",
             "templates/cursor/hooks.json",
             "templates/vscode/github/hooks/kit-guards.json",
         ):

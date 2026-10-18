@@ -59,7 +59,7 @@ CLIENT_KIT_MARKERS: dict[str, str] = {
     "vscode": ".github/prompts/git-start.prompt.md",
     "kiro": ".kiro/agents/git-start.md",
     "kilo": ".kilocode/workflows/git-start.md",
-    "antigravity": ".agents/workflows/git-start.md",
+    "antigravity": ".agents/hooks/invoke-hook.js",
     "opencode": ".opencode/command/git-start.md",
 }
 
