@@ -30,8 +30,8 @@ NODE = shutil.which("node")
 VPS = {"GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": ""}
 
 
-def _run_hook(script: str, payload: dict, env: dict | None = None) -> dict:
-    """Odpal `node invoke-hook.js <script> --to copilot` z payloadem na stdin."""
+def _raw_hook(script: str, payload: dict, env: dict | None = None) -> str:
+    """Odpal `node invoke-hook.js <script> --to copilot` z payloadem na stdin; surowy stdout."""
     proc = subprocess.run(
         [NODE or "node", str(GUARDS / "invoke-hook.js"), script, "--to", "copilot"],
         input=json.dumps(payload),
@@ -41,7 +41,12 @@ def _run_hook(script: str, payload: dict, env: dict | None = None) -> dict:
         env={**os.environ, **(env or {})},
     )
     assert proc.returncode == 0, f"{script}: exit {proc.returncode}: {proc.stderr}"
-    out = proc.stdout.strip()
+    return proc.stdout.strip()
+
+
+def _run_hook(script: str, payload: dict, env: dict | None = None) -> dict:
+    """`hookSpecificOutput` z wyjścia adaptera; pusty stdout (brak opinii) = `{}`."""
+    out = _raw_hook(script, payload, env)
     if not out:
         return {}
     return json.loads(out).get("hookSpecificOutput", {})
@@ -68,9 +73,10 @@ class CopilotInvokeHookAdapterTest(unittest.TestCase):
         self.assertEqual(out.get("permissionDecision"), "deny")
         self.assertIn("git-guard", out.get("permissionDecisionReason", ""))
 
-    def test_git_guard_allow_push_feature_branch(self) -> None:
-        out = _run_hook("git-guard.mjs", _copilot("Bash", {"command": "git push origin feat/x"}))
-        self.assertEqual(out.get("permissionDecision"), "allow")
+    def test_git_guard_allow_is_empty_output(self) -> None:
+        """`allow` w VS Code = auto-approve; adapter milczy, natywne potwierdzenia zostają."""
+        out = _raw_hook("git-guard.mjs", _copilot("Bash", {"command": "git push origin feat/x"}))
+        self.assertEqual(out, "")
 
     def test_runtime_tool_name_is_normalized(self) -> None:
         """Copilot CLI podaje runtime `bash`; guard rozumie tylko `Bash`."""
@@ -121,8 +127,59 @@ class CopilotInvokeHookAdapterTest(unittest.TestCase):
         self.assertEqual(out.get("permissionDecision"), "deny")
 
     def test_sensitive_guard_allow_source_file(self) -> None:
-        out = _run_hook("sensitive-files-guard.mjs", _copilot("Read", {"file_path": "src/app.py"}))
-        self.assertEqual(out.get("permissionDecision"), "allow")
+        out = _raw_hook("sensitive-files-guard.mjs", _copilot("Read", {"file_path": "src/app.py"}))
+        self.assertEqual(out, "")
+
+    def test_deny_has_top_level_and_hook_specific_output(self) -> None:
+        """Nadzbiór: top-level `permissionDecision` (Copilot CLI) + `hookSpecificOutput` (VS Code)."""
+        raw = json.loads(
+            _raw_hook("git-guard.mjs", _copilot("Bash", {"command": "git push origin master"}))
+        )
+        self.assertEqual(raw.get("permissionDecision"), "deny")
+        self.assertIn("git-guard", raw.get("permissionDecisionReason", ""))
+        self.assertEqual(raw["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_file_tool_without_path_denied(self) -> None:
+        out = _run_hook("sensitive-files-guard.mjs", _copilot("read_file", {}))
+        self.assertEqual(out.get("permissionDecision"), "deny")
+
+    def test_multi_replace_checks_every_path(self) -> None:
+        payload = _copilot(
+            "multi_replace_string_in_file",
+            {"replacements": [{"filePath": "src/a.py"}, {"filePath": "app/.env"}]},
+        )
+        out = _run_hook("sensitive-files-guard.mjs", payload)
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        self.assertIn(".env", out.get("permissionDecisionReason", ""))
+        safe = _copilot(
+            "multi_replace_string_in_file",
+            {"replacements": [{"filePath": "src/a.py"}, {"filePath": "src/b.py"}]},
+        )
+        self.assertEqual(_raw_hook("sensitive-files-guard.mjs", safe), "")
+
+    def test_multi_replace_without_paths_denied(self) -> None:
+        out = _run_hook(
+            "sensitive-files-guard.mjs",
+            _copilot("multi_replace_string_in_file", {"replacements": []}),
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
+
+    def test_apply_patch_env_denied(self) -> None:
+        patch = "*** Begin Patch\n*** Update File: src/a.py\n*** Add File: app/.env\n*** End Patch"
+        out = _run_hook("sensitive-files-guard.mjs", _copilot("apply_patch", {"input": patch}))
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        self.assertIn(".env", out.get("permissionDecisionReason", ""))
+        safe = "*** Begin Patch\n*** Update File: src/a.py\n*** End Patch"
+        self.assertEqual(
+            _raw_hook("sensitive-files-guard.mjs", _copilot("apply_patch", {"input": safe})), ""
+        )
+
+    def test_create_and_run_task_is_bash(self) -> None:
+        out = _run_hook(
+            "git-guard.mjs",
+            _copilot("create_and_run_task", {"task": {"command": "git push origin master"}}),
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
 
     def test_sensitive_guard_deny_lockfile_write(self) -> None:
         out = _run_hook("sensitive-files-guard.mjs", _copilot("Write", {"path": "uv.lock"}))
@@ -149,6 +206,15 @@ class CopilotInvokeHookAdapterTest(unittest.TestCase):
         out = _run_hook(
             "server-guard.mjs",
             _copilot("mcp__playwright__browser_click", {}),
+            env={**VPS, "KIT_HOST_PROFILE": "vps"},
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
+
+    def test_server_guard_deny_vscode_playwright_mcp_name_on_vps(self) -> None:
+        """VS Code nazywa narzędzia MCP `mcp_<server>_<tool>` (jedno podkreślenie)."""
+        out = _run_hook(
+            "server-guard.mjs",
+            _copilot("mcp_playwright_browser_navigate", {"url": "http://x"}),
             env={**VPS, "KIT_HOST_PROFILE": "vps"},
         )
         self.assertEqual(out.get("permissionDecision"), "deny")

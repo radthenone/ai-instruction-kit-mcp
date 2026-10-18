@@ -72,7 +72,8 @@ const EMBEDDED_DEFAULTS = [
   {"id": "pytest-xdist", "kind": "deny", "pattern": "^\\s*pytest(?=\\s|$).*\\s(?:-n|--numprocesses)(?=[\\s=\\d]|$)", "reason": "xdist mnoży procesy na słabym CPU — użyj `pytest` bez `-n`"},
 ];
 
-const PLAYWRIGHT_TOOL = /^mcp__plugin_playwright_.*|^mcp__playwright__.*/;
+// `mcp__plugin_playwright_…`/`mcp__playwright__…` (Claude) i `mcp_playwright_…` (VS Code).
+const PLAYWRIGHT_TOOL = /^mcp_+(plugin_)?playwright/;
 
 // Test parzystości porównuje wbudowaną kopię z `DEFAULTS` w Pythonie.
 if (process.env.SERVER_GUARD_DUMP_DEFAULTS === "1") {
