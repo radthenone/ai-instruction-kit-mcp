@@ -44,43 +44,73 @@ def _run_hook(script: str, payload: dict, target: str = "codex", env: dict | Non
     return json.loads(out).get("hookSpecificOutput", {})
 
 
+def _codex(tool_name: str, tool_input: dict) -> dict:
+    """Payload PreToolUse w kształcie Codexa."""
+    return {
+        "hook_event_name": "PreToolUse",
+        "session_id": "s-test",
+        "cwd": str(KIT_ROOT),
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+    }
+
+
+def _patch(*headers: str) -> str:
+    body = "\n".join(f"{h}\n+x" for h in headers)
+    return f"*** Begin Patch\n{body}\n*** End Patch\n"
+
+
 @unittest.skipUnless(NODE, "brak node")
 class CodexInvokeHookAdapterTest(unittest.TestCase):
-    """Adapter `--to codex` — deny i allow na payloadach PreToolUse."""
+    """Adapter `--to codex` — deny i allow na payloadach PreToolUse Codexa."""
 
-    def test_git_guard_deny_push_master(self) -> None:
+    def test_git_guard_deny_push_master_shell_argv(self) -> None:
         out = _run_hook(
             "git-guard.mjs",
-            {"tool_name": "Bash", "tool_input": {"command": "git push origin master"}},
+            _codex("shell", {"command": ["bash", "-lc", "git push origin master"]}),
         )
         self.assertEqual(out.get("permissionDecision"), "deny")
         self.assertIn("git-guard", out.get("permissionDecisionReason", ""))
 
+    def test_git_guard_deny_push_master_bash_string(self) -> None:
+        out = _run_hook("git-guard.mjs", _codex("Bash", {"command": "git push origin master"}))
+        self.assertEqual(out.get("permissionDecision"), "deny")
+
     def test_git_guard_allow_push_feat(self) -> None:
         out = _run_hook(
             "git-guard.mjs",
-            {"tool_name": "Bash", "tool_input": {"command": "git push origin feat/x"}},
+            _codex("shell", {"command": ["bash", "-lc", "git push origin feat/x"]}),
         )
         self.assertEqual(out.get("permissionDecision"), "allow")
 
-    def test_sensitive_files_deny_env(self) -> None:
-        out = _run_hook(
-            "sensitive-files-guard.mjs",
-            {"tool_name": "Write", "tool_input": {"file_path": ".env"}},
-        )
+    def test_shell_without_command_denied(self) -> None:
+        out = _run_hook("git-guard.mjs", _codex("shell", {}))
         self.assertEqual(out.get("permissionDecision"), "deny")
 
-    def test_sensitive_files_allow_src(self) -> None:
-        out = _run_hook(
-            "sensitive-files-guard.mjs",
-            {"tool_name": "Write", "tool_input": {"file_path": "src/app.py"}},
-        )
+    def test_apply_patch_env_denied(self) -> None:
+        patch = _patch("*** Update File: src/app.py", "*** Add File: .env")
+        out = _run_hook("sensitive-files-guard.mjs", _codex("apply_patch", {"command": patch}))
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        self.assertIn(".env", out.get("permissionDecisionReason", ""))
+
+    def test_apply_patch_delete_key_denied(self) -> None:
+        patch = _patch("*** Delete File: certs/server.pem")
+        out = _run_hook("sensitive-files-guard.mjs", _codex("apply_patch", {"input": patch}))
+        self.assertEqual(out.get("permissionDecision"), "deny")
+
+    def test_apply_patch_src_allowed(self) -> None:
+        patch = _patch("*** Update File: src/app.py", "*** Add File: src/new.py")
+        out = _run_hook("sensitive-files-guard.mjs", _codex("apply_patch", {"command": patch}))
         self.assertEqual(out.get("permissionDecision"), "allow")
+
+    def test_apply_patch_without_paths_denied(self) -> None:
+        out = _run_hook("sensitive-files-guard.mjs", _codex("apply_patch", {"command": "garbage"}))
+        self.assertEqual(out.get("permissionDecision"), "deny")
 
     def test_server_guard_deny_docker_on_vps(self) -> None:
         out = _run_hook(
             "server-guard.mjs",
-            {"tool_name": "Bash", "tool_input": {"command": "docker compose up"}},
+            _codex("shell", {"command": ["bash", "-lc", "docker compose up"]}),
             env={**VPS, "KIT_HOST_PROFILE": "vps"},
         )
         self.assertEqual(out.get("permissionDecision"), "deny")
@@ -89,14 +119,18 @@ class CodexInvokeHookAdapterTest(unittest.TestCase):
     def test_server_guard_allow_docker_on_local(self) -> None:
         out = _run_hook(
             "server-guard.mjs",
-            {"tool_name": "Bash", "tool_input": {"command": "docker compose up"}},
+            _codex("shell", {"command": ["bash", "-lc", "docker compose up"]}),
             env={**VPS, "KIT_HOST_PROFILE": "local"},
         )
         self.assertNotEqual(out.get("permissionDecision"), "deny")
 
-    def test_empty_payload_guard_decides(self) -> None:
-        out = _run_hook("git-guard.mjs", {})
-        self.assertIn(out.get("permissionDecision"), {"allow", "deny"})
+    def test_server_guard_deny_playwright_mcp_on_vps(self) -> None:
+        out = _run_hook(
+            "server-guard.mjs",
+            _codex("mcp__playwright__browser_click", {}),
+            env={**VPS, "KIT_HOST_PROFILE": "vps"},
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
 
 
 @unittest.skipUnless(NODE and resolve_bash(), "brak node lub bash")
@@ -129,8 +163,9 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
                 )
         hooks_json = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         pre = hooks_json["hooks"]["PreToolUse"]
-        matchers = {entry["matcher"] for entry in pre}
+        matchers = {m for entry in pre for m in entry["matcher"].split("|")}
         self.assertIn("Bash", matchers)
+        self.assertIn("shell", matchers)
         commands = " ".join(
             h["command"] for entry in pre for h in entry["hooks"]
         )
@@ -147,7 +182,7 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
         workspace = self._install("codex")
         hooks_json = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         pre = hooks_json["hooks"]["PreToolUse"]
-        bash_entry = next(e for e in pre if e["matcher"] == "Bash")
+        bash_entry = next(e for e in pre if "Bash" in e["matcher"].split("|"))
         self.assertTrue(
             any("server-guard.mjs" in h["command"] for h in bash_entry["hooks"]),
             bash_entry,
@@ -157,6 +192,36 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
             any("server-guard.mjs" in h["command"] for h in mcp_entry["hooks"]),
             mcp_entry,
         )
+
+    def test_hook_command_works_from_subdirectory(self) -> None:
+        workspace = self._install("codex")
+        subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+        sub = workspace / "src" / "deep"
+        sub.mkdir(parents=True)
+        pre = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))
+        command = next(
+            h["command"]
+            for e in pre["hooks"]["PreToolUse"] if "shell" in e["matcher"].split("|")
+            for h in e["hooks"] if "git-guard" in h["command"]
+        )
+        proc = subprocess.run(
+            [resolve_bash(), "-c", command],
+            cwd=sub,
+            input=json.dumps(_codex("shell", {"command": ["bash", "-lc", "git push origin master"]})),
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout)["hookSpecificOutput"]
+        self.assertEqual(out["permissionDecision"], "deny")
+
+    def test_sensitive_matcher_catches_apply_patch(self) -> None:
+        workspace = self._install("codex")
+        pre = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))
+        entry = next(
+            e for e in pre["hooks"]["PreToolUse"]
+            if any("sensitive-files-guard" in h["command"] for h in e["hooks"])
+        )
+        self.assertIn("apply_patch", entry["matcher"].split("|"))
 
     def test_dropping_codex_removes_its_guards(self) -> None:
         workspace = self._install("codex")
