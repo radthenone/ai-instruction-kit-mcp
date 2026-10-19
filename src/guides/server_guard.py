@@ -745,7 +745,7 @@ def main(argv: list[str]) -> int:
     config = render_config(tasks=tasks, packages=packages, server=server)
     hooks_dir.mkdir(parents=True, exist_ok=True)
     (hooks_dir / "server-guard.json").write_text(
-        json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+        json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n",
     )
     print(f"  + {hooks_dir}/server-guard.json (server-guard: {len(config['wrappers'])} wrapperów)")
     return 0
