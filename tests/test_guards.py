@@ -137,6 +137,7 @@ SENSITIVE_READ: list[tuple[str, str]] = [
     ("package-lock.json", "allow"),
     ("uv.lock", "allow"),
     ("Cargo.lock", "allow"),
+    ("bun.lock", "allow"),
     ("README.md", "allow"),
     ("C:\\repo\\.env", "deny"),
 ]
@@ -150,12 +151,41 @@ SENSITIVE_WRITE: list[tuple[str, str]] = [
     ("pnpm-lock.yaml", "deny"),
     ("yarn.lock", "deny"),
     ("bun.lockb", "deny"),
+    ("bun.lock", "deny"),
     ("uv.lock", "deny"),
     ("poetry.lock", "deny"),
     ("Pipfile.lock", "deny"),
     ("Cargo.lock", "deny"),
     ("package.json", "allow"),
     ("pyproject.toml", "allow"),
+]
+
+# Bash czyta sekret obejściem Read (#231). Guard widzi formę oryginalną (Claude Code)
+# albo przepisaną przez RTK (opencode): `cat .env` → `rtk read .env`.
+SENSITIVE_SHELL: list[tuple[str, str]] = [
+    ("cat .env", "deny"),
+    ("cat .env.local", "deny"),
+    ("head -5 .env", "deny"),
+    ("rtk read .env --max-lines 5", "deny"),
+    ("rtk grep KEY .env", "deny"),
+    ("rtk read id_rsa", "deny"),
+    ("grep KEY .env", "deny"),
+    ("sudo cat ~/.ssh/id_rsa", "deny"),
+    ("env cat .env", "deny"),
+    ("ls && cat .env | head", "deny"),
+    ("source .env", "deny"),
+    (". .env", "deny"),
+    ('cat "certs/server.pem"', "deny"),
+    ("cat .env.example", "allow"),
+    ("cat README.md", "allow"),
+    ("cp .env.example .env", "allow"),
+    ("ls -la .env", "allow"),
+    ("git check-ignore .env", "allow"),
+    ("rm .env", "allow"),
+    ("echo X > .env", "allow"),
+    # Granica: guard tekstowy nie udaje pełnej ochrony (README, decyzja z #231).
+    ("grep -r KEY .", "allow"),
+    ("python -c \"open('.env')\"", "allow"),
 ]
 
 
@@ -245,6 +275,19 @@ class SensitiveFilesGuardTest(unittest.TestCase):
         self.assertEqual(out["permissionDecision"], "allow")
         out = run_guard("sensitive-files-guard.mjs", {"file_path": ".env", "content": ""})
         self.assertEqual(out["permissionDecision"], "deny")
+
+    def test_shell_read(self) -> None:
+        for command, expected in SENSITIVE_SHELL:
+            with self.subTest(command=command):
+                out = run_guard("sensitive-files-guard.mjs", {"tool_name": "Bash", "tool_input": {"command": command}})
+                self.assertEqual(out.get("permissionDecision"), expected, out.get("permissionDecisionReason"))
+
+    def test_cursor_before_shell_execution_shape(self) -> None:
+        # Cursor beforeShellExecution: `.command` bez tool_name.
+        out = run_guard("sensitive-files-guard.mjs", {"command": "cat .env"})
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        out = run_guard("sensitive-files-guard.mjs", {"command": "cat README.md"})
+        self.assertEqual(out.get("permissionDecision"), "allow")
 
 
 @unittest.skipUnless(NODE, "brak node")
