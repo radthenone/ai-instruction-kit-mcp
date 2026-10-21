@@ -396,6 +396,35 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("rtk --skip-env bun install", "deny"),
     ("rtk ls", "allow"),
     ("rtk git status", "allow"),
+    # `rtk next` bez podkomendy to `next build`; serwery dev nie są blokowane (ADR 0009).
+    ("rtk next --debug", "deny"),
+    ("rtk next dev", "allow"),
+    ("rtk next start", "allow"),
+    ("rtk next lint", "allow"),
+    ("rtk next --help", "allow"),
+    # Flagi i `--` po podkomendzie launchera nie omijają guarda.
+    ("rtk proxy --ultra-compact uv sync", "deny"),
+    ("rtk proxy --skip-env bun install", "deny"),
+    ("rtk proxy -- bun install", "deny"),
+    ("rtk err -- next build", "deny"),
+    ("rtk summary --ultra-compact uv sync", "deny"),
+    ('rtk run --command "bun install"', "deny"),
+    ('rtk run --command="bun install"', "deny"),
+    ('rtk run -c"bun install"', "deny"),
+    ("rtk run -c 'echo \"x\"'", "allow"),
+    # Pojedynczy cytowany argument rtk uruchamia przez `sh -c`.
+    ("rtk test 'bun install'", "deny"),
+    ('rtk summary "bun install"', "deny"),
+    ('rtk err "bun install"', "deny"),
+    ('rtk test "uv sync"', "deny"),
+    ("rtk summary 'next build'", "deny"),
+    ("rtk run 'bun install'", "deny"),
+    ('rtk run "echo x; docker compose up"', "deny"),
+    ("rtk test 'echo hi'", "allow"),
+    ("npx expo@latest install x", "deny"),
+    # Zagnieżdżenie ponad limit to deny, nie crash hooka (fail-open).
+    ("rtk " * 8000 + "bun install", "deny"),
+    ("npx " * 8000 + "bun install", "deny"),
     # CLI, które same instalują paczki (ADR 0009: krótka lista) (#227).
     ("bunx shadcn@latest init -y", "deny"),
     ("pnpm dlx shadcn add button", "deny"),
@@ -450,6 +479,11 @@ class ServerGuardTest(unittest.TestCase):
         # Powód musi wskazywać regułę kita, nie tylko „wrapper”.
         out = run_server_guard({"tool_name": "Bash", "tool_input": {"command": "rtk bun install"}}, VPS)
         self.assertTrue(out.get("permissionDecisionReason", "").endswith("[bun-pkg]"), out)
+
+    def test_rtk_next_names_next_build_rule(self) -> None:
+        out = run_server_guard({"tool_name": "Bash", "tool_input": {"command": "rtk next"}}, VPS)
+        self.assertEqual(out.get("permissionDecision"), "deny", out)
+        self.assertTrue(out.get("permissionDecisionReason", "").endswith("[next-build]"), out)
 
     def test_uv_no_sync_env_allows_uv_run(self) -> None:
         self.assertEqual(decision("uv run ruff", {**VPS, "UV_NO_SYNC": "1"}), "allow")
