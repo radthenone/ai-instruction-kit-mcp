@@ -382,6 +382,26 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("podman ps", "allow"),
     ("podman logs app", "allow"),
     ("podman run x", "deny"),
+    # Globalna wtyczka RTK przepisuje komendę przed guardem opencode (#227):
+    # `rtk` to launcher, nie zwykły prefiks — `rtk next` gubi słowo `build`.
+    ("rtk bun install", "deny"),
+    ("mv a b && rtk bun install", "deny"),
+    ("rtk uv sync", "deny"),
+    ("rtk next", "deny"),
+    ('rtk run -c "bun install"', "deny"),
+    ("rtk run bun install", "deny"),
+    ("rtk proxy uv sync", "deny"),
+    ("rtk -v pnpm install", "deny"),
+    ("rtk --ultra-compact npm ci", "deny"),
+    ("rtk --skip-env bun install", "deny"),
+    ("rtk ls", "allow"),
+    ("rtk git status", "allow"),
+    # CLI, które same instalują paczki (ADR 0009: krótka lista) (#227).
+    ("bunx shadcn@latest init -y", "deny"),
+    ("pnpm dlx shadcn add button", "deny"),
+    ("npx shadcn@latest add button", "deny"),
+    ("npx expo install expo-camera", "deny"),
+    ("expo install expo-camera", "deny"),
 ]
 
 VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": ""}
@@ -425,6 +445,11 @@ class ServerGuardTest(unittest.TestCase):
             with self.subTest(command=command):
                 denied, _, _ = check_command(command, [dict(r) for r in DEFAULTS])
                 self.assertEqual("deny" if denied else "allow", expected)
+
+    def test_rtk_install_names_kit_rule(self) -> None:
+        # Powód musi wskazywać regułę kita, nie tylko „wrapper”.
+        out = run_server_guard({"tool_name": "Bash", "tool_input": {"command": "rtk bun install"}}, VPS)
+        self.assertTrue(out.get("permissionDecisionReason", "").endswith("[bun-pkg]"), out)
 
     def test_uv_no_sync_env_allows_uv_run(self) -> None:
         self.assertEqual(decision("uv run ruff", {**VPS, "UV_NO_SYNC": "1"}), "allow")
@@ -614,6 +639,8 @@ tasks:
             "task backend:test", "task web:e2e", "task front", "task sync", "task mixed",
             "bun run build", "npm run build", "pnpm run build", "yarn run build", "yarn build",
             "bun --filter web run build", "bun run ci", "npm test", "turbo run test", "turbo run lint test",
+            # `rtk npm X` działa jak `npm run X`; wrapper z package.json łapie build (#227).
+            "rtk npm build",
         }
         allow = {"task lint", "bun run lint", "bun run boom", "turbo run lint", "bun run check", "npm run typecheck"}
         for command in sorted(deny):
@@ -625,6 +652,8 @@ tasks:
 
         out = run_server_guard({"tool_input": {"command": "bun run ci"}}, VPS, config)
         self.assertIn("bun run ci → bun run build → turbo run build → next build", out.get("permissionDecisionReason", ""))
+        out = run_server_guard({"tool_input": {"command": "rtk npm build"}}, VPS, config)
+        self.assertIn("npm run build → turbo run build → next build", out.get("permissionDecisionReason", ""))
         out = run_server_guard({"tool_input": {"command": "task ci"}}, VPS, config)
         self.assertIn("task ci → task backend:test → docker compose run api pytest", out.get("permissionDecisionReason", ""))
 

@@ -51,6 +51,28 @@ Taskfile, skrypty `package.json` i `turbo run` do deny wrapperów z łańcuchem
 powodu (`bun run build → turbo run build → next build`). Bez reloadu guard działa
 na starej liście — README mówi to wprost.
 
+## Wrappery wykonania: rtk
+
+Osobna pułapka to `rtk` — globalna wtyczka, która przepisuje komendę po stronie
+klienta. W opencode wtyczka RTK (`execute.before`) podmienia `input.command` na
+`rtk rewrite <cmd>`, a plugin guardów kita działa po niej, więc widzi już
+`rtk bun install`, a `next build` dociera jako `rtk next` — bez słowa `build`.
+Reguła `bun-pkg` ani `next-build` nie ma wtedy czego dopasować.
+
+Dlatego guard normalizuje `rtk` jak launcher, nie jak zwykły prefiks:
+
+1. zdejmuje flagi rtk (`-v…`, `--ultra-compact`, `--skip-env`);
+2. `rtk proxy|err|test|summary <cmd>` ocenia jako `<cmd>`;
+3. `rtk run -c "<cmd>"` ocenia jak `sh -c`, a `rtk run <cmd>` jak gołe `<cmd>`;
+4. pozostałe `rtk X …` jako `X …`, plus tabela form, w których rtk zgubił
+   znaczące słowo: `rtk next` → `next build`, `rtk npm X` → `npm X` i `npm run X`.
+
+Deny działa więc niezależnie od tego, czy komenda dotarła do guarda przed
+przepisaniem, czy po. W Claude Code hooki `PreToolUse` działają równolegle na
+oryginalnym `tool_input`, więc guard widzi komendę sprzed RTK, a deny wygrywa
+z `updatedInput`; normalizacja pokrywa ten sam przypadek bez osobnego testu
+integracyjnego.
+
 ## Konsekwencje
 
 - `vps-lightweight.md`: sekcja „Bez hooka blokującego" zastąpiona odwołaniem

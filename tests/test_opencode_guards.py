@@ -55,6 +55,7 @@ console.log("ok")
 VPS_SCRIPT = SCRIPT.split("// Nazwy i pola")[0] + """
 await denied("shell", { command: "docker compose up" }, /server-guard/)
 await denied("bash", { command: "sudo uv sync" }, /server-guard/)
+await denied("shell", { command: "rtk bun install" }, /server-guard/)
 await denied("playwright_browser_navigate", { url: "http://x" }, /server-guard/)
 await run("shell", { command: "git status" })
 await run("shell", { command: "uv run --no-sync ruff check ." })

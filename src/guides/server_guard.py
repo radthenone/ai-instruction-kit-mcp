@@ -71,6 +71,11 @@ DEFAULTS: tuple[dict[str, str], ...] = (
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
     {"id": "yarn-pkg", "kind": "deny", "pattern": r"^\s*yarn\s+(install|add)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+    # CLI, które same instalują paczki (init/add) — poza skryptami projektu.
+    {"id": "shadcn", "kind": "deny", "pattern": r"^\s*shadcn(?:@\S+)?\s+(?:init|add)(?=\s|$)",
+     "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
+    {"id": "expo-install", "kind": "deny", "pattern": r"^\s*expo\s+install(?=\s|$)",
+     "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
     # Buildy produkcyjne — tylko w CI.
     {"id": "next-build", "kind": "deny", "pattern": r"^\s*next\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
@@ -124,6 +129,10 @@ _UV_RUN_ARG = frozenset((
 _JS_PM_ARG = frozenset(("--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"))
 _NPX_ARG = frozenset(("-p", "--package"))
 _PYTHON = re.compile(r"python(?:\d+(?:\.\d+)?)?")
+# `rtk` to globalna wtyczka przepisująca komendę (opencode/Claude/Codex/Cursor):
+# `bun install` → `rtk bun install`, `next build` → `rtk next`. Traktujemy go jak
+# launcher, bo przepisana komenda nie zawiera już słów, na których stoją reguły.
+_RTK_LAUNCHER = frozenset(("proxy", "err", "test", "summary"))
 
 
 def warn(message: str) -> None:
@@ -314,6 +323,9 @@ def command_forms(segment: str) -> tuple[list[str], dict[str, str]]:
     `uv [opcje] run [flagi] X`, `npx`/`bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X`
     dokładają formę `X`; opcje `uv` przed podkomendą i `--filter`/`--cwd` menedżerów JS
     są zdejmowane, żeby wzorce (`uv run`, wrappery `bun run x`) widziały komendę wprost.
+    `rtk` jest launcherem wykonania: `rtk X …` daje `X …`, `rtk proxy|err|test|summary X`
+    daje `X`, a `rtk run -c "…"` oceniamy jak `sh -c`. Tabela znaczeń dokłada formy,
+    w których rtk zgubił słowo: `rtk next` → `next build`, `rtk npm X` → `npm run X`.
     """
     command, assigns = strip_prefixes(segment)
     toks = command.split()
@@ -342,6 +354,36 @@ def command_forms(segment: str) -> tuple[list[str], dict[str, str]]:
             rest = toks[_skip_flags(toks, 2, _NPX_ARG):]
     elif _PYTHON.fullmatch(head) and len(toks) > 2 and toks[1] == "-m":
         rest = toks[2:]
+    elif head == "rtk":
+        i = _skip_flags(toks, 1, frozenset())
+        toks = ["rtk", *toks[i:]]
+        forms = [" ".join(toks)]
+        sub = toks[1] if len(toks) > 1 else ""
+        if sub == "run":
+            # `rtk run -c "…"` działa jak `sh -c`, `rtk run [flagi] X` jak gołe `X`.
+            k = 2
+            while k < len(toks) and toks[k].startswith("-") and toks[k] != "-c":
+                k += 1
+            if k < len(toks) and toks[k] == "-c":
+                inner = " ".join(toks[k + 1:]).strip("'\"")
+                for inner_segment in split_segments(inner):
+                    inner_forms, inner_assigns = command_forms(inner_segment)
+                    forms.extend(inner_forms)
+                    assigns.update(inner_assigns)
+                return forms, assigns
+            rest = toks[k:]
+        elif sub in _RTK_LAUNCHER:
+            rest = toks[2:]
+        elif sub:
+            rest = toks[1:]
+        if sub == "next":
+            # `rtk rewrite "next build"` → `rtk next`, bez słowa `build`.
+            forms.append(" ".join(["next", "build", *toks[2:]]))
+        elif sub == "npm" and len(toks) > 2 and toks[2] not in ("run", "run-script"):
+            # `rtk npm X` uruchamia `npm X`, ale wrapper w package.json to `npm run X`.
+            inner_forms, inner_assigns = command_forms("npm run " + " ".join(toks[2:]))
+            forms.extend(inner_forms)
+            assigns.update(inner_assigns)
     if rest:
         inner, inner_assigns = command_forms(" ".join(rest))
         forms.extend(inner)

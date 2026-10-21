@@ -60,6 +60,8 @@ const EMBEDDED_DEFAULTS = [
   {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(install|i|ci)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
   {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(install|i|add)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
   {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(install|add)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "shadcn", "kind": "deny", "pattern": "^\\s*shadcn(?:@\\S+)?\\s+(?:init|add)(?=\\s|$)", "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
+  {"id": "expo-install", "kind": "deny", "pattern": "^\\s*expo\\s+install(?=\\s|$)", "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
   {"id": "next-build", "kind": "deny", "pattern": "^\\s*next\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
   {"id": "expo-build", "kind": "deny", "pattern": "^\\s*expo\\s+(prebuild|export)(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
   {"id": "eas-build", "kind": "deny", "pattern": "^\\s*eas\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
@@ -222,6 +224,10 @@ const UV_RUN_ARG = new Set(["--with", "--with-requirements", "--python", "-p", "
 const JS_PM_ARG = new Set(["--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"]);
 const NPX_ARG = new Set(["-p", "--package"]);
 const PYTHON = /^python(?:\d+(?:\.\d+)?)?$/;
+// `rtk` to globalna wtyczka przepisująca komendę (opencode/Claude/Codex/Cursor):
+// `bun install` → `rtk bun install`, `next build` → `rtk next`. Traktujemy go jak
+// launcher, bo przepisana komenda nie zawiera już słów, na których stoją reguły.
+const RTK_LAUNCHER = new Set(["proxy", "err", "test", "summary"]);
 
 function skipHeredocs(cmd, i, pending) {
   for (const [stripTabs, delim] of pending) {
@@ -422,6 +428,38 @@ function commandForms(segment) {
     if (["dlx", "exec", "x"].includes(toks[1])) rest = toks.slice(skipFlags(toks, 2, NPX_ARG));
   } else if (PYTHON.test(head) && toks.length > 2 && toks[1] === "-m") {
     rest = toks.slice(2);
+  } else if (head === "rtk") {
+    toks = ["rtk", ...toks.slice(skipFlags(toks, 1, new Set()))];
+    forms = [toks.join(" ")];
+    const sub = toks[1] || "";
+    if (sub === "run") {
+      // `rtk run -c "…"` działa jak `sh -c`, `rtk run [flagi] X` jak gołe `X`.
+      let k = 2;
+      while (k < toks.length && toks[k].startsWith("-") && toks[k] !== "-c") k += 1;
+      if (toks[k] === "-c") {
+        const inner = toks.slice(k + 1).join(" ").replace(/^['"]+|['"]+$/g, "");
+        for (const innerSegment of splitSegments(inner)) {
+          const [innerForms, innerAssigns] = commandForms(innerSegment);
+          forms.push(...innerForms);
+          Object.assign(assigns, innerAssigns);
+        }
+        return [forms, assigns];
+      }
+      rest = toks.slice(k);
+    } else if (RTK_LAUNCHER.has(sub)) {
+      rest = toks.slice(2);
+    } else if (sub) {
+      rest = toks.slice(1);
+    }
+    if (sub === "next") {
+      // `rtk rewrite "next build"` → `rtk next`, bez słowa `build`.
+      forms.push(["next", "build", ...toks.slice(2)].join(" "));
+    } else if (sub === "npm" && toks.length > 2 && !["run", "run-script"].includes(toks[2])) {
+      // `rtk npm X` uruchamia `npm X`, ale wrapper w package.json to `npm run X`.
+      const [innerForms, innerAssigns] = commandForms("npm run " + toks.slice(2).join(" "));
+      forms.push(...innerForms);
+      Object.assign(assigns, innerAssigns);
+    }
   }
   if (rest.length) {
     const [inner, innerAssigns] = commandForms(rest.join(" "));
