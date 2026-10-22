@@ -11,6 +11,10 @@
           {
             "type": "command",
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js\" server-guard.mjs --to codex"
+          },
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js\" sensitive-files-guard.mjs --to codex"
           }
         ]
       },
