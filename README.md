@@ -1238,7 +1238,7 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 | Guard | Klient | Zachowanie |
 |-------|--------|------------|
 | `git-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
-| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** oczywisty odczyt sekretu przez Bash — komenda czytająca (`cat`, `head`, `tail`, `less`, `more`, `bat`, `grep`, `rg`, `sed`, `awk`, `xxd`, `base64`, `strings`, `source`/`.`, `rtk read`, `rtk grep`) z argumentem będącym ścieżką sekretu; segmenty po `;`/`&&`/`||`/`|`, prefiksy `sudo`/`env`/`rtk` (i powłoka z `-c`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `bun.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
 | `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
@@ -1252,6 +1252,16 @@ blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. M
 `permissionDecisionReason` i sam dobiera bezpieczną alternatywę. Git odzyska wszystko
 w repo; poza repo pilnujemy tylko katalogów systemowych i sekretów — resztę gate'uje
 natywna permission klienta (`cwd` + `additionalDirectories`).
+
+**Granica sensitive-files-guarda pod Bash (#231).** Guard blokuje **oczywiste**
+odczyty sekretów — komenda czytająca z jawną ścieżką sekretu, w tym forma po
+przepisaniu przez RTK (`cat .env` → `rtk read .env`, `grep KEY .env` → `rtk grep
+KEY .env`). Nie jest piaskownicą: `python -c "open('.env')"`, `grep -r KEY .` ani
+zapis sekretu przez Bash (`echo X > .env`, `tee .env`) przechodzą. Świadomie poza
+zakresem jest też każda inna komenda ze ścieżką sekretu (`cp .env.example .env`,
+`ls -la .env`, `rm .env`, `git check-ignore .env`). Parser jest tekstowy
+(split po `;`/`&&`/`||`/`|` + prefiksy), a nie AST — upgrade ścieżką wspólnego
+parsera z server-guardem dopiero przy realnym omijaku, nie przez doklejanie wzorców.
 
 **Jeden dialekt, adapter na brzegu.** Skrypty polityki mówią wyłącznie kontraktem
 Claude Code (`hookSpecificOutput.permissionDecision`). Cursor (`permission`), OpenCode
@@ -1269,8 +1279,9 @@ wie o różnicy między klientami.
 | Copilot (VS Code + CLI) | `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` | tłumaczony przez adapter; deny = top-level `permissionDecision` + `hookSpecificOutput`, allow = pusty stdout |
 | Antigravity | `node hooks/invoke-hook.js <guard>.mjs --to antigravity` (cwd = katalog `hooks.json`, czyli `.agents/`) | tłumaczony przez adapter; wyjście `{ decision, reason }` (allow = `{"decision":"allow"}`) |
 
-Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
-(`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
+Cursor: `beforeShellExecution` → git-guard + sensitive-files-guard, `beforeReadFile` →
+sensitive-files-guard (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard
+(`--tool Write`).
 `--tool` dopisuje `tool_name`, którego payload Cursora nie niesie. Wszystkie wpisy mają
 `failClosed: true` — padnięty Guard (brak JSON) blokuje akcję, a nieczytelny payload
 daje **deny**. `invoke-hook.js` po wypisaniu JSON **zawsze kończy exit 0** (niezerowy
@@ -1278,7 +1289,8 @@ exit ukrywa payload przy failClosed).
 
 OpenCode (`--clients opencode`): bootstrap kładzie `git-guard.mjs`, `sensitive-files-guard.mjs`
 i `invoke-hook.js` w `.opencode/hooks/` oraz plugin V2 `.opencode/plugins/kit-guards.js`.
-Plugin podpina się pod `tool.execute.before`: `shell` (dawniej `bash`) → git-guard, `read` /
+Plugin podpina się pod `tool.execute.before`: `shell` (dawniej `bash`) → git-guard +
+server-guard + sensitive-files-guard, `read` /
 `edit` / `write` / `multiedit` → sensitive-files-guard, `patch` → sensitive-files-guard dla każdego
 pliku z `patchText` (także celu `Move to`). Nazwy i pola narzędzi sprawdzone na opencode 2.0.24.
 Działa niezależnie od `permission` w `opencode.json`, także przy `allow` na bash i edycje. Przy
@@ -1288,7 +1300,8 @@ i dobiera inną drogę. Awaria guarda, timeout (10 s) albo wejście bez oczekiwa
 
 Codex (`--clients codex`): bootstrap kładzie guardy, `invoke-hook.js` i `server-guard.json`
 w `.codex/hooks/` oraz `.codex/hooks.json` (PreToolUse). Powłoka (`Bash` / `shell` /
-`local_shell` / `exec_command`, `command` jako string albo argv) → git-guard + server-guard;
+`local_shell` / `exec_command`, `command` jako string albo argv) → git-guard + server-guard +
+sensitive-files-guard;
 Playwright MCP → server-guard; `apply_patch` i `Read|Edit|Write|…` → sensitive-files-guard,
 dla `apply_patch` po kolei na każdej ścieżce z nagłówków `*** Add|Update|Delete File:` /
 `*** Move to:` (patch bez ścieżek = deny). Ścieżka hooka liczona od roota repo
