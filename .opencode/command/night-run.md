@@ -44,8 +44,9 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 /night-run #N1 #N2 [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]
 ```
 
-`/goal` opcjonalny: noc działa sama. Wznawianie nocy = heartbeat `CronCreate` (krok 7), nie
-warunek `/goal`. Gdy noc idzie pod `/goal`, jego tekst to cel (niżej „Polecenia z tekstu celu”).
+`/goal` opcjonalny: noc działa sama. Wznawianie nocy = heartbeat `CronCreate` (krok 7,
+fallback watchdoga), nie warunek `/goal`. Gdy noc idzie pod `/goal`, jego tekst to cel
+(niżej „Polecenia z tekstu celu”).
 
 - **Lista issue** — `#N` przed pierwszym argumentem z `/`. Brak → kolejka (krok 4).
 - **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
@@ -156,22 +157,48 @@ pracy w tle).
   pauzy (od–do), wznowienia per ticket. Nadpisujesz **Ty** przy każdej zmianie kroku; tik
   czyta ją jako pierwszą.
 
-### 7. Heartbeat (tylko Claude Code)
+### 7. Watchdog i cron (tylko Claude Code)
 
-`CronCreate`, recurring `13,33,53 * * * *`, prompt z wpisaną na sztywno ścieżką CTX:
-`night-run heartbeat: przeczytaj sekcję „Heartbeat” w /night-run i „## Stan” w <CTX>,
-działaj wg niej.` Bez `CronCreate` u klienta → ten krok pomiń (limit API zostaje haltem C).
-Każde zakończenie nocy (wszystko MERGED, halt, raport) zaczyna się od `CronDelete`.
+Orkiestrator budzi się tylko wtedy, gdy jest co robić. Tik heartbeatu kosztuje turę
+i cały kontekst, więc nie jest mechanizmem oczekiwania.
+
+- **Watchdog w tle:** zaraz po starcie nocy odpalasz Bash `run_in_background` z pętlą co
+  20 min. Pętla sprawdza mechanicznie: przyrost logu `/headless` w katalogu CTX, przyrost
+  transkryptu subagenta z `## Stan` (`~/.claude/projects/<projekt>/*/subagents/agent-<id>.jsonl`)
+  i postęp PR (`gh pr view <PR> --json state,updatedAt`).
+  Dopóki wszystko idzie zgodnie z oczekiwaniem, śpi i **nie kończy działania** — nie budzi
+  orkiestratora. Kończy się, czyli budzi orkiestratora powiadomieniem o zakończeniu
+  zadania, **tylko przy anomalii**: brak przyrostu logu przez 90 min, subagent failed albo
+  zakończony bez hand-backu, PR bez zmian > 90 min. Pauza 429 **nie jest** anomalią —
+  watchdog ją pomija i śpi dalej; wznowienie po 429 zostaje na cronie (przypadek D).
+- **Cron co 60 min zostaje zawsze** jako fallback dla watchdoga, który ginie razem z sesją.
+  Najpierw `CronList`: jest już cron o tym harmonogramie → nic nie tworzysz. Inaczej
+  `CronCreate`, recurring `57 * * * *`, z promptem i wpisaną na sztywno ścieżką CTX:
+  `night-run heartbeat: przeczytaj sekcję „Tick watchdoga i crona” w /night-run i „## Stan”
+  w <CTX>, działaj wg niej.`
+- **`CronList` przed `CronCreate`** — obowiązkowo, także przy wznowieniu sesji: noc
+  2026-10-21 pokazała, że stary cron przeżył wznowienie i działał obok nowego. Jest już
+  cron o tym harmonogramie → nie tworzysz drugiego.
+- Bez `CronCreate` u klienta → ten krok pomiń (limit API zostaje haltem C).
+- Każde zakończenie nocy (wszystko MERGED, halt, raport) zaczyna się od `CronDelete`.
+
+**Powiadomienie „is waiting on its own background work” (tylko Claude Code):** gdy przyjdzie,
+orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
+`ok — czekam na koniec pracy w tle`. To nie jest sygnał do statusu, `## Stan` ani
+`ListAgents`; kolejkę i tak obsłuży watchdog albo cron.
 
 ## Łańcuch na ticket — dokładnie ten
 
 1. **Subagent ticketu** (świeży, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
-   dosłownie. Wraca z hand-backiem i niewypchniętym branchem. Zapisz jego id, nadpisz
-   `## Stan` w `CTX` (ticket, id, krok `ticket`). Z `/headless` kroki 2–3 promptu zastępujesz
-   linią „2–3. (z `/headless`)” z wpisanymi `EXEC`, `FLAGI` i `TREŚĆ`; bez `/headless` tę
-   linię usuwasz.
+   dosłownie. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
+   wywołaniu narzędzi co uruchomienie** subagenta (Agent), nie w osobnej turze — każda
+   tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
+   poprawiasz `## Stan`, jeśli hand-back zmienia krok. Z `/headless` kroki 2–3 promptu
+   zastępujesz linią „2–3. (z `/headless`)” z wpisanymi `EXEC`, `FLAGI` i `TREŚĆ`; bez
+   `/headless` tę linię usuwasz.
 2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
-   skillach z argumentów także nazwa bieżącego skilla). Z argumentami skilli review: uruchamiasz je **Ty**, przez Skill (w Claude Skill,
+   skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co
+   uruchomienie review. Z argumentami skilli review: uruchamiasz je **Ty**, przez Skill (w Claude Skill,
    nie Agent; skill może sam odpalać subagentów), każdy na `git diff origin/$BASE...HEAD`
    brancha ticketu, w kolejności z argumentów. Od skilla bierzesz tylko tabelę niżej; skill
    z `--fix` poprawia sam — subagent ticketu po wznowieniu zbiera to `/git-commit`.
@@ -251,6 +278,8 @@ Reguły:
   (`ps`, `pgrep`, `kill -0`) — taka pętla wisi bez końca albo staje na prośbie o zgodę.
   Nie oddajesz wyniku, dopóki praca w tle trwa; przed hand-backiem żadne Twoje zadanie
   w tle nie działa, zbędne kończysz.
+  (tylko Claude Code) Nie kończysz tury, dopóki `/headless` działa w tle — inaczej
+  orkiestrator dostaje powiadomienie „is waiting on its own background work” i płaci turę.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
@@ -352,11 +381,14 @@ Wpływ: blokuje #X, #Y · nie blokuje #Z
 Stan kodu: branch <nazwa> wypchnięty / porzucony
 ```
 
-## Heartbeat (tik co 20 min, tylko Claude Code)
+## Tick watchdoga i crona (tylko Claude Code)
 
-Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents`):
+Gdy watchdog skończy się anomalią albo cron wywoła tik, robisz tik. To jedyny moment,
+w którym orkiestrator budzi się bez pracy do wykonania. Najpierw zaległe powiadomienia,
+potem status subagenta z `## Stan` (`ListAgents`):
 
-- działa → jedna linia „ok”, koniec tiku;
+- działa → cron: jedna linia „ok”, koniec tiku; watchdog w tej sytuacji w ogóle się nie
+  kończy, więc nie budzi orkiestratora;
 - failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
   subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
   (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
@@ -366,10 +398,11 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
   z `## Stan` (przypadek D: pauzy ≤ 2 i przed końcem nocy → wznów, inaczej halt C).
 - restart hosta / `kill` sesji w trakcie ticketu: CTX i `## Stan` są w `~/.cache`, więc
   przetrwały — łańcuch od kroku z `## Stan`, a pracę od ostatniego commitu na branchu
-  (`git log`). `CronCreate` żyje w sesji i ginie razem z nią: wznów sesję
-  (`claude --continue`) albo odpal nowy `/night-run` — czyta `## Stan` z `~/.cache`.
+  (`git log`). `CronCreate` potrafi przeżyć wznowienie sesji (2026-10-21 działał obok
+  nowego): wznów sesję (`claude --continue`) albo odpal nowy `/night-run` — czyta
+  `## Stan` z `~/.cache`, a przed `CronCreate` robi `CronList`.
 
-## Pomiar kosztu ticketu (Claude Code)
+## Pomiar kosztu ticketu (tylko Claude Code)
 
 Po każdym tickecie liczysz jego subagentów (ticket + review) — `python3`, bez `jq`.
 Wiersz: agent | model | tury | input | cache_creation | cache_read | output | maks. kontekst | czas.
@@ -399,6 +432,10 @@ maks.). Czas = wall-clock z oczekiwaniem na review. Inny klient → „brak tran
 Z `/headless` albo skillami review z argumentów do wiersza ticketu dopisz notę
 „koszt bez wykonawcy headless i review w sesji głównej” (tych tokenów snippet nie widzi).
 
+Osobno liczysz **orkiestratora** — ten sam snippet na transkrypcie sesji głównej
+(`~/.claude/projects/<projekt>/<sesja>.jsonl`, nie `subagents/`). Do NIGHT-RUN REPORT
+idzie liczba jego tur i `cache_read`; to one mają spaść po #229.
+
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
 Zaczynasz od `CronDelete`. Pod `/goal` jego warunek sprawdza transkrypt, więc raport i dowody
@@ -413,6 +450,7 @@ Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 Wykonawca: <EXEC / subagent / subagent (brak /headless)> · Review: <skille z argumentów / domyślne>
 Pauzy limitu: <liczba> (przestój <od>–<do>, reset: <godzina z komunikatu / brak>)
 Wznowienia per ticket: <#N: liczba>
+Orkiestrator: <tury> tur / <cache_read> cache_read (sesja główna)
 
 | Ticket | Stan | Wykonawca | Review | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- | --- | --- |
