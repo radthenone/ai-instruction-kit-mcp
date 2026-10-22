@@ -12,15 +12,17 @@
  * Bash — deny tylko oczywisty odczyt: komenda czytająca + argument będący ścieżką
  * sekretu (cat, head, tail, less, more, bat, grep, rg, sed, awk, xxd, base64,
  * strings, source/. oraz `rtk read` / `rtk grep`). Segmenty dzielimy po `;`, `&&`,
- * `||`, `|` i zdejmujemy prefiksy sudo/env/rtk (oraz powłoki bash/sh/zsh z `-c`),
- * bo RTK przepisuje `cat .env` na `rtk read .env`. Każda inna komenda ze ścieżką
+ * `||`, `|` i podstawieniach `$(...)`, zdejmujemy prefiksy sudo/env/rtk (z `-u x`,
+ * `proxy`, `VAR=1`; oraz powłoki bash/sh/zsh z `-c`), bo RTK przepisuje `cat .env`
+ * na `rtk read .env`. Pierwszy argument grep/rg/sed/awk to wzorzec, nie plik; cel
+ * przekierowania (`> .env`) to zapis, nie odczyt. Każda inna komenda ze ścieżką
  * sekretu przechodzi: `cp .env.example .env`, `ls -la .env`, `rm .env`,
  * `git check-ignore .env`.
  *
  * ponytail: parser jest tekstowy i celowo płaski — nie złapie `python -c
  * "open('.env')"`, `grep -r KEY .` ani zapisu przez Bash (`echo X > .env`,
- * `tee .env`). To granica, nie bug: guard blokuje oczywiste
- * odczyty, nie udaje piaskownicy. Upgrade, gdy pojawi się realny omijak: wspólny
+ * `tee .env`), wrapperów time/command/exec/nice ani globów. To granica, nie bug:
+ * guard blokuje oczywiste odczyty, nie udaje piaskownicy. Upgrade, gdy pojawi się realny omijak: wspólny
  * parser shella z server-guard.mjs (AST zamiast split/regex), nie doklejanie
  * kolejnych wzorców.
  *
@@ -63,6 +65,7 @@ try {
 } catch {
   emit("deny", "sensitive-files-guard: nieczytelny payload hooka");
 }
+if (!payload || typeof payload !== "object") payload = {};
 
 const toolInput = payload.tool_input || {};
 const command = String(toolInput.command || payload.command || "");
@@ -92,14 +95,23 @@ const READ_COMMANDS = new Set([
   "cat", "head", "tail", "less", "more", "bat", "grep", "rg", "sed", "awk",
   "xxd", "base64", "strings", "source", ".",
 ]);
+// Pierwszy argument pozycyjny to wzorzec / skrypt, nie plik (chyba że podano -e / -f).
+const PATTERN_FIRST = new Set(["grep", "rg", "sed", "awk"]);
 // Powłoka z `-c` (`bash -lc "cat .env"`) to też prefiks, nie komenda czytająca.
 const SHELL_PREFIXES = new Set(["sudo", "env", "rtk", "bash", "sh", "zsh"]);
+// Opcje sudo/env z wartością w osobnym tokenie (`sudo -u root cat .env`).
+const PREFIX_VALUE_OPTS = new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-T", "-U", "-R", "-S"]);
+// `rtk proxy cat .env` uruchamia komendę bez filtra — to też prefiks.
+const RTK_WRAPPERS = new Set(["proxy", "err", "test", "summary"]);
+const REDIRECT = /^\d*>>?$|^&>>?$/;
 
-// Zdejmij cudzysłowy i domknięcia podstawień: `"certs/server.pem"`, `$(cat .env)`.
+// Zdejmij cudzysłowy i domknięcia podstawień: `"certs/server.pem"`.
 const clean = (token) => token.replace(/^[("'`]+|[)"'`,]+$/g, "");
 
 function shellSecretRead(command) {
-  for (const segment of command.split(/&&|\|\||[;|\n]/)) {
+  // Podstawienia `$(...)` / `` `...` `` / `(...)` to osobne segmenty; `>` odklejamy od tokenu.
+  const flat = command.replace(/\$\(|[`()]/g, ";").replace(/>/g, " > ");
+  for (const segment of flat.split(/&&|\|\||[;|\n]/)) {
     const tokens = segment.trim().split(/\s+/).filter(Boolean);
     let i = 0;
     let rtk = false;
@@ -111,7 +123,15 @@ function shellSecretRead(command) {
         i += 1;
         continue;
       }
-      if (i > 0 && (token.startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(token))) {
+      if (i > 0 && SHELL_PREFIXES.has(clean(tokens[i - 1])) && PREFIX_VALUE_OPTS.has(token)) {
+        i += 2;
+        continue;
+      }
+      if (
+        (i > 0 && token.startsWith("-")) ||
+        /^[A-Za-z_][A-Za-z0-9_]*=/.test(token) ||
+        (rtk && i > 0 && clean(tokens[i - 1]) === "rtk" && RTK_WRAPPERS.has(token))
+      ) {
         i += 1;
         continue;
       }
@@ -120,8 +140,23 @@ function shellSecretRead(command) {
     const name = clean(tokens[i] || "");
     // `rtk read` / `rtk grep` to forma po przepisaniu — `read` liczy się tylko z rtk.
     if (!READ_COMMANDS.has(name) && !(rtk && name === "read")) continue;
-    for (const token of tokens.slice(i + 1)) {
-      if (token.startsWith("-")) continue;
+    let needPattern = PATTERN_FIRST.has(name);
+    const args = tokens.slice(i + 1);
+    for (let j = 0; j < args.length; j += 1) {
+      const token = args[j];
+      if (REDIRECT.test(token)) {
+        j += 1; // cel zapisu (`> .env`), nie odczyt
+        continue;
+      }
+      if (token.startsWith("-")) {
+        if (token === "-e" || token === "--regexp") j += 1; // wartość = wzorzec
+        if (/^(-[ef]|--regexp|--file)$/.test(token)) needPattern = false;
+        continue;
+      }
+      if (needPattern) {
+        needPattern = false;
+        continue;
+      }
       const path = clean(token);
       if (isSecretPath(path)) return path;
     }
@@ -129,13 +164,13 @@ function shellSecretRead(command) {
   return "";
 }
 
-// Cursor `beforeShellExecution` nie ma tool_name — sam `command` wystarcza.
+// Cursor `beforeShellExecution` nie ma tool_name — sam `command` wystarcza. Brak trafienia
+// nie kończy sprawy: adapter Copilota daje string jako `command` i `file_path` naraz.
 if (command.trim()) {
   const hit = shellSecretRead(command);
   if (hit) {
     emit("deny", `sensitive-files-guard: ${hit} to sekret — nie czytaj go przez Bash; poproś użytkownika`);
   }
-  emit("allow", "sensitive-files-guard: brak oczywistego odczytu sekretu");
 }
 
 if (!file) emit("allow", "sensitive-files-guard: brak ścieżki");

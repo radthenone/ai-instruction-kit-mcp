@@ -176,8 +176,24 @@ SENSITIVE_SHELL: list[tuple[str, str]] = [
     ("source .env", "deny"),
     (". .env", "deny"),
     ('cat "certs/server.pem"', "deny"),
+    ("rtk proxy cat .env", "deny"),
+    ("sudo -u root cat .env", "deny"),
+    ("echo $(cat .env)", "deny"),
+    ("X=$(cat .env)", "deny"),
+    ("FOO=1 cat .env", "deny"),
+    ("cat .env>out", "deny"),
+    ("cat < .env", "deny"),
+    ("grep -e KEY .env", "deny"),
     ("cat .env.example", "allow"),
     ("cat README.md", "allow"),
+    ("grep .env .gitignore", "allow"),
+    ('grep -n "\\.env" .gitignore', "allow"),
+    ("grep -rn '.env' .", "allow"),
+    ("grep -e .env .gitignore", "allow"),
+    ("rg id_rsa docs/", "allow"),
+    ("rg '\\.env' src/", "allow"),
+    ("cat .env.example > .env", "allow"),
+    ("cat > .env <<EOF", "allow"),
     ("cp .env.example .env", "allow"),
     ("ls -la .env", "allow"),
     ("git check-ignore .env", "allow"),
@@ -189,7 +205,7 @@ SENSITIVE_SHELL: list[tuple[str, str]] = [
 ]
 
 
-def run_guard(name: str, payload: dict, env: dict[str, str] | None = None) -> dict:
+def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> dict:
     """
     Odpal Guard przez node z payloadem w kontrakcie Claude Code.
 
@@ -281,6 +297,19 @@ class SensitiveFilesGuardTest(unittest.TestCase):
             with self.subTest(command=command):
                 out = run_guard("sensitive-files-guard.mjs", {"tool_name": "Bash", "tool_input": {"command": command}})
                 self.assertEqual(out.get("permissionDecision"), expected, out.get("permissionDecisionReason"))
+
+    def test_null_payload_does_not_crash(self) -> None:
+        for payload in (None, "x", {"tool_input": None}):
+            self.assertEqual(run_guard("sensitive-files-guard.mjs", payload)["permissionDecision"], "allow")
+
+    def test_copilot_string_input_still_denies_read(self) -> None:
+        # Adapter Copilota daje string jako command i file_path naraz — plik nie może zniknąć.
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / "invoke-hook.js"), "sensitive-files-guard.mjs", "--to", "copilot"],
+            input=json.dumps({"tool_name": "view", "tool_input": ".env"}),
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertIn("deny", proc.stdout)
 
     def test_cursor_before_shell_execution_shape(self) -> None:
         # Cursor beforeShellExecution: `.command` bez tool_name.
