@@ -267,12 +267,14 @@ if (target === COPILOT) {
     emitDeny("nieczytelny payload copilot");
   }
   let input = payload.tool_input ?? payload.toolArgs ?? {};
+  let bareString = false;
   if (typeof input === "string") {
     try {
       input = JSON.parse(input);
     } catch {
       // Nie-JSON (np. goła komenda/ścieżka) — guard ma z czego wybrać.
       input = { command: input, file_path: input };
+      bareString = true;
     }
   }
   if (!input || typeof input !== "object") input = {};
@@ -292,6 +294,9 @@ if (target === COPILOT) {
   }
   const name = COPILOT_TOOLS[lower] || sourceName;
   const normalized = { ...input };
+  // Goły string to komenda dla Bash, a ścieżka dla narzędzi plikowych — nie obie naraz.
+  if (bareString && name === "Bash") delete normalized.file_path;
+  if (bareString && ["Read", "Write", "Edit"].includes(name)) delete normalized.command;
   if (name === "Bash" && normalized.command === undefined) {
     // create_and_run_task: `task.command` + `task.args`.
     const task = input.task && typeof input.task === "object" ? input.task : null;

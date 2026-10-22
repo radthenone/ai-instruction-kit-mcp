@@ -137,6 +137,7 @@ SENSITIVE_READ: list[tuple[str, str]] = [
     ("package-lock.json", "allow"),
     ("uv.lock", "allow"),
     ("Cargo.lock", "allow"),
+    ("bun.lock", "allow"),
     ("README.md", "allow"),
     ("C:\\repo\\.env", "deny"),
 ]
@@ -150,6 +151,7 @@ SENSITIVE_WRITE: list[tuple[str, str]] = [
     ("pnpm-lock.yaml", "deny"),
     ("yarn.lock", "deny"),
     ("bun.lockb", "deny"),
+    ("bun.lock", "deny"),
     ("uv.lock", "deny"),
     ("poetry.lock", "deny"),
     ("Pipfile.lock", "deny"),
@@ -158,8 +160,76 @@ SENSITIVE_WRITE: list[tuple[str, str]] = [
     ("pyproject.toml", "allow"),
 ]
 
+# Bash czyta sekret obejściem Read (#231). Guard widzi formę oryginalną (Claude Code)
+# albo przepisaną przez RTK (opencode): `cat .env` → `rtk read .env`.
+SENSITIVE_SHELL: list[tuple[str, str]] = [
+    ("cat .env", "deny"),
+    ("cat .env.local", "deny"),
+    ("head -5 .env", "deny"),
+    ("rtk read .env --max-lines 5", "deny"),
+    ("rtk grep KEY .env", "deny"),
+    ("rtk read id_rsa", "deny"),
+    ("grep KEY .env", "deny"),
+    ("sudo cat ~/.ssh/id_rsa", "deny"),
+    ("env cat .env", "deny"),
+    ("ls && cat .env | head", "deny"),
+    ("source .env", "deny"),
+    (". .env", "deny"),
+    ('cat "certs/server.pem"', "deny"),
+    ("rtk proxy cat .env", "deny"),
+    ("sudo -u root cat .env", "deny"),
+    ("echo $(cat .env)", "deny"),
+    ("X=$(cat .env)", "deny"),
+    ("FOO=1 cat .env", "deny"),
+    ("cat .env>out", "deny"),
+    ("cat < .env", "deny"),
+    ("grep -e KEY .env", "deny"),
+    ("cat .env.example", "allow"),
+    ("cat README.md", "allow"),
+    ("grep .env .gitignore", "allow"),
+    ('grep -n "\\.env" .gitignore', "allow"),
+    ("grep -rn '.env' .", "allow"),
+    ("grep -e .env .gitignore", "allow"),
+    ("rg id_rsa docs/", "allow"),
+    ("rg '\\.env' src/", "allow"),
+    ("cat .env.example > .env", "allow"),
+    ("cat > .env <<EOF", "allow"),
+    ("cp .env.example .env", "allow"),
+    ("ls -la .env", "allow"),
+    ("git check-ignore .env", "allow"),
+    ("rm .env", "allow"),
+    ("echo X > .env", "allow"),
+    ('true & cat .env', "deny"),
+    ('cat .env&', "deny"),
+    ('grep -eKEY .env', "deny"),
+    ('grep --regexp=KEY .env', "deny"),
+    ('sed -e1p .env', "deny"),
+    ('grep --regexp KEY .env', "deny"),
+    ('cat -e .env', "deny"),
+    ('less -e .env', "deny"),
+    ('cat $(git rev-parse --show-toplevel)/.env', "deny"),
+    ('cat "$(pwd)/.env"', "deny"),
+    ('/bin/cat .env', "deny"),
+    ('\\\\cat .env', "deny"),
+    ('cat <.env', "deny"),
+    ("env -S 'cat .env'", "deny"),
+    ('bash -c "cat .env"', "deny"),
+    ('grep -A 3 KEY .env', "deny"),
+    ('/usr/bin/sudo cat .env', "deny"),
+    ('cat foo >> .env', "allow"),
+    ('cat >> .env <<EOF', "allow"),
+    ('grep -A 3 .env README.md', "allow"),
+    ('grep "load .env" README.md', "allow"),
+    ('grep -e "load .env" README.md', "allow"),
+    ('echo ok 2>&1', "allow"),
+    ('cat foo 2>&1 > .env', "allow"),
+    # Granica: guard tekstowy nie udaje pełnej ochrony (README, decyzja z #231).
+    ("grep -r KEY .", "allow"),
+    ("python -c \"open('.env')\"", "allow"),
+]
 
-def run_guard(name: str, payload: dict, env: dict[str, str] | None = None) -> dict:
+
+def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> dict:
     """
     Odpal Guard przez node z payloadem w kontrakcie Claude Code.
 
@@ -245,6 +315,43 @@ class SensitiveFilesGuardTest(unittest.TestCase):
         self.assertEqual(out["permissionDecision"], "allow")
         out = run_guard("sensitive-files-guard.mjs", {"file_path": ".env", "content": ""})
         self.assertEqual(out["permissionDecision"], "deny")
+
+    def test_shell_read(self) -> None:
+        for command, expected in SENSITIVE_SHELL:
+            with self.subTest(command=command):
+                out = run_guard("sensitive-files-guard.mjs", {"tool_name": "Bash", "tool_input": {"command": command}})
+                self.assertEqual(out.get("permissionDecision"), expected, out.get("permissionDecisionReason"))
+
+    def test_null_payload_does_not_crash(self) -> None:
+        for payload in (None, "x", {"tool_input": None}):
+            self.assertEqual(run_guard("sensitive-files-guard.mjs", payload)["permissionDecision"], "allow")
+
+    def test_copilot_string_input_still_denies_read(self) -> None:
+        # Adapter Copilota daje string jako command i file_path naraz — plik nie może zniknąć.
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / "invoke-hook.js"), "sensitive-files-guard.mjs", "--to", "copilot"],
+            input=json.dumps({"tool_name": "view", "tool_input": ".env"}),
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertIn("deny", proc.stdout)
+
+    def test_copilot_bare_string_is_command_for_bash_not_path(self) -> None:
+        # Nie-JSON toolArgs dla bash to komenda — `cat yarn.lock` nie jest zapisem lockfile.
+        for tool_args, expected in (("cat config/yarn.lock", "allow"), ("ls config/.env", "allow"), ("cat .env", "deny")):
+            with self.subTest(tool_args=tool_args):
+                proc = subprocess.run(
+                    [NODE or "node", str(GUARDS / "invoke-hook.js"), "sensitive-files-guard.mjs", "--to", "copilot"],
+                    input=json.dumps({"toolName": "bash", "toolArgs": tool_args}),
+                    capture_output=True, text=True, encoding="utf-8", check=False,
+                )
+                self.assertEqual("deny" in proc.stdout, expected == "deny", proc.stdout)
+
+    def test_cursor_before_shell_execution_shape(self) -> None:
+        # Cursor beforeShellExecution: `.command` bez tool_name.
+        out = run_guard("sensitive-files-guard.mjs", {"command": "cat .env"})
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        out = run_guard("sensitive-files-guard.mjs", {"command": "cat README.md"})
+        self.assertEqual(out.get("permissionDecision"), "allow")
 
 
 @unittest.skipUnless(NODE, "brak node")

@@ -15,12 +15,15 @@ const ADAPTER = fileURLToPath(new URL("../hooks/invoke-hook.js", import.meta.url
 const GIT = ["git-guard.mjs", "Bash"]
 const SERVER = ["server-guard.mjs", "Bash"]
 const FILES = "sensitive-files-guard.mjs"
+const FILES_BASH = [FILES, "Bash"]
 // narzędzie opencode → lista [guard, nazwa narzędzia Claude, którą rozumie guard]
-// (shell przechodzi przez git-guard i server-guard; narzędzia Playwright MCP
-// tylko przez server-guard — przeglądarka to setki MB na instancję, e2e tylko w CI)
+// (shell przechodzi przez git-guard, server-guard i sensitive-files-guard — RTK
+// przepisuje `cat .env` na `rtk read .env`, więc Bash też musi widzieć sekrety;
+// narzędzia Playwright MCP tylko przez server-guard — przeglądarka to setki MB
+// na instancję, e2e tylko w CI)
 const GUARDS = {
-  shell: [GIT, SERVER],
-  bash: [GIT, SERVER],
+  shell: [GIT, SERVER, FILES_BASH],
+  bash: [GIT, SERVER, FILES_BASH],
   read: [[FILES, "Read"]],
   edit: [[FILES, "Edit"]],
   multiedit: [[FILES, "Edit"]],

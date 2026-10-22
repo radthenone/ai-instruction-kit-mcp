@@ -32,6 +32,10 @@ const denied = async (tool, input, pattern) => {
 // Nazwy i pola z opencode 2.0.24: `shell`, `read`/`write`/`edit` z `path`, `patch` z `patchText`.
 await denied("shell", { command: "git reset --hard" }, /git-guard/)
 await denied("shell", { command: "git push origin master" }, /git-guard/)
+// Bash/RTK omijał Read — guard widzi formę oryginalną i przepisaną (#231).
+await denied("shell", { command: "cat .env" }, /sensitive-files-guard/)
+await denied("shell", { command: "rtk read .env --max-lines 5" }, /sensitive-files-guard/)
+await denied("bash", { command: "rtk grep KEY .env" }, /sensitive-files-guard/)
 await denied("read", { path: ".env" }, /sensitive-files-guard: \\.env/)
 await denied("write", { path: "/repo/.env", content: "X=1" }, /sekret/)
 await denied("edit", { path: "uv.lock", oldString: "a", newString: "b" }, /sensitive-files-guard/)
@@ -44,6 +48,7 @@ await denied("read", { filePath: ".env" }, /sensitive-files-guard/)
 await denied("shell", {}, /brak/)
 
 await run("shell", { command: "git status" })
+await run("shell", { command: "cat README.md" })
 await run("read", { path: "src/app.py" })
 await run("patch", { patchText: "*** Begin Patch\\n*** Add File: src/ok.py\\n+x\\n*** End Patch" })
 await run("glob", { pattern: "**/*.py" })
