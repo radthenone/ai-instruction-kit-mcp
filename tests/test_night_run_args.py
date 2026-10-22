@@ -24,7 +24,7 @@ class TestNightRunArgs(unittest.TestCase):
     def test_goal_not_required(self) -> None:
         self.assertNotIn("pod /goal", self.description)
         self.assertIn("`/goal` opcjonalny", self.text)
-        self.assertIn("Wznawianie nocy = heartbeat `CronCreate`", self.text)
+        self.assertIn("Wznawianie nocy = tik `CronCreate`", self.text)
 
     def test_args_syntax(self) -> None:
         self.assertIn(
