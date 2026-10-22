@@ -188,3 +188,4 @@ to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 - Nie force na chronione; na feature `--force-with-lease` tylko za zgodą.  
 - Nie `gh pr merge` bez wyraźnej prośby + green CI.  
 - Nie sekretów w commitach.
+- Czerwone CI (`gh pr checks --watch`): hand-back z logiem CI, kodu nie naprawiasz.
