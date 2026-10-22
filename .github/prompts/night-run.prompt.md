@@ -21,9 +21,8 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
   kodu i nie odpalasz testów: Twój kontekst ma zostać mały. W Claude Code subagent może
   uruchomić kolejne komendy-agentów (do 3 poziomów, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`),
   więc `/git-*` zostają wewnątrz subagenta ticketu, a orkiestrator nie dostaje z nich tur.
-- **Komendy kitu uruchamiasz według klienta** — dotyczy `/git-*`, `/review-*` i innych
-  komend z argumentów oraz promptu ticketu; chodzi o to, żeby działały na modelu
-  z frontmattera swojego agenta, a nie na modelu sesji:
+- **Komendy kitu uruchamiasz według klienta** (`/git-*`, `/review-*` i inne z argumentów
+  lub promptu ticketu), by działały na modelu z frontmattera agenta, nie sesji:
   - **Claude Code:** agent o nazwie komendy jest w katalogu agentów klienta
     `.claude/agents/<nazwa>.md` → **Agent** tego
     typu bez parametru `model` (model bierze się z frontmattera); brak agenta → **Skill**.
@@ -39,16 +38,15 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
   „#155 pomiń PDF”, inny próg dużego ticketu).
 - **Model ticketu** (`MODEL`) z celu, np. „model: sonnet”; w Claude parametr `model` Agenta
-  (tylko aliasy: sonnet/opus/haiku/fable). Brak → model sesji. Cel oddaje wybór Tobie
-  („gdzie uważasz”) → model sesji; tańszy tylko dla ticketu mechanicznego (≤2 kryteria
-  akceptacji, 1 aplikacja, bez pieniędzy, płatności i współbieżności). Tańszy model robi
-  ~2× więcej tur, a każda tura czyta cały kontekst — na większym tickecie wychodzi drożej.
+  (aliasy: sonnet/opus/haiku/fable). Brak lub „gdzie uważasz” → model sesji; tańszy tylko
+  dla ticketu mechanicznego (≤2 kryteria, 1 aplikacja, bez pieniędzy, płatności
+  i współbieżności) — tańszy model robi ~2× więcej tur, więc na większym wychodzi drożej.
   Model i powód per ticket → NIGHT-RUN REPORT.
 - **Zero pytań do człowieka.** Nie używasz narzędzi pytających; niepewność → needs-human
   albo decyzja odwracalna (niżej).
 - **Nie uruchamiasz** `superpowers:brainstorming`, `superpowers:finishing-a-development-branch`
-  ani żadnego skilla z `disable-model-invocation` (np. `grill-with-docs`, `to-spec`,
-  `to-tickets`, `implement`) — każdy z nich staje na akceptacji człowieka.
+  ani skilli z `disable-model-invocation` (`grill-with-docs`, `to-spec`, `implement`…) —
+  stają na akceptacji człowieka.
 - Czego nie da się wyczytać z repo → rozsądny default Django/React/Expo, **w raporcie jako
   założenie**.
 
@@ -58,9 +56,8 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 /night-run #N1 #N2 [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]
 ```
 
-`/goal` opcjonalny: noc działa sama. Wznawianie nocy = tik `CronCreate` (krok 7,
-fallback watchdoga), nie warunek `/goal`. Gdy noc idzie pod `/goal`, jego tekst to cel
-(niżej „Polecenia z tekstu celu”).
+`/goal` opcjonalny: noc działa sama. Wznawianie nocy = tik `CronCreate` (krok 7, fallback
+watchdoga), nie warunek `/goal`. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu celu”).
 
 - **Lista issue** — `#N` przed pierwszym argumentem z `/`. Brak → kolejka (krok 4).
 - **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
@@ -116,21 +113,20 @@ LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefNam
 (bez deploy, publikacji, sekretów); (2) overlay `.ai/project.md` (MCP `get_overlay`) —
 kontrole/testy/komendy i `codegen:`.
 
-Brak obu → default: `ruff check`, `pytest <pliki testów dotknięte ticketem>`,
-`python manage.py makemigrations --check --dry-run`, `tsc --noEmit` w każdym pakiecie
-frontendu, a przy `codegen: orval` (domyślnie) regeneracja klienta bez różnicy w `git diff`.
-Zapisz jako założenie. Lokalnie idą tylko te **szybkie**; pełny zestaw testów — tylko CI.
+Brak obu → default: `ruff check`, `pytest <pliki dotknięte ticketem>`,
+`python manage.py makemigrations --check --dry-run`, `tsc --noEmit` w pakietach frontendu,
+przy `codegen: orval` regeneracja klienta bez różnicy w `git diff`. Zapisz jako założenie.
+Lokalnie tylko **szybkie**; pełny zestaw — CI.
 
 ### 3. Baza zielona
 
-Ostatni przebieg CI na bazie:
-`gh run list --branch $BASE --limit 1 --json conclusion,headSha`. Czerwony → **halt**
-(przypadek C). Brak CI → bramki szybkie na `origin/$BASE` odpala krótki subagent.
+Ostatni CI na bazie: `gh run list --branch $BASE --limit 1 --json conclusion,headSha`.
+Czerwony → **halt** (przypadek C). Brak CI → bramki szybkie na `origin/$BASE` odpala krótki subagent.
 
 ### 4. Kolejka
 
-Nazwy etykiet stanu: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik.
-W komendach niżej stoją nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie.
+Nazwy etykiet stanu: prawa kolumna `docs/agents/triage-labels.md` (jeśli jest); niżej stoją
+nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie.
 
 - Cel ani argumenty nie podają listy →
   `gh issue list --state open --label ready-for-agent --json number,title --limit 50`.
@@ -145,26 +141,23 @@ W komendach niżej stoją nazwy domyślne — wstawiaj nazwy z `triage-labels.md
 
 ### 5. Kolejność
 
-Dla każdego issue z listy:
-`gh api repos/<owner>/<repo>/issues/<N>/dependencies/blocked_by --jq '.[].number'`.
-Kolejność topologiczna; przy remisie kolejność z celu. Blokujący spoza listy i otwarty →
-ticket dostaje needs-human „zablokowany przez #X spoza listy”.
+Per issue: `gh api repos/<owner>/<repo>/issues/<N>/dependencies/blocked_by --jq '.[].number'`.
+Kolejność topologiczna, przy remisie z celu. Otwarty blokujący spoza listy → needs-human
+„zablokowany przez #X spoza listy”.
 
 ### 6. Plik kontekstu nocy
 
 Katalog nocy: `CTX_DIR=~/.cache/night-run-<repo>-<data>/` — `CTX=$CTX_DIR/context.md`,
 raz na noc, poniżej ~150 linii, sekcje. Wszędzie (prompt ticketu, `CronCreate`, Read/Write)
-wpisujesz pełną ścieżkę z `$HOME` zamiast `~`. Katalog w `~/.cache` przeżywa restart hosta;
-`/tmp` po restarcie kontenera znika, więc nigdy tam (ani CTX, ani `## Stan`, ani logi
-pracy w tle).
+pełna ścieżka z `$HOME` zamiast `~`. `~/.cache` przeżywa restart hosta, `/tmp` nie —
+nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 
 - **Nagłówek:** BASE, `Host: vps | local` (ustalany raz: bundle z MCP `get_bundle`
   zawiera `infra:vps-lightweight` → `vps`, inaczej `local`), bramki szybkie, „pełny zestaw
   testów: tylko CI”.
 - **Mapa aplikacji:** katalog → co w nim jest, 1 linia.
 - **Konwencje:** same reguły z AGENTS.md, BUGBOT.md, `.ai/project.md`.
-- **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay — kit nie
-  zna specyfiki projektu; brak źródła → „brak danych”.
+- **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay; brak → „brak danych”.
 - **Przekazanie:** `### #N` + modele, serwisy, endpointy, migracje z hand-backu. Dopisujesz
   **Ty** po każdym MERGED.
 - **Stan (`## Stan` na końcu CTX):** ticket, id subagenta, krok (`ticket|review|resume|ci`),
@@ -186,9 +179,8 @@ i cały kontekst, więc nie jest mechanizmem oczekiwania.
   zakończony bez hand-backu, PR bez zmian > 90 min. Pauza 429 **nie jest** anomalią:
   gdy w `## Stan` jest otwarta pauza (wpis „pauza limitu od …” bez „do”), pętla pomija
   wszystkie progi i śpi dalej; wznowienie po 429 zostaje na cronie (przypadek D).
-- **Jeden watchdog naraz:** po anomalii watchdog już nie działa, więc orkiestrator odpala go
-  ponownie, gdy skończy obsługę tiku, oraz przy wznowieniu sesji. Najpierw sprawdza, czy
-  nie działa już jego zadanie w tle (ta sama lista zadań sesji); działa → nic nie odpalasz.
+- **Jeden watchdog naraz:** po anomalii watchdog nie działa, więc odpalasz go ponownie po
+  obsłudze tiku i przy wznowieniu sesji — najpierw sprawdź listę zadań w tle; działa → nic.
 - **Cron co 60 min zostaje zawsze** jako fallback dla watchdoga, który ginie razem z sesją.
   **`CronList` przed `CronCreate`** — obowiązkowo, także przy wznowieniu sesji (cron
   przeżywa wznowienie i działa obok nowego): jest już cron o tym harmonogramie → nic nie
@@ -196,7 +188,7 @@ i cały kontekst, więc nie jest mechanizmem oczekiwania.
   ścieżką CTX: `night-run tik: przeczytaj sekcję „Tick watchdoga i crona” w /night-run
   i „## Stan” w <CTX>, działaj wg niej.`
 - Bez `CronCreate` u klienta → ten krok pomiń (limit API zostaje haltem C).
-- Każde zakończenie nocy (wszystko MERGED, halt, raport) zaczyna się od `CronDelete` i zatrzymania watchdoga (`TaskStop` na jego zadaniu).
+- Koniec nocy (MERGED, halt, raport) zaczyna się od `CronDelete` i `TaskStop` watchdoga.
 
 **Powiadomienie „is waiting on its own background work” (tylko Claude Code):** gdy przyjdzie,
 orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
@@ -317,30 +309,21 @@ dodane modele, serwisy, endpointy, migracje; założenia; model: <per komenda: a
 
 ## Testy — piramida po zależności, nie po warstwie
 
-| Poziom | Test | 
-| --- | --- |
-| unit | bez bazy (logika czysta, mapowania) |
-| integration-db | `django_db` — ORM, modele, endpointy, webhooki |
-| integration | żywe usługi (Postgres, Redis…) — marker `integration` |
-| e2e | Playwright (lub inny runner e2e w repo) |
+Poziomy: **unit** (bez bazy) · **integration-db** (`django_db`: ORM, endpointy, webhooki) ·
+**integration** (żywe usługi, marker `integration`) · **e2e** (Playwright lub runner z repo).
 
 - Zewnętrzne API płatności i podobne zawsze atrapą.
-- **Nowe e2e** tylko gdy issue tego wymaga **i** runner e2e jest w repo. Inaczej „test
-  przepływu na API”, tak nazwany w raporcie. Na VPS (`Host: vps` w nagłówku CTX)
-  nowe e2e piszesz, ale nie uruchamiasz lokalnie (guard je odrzuca) — w raporcie i opisie
-  PR oznaczasz „nieuruchomione lokalnie (VPS), weryfikuje CI”.
-- Liczby **z komend**: `pytest <pliki> -m <marker> --co -q`. Brak markerów → per plik
-  (`pytest <plik> --co -q`) + „brak markerów”. Trafiają do opisu PR i `Final report`.
+- **Nowe e2e** tylko gdy issue tego wymaga **i** runner jest w repo; inaczej „test przepływu
+  na API”. Na VPS piszesz, ale nie uruchamiasz (guard) —
+  „nieuruchomione lokalnie (VPS), weryfikuje CI” w raporcie i PR.
+- Liczby **z komend**: `pytest <pliki> -m <marker> --co -q`; brak markerów → per plik
+  + „brak markerów”. Do opisu PR i `Final report`.
 
 ## VPS (tylko przy `Host: vps` w nagłówku CTX)
 
-- Bramki z kroków CI: krok, który guard odrzuca, w nagłówku CTX oznaczasz „tylko CI”
-  (krok odrzucony przez guard = tylko CI; bez zgadywania: pierwsza próba i deny
-  `server-guard:` → tylko CI) — lokalnie idzie reszta. `uv run` zawsze
-  z `--no-sync`.
-- brak CI = brak merge (krok 6 promptu, kroki 7–8 pominięte): PR zostaje otwarty, ticket dostaje
-  needs-human „brak CI na <BASE>”, w raporcie przypadek A.
-- Nowe e2e: test pisany, nieuruchomiony lokalnie (sekcja „Testy” wyżej).
+- Krok CI odrzucony przez guard (pierwsza próba i deny `server-guard:`) → w CTX „tylko CI”,
+  lokalnie idzie reszta. `uv run` zawsze z `--no-sync`.
+- Brak CI = brak merge (krok 6 promptu); nowe e2e: sekcja „Testy”.
 
 ## Zakazy
 
@@ -423,19 +406,16 @@ potem status subagenta z `## Stan` (`ListAgents`):
   ostatni check) → `TaskStop`, potem wznowienie jak wyżej;
 - nic nie działa, a noc nieskończona (także przerwana tura orkiestratora) → łańcuch od kroku
   z `## Stan` (przypadek D: pauzy ≤ 2 i przed końcem nocy → wznów, inaczej halt C).
-- restart hosta / `kill` sesji w trakcie ticketu: CTX i `## Stan` są w `~/.cache`, więc
-  przetrwały — łańcuch od kroku z `## Stan`, a pracę od ostatniego commitu na branchu
-  (`git log`). Wznów sesję (`claude --continue`) albo odpal nowy `/night-run` — czyta
-  `## Stan` z `~/.cache`, robi `CronList` przed `CronCreate` i odpala watchdoga, gdy go nie ma.
+- restart hosta / `kill` sesji w trakcie ticketu: CTX i `## Stan` przetrwały w `~/.cache` —
+  łańcuch od kroku z `## Stan`, praca od ostatniego commitu (`git log`). Wznów sesję
+  (`claude --continue`) albo nowy `/night-run`: czyta `## Stan`, `CronList` przed
+  `CronCreate`, odpala watchdoga, gdy go nie ma.
 
 ## Pomiar kosztu ticketu (tylko Claude Code)
 
-Po każdym tickecie liczysz jego subagentów (ticket + review) — `python3`, bez `jq`.
-Wiersz: agent | model | tury | input | cache_creation | cache_read | output | maks. kontekst | czas.
-Model per krok bierzesz z `meta.json` subagenta
-(`$HOME/.claude/projects/<projekt>/*/subagents/agent-<id>.meta.json`) oraz z transkryptu
-(`message.model`) — trafia do kolumny `Model` w NIGHT-RUN REPORT. Fallback (Skill albo
-inline na modelu sesji) zapisujesz jako `<komenda>: skill (sesja)`.
+Po tickecie liczysz jego subagentów (ticket + review) — `python3`, bez `jq`. Wiersz: agent | model | tury | input | cache_creation | cache_read | output | maks. kontekst | czas.
+Model per krok: `meta.json` subagenta (`.../subagents/agent-<id>.meta.json`) i transkrypt
+(`message.model`) → kolumna `Model` w NIGHT-RUN REPORT; fallback jako `<komenda>: skill (sesja)`.
 
 ```bash
 python3 -c '
@@ -457,14 +437,12 @@ for p in sys.argv[1:]:
 ' $HOME/.claude/projects/*/*/subagents/agent-{<id1>,<id2>}.jsonl
 ```
 
-Tura = unikalne `message.id` (odpowiedź zajmuje kilka linii, `output_tokens` rośnie — bierz
-maks.). Czas = wall-clock z oczekiwaniem na review. Inny klient → „brak transkryptu”.
-Z `/headless` albo skillami review z argumentów do wiersza ticketu dopisz notę
-„koszt bez wykonawcy headless i review w sesji głównej” (tych tokenów snippet nie widzi).
+Tura = unikalne `message.id` (`output_tokens` rośnie — bierz maks.). Czas = wall-clock
+z oczekiwaniem na review. Inny klient → „brak transkryptu”. Z `/headless` albo review
+z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
 
-Osobno liczysz **orkiestratora** — ten sam snippet na transkrypcie sesji głównej
-(`$HOME/.claude/projects/<projekt>/<sesja>.jsonl`, nie `subagents/`). Do NIGHT-RUN REPORT
-idzie liczba jego tur i `cache_read`.
+**Orkiestrator:** ten sam snippet na transkrypcie sesji głównej (`<sesja>.jsonl`, nie
+`subagents/`); do raportu idą jego tury i `cache_read`.
 
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
