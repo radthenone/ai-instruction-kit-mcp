@@ -17,10 +17,27 @@ dnia — projekt jest w treści issue, Twoja rola to wykonanie.
 
 ## Zasady nadrzędne
 
-- **Jesteś orkiestratorem w głównej sesji, nigdy subagentem** (w Claude: przez Skill, nie
-  Agent) — subagent nie uruchomi kolejnych. Ticket robi subagent ticketu, review osobny
-  świeży subagent albo skille review z argumentów. Sam nie czytasz kodu i nie odpalasz
-  testów: Twój kontekst ma zostać mały.
+- **Jesteś orkiestratorem w głównej sesji, nigdy wykonawcą ticketu.** Ticket robi subagent
+  ticketu, review osobny świeży subagent albo komendy review z argumentów. Sam nie czytasz
+  kodu i nie odpalasz testów: Twój kontekst ma zostać mały. W Claude Code subagent może
+  uruchomić kolejne komendy-agentów (do 3 poziomów, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`),
+  więc `/git-*` zostają wewnątrz subagenta ticketu, a orkiestrator nie dostaje z nich tur.
+- **Komendy kitu uruchamiasz według klienta** — dotyczy `/git-*`, `/review-*` i innych
+  komend z argumentów oraz promptu ticketu; chodzi o to, żeby działały na modelu
+  z frontmattera swojego agenta, a nie na modelu sesji:
+  - **Claude Code:** agent o nazwie komendy jest w katalogu agentów klienta
+<!-- clients: claude -->
+    `.claude/agents/<nazwa>.md` → **Agent** tego
+<!-- /clients -->
+    typu bez parametru `model` (model bierze się z frontmattera); brak agenta → **Skill**.
+  - **opencode:** komenda `/<nazwa>` z `.opencode/command/` (model z frontmattera, gdy
+    Profil ma `models.opencode`); brak `model:` → model sesji.
+  - **klienci bez modelu per agent** (Cursor, Codex, VS Code, Kiro, Kilo, Antigravity) →
+    bez zmian: inline albo skill na modelu sesji.
+  - **Model podany wprost w celu** (`model: <nazwa>`) nadpisuje frontmatter tam, gdzie
+    klient ma parametr modelu.
+  - Brak agenta/komendy (fallback na Skill albo inline) zapisujesz w hand-backu
+    i w NIGHT-RUN REPORT.
 - Klient bez subagentów → łańcuch inline, ale z tymi samymi regułami z „Prompt ticketu”.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
   „#155 pomiń PDF”, inny próg dużego ticketu).
@@ -200,10 +217,12 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    `/headless` tę linię usuwasz.
 2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
    skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co
-   uruchomienie review. Z argumentami skilli review: uruchamiasz je **Ty**, przez Skill (w Claude Skill,
-   nie Agent; skill może sam odpalać subagentów), każdy na `git diff origin/$BASE...HEAD`
-   brancha ticketu, w kolejności z argumentów. Od skilla bierzesz tylko tabelę niżej; skill
-   z `--fix` poprawia sam — subagent ticketu po wznowieniu zbiera to `/git-commit`.
+   uruchomienie review. Z argumentami komend review: uruchamiasz je **Ty** według reguły
+   „Komendy kitu uruchamiasz według klienta” (w Claude **Agent** `<nazwa>` bez parametru
+   `model`, np. `review-bugbot` na modelu z frontmattera; brak agenta → Skill), każdy na
+   `git diff origin/$BASE...HEAD` brancha ticketu, w kolejności z argumentów. Od komendy
+   bierzesz tylko tabelę niżej; komenda z `--fix` poprawia sam — subagent ticketu po
+   wznowieniu zbiera to `/git-commit`.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` +
@@ -232,7 +251,8 @@ brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżnoś
 needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
 
 Kroki:
-1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
+1. `/git-start #<N>` według reguły „Komendy kitu uruchamiasz według klienta” (w Claude
+   Agent `git-start` bez `model`). Branch musi wychodzić z <BASE>; inaczej
    `gh issue develop <N> --name <typ>/<N>-<slug> --base <BASE> --checkout`.
 2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
    reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
@@ -244,17 +264,20 @@ Kroki:
    Końcowy `/git-commit` z kroku 5 zostaje.
 4. Lokalnie tylko testy dotknięte ticketem + bramki szybkie z <CTX>. Pełny zestaw: CI.
    Na VPS (`Host: vps` w nagłówku <CTX>) `uv run` zawsze z `--no-sync`.
-5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
+5. `/git-commit` według reguły „Komendy kitu uruchamiasz według klienta” (w Claude Agent
+   `git-commit` bez `model`). Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
-6. Poprawki z review, `/git-end` — review już zrobione, bramka review potwierdzona, nie
-   czekaj. Opis PR: testy, założenia jako Q z odpowiedzią, niepewne findingi.
+6. Poprawki z review, `/git-end` według reguły „Komendy kitu uruchamiasz według klienta”
+   (w Claude Agent `git-end` bez `model`) — review już zrobione, bramka review
+   potwierdzona, nie czekaj. Opis PR: testy, założenia jako Q z odpowiedzią, niepewne findingi.
    CI: `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`, bo checki
    rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → to nie błąd:
    powtórz raz po minucie; nadal brak → przy `Host: local` w nagłówku <CTX>: merge po
    bramkach szybkich, zapis w `Final report`; przy `Host: vps`: brak CI = brak merge —
    kroki 7–8 pomijasz, PR zostaje otwarty, branch wypchnięty, hand-back needs-human
    „brak CI na <BASE>”, w raporcie przypadek A.
-   Inne `EXIT` ≠ 0 → napraw, maks. 2 próby.
+   Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca hand-backiem z logiem CI, a Ty
+   poprawiasz i ponawiasz `/git-end` (maks. 2 próby); nadal czerwone → needs-human.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
@@ -291,7 +314,8 @@ Reguły:
 
 Hand-back (bez streszczania pracy): stan (do review / MERGED / needs-human / halt); branch,
 PR, link `Final report`; testy unit/x, integration-db/y, integration/z, e2e/w (z komend);
-dodane modele, serwisy, endpointy, migracje; założenia.
+dodane modele, serwisy, endpointy, migracje; założenia; model: <per komenda: agent
+<nazwa> (<model>) / skill / inline — fallback przy braku agenta>.
 ```
 
 ## Testy — piramida po zależności, nie po warstwie
@@ -411,6 +435,10 @@ potem status subagenta z `## Stan` (`ListAgents`):
 
 Po każdym tickecie liczysz jego subagentów (ticket + review) — `python3`, bez `jq`.
 Wiersz: agent | model | tury | input | cache_creation | cache_read | output | maks. kontekst | czas.
+Model per krok bierzesz z `meta.json` subagenta
+(`$HOME/.claude/projects/<projekt>/*/subagents/agent-<id>.meta.json`) oraz z transkryptu
+(`message.model`) — trafia do kolumny `Model` w NIGHT-RUN REPORT. Fallback (Skill albo
+inline na modelu sesji) zapisujesz jako `<komenda>: skill (sesja)`.
 
 ```bash
 python3 -c '
@@ -453,16 +481,18 @@ Host: <vps | local> (z nagłówka CTX)
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 Wykonawca: <EXEC / subagent / subagent (brak /headless)> · Review: <skille z argumentów / domyślne>
+Modele kroków: <git-start: haiku · git-commit: haiku · git-end: haiku · review: sonnet>
+Fallback modelu: <komenda: skill / inline (sesja) — gdy brak agenta>
 Pauzy limitu: <liczba> (przestój <od>–<do>, reset: <godzina z komunikatu / brak>)
 Wznowienia per ticket: <#N: liczba>
 Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja główna)
 
-| Ticket | Stan | Wykonawca | Review | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
-| --- | --- | --- | --- | --- | --- |
-| #N | MERGED | opencode | /review-edge | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
-| #M | needs-human → ready-for-human | subagent | domyślne | <link do komentarza> | … |
-| #J | skipped: <etykieta> | — | — | etykieta stanu z listy ręcznej | — |
-| #K | halted | … | … | <link do komentarza night-run halted> | … |
+| Ticket | Stan | Wykonawca | Review | Model | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
+| --- | --- | --- | --- | --- | --- | --- |
+| #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
+| #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
+| #J | skipped: <etykieta> | — | — | — | etykieta stanu z listy ręcznej | — |
+| #K | halted | … | … | … | <link do komentarza night-run halted> | … |
 
 Założenia: <co przyjęto bez danych z repo>
 Pomiar per agent: <wiersze ze snippetu>
