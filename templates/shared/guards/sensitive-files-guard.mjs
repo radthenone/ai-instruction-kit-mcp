@@ -91,7 +91,8 @@ const READ_COMMANDS = new Set([
   "cat", "head", "tail", "less", "more", "bat", "grep", "rg", "sed", "awk",
   "xxd", "base64", "strings", "source", ".",
 ]);
-const SHELL_PREFIXES = new Set(["sudo", "env", "rtk"]);
+// Powłoka z `-c` (`bash -lc "cat .env"`) to też prefiks, nie komenda czytająca.
+const SHELL_PREFIXES = new Set(["sudo", "env", "rtk", "bash", "sh", "zsh"]);
 
 // Zdejmij cudzysłowy i domknięcia podstawień: `"certs/server.pem"`, `$(cat .env)`.
 const clean = (token) => token.replace(/^[("'`]+|[)"'`,]+$/g, "");
