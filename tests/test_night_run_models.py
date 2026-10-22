@@ -55,15 +55,15 @@ class TestNightRunModels(unittest.TestCase):
         self.assertNotIn("przez Skill", self.text)
         chain = " ".join(self.text.split("## Łańcuch na ticket", 1)[1].split())
         self.assertIn(RULE, chain)
-        self.assertIn("w Claude **Agent** `<nazwa>` bez parametru `model`", chain)
+        self.assertNotIn("bez parametru `model`", chain)
 
     def test_ticket_prompt_git_steps_follow_rule(self) -> None:
         prompt = " ".join(
             self.text.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split()
         )
-        for command in ("git-start", "git-commit", "git-end"):
-            with self.subTest(command=command):
-                self.assertIn(f"Agent `{command}` bez `model`", prompt)
+        self.assertEqual(prompt.count(RULE), 1)
+        self.assertNotIn("bez `model`", prompt)
+        self.assertIn("CI pilnuje agent `git-end`", prompt)
         self.assertIn("nie naprawia kodu", prompt)
         self.assertIn("hand-backiem", prompt)
 
@@ -129,9 +129,10 @@ class TestGeneratedCopiesWithoutModelPerAgent(unittest.TestCase):
         for rel in (".cursor/agents/night-run.md", ".codex/skills/night-run/SKILL.md"):
             text = (self.generated / rel).read_text(encoding="utf-8")
             with self.subTest(copy=rel):
-                self.assertNotIn(".claude/agents/", text)
+                self.assertNotIn(".claude/agents", text)
+                self.assertNotIn("**Claude Code:**", text)
                 self.assertIn(RULE, text)
-                for marker in BRANCHES:
+                for marker in BRANCHES[1:]:
                     self.assertIn(marker, text)
 
 
