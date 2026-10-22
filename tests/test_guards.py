@@ -137,6 +137,7 @@ SENSITIVE_READ: list[tuple[str, str]] = [
     ("package-lock.json", "allow"),
     ("uv.lock", "allow"),
     ("Cargo.lock", "allow"),
+    ("bun.lock", "allow"),
     ("README.md", "allow"),
     ("C:\\repo\\.env", "deny"),
 ]
@@ -150,6 +151,7 @@ SENSITIVE_WRITE: list[tuple[str, str]] = [
     ("pnpm-lock.yaml", "deny"),
     ("yarn.lock", "deny"),
     ("bun.lockb", "deny"),
+    ("bun.lock", "deny"),
     ("uv.lock", "deny"),
     ("poetry.lock", "deny"),
     ("Pipfile.lock", "deny"),
@@ -158,8 +160,76 @@ SENSITIVE_WRITE: list[tuple[str, str]] = [
     ("pyproject.toml", "allow"),
 ]
 
+# Bash czyta sekret obejściem Read (#231). Guard widzi formę oryginalną (Claude Code)
+# albo przepisaną przez RTK (opencode): `cat .env` → `rtk read .env`.
+SENSITIVE_SHELL: list[tuple[str, str]] = [
+    ("cat .env", "deny"),
+    ("cat .env.local", "deny"),
+    ("head -5 .env", "deny"),
+    ("rtk read .env --max-lines 5", "deny"),
+    ("rtk grep KEY .env", "deny"),
+    ("rtk read id_rsa", "deny"),
+    ("grep KEY .env", "deny"),
+    ("sudo cat ~/.ssh/id_rsa", "deny"),
+    ("env cat .env", "deny"),
+    ("ls && cat .env | head", "deny"),
+    ("source .env", "deny"),
+    (". .env", "deny"),
+    ('cat "certs/server.pem"', "deny"),
+    ("rtk proxy cat .env", "deny"),
+    ("sudo -u root cat .env", "deny"),
+    ("echo $(cat .env)", "deny"),
+    ("X=$(cat .env)", "deny"),
+    ("FOO=1 cat .env", "deny"),
+    ("cat .env>out", "deny"),
+    ("cat < .env", "deny"),
+    ("grep -e KEY .env", "deny"),
+    ("cat .env.example", "allow"),
+    ("cat README.md", "allow"),
+    ("grep .env .gitignore", "allow"),
+    ('grep -n "\\.env" .gitignore', "allow"),
+    ("grep -rn '.env' .", "allow"),
+    ("grep -e .env .gitignore", "allow"),
+    ("rg id_rsa docs/", "allow"),
+    ("rg '\\.env' src/", "allow"),
+    ("cat .env.example > .env", "allow"),
+    ("cat > .env <<EOF", "allow"),
+    ("cp .env.example .env", "allow"),
+    ("ls -la .env", "allow"),
+    ("git check-ignore .env", "allow"),
+    ("rm .env", "allow"),
+    ("echo X > .env", "allow"),
+    ('true & cat .env', "deny"),
+    ('cat .env&', "deny"),
+    ('grep -eKEY .env', "deny"),
+    ('grep --regexp=KEY .env', "deny"),
+    ('sed -e1p .env', "deny"),
+    ('grep --regexp KEY .env', "deny"),
+    ('cat -e .env', "deny"),
+    ('less -e .env', "deny"),
+    ('cat $(git rev-parse --show-toplevel)/.env', "deny"),
+    ('cat "$(pwd)/.env"', "deny"),
+    ('/bin/cat .env', "deny"),
+    ('\\\\cat .env', "deny"),
+    ('cat <.env', "deny"),
+    ("env -S 'cat .env'", "deny"),
+    ('bash -c "cat .env"', "deny"),
+    ('grep -A 3 KEY .env', "deny"),
+    ('/usr/bin/sudo cat .env', "deny"),
+    ('cat foo >> .env', "allow"),
+    ('cat >> .env <<EOF', "allow"),
+    ('grep -A 3 .env README.md', "allow"),
+    ('grep "load .env" README.md', "allow"),
+    ('grep -e "load .env" README.md', "allow"),
+    ('echo ok 2>&1', "allow"),
+    ('cat foo 2>&1 > .env', "allow"),
+    # Granica: guard tekstowy nie udaje pełnej ochrony (README, decyzja z #231).
+    ("grep -r KEY .", "allow"),
+    ("python -c \"open('.env')\"", "allow"),
+]
 
-def run_guard(name: str, payload: dict, env: dict[str, str] | None = None) -> dict:
+
+def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> dict:
     """
     Odpal Guard przez node z payloadem w kontrakcie Claude Code.
 
@@ -245,6 +315,43 @@ class SensitiveFilesGuardTest(unittest.TestCase):
         self.assertEqual(out["permissionDecision"], "allow")
         out = run_guard("sensitive-files-guard.mjs", {"file_path": ".env", "content": ""})
         self.assertEqual(out["permissionDecision"], "deny")
+
+    def test_shell_read(self) -> None:
+        for command, expected in SENSITIVE_SHELL:
+            with self.subTest(command=command):
+                out = run_guard("sensitive-files-guard.mjs", {"tool_name": "Bash", "tool_input": {"command": command}})
+                self.assertEqual(out.get("permissionDecision"), expected, out.get("permissionDecisionReason"))
+
+    def test_null_payload_does_not_crash(self) -> None:
+        for payload in (None, "x", {"tool_input": None}):
+            self.assertEqual(run_guard("sensitive-files-guard.mjs", payload)["permissionDecision"], "allow")
+
+    def test_copilot_string_input_still_denies_read(self) -> None:
+        # Adapter Copilota daje string jako command i file_path naraz — plik nie może zniknąć.
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / "invoke-hook.js"), "sensitive-files-guard.mjs", "--to", "copilot"],
+            input=json.dumps({"tool_name": "view", "tool_input": ".env"}),
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertIn("deny", proc.stdout)
+
+    def test_copilot_bare_string_is_command_for_bash_not_path(self) -> None:
+        # Nie-JSON toolArgs dla bash to komenda — `cat yarn.lock` nie jest zapisem lockfile.
+        for tool_args, expected in (("cat config/yarn.lock", "allow"), ("ls config/.env", "allow"), ("cat .env", "deny")):
+            with self.subTest(tool_args=tool_args):
+                proc = subprocess.run(
+                    [NODE or "node", str(GUARDS / "invoke-hook.js"), "sensitive-files-guard.mjs", "--to", "copilot"],
+                    input=json.dumps({"toolName": "bash", "toolArgs": tool_args}),
+                    capture_output=True, text=True, encoding="utf-8", check=False,
+                )
+                self.assertEqual("deny" in proc.stdout, expected == "deny", proc.stdout)
+
+    def test_cursor_before_shell_execution_shape(self) -> None:
+        # Cursor beforeShellExecution: `.command` bez tool_name.
+        out = run_guard("sensitive-files-guard.mjs", {"command": "cat .env"})
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        out = run_guard("sensitive-files-guard.mjs", {"command": "cat README.md"})
+        self.assertEqual(out.get("permissionDecision"), "allow")
 
 
 @unittest.skipUnless(NODE, "brak node")
@@ -382,6 +489,65 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("podman ps", "allow"),
     ("podman logs app", "allow"),
     ("podman run x", "deny"),
+    # Globalna wtyczka RTK przepisuje komendę przed guardem opencode (#227):
+    # `rtk` to launcher, nie zwykły prefiks — `rtk next` gubi słowo `build`.
+    ("rtk bun install", "deny"),
+    ("mv a b && rtk bun install", "deny"),
+    ("rtk uv sync", "deny"),
+    ("rtk next", "deny"),
+    ('rtk run -c "bun install"', "deny"),
+    ("rtk run bun install", "deny"),
+    ("rtk proxy uv sync", "deny"),
+    ("rtk -v pnpm install", "deny"),
+    ("rtk --ultra-compact npm ci", "deny"),
+    ("rtk --skip-env bun install", "deny"),
+    ("rtk ls", "allow"),
+    ("rtk git status", "allow"),
+    # `rtk next X` zawsze uruchamia `next build X` — także dev/start/lint i ścieżki.
+    ("rtk next --debug", "deny"),
+    ("rtk next dev", "deny"),
+    ("rtk next start", "deny"),
+    ("rtk next lint", "deny"),
+    ("rtk next apps/web", "deny"),
+    ("rtk next -- build", "deny"),
+    ("rtk next --help", "allow"),
+    # Flagi i `--` po podkomendzie launchera nie omijają guarda.
+    ("rtk proxy --ultra-compact uv sync", "deny"),
+    ("rtk proxy --skip-env bun install", "deny"),
+    ("rtk proxy -- bun install", "deny"),
+    ("rtk err -- next build", "deny"),
+    ("rtk summary --ultra-compact uv sync", "deny"),
+    ('rtk run --command "bun install"', "deny"),
+    ('rtk run --command="bun install"', "deny"),
+    ('rtk run -c"bun install"', "deny"),
+    ("rtk run -c 'echo \"x\"'", "allow"),
+    # Pojedynczy cytowany argument rtk uruchamia przez `sh -c`.
+    ("rtk test 'bun install'", "deny"),
+    ('rtk summary "bun install"', "deny"),
+    ('rtk err "bun install"', "deny"),
+    ('rtk test "uv sync"', "deny"),
+    ("rtk summary 'next build'", "deny"),
+    ("rtk run 'bun install'", "deny"),
+    ('rtk run "echo x; docker compose up"', "deny"),
+    ("rtk test 'echo hi'", "allow"),
+    # Cytowany `rtk proxy` uruchamia komendę, a separator w cytowanym argumencie
+    # rtk run|test|summary|err trafia do powłoki po sklejeniu argumentów.
+    ("rtk proxy 'bun install'", "deny"),
+    ('rtk proxy "uv sync"', "deny"),
+    ("rtk run echo 'x;' bun install", "deny"),
+    ("rtk test echo 'x;' bun install", "deny"),
+    ("rtk summary true '|| bun install'", "deny"),
+    ("rtk err echo 'x&&' bun install", "deny"),
+    ("npx expo@latest install x", "deny"),
+    # Zagnieżdżenie ponad limit to deny, nie crash hooka (fail-open).
+    ("rtk " * 8000 + "bun install", "deny"),
+    ("npx " * 8000 + "bun install", "deny"),
+    # CLI, które same instalują paczki (ADR 0009: krótka lista) (#227).
+    ("bunx shadcn@latest init -y", "deny"),
+    ("pnpm dlx shadcn add button", "deny"),
+    ("npx shadcn@latest add button", "deny"),
+    ("npx expo install expo-camera", "deny"),
+    ("expo install expo-camera", "deny"),
 ]
 
 VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": ""}
@@ -425,6 +591,16 @@ class ServerGuardTest(unittest.TestCase):
             with self.subTest(command=command):
                 denied, _, _ = check_command(command, [dict(r) for r in DEFAULTS])
                 self.assertEqual("deny" if denied else "allow", expected)
+
+    def test_rtk_install_names_kit_rule(self) -> None:
+        # Powód musi wskazywać regułę kita, nie tylko „wrapper”.
+        out = run_server_guard({"tool_name": "Bash", "tool_input": {"command": "rtk bun install"}}, VPS)
+        self.assertTrue(out.get("permissionDecisionReason", "").endswith("[bun-pkg]"), out)
+
+    def test_rtk_next_names_next_build_rule(self) -> None:
+        out = run_server_guard({"tool_name": "Bash", "tool_input": {"command": "rtk next"}}, VPS)
+        self.assertEqual(out.get("permissionDecision"), "deny", out)
+        self.assertTrue(out.get("permissionDecisionReason", "").endswith("[next-build]"), out)
 
     def test_uv_no_sync_env_allows_uv_run(self) -> None:
         self.assertEqual(decision("uv run ruff", {**VPS, "UV_NO_SYNC": "1"}), "allow")
@@ -614,6 +790,8 @@ tasks:
             "task backend:test", "task web:e2e", "task front", "task sync", "task mixed",
             "bun run build", "npm run build", "pnpm run build", "yarn run build", "yarn build",
             "bun --filter web run build", "bun run ci", "npm test", "turbo run test", "turbo run lint test",
+            # `rtk npm X` działa jak `npm run X`; wrapper z package.json łapie build (#227).
+            "rtk npm build",
         }
         allow = {"task lint", "bun run lint", "bun run boom", "turbo run lint", "bun run check", "npm run typecheck"}
         for command in sorted(deny):
@@ -625,6 +803,8 @@ tasks:
 
         out = run_server_guard({"tool_input": {"command": "bun run ci"}}, VPS, config)
         self.assertIn("bun run ci → bun run build → turbo run build → next build", out.get("permissionDecisionReason", ""))
+        out = run_server_guard({"tool_input": {"command": "rtk npm build"}}, VPS, config)
+        self.assertIn("npm run build → turbo run build → next build", out.get("permissionDecisionReason", ""))
         out = run_server_guard({"tool_input": {"command": "task ci"}}, VPS, config)
         self.assertIn("task ci → task backend:test → docker compose run api pytest", out.get("permissionDecisionReason", ""))
 

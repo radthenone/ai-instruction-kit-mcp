@@ -117,6 +117,18 @@
       "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
     },
     {
+      "id": "shadcn",
+      "kind": "deny",
+      "pattern": "^\\s*shadcn(?:@\\S+)?\\s+(?:init|add)(?=\\s|$)",
+      "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"
+    },
+    {
+      "id": "expo-install",
+      "kind": "deny",
+      "pattern": "^\\s*expo(?:@\\S+)?\\s+install(?=\\s|$)",
+      "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"
+    },
+    {
       "id": "next-build",
       "kind": "deny",
       "pattern": "^\\s*next\\s+build(?=\\s|$)",
@@ -125,7 +137,7 @@
     {
       "id": "expo-build",
       "kind": "deny",
-      "pattern": "^\\s*expo\\s+(prebuild|export)(?=\\s|$)",
+      "pattern": "^\\s*expo(?:@\\S+)?\\s+(prebuild|export)(?=\\s|$)",
       "reason": "build produkcyjny tylko w CI"
     },
     {

@@ -24,7 +24,7 @@ class TestNightRunArgs(unittest.TestCase):
     def test_goal_not_required(self) -> None:
         self.assertNotIn("pod /goal", self.description)
         self.assertIn("`/goal` opcjonalny", self.text)
-        self.assertIn("Wznawianie nocy = heartbeat `CronCreate`", self.text)
+        self.assertIn("Wznawianie nocy = tik `CronCreate`", self.text)
 
     def test_args_syntax(self) -> None:
         self.assertIn(
@@ -46,7 +46,8 @@ class TestNightRunArgs(unittest.TestCase):
 
     def test_review_skills_from_args(self) -> None:
         self.assertIn("Skille review z argumentów", self.text)
-        self.assertIn("przez Skill", self.text)
+        self.assertIn("Komendy kitu uruchamiasz według klienta", self.text)
+        self.assertNotIn("przez Skill", self.text)
         self.assertIn("nieznany skill review → needs-human na starcie nocy", self.text)
         self.assertIn("Bez argumentów — **subagent review**", self.text)
         self.assertIn("Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`", self.text)
@@ -57,7 +58,7 @@ class TestNightRunArgs(unittest.TestCase):
         self.assertIn("koszt bez wykonawcy headless i review w sesji głównej", self.text)
 
     def test_report_lists_executor_and_review(self) -> None:
-        self.assertIn("| Ticket | Stan | Wykonawca | Review | Dowód |", self.text)
+        self.assertIn("| Ticket | Stan | Wykonawca | Review | Model | Dowód |", self.text)
 
     def test_reload_refreshed_client_copies(self) -> None:
         for rel in COPIES:

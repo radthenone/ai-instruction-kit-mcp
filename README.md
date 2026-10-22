@@ -1238,7 +1238,7 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 | Guard | Klient | Zachowanie |
 |-------|--------|------------|
 | `git-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
-| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
+| `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity (tylko narzędzia plikowe — bez Basha) | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** oczywisty odczyt sekretu przez Bash — komenda czytająca (`cat`, `head`, `tail`, `less`, `more`, `bat`, `grep`, `rg`, `sed`, `awk`, `xxd`, `base64`, `strings`, `source`/`.`, `rtk read`, `rtk grep`) z argumentem będącym ścieżką sekretu; segmenty po `;`/`&`/`&&`/`||`/`|`, prefiksy `sudo`/`env`/`rtk` (z opcjami, `rtk proxy`, `VAR=1`; i powłoka z `-c`), podstawienia `$(...)`; pierwszy argument `grep`/`rg`/`sed`/`awk` to wzorzec, a cel przekierowania (`> .env`) to zapis — przechodzą; Bash pilnują wszyscy poza Antigravity; **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `bun.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
 | `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
@@ -1252,6 +1252,16 @@ blokuje tak samo jak prompt, więc bramka, która pyta, nie jest automatyczna. M
 `permissionDecisionReason` i sam dobiera bezpieczną alternatywę. Git odzyska wszystko
 w repo; poza repo pilnujemy tylko katalogów systemowych i sekretów — resztę gate'uje
 natywna permission klienta (`cwd` + `additionalDirectories`).
+
+**Granica sensitive-files-guarda pod Bash (#231).** Guard blokuje **oczywiste**
+odczyty sekretów — komenda czytająca z jawną ścieżką sekretu, w tym forma po
+przepisaniu przez RTK (`cat .env` → `rtk read .env`, `grep KEY .env` → `rtk grep
+KEY .env`). Nie jest piaskownicą: `python -c "open('.env')"`, `grep -r KEY .` ani
+zapis sekretu przez Bash (`echo X > .env`, `tee .env`) przechodzą. Świadomie poza
+zakresem jest też każda inna komenda ze ścieżką sekretu (`cp .env.example .env`,
+`ls -la .env`, `rm .env`, `git check-ignore .env`). Parser jest tekstowy
+(split po `;`/`&`/`&&`/`||`/`|` + prefiksy), a nie AST — upgrade ścieżką wspólnego
+parsera z server-guardem dopiero przy realnym omijaku, nie przez doklejanie wzorców.
 
 **Jeden dialekt, adapter na brzegu.** Skrypty polityki mówią wyłącznie kontraktem
 Claude Code (`hookSpecificOutput.permissionDecision`). Cursor (`permission`), OpenCode
@@ -1269,8 +1279,9 @@ wie o różnicy między klientami.
 | Copilot (VS Code + CLI) | `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` | tłumaczony przez adapter; deny = top-level `permissionDecision` + `hookSpecificOutput`, allow = pusty stdout |
 | Antigravity | `node hooks/invoke-hook.js <guard>.mjs --to antigravity` (cwd = katalog `hooks.json`, czyli `.agents/`) | tłumaczony przez adapter; wyjście `{ decision, reason }` (allow = `{"decision":"allow"}`) |
 
-Cursor: `beforeShellExecution` → git-guard, `beforeReadFile` → sensitive-files-guard
-(`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard (`--tool Write`).
+Cursor: `beforeShellExecution` → git-guard + sensitive-files-guard, `beforeReadFile` →
+sensitive-files-guard (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard
+(`--tool Write`).
 `--tool` dopisuje `tool_name`, którego payload Cursora nie niesie. Wszystkie wpisy mają
 `failClosed: true` — padnięty Guard (brak JSON) blokuje akcję, a nieczytelny payload
 daje **deny**. `invoke-hook.js` po wypisaniu JSON **zawsze kończy exit 0** (niezerowy
@@ -1278,7 +1289,8 @@ exit ukrywa payload przy failClosed).
 
 OpenCode (`--clients opencode`): bootstrap kładzie `git-guard.mjs`, `sensitive-files-guard.mjs`
 i `invoke-hook.js` w `.opencode/hooks/` oraz plugin V2 `.opencode/plugins/kit-guards.js`.
-Plugin podpina się pod `tool.execute.before`: `shell` (dawniej `bash`) → git-guard, `read` /
+Plugin podpina się pod `tool.execute.before`: `shell` (dawniej `bash`) → git-guard +
+server-guard + sensitive-files-guard, `read` /
 `edit` / `write` / `multiedit` → sensitive-files-guard, `patch` → sensitive-files-guard dla każdego
 pliku z `patchText` (także celu `Move to`). Nazwy i pola narzędzi sprawdzone na opencode 2.0.24.
 Działa niezależnie od `permission` w `opencode.json`, także przy `allow` na bash i edycje. Przy
@@ -1288,7 +1300,8 @@ i dobiera inną drogę. Awaria guarda, timeout (10 s) albo wejście bez oczekiwa
 
 Codex (`--clients codex`): bootstrap kładzie guardy, `invoke-hook.js` i `server-guard.json`
 w `.codex/hooks/` oraz `.codex/hooks.json` (PreToolUse). Powłoka (`Bash` / `shell` /
-`local_shell` / `exec_command`, `command` jako string albo argv) → git-guard + server-guard;
+`local_shell` / `exec_command`, `command` jako string albo argv) → git-guard + server-guard +
+sensitive-files-guard;
 Playwright MCP → server-guard; `apply_patch` i `Read|Edit|Write|…` → sensitive-files-guard,
 dla `apply_patch` po kolei na każdej ścieżce z nagłówków `*** Add|Update|Delete File:` /
 `*** Move to:` (patch bez ścieżek = deny). Ścieżka hooka liczona od roota repo
@@ -1404,6 +1417,7 @@ nie osobno:
 |---|---|---|---|
 | Kontenery | `docker`, `docker-compose`, `docker compose`, `podman` — każda podkomenda poza allow obok (także `stop`, `rm`, `down`, `kill`, `restart`, `prune`, `compose config`) | `ps`, `images`, `inspect`, `logs` bez `-f`, `version`, `info`, `compose ps` | budowanie i uruchamianie kontenerów tylko w CI; na hoście działają cudze kontenery |
 | Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv pip install`, `pip install`, `uv run` bez `--no-sync` (przepuszcza, gdy `UV_NO_SYNC=1` w env), `bun install` / `bun add` / `bun remove`, `npm install` / `npm ci`, `pnpm install` / `pnpm add`, `yarn install` / `yarn add` | `uv run --no-sync …`, `uvx` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| CLI instalujące paczki | `shadcn init` / `shadcn add` (także przez `bunx` / `npx` / `pnpm dlx`), `expo install` | — | CLI samo dopisuje zależności; instalacja tylko na PC albo w CI |
 | Buildy | `next build`, `expo prebuild`, `expo export`, `eas build --local`, `vite build`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
 | Przeglądarki / e2e | `playwright`, `cypress`, `maestro`, narzędzia Playwright MCP | — | przeglądarka to setki MB na instancję; e2e tylko w CI |
 | Mnożenie procesów | `pytest -n` / `--numprocesses` | `pytest` bez xdist | xdist mnoży procesy na słabym CPU |
@@ -1423,6 +1437,17 @@ cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` 
 `taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.
+
+**Wrappery wykonania: `rtk`.** Globalna wtyczka RTK przepisuje komendę, zanim
+zobaczy ją plugin guarda w opencode: `bun install` jedzie jako `rtk bun install`,
+a `next build` jako `rtk next` — bez słowa `build`. Guard zdejmuje więc flagi rtk
+(`-v…`, `--ultra-compact`, `--skip-env`), `rtk proxy|err|test|summary X` ocenia
+jak `X`, `rtk run -c "…"` jak `sh -c`, `rtk run X` jak `X`, a pozostałe
+`rtk X …` jak `X …`; dodatkowo `rtk next X` to zawsze `next build X` (poza `--help`), a `rtk npm X`
+to `npm X` i `npm run X`. W Claude Code hooki `PreToolUse` widzą oryginalny
+`tool_input`, więc guard dostaje komendę sprzed RTK, a deny wygrywa
+z `updatedInput`; normalizacja pokrywa ten sam przypadek niezależnie od
+kolejności hooków.
 
 **Rozwijanie wrapperów przy `reload`.** Guard widzi tylko tekst komendy, więc
 `kit-ai reload` / bootstrap czyta `Taskfile.yml` / `.yaml` (z `includes`

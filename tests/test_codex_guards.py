@@ -83,6 +83,15 @@ class CodexInvokeHookAdapterTest(unittest.TestCase):
         )
         self.assertEqual(out.get("permissionDecision"), "allow")
 
+    def test_sensitive_guard_denies_shell_read_of_env(self) -> None:
+        # Codex `shell` z argv trafia do guarda jako Bash — odczyt sekretu musi być deny.
+        out = _run_hook(
+            "sensitive-files-guard.mjs",
+            _codex("shell", {"command": ["bash", "-lc", "cat .env"]}),
+        )
+        self.assertEqual(out.get("permissionDecision"), "deny")
+        self.assertIn(".env", out.get("permissionDecisionReason", ""))
+
     def test_shell_without_command_denied(self) -> None:
         out = _run_hook("git-guard.mjs", _codex("shell", {}))
         self.assertEqual(out.get("permissionDecision"), "deny")
@@ -219,11 +228,13 @@ class CodexBootstrapGuardsTest(unittest.TestCase):
     def test_sensitive_matcher_catches_apply_patch(self) -> None:
         workspace = self._install("codex")
         pre = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))
-        entry = next(
+        entries = [
             e for e in pre["hooks"]["PreToolUse"]
             if any("sensitive-files-guard" in h["command"] for h in e["hooks"])
+        ]
+        self.assertTrue(
+            any("apply_patch" in e["matcher"].split("|") for e in entries), entries
         )
-        self.assertIn("apply_patch", entry["matcher"].split("|"))
 
     def test_dropping_codex_removes_its_guards(self) -> None:
         workspace = self._install("codex")

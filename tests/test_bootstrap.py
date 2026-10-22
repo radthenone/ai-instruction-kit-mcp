@@ -710,6 +710,43 @@ class TestServerGuardInstall(_BootstrapTestCase):
             self.assertIn("server-guard.mjs", (workspace / ".opencode/plugins/kit-guards.js").read_text(encoding="utf-8"))
 
 
+class TestSensitiveGuardBashWiring(_BootstrapTestCase):
+    """Sensitive guard widzi Bash tam, gdzie git-guard już go widzi (#231)."""
+
+    def test_shell_reads_wired_for_each_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex,cursor,vscode")
+
+            settings = json.loads((workspace / ".claude/settings.json").read_text(encoding="utf-8"))
+            bash = next(e for e in settings["hooks"]["PreToolUse"] if "Bash" in e["matcher"].split("|"))
+            self.assertTrue(
+                any("sensitive-files-guard.mjs" in h["command"] for h in bash["hooks"]), bash
+            )
+
+            codex = json.loads((workspace / ".codex/hooks.json").read_text(encoding="utf-8"))
+            bash = next(e for e in codex["hooks"]["PreToolUse"] if "Bash" in e["matcher"].split("|"))
+            self.assertTrue(
+                any("sensitive-files-guard.mjs" in h["command"] for h in bash["hooks"]), bash
+            )
+
+            cursor = json.loads((workspace / ".cursor/hooks.json").read_text(encoding="utf-8"))
+            shell_guards = [h["command"] for h in cursor["hooks"]["beforeShellExecution"]]
+            self.assertTrue(
+                any("sensitive-files-guard.mjs" in c for c in shell_guards), shell_guards
+            )
+
+            # VS Code: hooki PreToolUse bez matchera widzą wszystkie narzędzia, także Bash.
+            copilot = json.loads(
+                (workspace / ".github/hooks/kit-guards.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(
+                any("sensitive-files-guard.mjs" in e["command"] for e in copilot["hooks"]["PreToolUse"]),
+                copilot,
+            )
+
+
 class TestOpencodeDefaultModel(_BootstrapTestCase):
     """Projektowy `opencode.json` dziedziczy `model` z globalnego configu (#167)."""
 

@@ -11,6 +11,10 @@
         "command": "node .cursor/hooks/invoke-hook.js server-guard.mjs --to cursor",
         "matcher": "\\b(docker|podman|docker-compose)\\b|\\b(uv|pip|pip3|bun|npm|pnpm|yarn|npx|bunx)\\b|\\b(next|expo|eas|vite|turbo|playwright|cypress|maestro|pytest)\\b|\\btask\\b",
         "failClosed": true
+      },
+      {
+        "command": "node .cursor/hooks/invoke-hook.js sensitive-files-guard.mjs --to cursor",
+        "failClosed": true
       }
     ],
     "beforeReadFile": [
