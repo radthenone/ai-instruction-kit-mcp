@@ -1404,6 +1404,7 @@ nie osobno:
 |---|---|---|---|
 | Kontenery | `docker`, `docker-compose`, `docker compose`, `podman` — każda podkomenda poza allow obok (także `stop`, `rm`, `down`, `kill`, `restart`, `prune`, `compose config`) | `ps`, `images`, `inspect`, `logs` bez `-f`, `version`, `info`, `compose ps` | budowanie i uruchamianie kontenerów tylko w CI; na hoście działają cudze kontenery |
 | Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv pip install`, `pip install`, `uv run` bez `--no-sync` (przepuszcza, gdy `UV_NO_SYNC=1` w env), `bun install` / `bun add` / `bun remove`, `npm install` / `npm ci`, `pnpm install` / `pnpm add`, `yarn install` / `yarn add` | `uv run --no-sync …`, `uvx` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| CLI instalujące paczki | `shadcn init` / `shadcn add` (także przez `bunx` / `npx` / `pnpm dlx`), `expo install` | — | CLI samo dopisuje zależności; instalacja tylko na PC albo w CI |
 | Buildy | `next build`, `expo prebuild`, `expo export`, `eas build --local`, `vite build`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
 | Przeglądarki / e2e | `playwright`, `cypress`, `maestro`, narzędzia Playwright MCP | — | przeglądarka to setki MB na instancję; e2e tylko w CI |
 | Mnożenie procesów | `pytest -n` / `--numprocesses` | `pytest` bez xdist | xdist mnoży procesy na słabym CPU |
@@ -1423,6 +1424,17 @@ cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` 
 `taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.
+
+**Wrappery wykonania: `rtk`.** Globalna wtyczka RTK przepisuje komendę, zanim
+zobaczy ją plugin guarda w opencode: `bun install` jedzie jako `rtk bun install`,
+a `next build` jako `rtk next` — bez słowa `build`. Guard zdejmuje więc flagi rtk
+(`-v…`, `--ultra-compact`, `--skip-env`), `rtk proxy|err|test|summary X` ocenia
+jak `X`, `rtk run -c "…"` jak `sh -c`, `rtk run X` jak `X`, a pozostałe
+`rtk X …` jak `X …`; dodatkowo `rtk next X` to zawsze `next build X` (poza `--help`), a `rtk npm X`
+to `npm X` i `npm run X`. W Claude Code hooki `PreToolUse` widzą oryginalny
+`tool_input`, więc guard dostaje komendę sprzed RTK, a deny wygrywa
+z `updatedInput`; normalizacja pokrywa ten sam przypadek niezależnie od
+kolejności hooków.
 
 **Rozwijanie wrapperów przy `reload`.** Guard widzi tylko tekst komendy, więc
 `kit-ai reload` / bootstrap czyta `Taskfile.yml` / `.yaml` (z `includes`

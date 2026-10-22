@@ -71,10 +71,15 @@ DEFAULTS: tuple[dict[str, str], ...] = (
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
     {"id": "yarn-pkg", "kind": "deny", "pattern": r"^\s*yarn\s+(install|add)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+    # CLI, które same instalują paczki (init/add) — poza skryptami projektu.
+    {"id": "shadcn", "kind": "deny", "pattern": r"^\s*shadcn(?:@\S+)?\s+(?:init|add)(?=\s|$)",
+     "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
+    {"id": "expo-install", "kind": "deny", "pattern": r"^\s*expo(?:@\S+)?\s+install(?=\s|$)",
+     "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
     # Buildy produkcyjne — tylko w CI.
     {"id": "next-build", "kind": "deny", "pattern": r"^\s*next\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
-    {"id": "expo-build", "kind": "deny", "pattern": r"^\s*expo\s+(prebuild|export)(?=\s|$)",
+    {"id": "expo-build", "kind": "deny", "pattern": r"^\s*expo(?:@\S+)?\s+(prebuild|export)(?=\s|$)",
      "reason": "build produkcyjny tylko w CI"},
     {"id": "eas-build", "kind": "deny", "pattern": r"^\s*eas\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI"},
@@ -124,6 +129,22 @@ _UV_RUN_ARG = frozenset((
 _JS_PM_ARG = frozenset(("--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"))
 _NPX_ARG = frozenset(("-p", "--package"))
 _PYTHON = re.compile(r"python(?:\d+(?:\.\d+)?)?")
+# `rtk` to globalna wtyczka przepisująca komendę (opencode/Claude/Codex/Cursor):
+# `bun install` → `rtk bun install`, `next build` → `rtk next`. Traktujemy go jak
+# launcher, bo przepisana komenda nie zawiera już słów, na których stoją reguły.
+_RTK_LAUNCHER = frozenset(("proxy", "err", "test", "summary", "run"))
+# Głębsze zagnieżdżenie launcherów (`rtk rtk rtk …`) to atak na stos — deny, nie crash.
+_MAX_DEPTH = 16
+_TOO_DEEP = {"id": "nesting", "kind": "deny", "reason": "zbyt głębokie zagnieżdżenie launcherów"}
+
+
+class _TooDeep(Exception):
+    pass
+
+
+def _drop_tokens(text: str, n: int) -> str:
+    """Tekst bez pierwszych `n` słów (zachowuje cudzysłowy reszty)."""
+    return re.sub(r"^\s*(?:\S+\s*){%d}" % n, "", text)
 
 
 def warn(message: str) -> None:
@@ -308,13 +329,18 @@ def _skip_flags(toks: list[str], i: int, with_arg: frozenset[str]) -> int:
     return i
 
 
-def command_forms(segment: str) -> tuple[list[str], dict[str, str]]:
+def command_forms(segment: str, depth: int = 0) -> tuple[list[str], dict[str, str]]:
     """Formy segmentu do dopasowania: sama komenda + to, co uruchamia launcher.
 
     `uv [opcje] run [flagi] X`, `npx`/`bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X`
     dokładają formę `X`; opcje `uv` przed podkomendą i `--filter`/`--cwd` menedżerów JS
     są zdejmowane, żeby wzorce (`uv run`, wrappery `bun run x`) widziały komendę wprost.
+    `rtk` jest launcherem wykonania: `rtk X …` daje `X …`, `rtk proxy|err|test|summary X`
+    daje `X`, a `rtk run -c "…"` oceniamy jak `sh -c`. Tabela znaczeń dokłada formy,
+    w których rtk zgubił słowo: `rtk next` → `next build`, `rtk npm X` → `npm run X`.
     """
+    if depth > _MAX_DEPTH:
+        raise _TooDeep
     command, assigns = strip_prefixes(segment)
     toks = command.split()
     if not toks:
@@ -342,8 +368,53 @@ def command_forms(segment: str) -> tuple[list[str], dict[str, str]]:
             rest = toks[_skip_flags(toks, 2, _NPX_ARG):]
     elif _PYTHON.fullmatch(head) and len(toks) > 2 and toks[1] == "-m":
         rest = toks[2:]
+    elif head == "rtk":
+        i = _skip_flags(toks, 1, frozenset())
+        sub = toks[i] if i < len(toks) else ""
+        tail = _drop_tokens(command, i + 1)
+        toks = ["rtk", *toks[i:]]
+        forms = [" ".join(toks)]
+        if sub in _RTK_LAUNCHER:
+            # Flagi rtk i `--` po podkomendzie; `run -c|--command` oraz cytowany argument
+            # rtk uruchamia przez `sh -c`, a argumenty run|err|test|summary skleja w jedną
+            # linię powłoki (cudzysłów w argumencie nie chroni separatora). `proxy` to argv.
+            words = tail.split()
+            skipped = 0
+            script = None
+            while skipped < len(words) and words[skipped].startswith("-"):
+                if sub == "run" and re.match(r"-c|--command(?:=|$)", words[skipped]):
+                    script = re.sub(r"^(?:--command|-c)(?:=|\s*)", "", _drop_tokens(tail, skipped))
+                    break
+                skipped += 1
+                if words[skipped - 1] == "--":
+                    break
+            if script is None:
+                script = _drop_tokens(tail, skipped)
+                if sub == "proxy" and script[:1] not in ("'", '"'):
+                    rest = script.split()
+                    script = None
+            if script is not None:
+                script = script.strip()
+                lines = [f"sh -c {script}" if script[:1] in ("'", '"') else script]
+                if sub != "proxy":
+                    lines.append(re.sub(r"['\"]", "", script))
+                for line in lines:
+                    for inner_segment in split_segments(line):
+                        inner_forms, inner_assigns = command_forms(inner_segment, depth + 1)
+                        forms.extend(inner_forms)
+                        assigns.update(inner_assigns)
+        elif sub:
+            rest = toks[1:]
+        # `rtk next X` zawsze uruchamia `next build X` (poza `--help`).
+        if sub == "next" and not {"-h", "--help"} & set(toks[2:]):
+            forms.append(" ".join(["next", "build", *toks[2:]]))
+        elif sub == "npm" and len(toks) > 2 and toks[2] not in ("run", "run-script"):
+            # `rtk npm X` uruchamia `npm X`, ale wrapper w package.json to `npm run X`.
+            inner_forms, inner_assigns = command_forms("npm run " + " ".join(toks[2:]), depth + 1)
+            forms.extend(inner_forms)
+            assigns.update(inner_assigns)
     if rest:
-        inner, inner_assigns = command_forms(" ".join(rest))
+        inner, inner_assigns = command_forms(" ".join(rest), depth + 1)
         forms.extend(inner)
         assigns.update(inner_assigns)
     return forms, assigns
@@ -372,7 +443,10 @@ def check_command(
     """
     fallback: tuple[bool, dict[str, str] | None, str] = (False, None, "")
     for segment in split_segments(command):
-        forms, assigns = command_forms(segment)
+        try:
+            forms, assigns = command_forms(segment)
+        except _TooDeep:
+            return True, dict(_TOO_DEEP), segment.strip()
         segment_no_sync = no_sync or assigns.get("UV_NO_SYNC") == "1"
         for form in forms:
             deny_hit = allow_hit = None

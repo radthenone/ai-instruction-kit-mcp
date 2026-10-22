@@ -60,8 +60,10 @@ const EMBEDDED_DEFAULTS = [
   {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(install|i|ci)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
   {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(install|i|add)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
   {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(install|add)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "shadcn", "kind": "deny", "pattern": "^\\s*shadcn(?:@\\S+)?\\s+(?:init|add)(?=\\s|$)", "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
+  {"id": "expo-install", "kind": "deny", "pattern": "^\\s*expo(?:@\\S+)?\\s+install(?=\\s|$)", "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
   {"id": "next-build", "kind": "deny", "pattern": "^\\s*next\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
-  {"id": "expo-build", "kind": "deny", "pattern": "^\\s*expo\\s+(prebuild|export)(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
+  {"id": "expo-build", "kind": "deny", "pattern": "^\\s*expo(?:@\\S+)?\\s+(prebuild|export)(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
   {"id": "eas-build", "kind": "deny", "pattern": "^\\s*eas\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
   {"id": "vite-build", "kind": "deny", "pattern": "^\\s*vite\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
   {"id": "turbo-build", "kind": "deny", "pattern": "^\\s*turbo(?:\\s+run)?(?:\\s+[^-\\s]\\S*)*?\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`"},
@@ -222,6 +224,17 @@ const UV_RUN_ARG = new Set(["--with", "--with-requirements", "--python", "-p", "
 const JS_PM_ARG = new Set(["--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"]);
 const NPX_ARG = new Set(["-p", "--package"]);
 const PYTHON = /^python(?:\d+(?:\.\d+)?)?$/;
+// `rtk` to globalna wtyczka przepisująca komendę (opencode/Claude/Codex/Cursor):
+// `bun install` → `rtk bun install`, `next build` → `rtk next`. Traktujemy go jak
+// launcher, bo przepisana komenda nie zawiera już słów, na których stoją reguły.
+const RTK_LAUNCHER = new Set(["proxy", "err", "test", "summary", "run"]);
+// Głębsze zagnieżdżenie launcherów (`rtk rtk rtk …`) to atak na stos — deny, nie crash.
+const MAX_DEPTH = 16;
+const TOO_DEEP = { id: "nesting", kind: "deny", reason: "zbyt głębokie zagnieżdżenie launcherów" };
+class TooDeep extends Error {}
+
+// Tekst bez pierwszych `n` słów (zachowuje cudzysłowy reszty).
+const dropTokens = (text, n) => text.replace(new RegExp(`^\\s*(?:\\S+\\s*){${n}}`), "");
 
 function skipHeredocs(cmd, i, pending) {
   for (const [stripTabs, delim] of pending) {
@@ -399,7 +412,8 @@ function skipFlags(toks, i, withArg) {
   return i;
 }
 
-function commandForms(segment) {
+function commandForms(segment, depth = 0) {
+  if (depth > MAX_DEPTH) throw new TooDeep();
   const [command, assigns] = stripPrefixes(segment);
   let toks = command.split(/\s+/).filter(Boolean);
   if (!toks.length) return [[], assigns];
@@ -422,9 +436,61 @@ function commandForms(segment) {
     if (["dlx", "exec", "x"].includes(toks[1])) rest = toks.slice(skipFlags(toks, 2, NPX_ARG));
   } else if (PYTHON.test(head) && toks.length > 2 && toks[1] === "-m") {
     rest = toks.slice(2);
+  } else if (head === "rtk") {
+    const i = skipFlags(toks, 1, new Set());
+    const sub = toks[i] || "";
+    const tail = dropTokens(command, i + 1);
+    toks = ["rtk", ...toks.slice(i)];
+    forms = [toks.join(" ")];
+    if (RTK_LAUNCHER.has(sub)) {
+      // Flagi rtk i `--` po podkomendzie; `run -c|--command` oraz cytowany argument
+      // rtk uruchamia przez `sh -c`, a argumenty run|err|test|summary skleja w jedną
+      // linię powłoki (cudzysłów w argumencie nie chroni separatora). `proxy` to argv.
+      const words = tail.split(/\s+/).filter(Boolean);
+      let skipped = 0;
+      let script = null;
+      while (skipped < words.length && words[skipped].startsWith("-")) {
+        if (sub === "run" && /^(?:-c|--command(?:=|$))/.test(words[skipped])) {
+          script = dropTokens(tail, skipped).replace(/^(?:--command|-c)(?:=|\s*)/, "");
+          break;
+        }
+        skipped += 1;
+        if (words[skipped - 1] === "--") break;
+      }
+      if (script === null) {
+        script = dropTokens(tail, skipped);
+        if (sub === "proxy" && !/^['"]/.test(script)) {
+          rest = script.split(/\s+/).filter(Boolean);
+          script = null;
+        }
+      }
+      if (script !== null) {
+        script = script.trim();
+        const lines = [/^['"]/.test(script) ? `sh -c ${script}` : script];
+        if (sub !== "proxy") lines.push(script.replace(/['"]/g, ""));
+        for (const line of lines) {
+          for (const innerSegment of splitSegments(line)) {
+            const [innerForms, innerAssigns] = commandForms(innerSegment, depth + 1);
+            forms.push(...innerForms);
+            Object.assign(assigns, innerAssigns);
+          }
+        }
+      }
+    } else if (sub) {
+      rest = toks.slice(1);
+    }
+    // `rtk next X` zawsze uruchamia `next build X` (poza `--help`).
+    if (sub === "next" && !toks.slice(2).some((t) => t === "-h" || t === "--help")) {
+      forms.push(["next", "build", ...toks.slice(2)].join(" "));
+    } else if (sub === "npm" && toks.length > 2 && !["run", "run-script"].includes(toks[2])) {
+      // `rtk npm X` uruchamia `npm X`, ale wrapper w package.json to `npm run X`.
+      const [innerForms, innerAssigns] = commandForms("npm run " + toks.slice(2).join(" "), depth + 1);
+      forms.push(...innerForms);
+      Object.assign(assigns, innerAssigns);
+    }
   }
   if (rest.length) {
-    const [inner, innerAssigns] = commandForms(rest.join(" "));
+    const [inner, innerAssigns] = commandForms(rest.join(" "), depth + 1);
     forms.push(...inner);
     Object.assign(assigns, innerAssigns);
   }
@@ -437,7 +503,13 @@ function checkCommand(cmd) {
   const envNoSync = String(process.env.UV_NO_SYNC || "") === "1";
   let fallback = null;
   for (const segment of splitSegments(cmd)) {
-    const [forms, assigns] = commandForms(segment);
+    let forms, assigns;
+    try {
+      [forms, assigns] = commandForms(segment);
+    } catch (e) {
+      if (e instanceof TooDeep) return TOO_DEEP;
+      throw e;
+    }
     const noSync = envNoSync || assigns.UV_NO_SYNC === "1";
     for (const form of forms) {
       let denyHit = null;
