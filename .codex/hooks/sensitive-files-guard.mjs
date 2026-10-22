@@ -11,7 +11,7 @@
  *
  * Bash — deny tylko oczywisty odczyt: komenda czytająca + argument będący ścieżką
  * sekretu (cat, head, tail, less, more, bat, grep, rg, sed, awk, xxd, base64,
- * strings, source/. oraz `rtk read` / `rtk grep`). Segmenty dzielimy po `;`, `&&`,
+ * strings, source/. oraz `rtk read` / `rtk grep`). Segmenty dzielimy po `;`, `&`, `&&`,
  * `||`, `|` i podstawieniach `$(...)`, zdejmujemy prefiksy sudo/env/rtk (z `-u x`,
  * `proxy`, `VAR=1`; oraz powłoki bash/sh/zsh z `-c`), bo RTK przepisuje `cat .env`
  * na `rtk read .env`. Pierwszy argument grep/rg/sed/awk to wzorzec, nie plik; cel
@@ -97,60 +97,99 @@ const READ_COMMANDS = new Set([
 ]);
 // Pierwszy argument pozycyjny to wzorzec / skrypt, nie plik (chyba że podano -e / -f).
 const PATTERN_FIRST = new Set(["grep", "rg", "sed", "awk"]);
-// Powłoka z `-c` (`bash -lc "cat .env"`) to też prefiks, nie komenda czytająca.
-const SHELL_PREFIXES = new Set(["sudo", "env", "rtk", "bash", "sh", "zsh"]);
+// Wzorzec podany opcją, także sklejoną: `-eKEY`, `--regexp=KEY`.
+const PATTERN_OPT = /^(-[ef]|--(regexp|file|expression)(=|$))/;
+const PATTERN_VALUE_OPT = /^(-e|--regexp|--expression)$/;
+// Opcje z wartością w osobnym tokenie (`grep -A 3 .env f`) — wartość nie jest wzorcem ani plikiem.
+const VALUE_OPTS = {
+  grep: ["-A", "-B", "-C", "-m"],
+  rg: ["-A", "-B", "-C", "-m", "-g", "-t", "-T"],
+  awk: ["-F", "-v"],
+};
+// Prefiksy zdejmowane przed komendą czytającą; powłoka z `-c` (`bash -lc "cat .env"`) też.
+const COMMAND_PREFIXES = new Set(["sudo", "env", "rtk", "bash", "sh", "zsh"]);
 // Opcje sudo/env z wartością w osobnym tokenie (`sudo -u root cat .env`).
-const PREFIX_VALUE_OPTS = new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-T", "-U", "-R", "-S"]);
+const PREFIX_VALUE_OPTS = new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-T", "-U", "-R"]);
 // `rtk proxy cat .env` uruchamia komendę bez filtra — to też prefiks.
 const RTK_WRAPPERS = new Set(["proxy", "err", "test", "summary"]);
-const REDIRECT = /^\d*>>?$|^&>>?$/;
+const SEGMENT_SPLIT = /&&|\|\||[;|\n]|(?<!>)&(?!>)/;
 
 // Zdejmij cudzysłowy i domknięcia podstawień: `"certs/server.pem"`.
 const clean = (token) => token.replace(/^[("'`]+|[)"'`,]+$/g, "");
+// Nazwa komendy: `/bin/cat` i `\cat` to `cat`.
+const bare = (token) => basename(clean(token).replace(/^\\+/, ""));
+// Tokeny z zachowaniem cudzysłowów (`grep "load .env" f` — wzorzec jest jednym tokenem).
+const tokenize = (text) => text.match(/(?:[^\s"'\\]|\\.|"[^"]*"|'[^']*')+/g) || [];
 
 function shellSecretRead(command) {
-  // Podstawienia `$(...)` / `` `...` `` / `(...)` to osobne segmenty; `>` odklejamy od tokenu.
-  const flat = command.replace(/\$\(|[`()]/g, ";").replace(/>/g, " > ");
-  for (const segment of flat.split(/&&|\|\||[;|\n]/)) {
-    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+  // Podstawienia `$(...)` / `` `...` `` to osobne segmenty, a w komendzie zostaje placeholder,
+  // żeby `cat $(pwd)/.env` nadal miało ścieżkę.
+  const subs = [];
+  let flat = command;
+  let prev;
+  do {
+    prev = flat;
+    flat = flat.replace(/\$\(([^()]*)\)|`([^`]*)`/g, (_, a, b) => {
+      subs.push(a ?? b);
+      return "SUBST";
+    });
+  } while (flat !== prev);
+  const segments = [flat, ...subs].flatMap((text) => text.replace(/[`()]/g, ";").split(SEGMENT_SPLIT));
+  for (const segment of segments) {
+    // `<` i `>` odklejamy od tokenu; `>>` zostaje jednym tokenem.
+    const tokens = tokenize(segment.replace(/<+|>+/g, " $& "));
     let i = 0;
     let rtk = false;
     // Prefiksy (`sudo cat`, `env cat`, `rtk read`) plus ich opcje i `VAR=x`.
     while (i < tokens.length) {
       const token = clean(tokens[i]);
-      if (SHELL_PREFIXES.has(token)) {
-        if (token === "rtk") rtk = true;
+      if (/\s/.test(token)) {
+        // `bash -c "cat .env"`, `env -S 'cat .env'`: treść w cudzysłowie to dalszy ciąg komendy.
+        const inner = tokenize(token);
+        if (inner.length > 1) {
+          tokens.splice(i, 1, ...inner);
+          continue;
+        }
+      }
+      const word = bare(tokens[i]);
+      if (COMMAND_PREFIXES.has(word)) {
+        if (word === "rtk") rtk = true;
         i += 1;
         continue;
       }
-      if (i > 0 && SHELL_PREFIXES.has(clean(tokens[i - 1])) && PREFIX_VALUE_OPTS.has(token)) {
+      if (i > 0 && COMMAND_PREFIXES.has(bare(tokens[i - 1])) && PREFIX_VALUE_OPTS.has(token)) {
         i += 2;
         continue;
       }
       if (
         (i > 0 && token.startsWith("-")) ||
         /^[A-Za-z_][A-Za-z0-9_]*=/.test(token) ||
-        (rtk && i > 0 && clean(tokens[i - 1]) === "rtk" && RTK_WRAPPERS.has(token))
+        (i > 0 && bare(tokens[i - 1]) === "rtk" && RTK_WRAPPERS.has(token))
       ) {
         i += 1;
         continue;
       }
       break;
     }
-    const name = clean(tokens[i] || "");
+    const name = bare(tokens[i] || "");
     // `rtk read` / `rtk grep` to forma po przepisaniu — `read` liczy się tylko z rtk.
     if (!READ_COMMANDS.has(name) && !(rtk && name === "read")) continue;
-    let needPattern = PATTERN_FIRST.has(name);
+    const patternFirst = PATTERN_FIRST.has(name);
+    const valueOpts = VALUE_OPTS[name] || [];
+    let needPattern = patternFirst;
     const args = tokens.slice(i + 1);
     for (let j = 0; j < args.length; j += 1) {
       const token = args[j];
-      if (REDIRECT.test(token)) {
-        j += 1; // cel zapisu (`> .env`), nie odczyt
+      if (/^>+$/.test(token)) {
+        j += 1; // cel zapisu (`> .env`, `>> .env`), nie odczyt
         continue;
       }
+      if (/^<+$/.test(token)) continue; // `< .env` to odczyt — sprawdzamy następny token
       if (token.startsWith("-")) {
-        if (token === "-e" || token === "--regexp") j += 1; // wartość = wzorzec
-        if (/^(-[ef]|--regexp|--file)$/.test(token)) needPattern = false;
+        if (patternFirst) {
+          if (PATTERN_OPT.test(token)) needPattern = false;
+          if (PATTERN_VALUE_OPT.test(token) || valueOpts.includes(token)) j += 1;
+        }
         continue;
       }
       if (needPattern) {

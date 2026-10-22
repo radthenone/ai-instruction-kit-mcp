@@ -199,6 +199,30 @@ SENSITIVE_SHELL: list[tuple[str, str]] = [
     ("git check-ignore .env", "allow"),
     ("rm .env", "allow"),
     ("echo X > .env", "allow"),
+    ('true & cat .env', "deny"),
+    ('cat .env&', "deny"),
+    ('grep -eKEY .env', "deny"),
+    ('grep --regexp=KEY .env', "deny"),
+    ('sed -e1p .env', "deny"),
+    ('grep --regexp KEY .env', "deny"),
+    ('cat -e .env', "deny"),
+    ('less -e .env', "deny"),
+    ('cat $(git rev-parse --show-toplevel)/.env', "deny"),
+    ('cat "$(pwd)/.env"', "deny"),
+    ('/bin/cat .env', "deny"),
+    ('\\\\cat .env', "deny"),
+    ('cat <.env', "deny"),
+    ("env -S 'cat .env'", "deny"),
+    ('bash -c "cat .env"', "deny"),
+    ('grep -A 3 KEY .env', "deny"),
+    ('/usr/bin/sudo cat .env', "deny"),
+    ('cat foo >> .env', "allow"),
+    ('cat >> .env <<EOF', "allow"),
+    ('grep -A 3 .env README.md', "allow"),
+    ('grep "load .env" README.md', "allow"),
+    ('grep -e "load .env" README.md', "allow"),
+    ('echo ok 2>&1', "allow"),
+    ('cat foo 2>&1 > .env', "allow"),
     # Granica: guard tekstowy nie udaje pełnej ochrony (README, decyzja z #231).
     ("grep -r KEY .", "allow"),
     ("python -c \"open('.env')\"", "allow"),
@@ -310,6 +334,17 @@ class SensitiveFilesGuardTest(unittest.TestCase):
             capture_output=True, text=True, encoding="utf-8", check=False,
         )
         self.assertIn("deny", proc.stdout)
+
+    def test_copilot_bare_string_is_command_for_bash_not_path(self) -> None:
+        # Nie-JSON toolArgs dla bash to komenda — `cat yarn.lock` nie jest zapisem lockfile.
+        for tool_args, expected in (("cat config/yarn.lock", "allow"), ("ls config/.env", "allow"), ("cat .env", "deny")):
+            with self.subTest(tool_args=tool_args):
+                proc = subprocess.run(
+                    [NODE or "node", str(GUARDS / "invoke-hook.js"), "sensitive-files-guard.mjs", "--to", "copilot"],
+                    input=json.dumps({"toolName": "bash", "toolArgs": tool_args}),
+                    capture_output=True, text=True, encoding="utf-8", check=False,
+                )
+                self.assertEqual("deny" in proc.stdout, expected == "deny", proc.stdout)
 
     def test_cursor_before_shell_execution_shape(self) -> None:
         # Cursor beforeShellExecution: `.command` bez tool_name.
