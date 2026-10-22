@@ -12,13 +12,14 @@
  * Bash — deny tylko oczywisty odczyt: komenda czytająca + argument będący ścieżką
  * sekretu (cat, head, tail, less, more, bat, grep, rg, sed, awk, xxd, base64,
  * strings, source/. oraz `rtk read` / `rtk grep`). Segmenty dzielimy po `;`, `&&`,
- * `||`, `|` i zdejmujemy prefiksy sudo/env/rtk, bo RTK przepisuje `cat .env` na
- * `rtk read .env`. Każda inna komenda ze ścieżką sekretu przechodzi: `cp
- * .env.example .env`, `ls -la .env`, `rm .env`, `git check-ignore .env`.
+ * `||`, `|` i zdejmujemy prefiksy sudo/env/rtk (oraz powłoki bash/sh/zsh z `-c`),
+ * bo RTK przepisuje `cat .env` na `rtk read .env`. Każda inna komenda ze ścieżką
+ * sekretu przechodzi: `cp .env.example .env`, `ls -la .env`, `rm .env`,
+ * `git check-ignore .env`.
  *
  * ponytail: parser jest tekstowy i celowo płaski — nie złapie `python -c
- * "open('.env')"`, `source .env && env`, `grep -r KEY .` ani zapisu przez Bash
- * (`echo X > .env`, `tee .env`). To granica, nie bug: guard blokuje oczywiste
+ * "open('.env')"`, `grep -r KEY .` ani zapisu przez Bash (`echo X > .env`,
+ * `tee .env`). To granica, nie bug: guard blokuje oczywiste
  * odczyty, nie udaje piaskownicy. Upgrade, gdy pojawi się realny omijak: wspólny
  * parser shella z server-guard.mjs (AST zamiast split/regex), nie doklejanie
  * kolejnych wzorców.
