@@ -443,39 +443,44 @@ function commandForms(segment, depth = 0) {
     toks = ["rtk", ...toks.slice(i)];
     forms = [toks.join(" ")];
     if (RTK_LAUNCHER.has(sub)) {
-      // Flagi rtk i `--` po podkomendzie; `run -c|--command` oraz pojedynczy
-      // cytowany argument (err|test|summary|run) rtk uruchamia przez `sh -c`.
-      const t = tail.split(/\s+/).filter(Boolean);
-      let k = 0;
+      // Flagi rtk i `--` po podkomendzie; `run -c|--command` oraz cytowany argument
+      // rtk uruchamia przez `sh -c`, a argumenty run|err|test|summary skleja w jedną
+      // linię powłoki (cudzysłów w argumencie nie chroni separatora). `proxy` to argv.
+      const words = tail.split(/\s+/).filter(Boolean);
+      let skipped = 0;
       let script = null;
-      while (k < t.length && t[k].startsWith("-")) {
-        if (sub === "run" && /^(?:-c|--command(?:=|$))/.test(t[k])) {
-          script = dropTokens(tail, k).replace(/^(?:--command|-c)(?:=|\s*)/, "");
+      while (skipped < words.length && words[skipped].startsWith("-")) {
+        if (sub === "run" && /^(?:-c|--command(?:=|$))/.test(words[skipped])) {
+          script = dropTokens(tail, skipped).replace(/^(?:--command|-c)(?:=|\s*)/, "");
           break;
         }
-        k += 1;
-        if (t[k - 1] === "--") break;
+        skipped += 1;
+        if (words[skipped - 1] === "--") break;
       }
       if (script === null) {
-        script = dropTokens(tail, k);
-        if (sub === "proxy" || !/^['"]/.test(script)) {
+        script = dropTokens(tail, skipped);
+        if (sub === "proxy" && !/^['"]/.test(script)) {
           rest = script.split(/\s+/).filter(Boolean);
           script = null;
         }
       }
       if (script !== null) {
         script = script.trim();
-        for (const innerSegment of splitSegments(/^['"]/.test(script) ? `sh -c ${script}` : script)) {
-          const [innerForms, innerAssigns] = commandForms(innerSegment, depth + 1);
-          forms.push(...innerForms);
-          Object.assign(assigns, innerAssigns);
+        const lines = [/^['"]/.test(script) ? `sh -c ${script}` : script];
+        if (sub !== "proxy") lines.push(script.replace(/['"]/g, ""));
+        for (const line of lines) {
+          for (const innerSegment of splitSegments(line)) {
+            const [innerForms, innerAssigns] = commandForms(innerSegment, depth + 1);
+            forms.push(...innerForms);
+            Object.assign(assigns, innerAssigns);
+          }
         }
       }
     } else if (sub) {
       rest = toks.slice(1);
     }
-    // `rtk next` (rewrite z `next build`) gubi słowo `build`; `rtk next dev|start|lint|--help` nie.
-    if (sub === "next" && toks.slice(2).every((t) => t.startsWith("-") && t !== "-h" && t !== "--help")) {
+    // `rtk next X` zawsze uruchamia `next build X` (poza `--help`).
+    if (sub === "next" && !toks.slice(2).some((t) => t === "-h" || t === "--help")) {
       forms.push(["next", "build", ...toks.slice(2)].join(" "));
     } else if (sub === "npm" && toks.length > 2 && !["run", "run-script"].includes(toks[2])) {
       // `rtk npm X` uruchamia `npm X`, ale wrapper w package.json to `npm run X`.

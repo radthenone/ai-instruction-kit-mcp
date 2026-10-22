@@ -375,33 +375,38 @@ def command_forms(segment: str, depth: int = 0) -> tuple[list[str], dict[str, st
         toks = ["rtk", *toks[i:]]
         forms = [" ".join(toks)]
         if sub in _RTK_LAUNCHER:
-            # Flagi rtk i `--` po podkomendzie; `run -c|--command` oraz pojedynczy
-            # cytowany argument (err|test|summary|run) rtk uruchamia przez `sh -c`.
-            t = tail.split()
-            k = 0
+            # Flagi rtk i `--` po podkomendzie; `run -c|--command` oraz cytowany argument
+            # rtk uruchamia przez `sh -c`, a argumenty run|err|test|summary skleja w jedną
+            # linię powłoki (cudzysłów w argumencie nie chroni separatora). `proxy` to argv.
+            words = tail.split()
+            skipped = 0
             script = None
-            while k < len(t) and t[k].startswith("-"):
-                if sub == "run" and re.match(r"-c|--command(?:=|$)", t[k]):
-                    script = re.sub(r"^(?:--command|-c)(?:=|\s*)", "", _drop_tokens(tail, k))
+            while skipped < len(words) and words[skipped].startswith("-"):
+                if sub == "run" and re.match(r"-c|--command(?:=|$)", words[skipped]):
+                    script = re.sub(r"^(?:--command|-c)(?:=|\s*)", "", _drop_tokens(tail, skipped))
                     break
-                k += 1
-                if t[k - 1] == "--":
+                skipped += 1
+                if words[skipped - 1] == "--":
                     break
             if script is None:
-                script = _drop_tokens(tail, k)
-                if sub == "proxy" or script[:1] not in ("'", '"'):
+                script = _drop_tokens(tail, skipped)
+                if sub == "proxy" and script[:1] not in ("'", '"'):
                     rest = script.split()
                     script = None
             if script is not None:
                 script = script.strip()
-                for inner_segment in split_segments(f"sh -c {script}" if script[:1] in ("'", '"') else script):
-                    inner_forms, inner_assigns = command_forms(inner_segment, depth + 1)
-                    forms.extend(inner_forms)
-                    assigns.update(inner_assigns)
+                lines = [f"sh -c {script}" if script[:1] in ("'", '"') else script]
+                if sub != "proxy":
+                    lines.append(re.sub(r"['\"]", "", script))
+                for line in lines:
+                    for inner_segment in split_segments(line):
+                        inner_forms, inner_assigns = command_forms(inner_segment, depth + 1)
+                        forms.extend(inner_forms)
+                        assigns.update(inner_assigns)
         elif sub:
             rest = toks[1:]
-        # `rtk next` (rewrite z `next build`) gubi słowo `build`; `rtk next dev|start|lint|--help` nie.
-        if sub == "next" and all(t.startswith("-") and t not in ("-h", "--help") for t in toks[2:]):
+        # `rtk next X` zawsze uruchamia `next build X` (poza `--help`).
+        if sub == "next" and not {"-h", "--help"} & set(toks[2:]):
             forms.append(" ".join(["next", "build", *toks[2:]]))
         elif sub == "npm" and len(toks) > 2 and toks[2] not in ("run", "run-script"):
             # `rtk npm X` uruchamia `npm X`, ale wrapper w package.json to `npm run X`.

@@ -1430,7 +1430,7 @@ zobaczy ją plugin guarda w opencode: `bun install` jedzie jako `rtk bun install
 a `next build` jako `rtk next` — bez słowa `build`. Guard zdejmuje więc flagi rtk
 (`-v…`, `--ultra-compact`, `--skip-env`), `rtk proxy|err|test|summary X` ocenia
 jak `X`, `rtk run -c "…"` jak `sh -c`, `rtk run X` jak `X`, a pozostałe
-`rtk X …` jak `X …`; dodatkowo `rtk next` to także `next build`, a `rtk npm X`
+`rtk X …` jak `X …`; dodatkowo `rtk next X` to zawsze `next build X` (poza `--help`), a `rtk npm X`
 to `npm X` i `npm run X`. W Claude Code hooki `PreToolUse` widzą oryginalny
 `tool_input`, więc guard dostaje komendę sprzed RTK, a deny wygrywa
 z `updatedInput`; normalizacja pokrywa ten sam przypadek niezależnie od

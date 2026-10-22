@@ -396,11 +396,13 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("rtk --skip-env bun install", "deny"),
     ("rtk ls", "allow"),
     ("rtk git status", "allow"),
-    # `rtk next` bez podkomendy to `next build`; serwery dev nie są blokowane (ADR 0009).
+    # `rtk next X` zawsze uruchamia `next build X` — także dev/start/lint i ścieżki.
     ("rtk next --debug", "deny"),
-    ("rtk next dev", "allow"),
-    ("rtk next start", "allow"),
-    ("rtk next lint", "allow"),
+    ("rtk next dev", "deny"),
+    ("rtk next start", "deny"),
+    ("rtk next lint", "deny"),
+    ("rtk next apps/web", "deny"),
+    ("rtk next -- build", "deny"),
     ("rtk next --help", "allow"),
     # Flagi i `--` po podkomendzie launchera nie omijają guarda.
     ("rtk proxy --ultra-compact uv sync", "deny"),
@@ -421,6 +423,14 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("rtk run 'bun install'", "deny"),
     ('rtk run "echo x; docker compose up"', "deny"),
     ("rtk test 'echo hi'", "allow"),
+    # Cytowany `rtk proxy` uruchamia komendę, a separator w cytowanym argumencie
+    # rtk run|test|summary|err trafia do powłoki po sklejeniu argumentów.
+    ("rtk proxy 'bun install'", "deny"),
+    ('rtk proxy "uv sync"', "deny"),
+    ("rtk run echo 'x;' bun install", "deny"),
+    ("rtk test echo 'x;' bun install", "deny"),
+    ("rtk summary true '|| bun install'", "deny"),
+    ("rtk err echo 'x&&' bun install", "deny"),
     ("npx expo@latest install x", "deny"),
     # Zagnieżdżenie ponad limit to deny, nie crash hooka (fail-open).
     ("rtk " * 8000 + "bun install", "deny"),

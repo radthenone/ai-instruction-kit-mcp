@@ -63,9 +63,9 @@ Dlatego guard normalizuje `rtk` jak launcher, nie jak zwykły prefiks:
 
 1. zdejmuje flagi rtk (`-v…`, `--ultra-compact`, `--skip-env`);
 2. `rtk proxy|err|test|summary <cmd>` ocenia jako `<cmd>`;
-3. `rtk run -c "<cmd>"` ocenia jak `sh -c`, a `rtk run <cmd>` jak gołe `<cmd>`;
+3. `rtk run -c "<cmd>"` i cytowany argument ocenia jak `sh -c`; argumenty `run|err|test|summary` rtk skleja w linię powłoki, więc cytowany separator też dzieli komendę;
 4. pozostałe `rtk X …` jako `X …`, plus tabela form, w których rtk zgubił
-   znaczące słowo: `rtk next` → `next build`, `rtk npm X` → `npm X` i `npm run X`.
+   znaczące słowo: `rtk next X` → `next build X`, `rtk npm X` → `npm X` i `npm run X`.
 
 Deny działa więc niezależnie od tego, czy komenda dotarła do guarda przed
 przepisaniem, czy po. W Claude Code hooki `PreToolUse` działają równolegle na
