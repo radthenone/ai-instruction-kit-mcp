@@ -63,6 +63,16 @@ class TestNightRunWatchdog(unittest.TestCase):
     def test_subagent_keeps_turn_while_headless_runs(self) -> None:
         self.assertIn("Nie kończysz tury, dopóki `/headless` działa w tle", self.text)
 
+    def test_watchdog_relaunched_once_and_skips_429(self) -> None:
+        watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")
+        self.assertIn("Jeden watchdog naraz", watchdog)
+        self.assertIn("pauza limitu od", watchdog)
+        tick = self.text.split("## Tick watchdoga i crona", 1)[1]
+        self.assertIn("odpala watchdoga", tick)
+
+    def test_subagent_waits_with_foreground_bash(self) -> None:
+        self.assertIn("pierwszoplanowym Bash z limitem czasu", self.text)
+
     def test_state_written_in_same_tool_call_as_agent(self) -> None:
         chain = self._section("## Łańcuch na ticket", "## Prompt ticketu")
         step1 = chain.split("1. **Subagent ticketu**", 1)[1].split("2. **Review.**", 1)[0]
@@ -71,7 +81,7 @@ class TestNightRunWatchdog(unittest.TestCase):
 
     def test_report_counts_orchestrator_turns_and_cache_read(self) -> None:
         report = self.text.split("## NIGHT-RUN REPORT", 1)[1]
-        self.assertIn("Orkiestrator: <tury> tur / <cache_read> cache_read", report)
+        self.assertIn("Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read", report)
         measurement = self._section("## Pomiar kosztu ticketu", "## NIGHT-RUN REPORT")
         self.assertIn("transkrypcie sesji głównej", measurement)
 
@@ -84,13 +94,15 @@ class TestNightRunWatchdog(unittest.TestCase):
         self.assertIn(CLAUDE_ONLY, measurement_heading)
 
     def test_reload_refreshed_client_copies(self) -> None:
+        def body(text: str) -> str:
+            lines = text.split("\n---\n", 1)[1].strip().splitlines()
+            return "\n".join(ln for ln in lines if not ln.startswith("<!-- "))
+
+        expected = body(self.text)
         for rel in COPIES:
             with self.subTest(copy=rel):
                 copy = (KIT_ROOT / rel).read_text(encoding="utf-8")
-                self.assertIn("Watchdog w tle", copy)
-                self.assertIn("`CronList` przed `CronCreate`", copy)
-                self.assertIn("nie wywołuje żadnych narzędzi", copy)
-                self.assertIn("Orkiestrator: <tury> tur / <cache_read> cache_read", copy)
+                self.assertIn(expected, body(copy))
 
 
 if __name__ == "__main__":
