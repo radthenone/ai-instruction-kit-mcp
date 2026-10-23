@@ -1,4 +1,13 @@
 {
+  "env": {
+    "MCP_TIMEOUT": "90000",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-5-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": false
+  },
   "extraKnownMarketplaces": {
     "superpowers-marketplace": {
       "source": {
@@ -6,15 +15,6 @@
         "repo": "obra/superpowers-marketplace"
       }
     }
-  },
-  "enabledPlugins": {
-    "superpowers@superpowers-marketplace": true
-  },
-  "env": {
-    "MCP_TIMEOUT": "90000",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-5-5",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"
   },
   "hooks": {
     "PreToolUse": [
@@ -32,6 +32,10 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bash-guard.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/sensitive-files-guard.mjs\""
           }
         ]
       },
