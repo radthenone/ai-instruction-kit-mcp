@@ -215,6 +215,20 @@ def migrate(
     return Migration(render(template, tiers, rules), moved=added)
 
 
+def needs_migration(text: str, template: str) -> bool:
+    """
+    Czy plik wymaga migracji (jest dostosowany i nie ma jeszcze bloku)?
+
+    Args:
+        text: Treść pliku w repo aplikacji.
+        template: Aktualny szablon kita.
+
+    Returns:
+        bool: ``True`` gdy trzeba dopasować plik do historii szablonu.
+    """
+    return extract_rules(text) is None and not is_pristine(text, template)
+
+
 def _migration_message(moved: Sequence[str]) -> str:
     lines = [f"  ~ BUGBOT.md: reguły projektu przeniesione do bloku project:rules ({len(moved)}):"]
     lines.extend(f"    {line}" for line in moved)
@@ -343,7 +357,13 @@ def main() -> int:
         return 0 if is_pristine(dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")) else 1
 
     kit_root = Path(os.environ.get("KIT_ROOT") or source.parents[2])
-    history = read_template_history(kit_root) if dest.is_file() else ()
+    # Historię czytamy tylko przy migracji — nietknięty plik albo plik z blokiem
+    # nie potrzebuje kilkudziesięciu wywołań gita przy każdym reloadzie.
+    history: Sequence[str] = ()
+    if dest.is_file() and needs_migration(
+        dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")
+    ):
+        history = read_template_history(kit_root)
     result = sync_file(dest, source, tiers, history)
     if result.message:
         print(result.message)

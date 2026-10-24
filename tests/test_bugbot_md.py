@@ -18,6 +18,7 @@ from guides.bugbot_md import (
     extract_rules,
     is_pristine,
     migrate,
+    needs_migration,
     read_template_history,
     render,
     sync_file,
@@ -110,6 +111,15 @@ class TestPristine(unittest.TestCase):
     def test_project_rules_make_file_customized(self) -> None:
         custom = render(CURRENT_TEMPLATE, "backend", "\n- moja reguła\n")
         self.assertFalse(is_pristine(custom, CURRENT_TEMPLATE))
+
+    def test_needs_migration_only_for_customized_file_without_block(self) -> None:
+        self.assertFalse(needs_migration(render(CURRENT_TEMPLATE, ""), CURRENT_TEMPLATE))
+        self.assertFalse(
+            needs_migration(
+                render(CURRENT_TEMPLATE, "", "\n- moja reguła\n"), CURRENT_TEMPLATE
+            )
+        )
+        self.assertTrue(needs_migration(render(OLD_TEMPLATE, ""), CURRENT_TEMPLATE))
 
 
 class TestSyncBlock(unittest.TestCase):
