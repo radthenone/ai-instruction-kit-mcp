@@ -744,38 +744,19 @@ prune_tier_agents() {
 }
 
 # Sekcje `<!-- tier:X -->…<!-- /tier:X -->` w BUGBOT.md zostają tylko dla wybranych Tierów.
-# Plik nadpisywany, gdy go brak albo gdy to nietknięty render kita (dowolny zestaw Tierów)
-# — zmiana Tierów + reload odświeża sekcje, a ręcznie dostosowany BUGBOT.md zostaje.
-# Na stdout: ścieżka, gdy plik powstał od zera.
+# Reszta pliku odświeża się z szablonu przy każdym reloadzie, ale blok
+# `<!-- project:rules -->…<!-- /project:rules -->` przechodzi bez zmian (reguły projektu).
+# Plik dostosowany przed wprowadzeniem bloku jest migrowany po historii szablonu (#240);
+# gdy migracja jest niepewna, plik zostaje, a reload wypisuje instrukcję ręczną.
+# Na stdout: komunikat migracji albo ostrzeżenie (ścieżka „utworzono” należy do bash).
 copy_bugbot_md() {
-  SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" DEST="$1" TIERS="$PROFILE_TIERS" "$PYTHON_BIN" - <<'PY'
-import os
-import re
-from pathlib import Path
-
-source = Path(os.environ["SRC"]).read_text(encoding="utf-8")
-dest = Path(os.environ["DEST"])
-
-
-def render(chosen: set[str]) -> str:
-    def keep(match: re.Match) -> str:
-        return match.group(2).strip("\n") + "\n" if match.group(1) in chosen else ""
-
-    text = re.sub(r"<!-- tier:(\w+) -->\n(.*?)<!-- /tier:\1 -->\n?", keep, source, flags=re.DOTALL)
-    return re.sub(r"\n{3,}", "\n\n", text)
-
-
-pristine = dest.is_file() and dest.read_text(encoding="utf-8") in {
-    render(c) for c in (set(), {"backend"}, {"client"}, {"backend", "client"})
-}
-if os.environ.get("CHECK_ONLY"):
-    raise SystemExit(0 if pristine else 1)
-if dest.is_file() and not pristine:
-    raise SystemExit(0)
-if not dest.is_file():
-    print(dest)
-dest.write_text(render(set(os.environ["TIERS"].split())), encoding="utf-8", newline="\n")
-PY
+  SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" \
+    DEST="$1" \
+    LABEL="${2:-BUGBOT.md}" \
+    TIERS="$PROFILE_TIERS" \
+    KIT_ROOT="$KIT_ROOT" \
+    CHECK_ONLY="${CHECK_ONLY:-}" \
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
 }
 
 # Exit 0, gdy plik to nietknięty render BUGBOT.md kita — wtedy wolno go usunąć.
@@ -847,7 +828,10 @@ install_agenty_md_once() {
 # .cursor/BUGBOT.md (install_cursor) zostaje osobno — to dla natywnej usługi Cursor
 # BugBot, która czyta z tamtej ścieżki; ta funkcja to nie duplikat, to inny konsument.
 install_bugbot_md_once() {
-  if [[ -n "$(copy_bugbot_md "$TARGET/BUGBOT.md")" ]]; then
+  local existed=0
+  [[ -f "$TARGET/BUGBOT.md" ]] && existed=1
+  copy_bugbot_md "$TARGET/BUGBOT.md"
+  if [[ "$existed" -eq 0 ]]; then
     echo "  + BUGBOT.md (root — dla /review-bugbot wszystkich klientów)"
   fi
 }
@@ -883,7 +867,7 @@ install_cursor() {
   cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
-  copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" >/dev/null
+  copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" ".cursor/BUGBOT.md"
 
   copy_shared_agents "$TARGET/.cursor/agents"
 

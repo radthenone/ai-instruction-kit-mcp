@@ -261,6 +261,37 @@ class TestPruneAndRemove(_BootstrapTestCase):
             after.pop(".ai/project.md")
             self.assertEqual(after, before)
 
+    def test_remove_drops_bugbot_with_empty_block_but_keeps_project_rules(self) -> None:
+        """`--remove` traktuje pusty blok jak nietknięty plik, ale reguły projektu zostawia."""
+        open_marker = "<!-- project:rules -->"
+        close_marker = "<!-- /project:rules -->"
+
+        def rewrite_block(app: Path, rules: str) -> Path:
+            bugbot = app / "BUGBOT.md"
+            text = bugbot.read_text(encoding="utf-8")
+            start = text.index(open_marker) + len(open_marker)
+            end = text.index(close_marker)
+            bugbot.write_text(text[:start] + rules + text[end:], encoding="utf-8", newline="\n")
+            return bugbot
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+            bugbot = rewrite_block(app, "\n")
+
+            self.assertEqual(_quiet_main("remove", str(app))[0], 0)
+
+            self.assertFalse(bugbot.exists())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+            bugbot = rewrite_block(app, "\n- Moja reguła\n")
+
+            self.assertEqual(_quiet_main("remove", str(app))[0], 0)
+
+            self.assertIn("- Moja reguła", bugbot.read_text(encoding="utf-8"))
+
     def test_remove_keeps_changed_agents_md(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / "app"

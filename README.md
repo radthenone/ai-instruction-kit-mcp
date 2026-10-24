@@ -42,7 +42,9 @@ kit-ai status                              # w agencie: check_kit_status
 
 Jedna komenda robi instalację i update. Bootstrap jest idempotentny: pliki generowane (agenci, komendy,
 hooki, `mcp.json`) nadpisuje świeżą kopią, a pliki z Twoją treścią (`AGENTS.md`,
-`.ai/project.md`, `BUGBOT.md`) zostawia w spokoju.
+`.ai/project.md`) zostawia w spokoju. `BUGBOT.md` odświeża z szablonu, ale blok
+`<!-- project:rules -->` z regułami projektu przechodzi bez zmian — szczegóły w sekcji
+[Bootstrap](#bootstrap).
 
 **Wymagania:** `uv` w `PATH`, `bash` (Windows: Git for Windows), `node` (dla hooków),
 opcjonalnie `npx` (skille zewnętrzne).
@@ -269,9 +271,9 @@ git status --short -uall .claude .codex .github/prompts
 
 Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrapie
 (`.ai/.kit-bootstrap.json`) z aktualnym `HEAD` i mówi, co się zmieniło. Rozdziela dwie
-rzeczy: pliki, które **re-bootstrap wciągnie sam**, i te wymagające **ręcznego
-przeniesienia** (`AGENTS.md`, `BUGBOT.md`, `.ai/project.md` — kopiowane
-tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany: `kit-ai reload`
+rzeczy: pliki, które **re-bootstrap wciągnie sam** (w tym `BUGBOT.md` — odświeżany
+z szablonu), i te wymagające **ręcznego przeniesienia** (`AGENTS.md`, `.ai/project.md` —
+kopiowane tylko gdy brak, żeby nie zdeptać Twojej treści). Gdy pokaże zmiany: `kit-ai reload`
 (z terminala to samo pokazuje `kit-ai status`).
 
 ### 5. Zanim odpalisz update na repo z pracą w toku
@@ -514,13 +516,15 @@ Szkic (nie działa jeszcze):
 
 **Agenci per Tier:** agenci z `tier:` we frontmatterze (`templates/shared/agents/`) trafiają do klienta tylko przy wybranym Tierze — `tier: backend` (`review-backend`, `teacher-backend`, `subagent-backend`) gdy `backend ≠ none`, `tier: client` (`review-frontend`, `teacher-frontend`, `subagent-frontend`, `review-ui`) gdy `web` lub `mobile ≠ none`. Tier zmieniony na `none` + `kit-ai reload` = ich pliki znikają u wszystkich klientów. Agenci nie zakładają Stacka — biorą go z `get_bundle`. `BUGBOT.md` dostaje sekcje (`<!-- tier:backend -->`, `<!-- tier:client -->`) tylko wybranych Tierów.
 
+**`BUGBOT.md` i reguły projektu:** każdy reload renderuje `BUGBOT.md` oraz `.cursor/BUGBOT.md` z bieżącego szablonu — poprawki ścieżek i reguł kita docierają do repo same, także gdy masz własne reguły. Własne reguły wpisuj **wyłącznie** między `<!-- project:rules -->` i `<!-- /project:rules -->`: ten blok przechodzi przez reload bajt w bajt, a reszta pliku jest brana z szablonu. Plik dostosowany przed wprowadzeniem bloku jest migrowany: bootstrap dopasowuje go do najbliższej wersji `templates/cursor/BUGBOT.md` z historii gita kita i przenosi dopisane linie do bloku, a w wyniku reloadu wypisuje ich listę. Gdy migracja jest niepewna (brak historii — np. kit z koła, albo za duży diff), plik zostaje bez zmian, a reload wypisuje instrukcję ręcznego przeniesienia.
+
 Zapisuje m.in. MCP per klient (`--language`, `--clients`, `--workspace`), agents z `templates/shared/agents`, `BUGBOT.md` w root (wszyscy klienci) + `.cursor/BUGBOT.md` (natywny Cursor BugBot), skill Cursor `/compact`, hooki `gate-*` (Cursor), stamp `.ai/.kit-bootstrap.json` (patrz "Update kita w projekcie"). Wymaga **Python 3** (`python3` albo `python` z major==3).
 
 **Declarative sync klientów:** domyślnie bootstrap **usuwa** kitowe pliki klientów spoza `--clients` (np. przełączenie z `--clients all` na `--clients claude` sprząta `.cursor/`, `.codex/` itd. wygenerowane przy poprzednim bootstrapie). Flaga `--keep-unselected-clients` wyłącza to sprzątanie — zostają pliki wszystkich klientów kiedykolwiek bootstrapowanych.
 
 Sprzątanie kasuje **wyłącznie pliki kita, po nazwie** — listę bierze z przebiegu tych samych funkcji instalacji w pustym katalogu. Własne agenty, komendy, hooki i skille w `.claude/`, `.opencode/`, `.codex/`, `.github/prompts/` itd. zostają; katalog znika tylko, gdy po kicie jest pusty. Plik użytkownika o nazwie identycznej z plikiem kita (np. własny `.claude/agents/git-start.md`) zostanie usunięty razem z kitowymi.
 
-**`kit-ai remove [ścieżka] [--dry-run]`** — odinstalowanie: pliki kita wszystkich klientów, konfiguracje MCP, wpisy kita w `.claude/settings.json`, sekcja `# >>> instruction-kit >>>` w `.gitignore`, Profil i stamp (także stara konfiguracja z presetem). Pliki tworzone raz (`AGENTS.md`, `BUGBOT.md`, `.gitattributes`) znikają tylko, gdy są identyczne z bieżącym szablonem kita — zmienione przez Ciebie zostają. Zawsze zostają `.ai/project.md`, `CONTEXT.md`, `docs/adr/` i Twoje pliki. Kit nie robi kopii, więc nic nie przywraca. `--dry-run` pokazuje listę bez usuwania.
+**`kit-ai remove [ścieżka] [--dry-run]`** — odinstalowanie: pliki kita wszystkich klientów, konfiguracje MCP, wpisy kita w `.claude/settings.json`, sekcja `# >>> instruction-kit >>>` w `.gitignore`, Profil i stamp (także stara konfiguracja z presetem). Pliki tworzone raz (`AGENTS.md`, `.gitattributes`) znikają tylko, gdy są identyczne z bieżącym szablonem kita — zmienione przez Ciebie zostają. `BUGBOT.md` znika, gdy jest nietkniętym renderem: blok `project:rules` bez własnych reguł liczy się jak pusty, ale plik z regułami projektu zostaje. Zawsze zostają `.ai/project.md`, `CONTEXT.md`, `docs/adr/` i Twoje pliki. Kit nie robi kopii, więc nic nie przywraca. `--dry-run` pokazuje listę bez usuwania.
 
 ### `.gitignore` — co z tego wersjonować
 
@@ -805,12 +809,13 @@ W projekcie docelowym **nie** duplikuj `modules/` — wystarczy profil z Tierami
 Komendy update: [Szybki start, krok 3](#krok-3--update). Poniżej to, co update robi z plikami,
 i lokalny klon kita.
 
-Bootstrap to **jednorazowy stempel**, nie sync. Trzy różne zachowania:
+Bootstrap to **jednorazowy stempel**, nie sync. Cztery różne zachowania:
 
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
 | `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie. `mcp.json`/`config.toml` i stamp dodatkowo **nie są wersjonowane** (ścieżka maszyny) — patrz „`.gitignore` — co z tego wersjonować” |
-| `AGENTS.md`, `BUGBOT.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
+| `BUGBOT.md`, `.cursor/BUGBOT.md` | **Renderowane na nowo z szablonu** (sekcje Tierów według Profilu). Blok `<!-- project:rules -->` przechodzi bez zmian — tam wpisuj własne reguły projektu. Plik sprzed wprowadzenia bloku jest migrowany po historii szablonu; niepewna migracja = plik bez zmian + ostrzeżenie |
+| `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
 | `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
 
 ### Lokalny klon: `uv run --project`, nie `uvx --from`
