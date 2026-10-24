@@ -7,10 +7,15 @@ indeks standardów i ``--remove`` wyłącznie dla nietkniętego renderu kita.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from _shell import is_ci, resolve_bash
+
+from guides.bootstrap import plan_bootstrap, run_bootstrap
 from guides.matt_contract import (
     AGENT_SKILLS_HEADING,
     CODING_STANDARDS_REL,
@@ -285,6 +290,111 @@ class TestRemove(unittest.TestCase):
             self.assertFalse((workspace / "docs/agents").exists())
             self.assertFalse((workspace / CODING_STANDARDS_REL).exists())
             self.assertEqual(_read(workspace / "AGENTS.md"), "# App\n\nReguły projektu.\n")
+
+
+class TestBootstrapReload(unittest.TestCase):
+    """Reload (prawdziwy ``bootstrap-project.sh``) tworzy i utrzymuje kontrakt."""
+
+    def setUp(self) -> None:
+        if not resolve_bash():
+            if is_ci():
+                self.fail("brak bash w środowisku CI — kontrakt Matta musi się wykonać")
+            self.skipTest("brak bash / Git for Windows w PATH")
+        config_home = tempfile.TemporaryDirectory()
+        self.addCleanup(config_home.cleanup)
+        patcher = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config_home.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _install(self, workspace: Path, *, remove: bool = False) -> None:
+        run_bootstrap(
+            target=workspace, kit_root=KIT_ROOT, clients="claude", remove=remove
+        )
+
+    def test_reload_creates_contract_files_and_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+
+            self._install(workspace)
+
+            for rel in ("issue-tracker.md", "triage-labels.md", "domain.md"):
+                path = workspace / "docs/agents" / rel
+                self.assertTrue(path.is_file(), rel)
+                self.assertNotIn(b"\r\n", path.read_bytes(), rel)
+            self.assertIn(AGENT_SKILLS_HEADING, _read(workspace / "AGENTS.md"))
+            standards = _read(workspace / CODING_STANDARDS_REL)
+            self.assertIn("`AGENTS.md`", standards)
+            self.assertIn("`BUGBOT.md`", standards)
+            self.assertNotIn(b"\r\n", (workspace / CODING_STANDARDS_REL).read_bytes())
+
+    def test_reload_keeps_edited_docs_and_refreshes_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            self._install(workspace)
+            edited = workspace / "docs/agents/issue-tracker.md"
+            edited.write_text("# Własny tracker\n", encoding="utf-8", newline="\n")
+            standards = workspace / CODING_STANDARDS_REL
+            standards.write_text("stary indeks\n", encoding="utf-8", newline="\n")
+            (workspace / "docs/agents/triage-labels.md").unlink()
+            _seeds(workspace, triage=SEED_TRIAGE.replace("evaluate", "ocena"))
+
+            self._install(workspace)
+
+            self.assertEqual(_read(edited), "# Własny tracker\n")
+            self.assertIn("ocena", _read(workspace / "docs/agents/triage-labels.md"))
+            self.assertNotIn("stary indeks", _read(standards))
+
+    def test_reload_without_matt_skills_creates_no_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            (workspace / "AGENTS.md").write_text("# App\n", encoding="utf-8")
+
+            self._install(workspace)
+
+            self.assertFalse((workspace / "docs/agents").exists())
+            self.assertTrue((workspace / CODING_STANDARDS_REL).is_file())
+
+    def test_remove_drops_pristine_contract_but_keeps_edited(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            self._install(workspace)
+            edited = workspace / "docs/agents/domain.md"
+            edited.write_text("# Mój domain\n", encoding="utf-8", newline="\n")
+
+            self._install(workspace, remove=True)
+
+            self.assertFalse((workspace / "docs/agents/issue-tracker.md").exists())
+            self.assertFalse((workspace / "docs/agents/triage-labels.md").exists())
+            self.assertTrue(edited.is_file())
+            self.assertFalse((workspace / CODING_STANDARDS_REL).exists())
+            agents = _read(workspace / "AGENTS.md")
+            self.assertNotIn(AGENT_SKILLS_HEADING, agents)
+            self.assertIn("# App", agents)
+
+    def test_dry_run_lists_contract_files_without_touching_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            before = {
+                path.relative_to(workspace).as_posix(): path.read_bytes()
+                for path in workspace.rglob("*")
+                if path.is_file()
+            }
+
+            plan = plan_bootstrap(
+                workspace_root=workspace, kit_root=KIT_ROOT, clients="claude"
+            )
+
+            self.assertIn(CODING_STANDARDS_REL, plan.created)
+            self.assertIn("docs/agents/issue-tracker.md", plan.created)
+            self.assertIn("docs/agents/triage-labels.md", plan.created)
+            self.assertIn("docs/agents/domain.md", plan.created)
+            after = {
+                path.relative_to(workspace).as_posix(): path.read_bytes()
+                for path in workspace.rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(after, before)
 
 
 if __name__ == "__main__":

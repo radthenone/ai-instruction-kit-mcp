@@ -823,6 +823,14 @@ install_agenty_md_once() {
   fi
 }
 
+# Kontrakt skilli Matta (#241): brakujące `docs/agents/*` z ziaren setupu Matta,
+# blok `## Agent skills` w AGENTS.md i `CODING_STANDARDS.md` (indeks źródeł standardów).
+# Wołane po AGENTS.md/BUGBOT.md/overlay, bo indeks wymienia tylko istniejące pliki.
+# Brak `skills-lock.json` z `mattpocock/skills` albo ziaren = krok pomijany bez błędu.
+install_matt_contract() {
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/matt_contract.py" "$TARGET" "$KIT_ROOT"
+}
+
 # BUGBOT.md w root — niezależnie od --clients, bo /review-bugbot (manualny odpowiednik)
 # ma działać dla WSZYSTKICH klientów (Claude, Codex, VS Code…), nie tylko Cursor.
 # .cursor/BUGBOT.md (install_cursor) zostaje osobno — to dla natywnej usługi Cursor
@@ -1184,6 +1192,10 @@ remove_kit() {
   for id in cursor claude codex vscode kiro kilo antigravity opencode; do
     prune_client "$id"
   done
+  # Kontrakt Matta i indeks standardów — tylko gdy to nietknięty render kita (#241).
+  # Przed porównaniem AGENTS.md z szablonem: zdejmujemy blok `## Agent skills`, żeby
+  # plik utworzony przez kit znów był identyczny z szablonem.
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/matt_contract.py" "$TARGET" "$KIT_ROOT" --remove
   # Pliki tworzone raz: tylko gdy identyczne z szablonem — zmienione należą do użytkownika.
   if [[ -f "$TARGET/AGENTS.md" ]] && cmp -s "$TARGET/AGENTS.md" "$KIT_ROOT/templates/AGENTS.md"; then
     kit_rm AGENTS.md
@@ -1274,6 +1286,9 @@ if [[ "$WITH_OVERLAY" -eq 1 ]]; then
     echo "  + .ai/project.md"
   fi
 fi
+
+# Po overlay: CODING_STANDARDS.md wymienia tylko źródła, które naprawdę są w repo.
+install_matt_contract
 
 sync_gitignore_section
 
