@@ -573,16 +573,17 @@ Intro (stara wersja szablonu).
         with tempfile.TemporaryDirectory() as tmp:
             kit = self._kit_with_history(Path(tmp) / "kit")
             workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+            run_bootstrap(target=workspace, kit_root=kit, clients="claude,cursor")
 
             dest = workspace / "BUGBOT.md"
-            old = dest.read_text(encoding="utf-8")
-            self.assertNotIn("project:rules", old)
-            dest.write_text(
-                old + "\n- Reguła projektu A\n- Reguła projektu B\n",
-                encoding="utf-8",
-                newline="\n",
-            )
+            for path in (dest, workspace / ".cursor" / "BUGBOT.md"):
+                old = path.read_text(encoding="utf-8")
+                self.assertNotIn("project:rules", old)
+                path.write_text(
+                    old + "\n- Reguła projektu A\n- Reguła projektu B\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
 
             (kit / "templates" / "cursor" / "BUGBOT.md").write_text(
                 (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(encoding="utf-8"),
@@ -591,14 +592,20 @@ Intro (stara wersja szablonu).
             )
             self._git(kit, "commit", "-q", "-am", "current template")
 
-            out = run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+            out = run_bootstrap(target=workspace, kit_root=kit, clients="claude,cursor")
 
-            text = dest.read_text(encoding="utf-8")
-            self.assertEqual(extract_rules(text), "\n- Reguła projektu A\n- Reguła projektu B\n")
-            self.assertIn("## Ogólne", text)
-            self.assertNotIn("stara reguła kita", text)
+            for path in (dest, workspace / ".cursor" / "BUGBOT.md"):
+                text = path.read_text(encoding="utf-8")
+                self.assertEqual(
+                    extract_rules(text), "\n- Reguła projektu A\n- Reguła projektu B\n"
+                )
+                self.assertIn("## Ogólne", text)
+                self.assertNotIn("stara reguła kita", text)
             self.assertIn("Reguła projektu A", out)
             self.assertIn("Reguła projektu B", out)
+            # Kopia natywnego BugBota też raportuje przeniesione linie (#240).
+            self.assertIn("  ~ BUGBOT.md: reguły", out)
+            self.assertIn("  ~ .cursor/BUGBOT.md: reguły", out)
 
 
 class TestServerTool(_BootstrapTestCase):

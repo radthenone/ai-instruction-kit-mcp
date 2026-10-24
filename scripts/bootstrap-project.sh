@@ -752,6 +752,7 @@ prune_tier_agents() {
 copy_bugbot_md() {
   SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" \
     DEST="$1" \
+    LABEL="${2:-BUGBOT.md}" \
     TIERS="$PROFILE_TIERS" \
     KIT_ROOT="$KIT_ROOT" \
     CHECK_ONLY="${CHECK_ONLY:-}" \
@@ -866,7 +867,7 @@ install_cursor() {
   cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
   cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
-  copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" >/dev/null
+  copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" ".cursor/BUGBOT.md"
 
   copy_shared_agents "$TARGET/.cursor/agents"
 

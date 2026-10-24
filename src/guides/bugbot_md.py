@@ -238,19 +238,19 @@ def _line_count(count: int) -> str:
     return f"{count} linii"
 
 
-def _migration_message(moved: Sequence[str]) -> str:
+def _migration_message(moved: Sequence[str], label: str = "BUGBOT.md") -> str:
     lines = [
-        "  ~ BUGBOT.md: reguły projektu przeniesione do bloku project:rules "
+        f"  ~ {label}: reguły projektu przeniesione do bloku project:rules "
         f"({_line_count(len(moved))}):"
     ]
     lines.extend(f"    {line}" for line in moved)
     return "\n".join(lines)
 
 
-def _uncertain_message(reason: str) -> str:
+def _uncertain_message(reason: str, label: str = "BUGBOT.md") -> str:
     return "\n".join(
         [
-            f"  ! BUGBOT.md: nie przeniosłem reguł projektu do bloku project:rules ({reason}).",
+            f"  ! {label}: nie przeniosłem reguł projektu do bloku project:rules ({reason}).",
             "    Plik bez zmian — przenieś własne reguły ręcznie między",
             f"    {BLOCK_OPEN} i {BLOCK_CLOSE}, potem uruchom reload ponownie.",
         ]
@@ -266,6 +266,7 @@ def sync_file(
     source: Path,
     tiers: str | Iterable[str] = "",
     history: Sequence[str] = (),
+    label: str = "BUGBOT.md",
 ) -> SyncResult:
     """
     Doprowadź plik ``BUGBOT.md`` do stanu zgodnego z szablonem i blokiem projektu.
@@ -275,6 +276,7 @@ def sync_file(
         source: Szablon kita.
         tiers: Tiery z Profilu.
         history: Historyczne wersje szablonu (od najnowszej) do migracji.
+        label: Ścieżka pliku w komunikatach reloadu (np. ``.cursor/BUGBOT.md``).
 
     Returns:
         SyncResult: Akcja, komunikat dla reloadu i lista przeniesionych linii.
@@ -302,9 +304,9 @@ def sync_file(
 
     migration = migrate(text, template, tiers, history)
     if migration.text is None:
-        return SyncResult("uncertain", message=_uncertain_message(migration.reason or "nieznany powód"))
+        return SyncResult("uncertain", message=_uncertain_message(migration.reason or "nieznany powód", label))
     _write(dest, migration.text)
-    return SyncResult("migrated", message=_migration_message(migration.moved), moved=migration.moved)
+    return SyncResult("migrated", message=_migration_message(migration.moved, label), moved=migration.moved)
 
 
 def _git(kit_root: Path, *args: str) -> str | None:
@@ -354,7 +356,7 @@ def read_template_history(kit_root: Path, rel_path: str = TEMPLATE_REL_PATH) -> 
 
 def main() -> int:
     """
-    Wejście z bootstrapu: ``SRC``, ``DEST``, ``TIERS``, ``KIT_ROOT``, ``CHECK_ONLY``.
+    Wejście z bootstrapu: ``SRC``, ``DEST``, ``LABEL``, ``TIERS``, ``KIT_ROOT``, ``CHECK_ONLY``.
 
     Returns:
         int: Kod wyjścia (``CHECK_ONLY=1``: 0 = plik nietknięty, 1 = dostosowany).
@@ -379,7 +381,7 @@ def main() -> int:
         dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")
     ):
         history = read_template_history(kit_root)
-    result = sync_file(dest, source, tiers, history)
+    result = sync_file(dest, source, tiers, history, os.environ.get("LABEL") or dest.name)
     if result.message:
         print(result.message)
     return 0
