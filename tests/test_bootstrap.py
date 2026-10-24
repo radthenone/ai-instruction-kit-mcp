@@ -548,6 +548,7 @@ Intro (stara wersja szablonu).
                 encoding="utf-8"
             )
             hint = extract_rules(template)
+            assert hint is not None
             rules = "\n- Reguła projektu A\n- Reguła projektu B\n"
             for rel in ("BUGBOT.md", ".cursor/BUGBOT.md"):
                 path = workspace / rel
