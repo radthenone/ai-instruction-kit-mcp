@@ -21,6 +21,7 @@ from _shell import is_ci, resolve_bash
 
 from guides import server
 from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
+from guides.bugbot_md import extract_rules
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
@@ -486,6 +487,117 @@ class TestTierAgents(_BootstrapTestCase):
                 with self.subTest(agent=agent.name):
                     self.assertNotRegex(description, "Django|DRF|Expo")
                     self.assertNotIn("\ntier:", text)
+
+
+class TestBugbotProjectRules(_BootstrapTestCase):
+    """BUGBOT.md odświeża się z szablonu, a blok ``project:rules`` zostaje (#240)."""
+
+    # Render starej wersji szablonu — bez bloku `project:rules`.
+    OLD_TEMPLATE = """# Bugbot — reguły projektu
+
+Intro (stara wersja szablonu).
+
+## Ogólne
+
+- stara reguła kita
+
+<!-- tier:backend -->
+## Backend
+
+- stara reguła backendu
+<!-- /tier:backend -->
+"""
+
+    def _git(self, cwd: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
+        )
+        return result.stdout.strip()
+
+    def _kit_with_history(self, root: Path) -> Path:
+        """Kopia kita z commitem starego szablonu — do testu migracji."""
+        for rel in ("templates", "scripts", "src", "manifest.yaml"):
+            src = KIT_ROOT / rel
+            if src.is_dir():
+                shutil.copytree(
+                    src,
+                    root / rel,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                )
+            elif src.is_file():
+                root.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, root / rel)
+        try:
+            self._git(root, "init", "-q")
+        except FileNotFoundError:
+            self.skipTest("brak gita w środowisku")
+        self._git(root, "config", "user.email", "test@test.local")
+        self._git(root, "config", "user.name", "test")
+        template = root / "templates" / "cursor" / "BUGBOT.md"
+        template.write_text(self.OLD_TEMPLATE, encoding="utf-8", newline="\n")
+        self._git(root, "add", ".")
+        self._git(root, "commit", "-q", "-m", "old template")
+        return root
+
+    def test_block_survives_reload_and_rest_is_refreshed(self) -> None:
+        """Blok reguł projektu wraca bajt w bajt, reszta pliku jest z szablonu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,cursor")
+            template = (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(
+                encoding="utf-8"
+            )
+            hint = extract_rules(template)
+            rules = "\n- Reguła projektu A\n- Reguła projektu B\n"
+            for rel in ("BUGBOT.md", ".cursor/BUGBOT.md"):
+                path = workspace / rel
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(hint, text)
+                # Zmiana poza blokiem też ma zniknąć przy reloadzie.
+                text = text.replace(hint, rules).replace(
+                    "- Preferuj minimalny diff", "- moja zmiana kita"
+                )
+                path.write_text(text, encoding="utf-8", newline="\n")
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,cursor")
+
+            for rel in ("BUGBOT.md", ".cursor/BUGBOT.md"):
+                text = (workspace / rel).read_text(encoding="utf-8")
+                self.assertEqual(extract_rules(text), rules, rel)
+                self.assertIn("- Preferuj minimalny diff", text, rel)
+                self.assertNotIn("moja zmiana kita", text, rel)
+
+    def test_migration_moves_added_rules_into_block(self) -> None:
+        """Stary render + 2 dopisane reguły → bieżący szablon z regułami w bloku."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit_with_history(Path(tmp) / "kit")
+            workspace = Path(tmp) / "app"
+            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+
+            dest = workspace / "BUGBOT.md"
+            old = dest.read_text(encoding="utf-8")
+            self.assertNotIn("project:rules", old)
+            dest.write_text(
+                old + "\n- Reguła projektu A\n- Reguła projektu B\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+
+            (kit / "templates" / "cursor" / "BUGBOT.md").write_text(
+                (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(encoding="utf-8"),
+                encoding="utf-8",
+                newline="\n",
+            )
+            self._git(kit, "commit", "-q", "-am", "current template")
+
+            out = run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+
+            text = dest.read_text(encoding="utf-8")
+            self.assertEqual(extract_rules(text), "\n- Reguła projektu A\n- Reguła projektu B\n")
+            self.assertIn("## Ogólne", text)
+            self.assertNotIn("stara reguła kita", text)
+            self.assertIn("Reguła projektu A", out)
+            self.assertIn("Reguła projektu B", out)
 
 
 class TestServerTool(_BootstrapTestCase):
