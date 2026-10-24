@@ -286,18 +286,27 @@ def sync_file(
         _write(dest, render(template, tiers))
         return SyncResult("created")
 
-    text = dest.read_text(encoding="utf-8")
+    # Surowe bajty: read_text tłumaczy CRLF po cichu, a plik ma skończyć z LF.
+    raw = dest.read_bytes().decode("utf-8")
+    text = raw.replace("\r\n", "\n")
     rules = extract_rules(text)
+    if (BLOCK_OPEN in text or BLOCK_CLOSE in text) and (
+        rules is None or text.count(BLOCK_OPEN) != 1 or text.count(BLOCK_CLOSE) != 1
+    ):
+        # Migracja wkleiłaby osierocony znacznik do nowego bloku (zagnieżdżenie).
+        return SyncResult(
+            "uncertain", message=_uncertain_message("niedomknięty blok project:rules", label)
+        )
     if rules is not None:
         fresh = render(template, tiers, rules)
-        if fresh != text:
+        if fresh != raw:
             _write(dest, fresh)
             return SyncResult("refreshed")
         return SyncResult("unchanged")
 
     if is_pristine(text, template):
         fresh = render(template, tiers)
-        if fresh != text:
+        if fresh != raw:
             _write(dest, fresh)
             return SyncResult("refreshed")
         return SyncResult("unchanged")

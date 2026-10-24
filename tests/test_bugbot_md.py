@@ -164,6 +164,45 @@ class TestSyncBlock(unittest.TestCase):
 
             self.assertNotIn(b"\r\n", dest.read_bytes())
 
+    def test_crlf_file_with_block_is_rewritten_once_to_lf(self) -> None:
+        """CRLF w pliku z blokiem: pierwszy reload zapisuje LF, drugi nic nie zmienia."""
+        rules = "\n- Moja reguła\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "BUGBOT.md"
+            source = Path(tmp) / "template.md"
+            source.write_text(CURRENT_TEMPLATE, encoding="utf-8", newline="\n")
+            dest.write_bytes(
+                render(CURRENT_TEMPLATE, "backend", rules).replace("\n", "\r\n").encode("utf-8")
+            )
+
+            first = sync_file(dest, source, "backend")
+            second = sync_file(dest, source, "backend")
+
+            self.assertEqual(first.action, "refreshed")
+            self.assertEqual(second.action, "unchanged")
+            self.assertNotIn(b"\r", dest.read_bytes())
+            self.assertEqual(extract_rules(dest.read_text(encoding="utf-8")), rules)
+
+    def test_unclosed_block_is_uncertain_and_untouched(self) -> None:
+        """Sam otwierający albo sam zamykający znacznik → plik bez zmian, ostrzeżenie."""
+        full = render(CURRENT_TEMPLATE, "", "\n- Moja reguła\n")
+        variants = {
+            "open": full.replace("<!-- /project:rules -->", ""),
+            "close": full.replace("<!-- project:rules -->", ""),
+        }
+        for name, text in variants.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "BUGBOT.md"
+                source = Path(tmp) / "template.md"
+                source.write_text(CURRENT_TEMPLATE, encoding="utf-8", newline="\n")
+                dest.write_text(text, encoding="utf-8", newline="\n")
+
+                result = sync_file(dest, source, "", history=[OLD_TEMPLATE, CURRENT_TEMPLATE])
+
+                self.assertEqual(result.action, "uncertain")
+                self.assertIn("niedomknięty blok project:rules", result.message)
+                self.assertEqual(dest.read_text(encoding="utf-8"), text)
+
 
 class TestMigration(unittest.TestCase):
     def test_migrates_added_rules_into_block(self) -> None:
