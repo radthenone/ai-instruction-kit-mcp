@@ -313,6 +313,37 @@ class TestHistory(unittest.TestCase):
             self.assertEqual(history[0], CURRENT_TEMPLATE)
             self.assertIn(OLD_TEMPLATE, history)
 
+    def test_kit_inside_foreign_repo_means_no_history(self) -> None:
+        """Kit (np. koło w venv) wewnątrz cudzego repo nie czyta historii tamtego repo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "app"
+            kit = repo / ".venv" / "guides" / "_data"
+            (kit / "templates" / "cursor").mkdir(parents=True)
+            # Ten sam rel_path w obu miejscach: `git show sha:<rel>` trafiłby w plik repo.
+            for root in (repo, kit):
+                (root / "templates" / "cursor").mkdir(parents=True, exist_ok=True)
+                (root / "templates" / "cursor" / "BUGBOT.md").write_text(
+                    OLD_TEMPLATE, encoding="utf-8", newline="\n"
+                )
+            try:
+                for args in (
+                    ("init", "-q"),
+                    ("config", "user.email", "test@test.local"),
+                    ("config", "user.name", "test"),
+                    ("add", "."),
+                    ("commit", "-q", "-m", "app"),
+                ):
+                    subprocess.run(
+                        ["git", "-C", str(repo), *args],
+                        check=True,
+                        capture_output=True,
+                        stdin=subprocess.DEVNULL,
+                    )
+            except (OSError, subprocess.CalledProcessError):
+                self.skipTest("brak gita w środowisku")
+
+            self.assertEqual(read_template_history(kit), [])
+
     def test_no_git_means_no_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(read_template_history(Path(tmp)), [])

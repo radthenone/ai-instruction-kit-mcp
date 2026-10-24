@@ -339,8 +339,8 @@ def read_template_history(kit_root: Path, rel_path: str = TEMPLATE_REL_PATH) -> 
     """
     Wczytaj historyczne wersje szablonu BUGBOT.md z gita kita.
 
-    Instalacja z koła (``guides/_data``) nie ma ``.git`` — wtedy zwracamy pustą
-    listę, a migracja kończy się ostrzeżeniem zamiast zgadywania.
+    Instalacja z koła (``guides/_data``) nie ma ``.git`` — wtedy, podobnie jak gdy
+    ``kit_root`` nie jest rootem repo, zwracamy pustą listę, a migracja kończy się ostrzeżeniem zamiast zgadywania.
 
     Args:
         kit_root: Root kita (z ``templates/`` i ewentualnym ``.git``).
@@ -349,6 +349,11 @@ def read_template_history(kit_root: Path, rel_path: str = TEMPLATE_REL_PATH) -> 
     Returns:
         list[str]: Treści od najnowszej, bez duplikatów.
     """
+    # Koło może leżeć wewnątrz cudzego repo (np. venv w projekcie) — historia tamtego
+    # repo nie jest historią szablonu kita.
+    toplevel = _git(kit_root, "rev-parse", "--show-toplevel")
+    if not toplevel or Path(toplevel.strip()).resolve() != kit_root.resolve():
+        return []
     commits = _git(kit_root, "log", f"--max-count={HISTORY_LIMIT}", "--format=%H", "--", rel_path)
     if not commits:
         return []
