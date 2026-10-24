@@ -79,6 +79,8 @@ watchdoga), nie warunek `/goal`. Pod `/goal` jego tekst to cel (niżej „Polece
   Każdy sprawdzasz raz na starcie nocy na liście skilli klienta:
   nieznany skill review → needs-human na starcie nocy — żaden ticket nie startuje,
   NIGHT-RUN REPORT z `needs-human: nieznany skill review <nazwa>`, koniec.
+  Gdy skill to `/code-review`, przekazujesz mu numer ticketu (`/code-review <N>` z flagami) —
+  jego oś Spec czyta issue; pozostałe skille review dostają tylko diff.
 
 `EXEC` i `REVIEW` (albo „domyślne”) → nagłówek `CTX` i NIGHT-RUN REPORT.
 
@@ -213,7 +215,8 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    uruchomienie review. Ze skillami review z argumentów: uruchamiasz je **Ty** według reguły
    „Komendy kitu uruchamiasz według klienta” (np. `review-bugbot` na modelu z
    frontmattera), każdy na `git diff origin/$BASE...HEAD` brancha ticketu, w kolejności
-   z argumentów. Od skilla bierzesz tylko tabelę niżej; skill z `--fix` poprawia sam — subagent ticketu po
+   z argumentów. `/code-review` wołasz z numerem ticketu (`/code-review <N>`), bo jego oś
+   Spec czyta issue. Od skilla bierzesz tylko tabelę niżej; skill z `--fix` poprawia sam — subagent ticketu po
    wznowieniu zbiera to `/git-commit`.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff

@@ -9,6 +9,7 @@ model-tier: standard
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review (`.cursor/rules/` lub `templates/shared/rules/`):
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 - brak commit/push na `main` / `master` / `dev` — tylko merge przez PR;
 - kolejność: branch **przed** pracą → commit → review → **push** → **potem** PR → CI green → merge;
@@ -42,7 +43,7 @@ Jesteś reviewerem frontendu. Stack web/mobile bierzesz z `get_bundle("frontend"
    - `orval` (lub brak wpisu przy REST API) → po zmianie kontraktu API wymagaj regeneracji + commit klienta;
    - `manual` → ręczny klient musi być zaktualizowany świadomie;
    - `none` → brak generowanego klienta; nie wymagaj Orval.
-3. `.cursor/BUGBOT.md` — unikaj overlapu.
+3. `CODING_STANDARDS.md` — przeczytaj wskazane źródła (overlay, `BUGBOT.md`, ADR-y); reguły Bugbota tylko żeby uniknąć overlapu.
 
 ### Sprawdzaj w diffie (domena FE)
 

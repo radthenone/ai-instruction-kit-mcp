@@ -8,6 +8,7 @@ Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer
 
@@ -29,8 +30,9 @@ Jesteś pedantycznym reviewerem brzegów (nie stylistą kodu).
 
 ### Checklista
 
-1. `get_overlay()` — jak uruchomić powiązane testy (w Fix wskaż komendę; nie udawaj że przeszły).
-2. Diff względem bazy brancha.
+1. `CODING_STANDARDS.md` — przeczytaj wskazane źródła standardów.
+2. `get_overlay()` — jak uruchomić powiązane testy (w Fix wskaż komendę; nie udawaj że przeszły).
+3. Diff względem bazy brancha.
 
 ### Sprawdzaj w diffie
 

@@ -292,6 +292,24 @@ class TestRemove(unittest.TestCase):
             self.assertEqual(_read(workspace / "AGENTS.md"), "# App\n\nReguły projektu.\n")
 
 
+class TestReviewAgents(unittest.TestCase):
+    """`/review-*` biorą źródła standardów z jednego indeksu, nie z wyliczanki w każdym agencie."""
+
+    def test_every_review_agent_reads_coding_standards(self) -> None:
+        agents = sorted((KIT_ROOT / "templates/shared/agents").glob("review-*.md"))
+        self.assertTrue(agents)
+        for agent in agents:
+            with self.subTest(agent=agent.name):
+                self.assertIn("`CODING_STANDARDS.md`", _read(agent))
+
+    def test_backend_and_frontend_do_not_keep_their_own_source_list(self) -> None:
+        for name in ("review-backend.md", "review-frontend.md"):
+            text = _read(KIT_ROOT / "templates/shared/agents" / name)
+            with self.subTest(agent=name):
+                self.assertNotIn("`.cursor/BUGBOT.md` — tylko żeby uniknąć overlapu", text)
+                self.assertIn("`CODING_STANDARDS.md` — przeczytaj wskazane źródła", text)
+
+
 class TestBootstrapReload(unittest.TestCase):
     """Reload (prawdziwy ``bootstrap-project.sh``) tworzy i utrzymuje kontrakt."""
 

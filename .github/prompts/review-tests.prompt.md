@@ -6,6 +6,7 @@ description: "Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. N
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot / stack vs ten agent
 
@@ -36,6 +37,8 @@ Nieudowodnione / czerwone: …
 ---
 
 ### Procedura
+
+Źródła standardów: `CODING_STANDARDS.md` (indeks w kolejności ważności).
 
 1. Ustal, co uznano za „zrobione”.
 2. Z `get_overlay()` / Taskfile / `.ai/project.md` wypisz **konkretne** komendy do uruchomienia.
