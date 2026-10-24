@@ -229,8 +229,20 @@ def needs_migration(text: str, template: str) -> bool:
     return extract_rules(text) is None and not is_pristine(text, template)
 
 
+def _line_count(count: int) -> str:
+    """„1 linia”, „2 linie”, „5 linii” — komunikat ma czytać się po polsku."""
+    if count == 1:
+        return "1 linia"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return f"{count} linie"
+    return f"{count} linii"
+
+
 def _migration_message(moved: Sequence[str]) -> str:
-    lines = [f"  ~ BUGBOT.md: reguły projektu przeniesione do bloku project:rules ({len(moved)}):"]
+    lines = [
+        "  ~ BUGBOT.md: reguły projektu przeniesione do bloku project:rules "
+        f"({_line_count(len(moved))}):"
+    ]
     lines.extend(f"    {line}" for line in moved)
     return "\n".join(lines)
 
@@ -354,7 +366,10 @@ def main() -> int:
     if os.environ.get("CHECK_ONLY"):
         if not dest.is_file():
             return 1
-        return 0 if is_pristine(dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")) else 1
+        pristine = is_pristine(
+            dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")
+        )
+        return 0 if pristine else 1
 
     kit_root = Path(os.environ.get("KIT_ROOT") or source.parents[2])
     # Historię czytamy tylko przy migracji — nietknięty plik albo plik z blokiem

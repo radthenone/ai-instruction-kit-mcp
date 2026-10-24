@@ -14,7 +14,6 @@ from pathlib import Path
 
 from guides.bugbot_md import (
     MAX_MIGRATED_LINES,
-    Migration,
     extract_rules,
     is_pristine,
     migrate,
