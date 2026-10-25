@@ -206,6 +206,57 @@ class HeadlessWrapperTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0)
 
+    def test_code_numbers_and_identifiers_are_not_limit(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1",
+            FAKE_LIMIT="diff a/src/429.py:429 rateLimit = 429; PR #429 too-many-requests-free",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_opencode_free_limit_is_pause_without_reset(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit reset=brak", result.stdout)
+
+    def test_codex_limit_with_clock_reset_is_pause(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1",
+            FAKE_LIMIT="You've hit your usage limit. Try again at 3:30pm.",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertRegex(result.stdout, r"PAUSE=rate-limit reset=\d{4}-\d{2}-\d{2}T")
+
+    def test_reset_clock_without_minutes_is_parsed(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="rate limit reached, resets 3pm",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertRegex(result.stdout, r"PAUSE=rate-limit reset=\d{4}-\d{2}-\d{2}T")
+
+    def test_reset_iso_after_try_again_is_parsed(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1",
+            FAKE_LIMIT="usage limit reached, try again at 2099-01-01T10:00:00Z",
+        )
+        self.assertIn("PAUSE=rate-limit reset=2099-01-01T10:00:00.000Z", result.stdout)
+
+    def test_limit_on_timeout_is_pause(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_SLEEP="30", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit reset=brak", result.stdout)
+
+    def test_pause_line_is_also_in_final_report(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertIn("PAUSE=rate-limit", result.stdout.split("raport końcowy", 1)[1])
+
     def test_tree_is_killed_after_timeout(self) -> None:
         started = time.time()
         result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30")
