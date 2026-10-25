@@ -13,6 +13,8 @@ i commituje lokalnie po każdym zielonym kroku; push i PR robi host po review.
 
 Ten klient (host): `claude`. Host nie wywołuje sam siebie.
 
+Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Składnia
 
 ```text

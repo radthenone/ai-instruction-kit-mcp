@@ -939,8 +939,27 @@ install_claude() {
   cp "$SHARED_GUARDS/bash-guard.mjs" "$TARGET/.claude/hooks/bash-guard.mjs"
   cp "$SHARED_GUARDS/linters-guard.mjs" "$TARGET/.claude/hooks/linters-guard.mjs"
   cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
+  # Przypomnienie języka (#248): hook UserPromptSubmit tylko przy language ≠ en.
+  # Reinstalacja zdejmuje stary wpis (marker language-reminder.mjs), więc przy en znika.
+  SETTINGS_TEMPLATE="$KIT_ROOT/templates/claude/settings.json"
+  if [[ "$LANGUAGE" != "en" ]]; then
+    cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
+    SETTINGS_TEMPLATE="$(mktemp)"
+    "$PYTHON_BIN" -c 'import json,sys
+t = json.load(open(sys.argv[1], encoding="utf-8"))
+t["hooks"]["UserPromptSubmit"] = json.load(open(sys.argv[2], encoding="utf-8"))["hooks"]["UserPromptSubmit"]
+print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/templates/claude/settings.language.json" > "$SETTINGS_TEMPLATE"
+  else
+    rm -f "$TARGET/.claude/hooks/language-reminder.mjs"
+  fi
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
-  "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$KIT_ROOT/templates/claude/settings.json"
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$SETTINGS_TEMPLATE"
+  [[ "$SETTINGS_TEMPLATE" == "$KIT_ROOT/templates/claude/settings.json" ]] || rm -f "$SETTINGS_TEMPLATE"
+  # Claude Code czyta CLAUDE.md, nie AGENTS.md: import, żeby reguła języka była w kontekście.
+  if [[ ! -f "$TARGET/CLAUDE.md" ]]; then
+    printf '@AGENTS.md\n' > "$TARGET/CLAUDE.md"
+    echo "  + CLAUDE.md (import @AGENTS.md)"
+  fi
   echo "  + .claude/hooks/ + wpisy hookow kita w .claude/settings.json"
 
   copy_shared_agents "$TARGET/.claude/agents"

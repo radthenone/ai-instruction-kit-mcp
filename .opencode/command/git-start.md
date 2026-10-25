@@ -4,6 +4,8 @@ description: "Start pracy git — issue (#N, auto-diff lub --help) + branch Conv
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev`.

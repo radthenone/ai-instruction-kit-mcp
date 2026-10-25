@@ -4,6 +4,8 @@ description: Stage and create Conventional Commit(s) from local diffs. Use when 
 model-tier: light
 ---
 
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev`.

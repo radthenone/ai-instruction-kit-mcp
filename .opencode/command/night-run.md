@@ -4,6 +4,8 @@ description: "Autonomiczna nocna praca na liście issue (samodzielnie, /goal opc
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev`.
@@ -245,6 +247,8 @@ Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`
 Frontend: po kroku 1 plik `docs/design/<N>.md` jest w drzewie (z <BASE> albo z istniejącego
 brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżność = hand-back
 needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
+
+Język odpowiedzi, statusy i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
