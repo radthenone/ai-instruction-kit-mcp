@@ -270,11 +270,13 @@ Kroki:
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
    → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
    Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
-   w logu) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
-   jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (bez `brak`: bez godziny
-   wpisz „nieznana”) i kończysz turę. Orkiestrator zapisuje pauzę w `## Stan` jako
-   `pauza limitu od <ts>; wznowienie <ISO+5 min> (epoch N)` (format watchdoga) i wznawia po resecie
-   tym samym ticketem (`/headless` od nowa, ten sam branch).
+   w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
+   jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (gdy `reset=brak`, wpisz «nieznana»)
+   i kończysz turę. Orkiestrator zapisuje pauzę w `## Stan` jako
+   `pauza limitu od <ts>; wznowienie <ISO+5 min> (epoch N)` (format watchdoga). Gdy `reset=brak`:
+   `wznowienie <teraz+30 min> (epoch N)` — kolejne sprawdzenie, nie zgadywanie godziny.
+   ISO+5 min liczy orkiestrator; linię zamyka sam watchdog (watchdog dopisuje `do`). Po wznowieniu wznawiasz
+   ten sam ticket od kroku 2–3 (`/headless` od nowa, ten sam branch).
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
@@ -383,6 +385,8 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
   pauzę w `## Stan` (`do <teraz>`), sprawdź limit z celu (`pauzy: N`, przekroczony → halt C)
   i `koniec:` (teraz ≥ koniec → halt C); inaczej odnów watchdoga i wznów łańcuch od kroku
   z `## Stan`. Bez zmiany stanu w CTX nie wznawiaj ticketu, który już ma MERGED.
+  Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
+  po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
 Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
@@ -422,6 +426,8 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 - watchdog `życie` albo tik crona, a subagent działa → odnów watchdoga
   (`TaskStop` + start + `watchdog:` w `## Stan`); cron bez zmian: jedna linia „ok”, koniec tiku;
 - wznowienie po pauzie → zamknij pauzę w `## Stan`, potem jak w przypadku D i odpala watchdoga;
+- hand-back „pauza wykonawcy do <ISO>” → jak w przypadku D (pauza w `## Stan`, odnów watchdoga);
+  po wznowieniu ponowny `/headless` dla tego ticketu (krok 2–3), pauza nie liczy się do wznowień ticketu;
 - failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
   subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
   (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
