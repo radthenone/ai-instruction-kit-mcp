@@ -9,7 +9,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
-from guides.cli import SetupError, doctor_report, kit_source, own_kit_root, workspace_settings
+from guides.cli import SetupError, doctor_report, kit_source, own_kit_root
 from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
@@ -259,12 +259,9 @@ def check_kit_status() -> str:
         else resolved.kit_root
     )
     status = check_kit_updates(kit_root=kit_root, workspace_root=resolved.workspace_root)
-    try:
-        clients = workspace_settings(resolved.workspace_root).clients
-    except SetupError:
-        clients = "all"
-    report = doctor_report(resolved.workspace_root, kit_root, clients)
-    return f"{status}\n\n{report}"
+    if resolved.workspace_root is None:
+        return status
+    return f"{status}\n\n{doctor_report(resolved.workspace_root, kit_root)}"
 
 
 def _require_workspace() -> Path:

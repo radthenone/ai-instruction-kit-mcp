@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -35,6 +36,14 @@ RULE_FILES: tuple[str, ...] = (
     "CODING_STANDARDS.md",
 )
 OVERLAY_FILE = ".ai/project.md"
+
+# Szablony kita, z których powstają pliki reguł. W repo aplikacji linie
+# skopiowane z szablonu bez zmian pomijamy: to treść kita (np. komendy Tierów
+# spoza Profilu), której użytkownik nie naprawi — doctor pilnuje jego reguł.
+KIT_TEMPLATES: dict[str, str] = {
+    "AGENTS.md": "templates/AGENTS.md",
+    "BUGBOT.md": "templates/cursor/BUGBOT.md",
+}
 AGENT_TEMPLATES = "templates/shared/agents"
 
 # Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
@@ -113,6 +122,17 @@ FILESYSTEM_ROOTS = frozenset(
         "srv",
         "lib",
     }
+)
+
+# Pliki samego kita, które AGENTS.md repo aplikacji może wymieniać — w aplikacji
+# ich nie ma i nie musi być. ``scripts/`` dzielone z aplikacją, więc tylko pliki
+# istniejące w kicie.
+KIT_ONLY_ROOTS = frozenset({"templates", "modules", "manifest.yaml"})
+
+# Katalogi pomijane przy szukaniu gołej nazwy pliku: zależności i artefakty
+# narzędzi (wolne, a plik z ``node_modules`` maskowałby brak w projekcie).
+SEARCH_SKIP_DIRS = frozenset(
+    {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".tox"}
 )
 
 # Katalogi konfiguracji klientów. Ścieżkę klienta spoza ``clients:`` pomijamy —
@@ -263,40 +283,44 @@ def _exists(workspace: Path, value: str) -> bool:
     """Czy ścieżka istnieje; goła nazwa pliku może leżeć w podkatalogu."""
     if (workspace / value).exists():
         return True
-    if "/" not in value:
-        return next(workspace.glob(f"**/{value}"), None) is not None
+    if "/" in value:
+        return False
+    # os.walk ignoruje błędy odczytu katalogów (onerror=None) — brak uprawnień
+    # do podkatalogu nie wywraca doctora.
+    for _root, dirs, files in os.walk(workspace):
+        dirs[:] = [name for name in dirs if name not in SEARCH_SKIP_DIRS]
+        if value in files or value in dirs:
+            return True
     return False
 
 
-def _command_names(workspace: Path, kit_root: Path | None, clients: str) -> set[str]:
-    """Nazwy komend znanych w repo: instalacje klientów + szablony kita."""
-    names: set[str] = set()
-    for client in expand_clients(parse_clients(clients)):
-        for pattern in COMMAND_SURFACES.get(client, ()):
-            for path in workspace.glob(pattern):
-                if not path.is_file():
-                    continue
-                if path.name == "SKILL.md":
-                    names.add(path.parent.name)
-                elif path.name.endswith(".prompt.md"):
-                    names.add(path.name[: -len(".prompt.md")])
-                else:
-                    names.add(path.name[: -len(".md")] if path.name.endswith(".md") else path.stem)
-    if kit_root is not None:
-        # Szablon istnieje = komenda jest w kicie, nawet gdy Tier/klient nie jest
-        # wybrany w tym repo. Doctor pilnuje rozjazdu dokumentacji z kitem, nie
-        # tego, czy akurat włączono backend.
-        for pattern in (
+def _command_name(path: Path) -> str:
+    """Nazwa komendy z pliku agenta/komendy/skilla."""
+    if path.name == "SKILL.md":
+        return path.parent.name
+    for suffix in (".prompt.md", ".md"):
+        if path.name.endswith(suffix):
+            return path.name[: -len(suffix)]
+    return path.stem
+
+
+def _command_names(workspace: Path, clients: set[str], *, is_kit: bool) -> set[str]:
+    """Nazwy komend u skonfigurowanych klientów (+ szablony, gdy to repo kita)."""
+    patterns = [p for client in clients for p in COMMAND_SURFACES.get(client, ())]
+    if is_kit:
+        # W repo kita szablon = komenda kita, nawet gdy Tier/klient nie jest wybrany.
+        patterns += [
             "templates/shared/agents/*.md",
             "templates/shared/skills/*/SKILL.md",
             "templates/cursor/skills/*/SKILL.md",
             "templates/opencode/command/*.md",
-        ):
-            for path in kit_root.glob(pattern):
-                if path.name == "SKILL.md":
-                    names.add(path.parent.name)
-                elif path.name.endswith(".md"):
-                    names.add(path.name[: -len(".md")])
+        ]
+    names = {
+        _command_name(path)
+        for pattern in patterns
+        for path in workspace.glob(pattern)
+        if path.is_file()
+    }
     for alias, target in COMMAND_ALIASES.items():
         if target in names:
             names.add(alias)
@@ -309,8 +333,10 @@ def _path_findings(
     workspace: Path,
     reported: set[tuple[str, int, str]],
     *,
+    skip_lines: set[int],
     clients: set[str],
     kit_root: Path | None,
+    is_kit: bool,
 ) -> list[Finding]:
     """Ścieżki w backtickach, których nie ma w drzewie."""
     findings: list[Finding] = []
@@ -319,9 +345,9 @@ def _path_findings(
         if value is None:
             continue
         line = _line_of(text, match.start())
-        if (rel, line, value) in reported:
+        if line in skip_lines or (rel, line, value) in reported:
             continue
-        if _skip_path(value, clients=clients, kit_root=kit_root):
+        if _skip_path(value, clients=clients, kit_root=kit_root, is_kit=is_kit):
             continue
         if _exists(workspace, value):
             continue
@@ -330,7 +356,9 @@ def _path_findings(
     return findings
 
 
-def _skip_path(value: str, *, clients: set[str], kit_root: Path | None) -> bool:
+def _skip_path(
+    value: str, *, clients: set[str], kit_root: Path | None, is_kit: bool
+) -> bool:
     """
     Czy pominąć ścieżkę, bo nie należy do tego repo?
 
@@ -344,11 +372,38 @@ def _skip_path(value: str, *, clients: set[str], kit_root: Path | None) -> bool:
     client = CLIENT_DIRS.get(value.split("/", 1)[0])
     if client is not None and client not in clients:
         return True
-    return kit_root is not None and (kit_root / value).exists()
+    if is_kit or kit_root is None:
+        return False
+    # Repo aplikacji: pomijamy tylko pliki wyłącznie kitowe, nigdy wspólnych
+    # nazw (`src/`, `README.md`) — ich brak w aplikacji to realny rozjazd.
+    head = value.split("/", 1)[0]
+    if head in KIT_ONLY_ROOTS:
+        return True
+    return head == "scripts" and value != "scripts/" and (kit_root / value).is_file()
+
+
+def _kit_template_lines(
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool
+) -> set[int]:
+    """Numery linii pliku reguł skopiowanych bez zmian z szablonu kita (repo aplikacji)."""
+    template = KIT_TEMPLATES.get(rel)
+    if is_kit or kit_root is None or template is None:
+        return set()
+    kit_lines = {line.strip() for line in _read(kit_root / template).splitlines()}
+    kit_lines.discard("")
+    return {
+        number
+        for number, line in enumerate(text.splitlines(), start=1)
+        if line.strip() in kit_lines
+    }
 
 
 def _command_findings(
-    rel: str, text: str, available: set[str], clients_label: str
+    rel: str,
+    text: str,
+    available: set[str],
+    clients_label: str,
+    skip_lines: frozenset[int] | set[int] = frozenset(),
 ) -> list[Finding]:
     """Komendy ``/nazwa``, których nie ma u żadnego skonfigurowanego klienta."""
     findings: list[Finding] = []
@@ -363,7 +418,7 @@ def _command_findings(
         ):
             continue
         line = _line_of(text, match.start())
-        if (line, name) in seen:
+        if line in skip_lines or (line, name) in seen:
             continue
         seen.add((line, name))
         findings.append(
@@ -416,14 +471,14 @@ def _overlay_findings(
     for line, key, value in _overlay_paths(text):
         paths.append(value)
         reported.add((OVERLAY_FILE, line, value))
-        if _exists(workspace, value):
+        if (workspace / value).is_dir():
             continue
         findings.append(
             Finding(
                 "warning",
                 OVERLAY_FILE,
                 line,
-                f"klucz `{key}:` wskazuje nieistniejącą ścieżkę `{value}`",
+                f"klucz `{key}:` wskazuje nieistniejący katalog `{value}`",
             )
         )
     return findings, paths
@@ -440,10 +495,9 @@ def _workspace_patterns(workspace: Path) -> list[str]:
         except json.JSONDecodeError:
             data = {}
         workspaces = data.get("workspaces") if isinstance(data, dict) else None
-        if isinstance(workspaces, list):
-            patterns.extend(str(item) for item in workspaces)
-        elif isinstance(workspaces, dict):
-            patterns.extend(str(item) for item in workspaces.get("packages") or [])
+        if isinstance(workspaces, dict):
+            workspaces = workspaces.get("packages")
+        patterns.extend(_str_list(workspaces))
 
     pnpm = workspace / "pnpm-workspace.yaml"
     if pnpm.is_file():
@@ -452,7 +506,7 @@ def _workspace_patterns(workspace: Path) -> list[str]:
         except yaml.YAMLError:
             data = {}
         if isinstance(data, dict):
-            patterns.extend(str(item) for item in data.get("packages") or [])
+            patterns.extend(_str_list(data.get("packages")))
 
     pyproject = workspace / "pyproject.toml"
     if pyproject.is_file():
@@ -460,10 +514,18 @@ def _workspace_patterns(workspace: Path) -> list[str]:
             data = tomllib.loads(_read(pyproject))
         except tomllib.TOMLDecodeError:
             data = {}
-        members = data.get("tool", {}).get("uv", {}).get("workspace", {}).get("members") or []
-        patterns.extend(str(item) for item in members)
+        for key in ("tool", "uv", "workspace"):
+            data = data.get(key) if isinstance(data, dict) else None
+        patterns.extend(_str_list(data.get("members") if isinstance(data, dict) else None))
 
     return patterns
+
+
+def _str_list(value: object) -> list[str]:
+    """Lista stringów z pola konfiguracji; inny typ (string, dict, None) → pusta."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def _package_dirs(workspace: Path, patterns: list[str]) -> list[str]:
@@ -471,13 +533,13 @@ def _package_dirs(workspace: Path, patterns: list[str]) -> list[str]:
     found: list[str] = []
     for pattern in patterns:
         pattern = pattern.strip()
-        if not pattern or pattern.startswith("!"):
+        if not pattern or pattern.startswith(("!", "/", "\\")) or _DRIVE_PATH.match(pattern):
             continue
         try:
-            matches = workspace.glob(pattern)
-        except (OSError, ValueError):
+            matches = sorted(workspace.glob(pattern))
+        except (OSError, ValueError, NotImplementedError):
             continue
-        for path in sorted(matches):
+        for path in matches:
             if path.is_dir() and path != workspace:
                 rel = path.relative_to(workspace).as_posix()
                 if rel not in found:
@@ -533,8 +595,9 @@ def run_doctor(
 
     Args:
         workspace: Root repo aplikacji.
-        kit_root: Root kita (szablony agentów do sprawdzenia komend); ``None`` —
-            tylko pliki repo aplikacji.
+        kit_root: Root kita. Równy ``workspace`` = repo kita (sprawdza też komendy
+            w szablonach agentów); inny — repo aplikacji (pomija tylko pliki
+            wyłącznie kitowe); ``None`` — bez wiedzy o kicie.
         clients: Wartość ``clients:`` z Profilu (``all`` albo lista po przecinku).
 
     Returns:
@@ -544,8 +607,20 @@ def run_doctor(
     workspace = workspace.resolve()
     findings: list[Finding] = []
     reported: set[tuple[str, int, str]] = set()
+    is_kit = kit_root is not None and kit_root.resolve() == workspace
 
-    configured = set(expand_clients(parse_clients(clients)))
+    try:
+        configured = set(expand_clients(parse_clients(clients)))
+    except ValueError:
+        configured = set(expand_clients(parse_clients("all")))
+        findings.append(
+            Finding(
+                "info",
+                ".ai/project.profile.yaml",
+                None,
+                f"nieprawidłowe `clients: {clients}` — sprawdzam jak `all`",
+            )
+        )
     clients_label = ", ".join(sorted(configured))
 
     overlay_text = ""
@@ -556,39 +631,36 @@ def run_doctor(
         overlay_findings, overlay_paths = _overlay_findings(workspace, overlay_text, reported)
         findings.extend(overlay_findings)
 
-    available = _command_names(workspace, kit_root, clients)
+    available = _command_names(workspace, configured, is_kit=is_kit)
     for rel in RULE_FILES:
         path = workspace / rel
         if not path.is_file():
             continue
         text = _read(path)
+        skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit)
         findings.extend(
             _path_findings(
                 rel,
                 text,
                 workspace,
                 reported,
+                skip_lines=skip_lines,
                 clients=configured,
                 kit_root=kit_root,
+                is_kit=is_kit,
             )
         )
-        findings.extend(_command_findings(rel, text, available, clients_label))
+        findings.extend(_command_findings(rel, text, available, clients_label, skip_lines))
 
-    if kit_root is not None:
-        templates = kit_root / AGENT_TEMPLATES
+    if is_kit:
+        templates = workspace / AGENT_TEMPLATES
         if templates.is_dir():
             for path in sorted(templates.glob("*.md")):
-                rel = path.relative_to(kit_root).as_posix()
+                rel = path.relative_to(workspace).as_posix()
                 findings.extend(
                     _command_findings(rel, _read(path), available, clients_label)
                 )
 
     findings.extend(_package_infos(workspace, overlay_text, overlay_paths))
 
-    unique: list[Finding] = []
-    seen: set[Finding] = set()
-    for finding in findings:
-        if finding not in seen:
-            seen.add(finding)
-            unique.append(finding)
-    return DoctorReport(tuple(unique))
+    return DoctorReport(tuple(dict.fromkeys(findings)))

@@ -120,11 +120,57 @@ class TestPathFindings(unittest.TestCase):
             self.assertEqual(_report(workspace).warnings, ())
 
 
+    def test_app_path_missing_warns_even_when_kit_has_it(self) -> None:
+        """Repo aplikacji bez `src/` i `README.md` — kit je ma, ale to nie maskuje braku."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", "Reguła: `src/` i `README.md`.\n")
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            self.assertEqual(len(warnings), 2, warnings)
+
+    def test_kit_only_paths_are_skipped_in_app_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(
+                workspace / "AGENTS.md",
+                "Kit: `templates/shared/agents/`, `manifest.yaml`, "
+                "`scripts/bootstrap-project.sh`, `modules/`.\n",
+            )
+
+            self.assertEqual(run_doctor(workspace, KIT_ROOT, clients="claude").warnings, ())
+
+    def test_bare_filename_in_node_modules_does_not_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "node_modules" / "pkg" / "server.py", "")
+            _write(workspace / "BUGBOT.md", "Serwer: `server.py`.\n")
+
+            self.assertEqual(len(_report(workspace).warnings), 1)
+
+
+    def test_lines_copied_from_kit_template_are_skipped_in_app_repo(self) -> None:
+        """Treść szablonu kita (komendy Tierów spoza Profilu) to nie reguły użytkownika."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            kit = Path(tmp) / "kit"
+            _write(kit / "templates" / "AGENTS.md", "- `/teacher-backend` i `CONTEXT.md`\n")
+            _write(
+                workspace / "AGENTS.md",
+                "- `/teacher-backend` i `CONTEXT.md`\nWłasna: `/review-ghost`.\n",
+            )
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual([w.line for w in warnings], [2], warnings)
+
+
 class TestOverlayPaths(unittest.TestCase):
     def test_missing_overlay_directory_warns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
-            _write(workspace / "backend", "")
+            (workspace / "backend").mkdir()
             _write(
                 workspace / ".ai" / "project.md",
                 "\n".join(
@@ -155,6 +201,7 @@ class TestOverlayPaths(unittest.TestCase):
                 workspace / ".ai" / "project.md",
                 "## Ścieżki\n\n- Taskfile: `Taskfile.yml` — punkt wejścia\n",
             )
+            _write(workspace / "Taskfile.yml", "version: 3\n")
 
             warnings = _report(workspace).warnings
 
@@ -205,7 +252,9 @@ class TestCommands(unittest.TestCase):
             )
             _write(workspace / "BUGBOT.md", "Uruchom `/review-security`.\n")
 
-            self.assertEqual(len(_report(workspace, clients="claude").warnings), 1)
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            self.assertEqual(len(warnings), 1, warnings)
 
     def test_external_layer_commands_are_not_flagged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,16 +266,28 @@ class TestCommands(unittest.TestCase):
 
             self.assertEqual(_report(workspace).warnings, ())
 
-    def test_commands_from_kit_agent_templates_are_checked(self) -> None:
+    def test_kit_templates_are_not_checked_in_app_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
             kit = Path(tmp) / "kit"
+            _write(kit / "manifest.yaml", "modules: {}\n")
             _write(
                 kit / "templates" / "shared" / "agents" / "review-custom.md",
                 "Uruchom `/review-ghost`.\n",
             )
 
-            warnings = run_doctor(workspace, kit, clients="claude").warnings
+            self.assertEqual(run_doctor(workspace, kit, clients="claude").warnings, ())
+
+    def test_commands_from_kit_agent_templates_are_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = _workspace(tmp)
+            _write(kit / "manifest.yaml", "modules: {}\n")
+            _write(
+                kit / "templates" / "shared" / "agents" / "review-custom.md",
+                "Uruchom `/review-ghost`.\n",
+            )
+
+            warnings = run_doctor(kit, kit, clients="claude").warnings
 
             self.assertEqual(len(warnings), 1, warnings)
             self.assertIn("templates/shared/agents/review-custom.md:1", warnings[0].render())
@@ -292,6 +353,39 @@ class TestWorkspacePackages(unittest.TestCase):
                 self.assertEqual(len(report.infos), 1, report.render())
 
 
+class TestNeverBlocks(unittest.TestCase):
+    def test_bogus_clients_falls_back_to_all(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+
+            rendered = run_doctor(workspace, clients="bogus").render()
+
+            self.assertIn("clients", rendered)
+            self.assertIn("bogus", rendered)
+
+    def test_odd_workspace_patterns_do_not_raise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(
+                workspace / "package.json",
+                json.dumps({"workspaces": {"packages": "packages/*"}}),
+            )
+            _write(workspace / "pnpm-workspace.yaml", "packages:\n  - /abs/*\n  - ''\n")
+            _write(
+                workspace / "pyproject.toml",
+                '[tool.uv.workspace]\nmembers = "packages/*"\n',
+            )
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_absolute_npm_workspace_pattern_does_not_raise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "package.json", json.dumps({"workspaces": ["/abs/*", ""]}))
+
+            self.assertEqual(_report(workspace).infos, ())
+
+
 class TestReport(unittest.TestCase):
     def test_clean_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -344,6 +438,24 @@ class TestCli(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertIn("doctor:", out)
             self.assertIn("src/missing/", out)
+
+
+    def test_doctor_with_bogus_profile_clients_exits_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(PROFILE.replace("clients: claude", "clients: bogus"), encoding="utf-8")
+
+            code, out = self._main("doctor", str(workspace))
+
+            self.assertEqual(code, 0, out)
+            self.assertIn("doctor:", out)
+
+    def test_doctor_report_never_raises(self) -> None:
+        with mock.patch.object(cli, "run_doctor", side_effect=RuntimeError("boom")):
+            out = cli.doctor_report(Path("."), KIT_ROOT)
+
+        self.assertEqual(out, "doctor: błąd RuntimeError: boom")
 
 
 class TestKitProjectEditMode(unittest.TestCase):

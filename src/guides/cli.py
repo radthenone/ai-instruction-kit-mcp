@@ -468,7 +468,7 @@ def _plan_report(plan: BootstrapPlan) -> str:
     return "\n".join(lines)
 
 
-def doctor_report(workspace: Path, kit_root: Path, clients: str) -> str:
+def doctor_report(workspace: Path, kit_root: Path, clients: str | None = None) -> str:
     """
     Raport doctora dla repo aplikacji — czytany na końcu reloadu i w statusie.
 
@@ -477,22 +477,23 @@ def doctor_report(workspace: Path, kit_root: Path, clients: str) -> str:
     Args:
         workspace: Repo aplikacji.
         kit_root: Root kita (szablony agentów do sprawdzenia komend).
-        clients: Wartość ``clients:`` z Profilu.
+        clients: Wartość ``clients:``; ``None`` — z Profilu, a bez niego ``all``.
 
     Returns:
-        str: Linie ``doctor:`` — ostrzeżenia i informacje albo jedna linia o czystym wyniku.
+        str: Linie ``doctor:`` — ostrzeżenia i informacje albo jedna linia o czystym
+            wyniku; każdy błąd to linia ``doctor: błąd …``, nigdy wyjątek.
     """
-    return run_doctor(
-        workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
-    ).render()
-
-
-def _clients_for(workspace: Path) -> str:
-    """Klienci z Profilu; repo bez kita sprawdzamy jak ``--clients all``."""
     try:
-        return workspace_settings(workspace).clients
-    except SetupError:
-        return "all"
+        if clients is None:
+            try:
+                clients = workspace_settings(workspace).clients
+            except SetupError:
+                clients = "all"
+        return run_doctor(
+            workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
+        ).render()
+    except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
+        return f"doctor: błąd {type(exc).__name__}: {exc}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -554,10 +555,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "labels":
             print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
         elif args.command == "doctor":
-            print(doctor_report(workspace, kit_root, _clients_for(workspace)))
+            print(doctor_report(workspace, kit_root))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
-            print(doctor_report(workspace, kit_root, _clients_for(workspace)))
+            print(doctor_report(workspace, kit_root))
     except (SetupError, BootstrapError, LabelsError, ValueError) as exc:
         print(f"kit-ai: {exc}", file=sys.stderr)
         return 1
