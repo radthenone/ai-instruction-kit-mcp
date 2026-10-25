@@ -34,7 +34,7 @@ Jesteś reviewerem architektury tego repo.
 
 1. `get_bundle("architecture")`.
 2. `get_overlay()` — ścieżki; `codegen:` z profilu (MCP `get_codegen`).
-3. `CODING_STANDARDS.md` — źródła standardów (m.in. `BUGBOT.md`); unikaj overlapu.
+3. `CODING_STANDARDS.md` — źródła standardów; unikaj overlapu.
 
 ### Sprawdzaj w diffie
 

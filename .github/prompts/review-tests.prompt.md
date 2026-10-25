@@ -38,8 +38,6 @@ Nieudowodnione / czerwone: …
 
 ### Procedura
 
-Źródła standardów: `CODING_STANDARDS.md` (indeks w kolejności ważności).
-
 1. Ustal, co uznano za „zrobione”.
 2. Z `get_overlay()` / Taskfile / `.ai/project.md` wypisz **konkretne** komendy do uruchomienia.
 3. Uruchom je, jeśli masz dostęp; inaczej wskaż je i oznacz finding jako „brak dowodu uruchomienia”.

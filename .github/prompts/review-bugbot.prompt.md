@@ -35,9 +35,7 @@ W kolejności:
    renderem tego samego szablonu — użyj root, nie czytaj dwa razy). Każdy `kit-ai reload`
    odświeża plik z szablonu kita; reguły projektu żyją w bloku `<!-- project:rules -->`
    i przechodzą przez reload bez zmian.
-3. Brak pliku → powiedz to wprost i zastosuj tylko reguły ogólne z `CODING_STANDARDS.md` (sekrety, minimalny diff, brak testów).
-
-Standardy projektu poza regułami Bugbota (overlay, ADR-y, konwencje stacku) czytasz z `CODING_STANDARDS.md` — to indeks źródeł, nie kopia reguł.
+3. Brak pliku → powiedz to wprost i zastosuj tylko reguły ogólne z `AGENTS.md` (sekrety, minimalny diff, brak testów).
 
 ### 2. Diff
 
