@@ -276,6 +276,18 @@ Kroki:
    `wznowienie <teraz+30 min> (epoch N)` — kolejne sprawdzenie, nie zgadywanie godziny.
    ISO+5 min liczy orkiestrator; linię zamyka sam watchdog (watchdog dopisuje `do`). Po wznowieniu wznawiasz
    ten sam ticket od kroku 2–3 (`/headless` od nowa, ten sam branch).
+   **Przejęcie zamiast czekania (#257).** Tryb z tekstu celu: `limit: przejmij` (domyślny) albo
+   `limit: czekaj` (wtedy zostaje powyższa pauza do resetu). Przy `limit: przejmij` kod 75 nie
+   czeka: uruchamiasz **subagenta przejęcia** (Agent z parametrem `model` = model przejęcia) z
+   DOSŁOWNIE tą samą treścią z cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem
+   wrappera (commity, `git status`, ostatnie linie) i stanem brancha. Model przejęcia, priorytet:
+   (a) tekst celu `przejęcie: <alias>` (tylko ta noc); (b) Profil `models.claude.takeover`
+   (`.ai/project.profile.yaml`); (c) brak → model sesji. Effort: bez parametru — subagent przejęcia
+   dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; skill z `disable-model-invocation`
+   przez odczyt jego `SKILL.md` i wykonanie treści. Przejęcie nie rusza niezacommitowanych zmian
+   (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limit zagnieżdżenia 3
+   (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
+   W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
