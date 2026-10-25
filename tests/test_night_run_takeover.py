@@ -59,5 +59,12 @@ class NightRunTakeoverTest(unittest.TestCase):
         self.assertIn("przejęcie: <model> (<źródło>)", self.night)
 
 
+class KitProjectEditTakeoverTest(unittest.TestCase):
+    def test_kit_project_edit_describes_takeover_key(self) -> None:
+        text = (KIT_ROOT / "templates/shared/agents/kit-project-edit.md").read_text(encoding="utf-8")
+        self.assertIn("`models.claude.takeover`", text)
+        self.assertIn("`haiku` \\| `sonnet` \\| `opus` \\| `fable`", text)
+
+
 if __name__ == "__main__":
     unittest.main()
