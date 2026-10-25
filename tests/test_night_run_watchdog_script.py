@@ -23,7 +23,15 @@ from _shell import is_ci, posix_path, resolve_bash
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = KIT_ROOT / "templates" / "shared" / "night-run" / "watchdog.sh"
 AGENT_ID = "abc123"
-LIMIT_LINE = '{"type":"result","error":"API Error: 429 session limit reached"}\n'
+LIMIT_LINE = (
+    '{"type":"assistant","message":{"model":"<synthetic>","role":"assistant","content":[]},'
+    '"error":"rate_limit","isApiErrorMessage":true}\n'
+)
+TOOL_RESULT_LIMIT_TEXT = (
+    '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1",'
+    '"content":"session limit reached, API Error: 429 (czytany plik watchdog.sh) '
+    '\\"isApiErrorMessage\\":true,\\"error\\":\\"rate_limit\\""}]}}\n'
+)
 
 
 def _bash_or_skip(test: unittest.TestCase) -> str:
@@ -126,6 +134,28 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertEqual(self._pause_lines(), [])
 
+    def test_limit_phrase_in_tool_result_is_not_a_limit(self) -> None:
+        proc = self._start("60", "110", recheck="1")
+        time.sleep(1.5)
+        self._append_transcript(TOOL_RESULT_LIMIT_TEXT)
+        time.sleep(3)  # kilka tików: fałszywa pauza zdążyłaby się zapisać
+        with self.ctx.open("a", encoding="utf-8") as fh:
+            fh.write("krok: koniec\n")  # czyste zakończenie pętli (bez kill: osierocony sleep blokuje pipe)
+        stdout, stderr = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 0, stdout + stderr)
+        self.assertEqual(self._pause_lines(), [], self.ctx.read_text(encoding="utf-8"))
+
+    def test_api_error_entry_with_extra_whitespace_is_a_limit(self) -> None:
+        proc = self._start("60", "110", recheck="1")
+        time.sleep(1.5)
+        self._append_transcript(
+            '{"type":"assistant","message":{"model":"<synthetic>"},'
+            '"isApiErrorMessage":  true,"error":\t"rate_limit"}\n'
+        )
+        stdout, stderr = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 0, stdout + stderr)
+        self.assertIn("wznowienie po pauzie limitu", stdout)
+
     def test_fake_429_in_id_or_token_is_not_a_limit(self) -> None:
         self._append_transcript('{"id":"toolu_429abc","token":"x429y"}\n')
         result = self._run("0", "110")
@@ -139,7 +169,10 @@ class TestWatchdogScript(unittest.TestCase):
         clock = target.strftime("%-I:%M%p").lower()
         proc = self._start("60", "110", recheck="1")
         time.sleep(1.5)
-        self._append_transcript(f'{{"error":"session limit reached, resets {clock}"}}\n')
+        self._append_transcript(
+            f'{{"type":"assistant","error":"rate_limit","isApiErrorMessage":true,'
+            f'"message":{{"content":"session limit reached, resets {clock}"}}}}\n'
+        )
         self.assertTrue(_wait_for(lambda: bool(self._pause_lines())))
         proc.kill()
         proc.communicate()

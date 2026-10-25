@@ -477,6 +477,9 @@ agents:                  # synchronizuje reload
 - Nieznany tier (w `models:` albo `agents:`), tier bez modelu, agent w dwóch tierach i zapis
   w jednej linii (`models: {…}`) przerywają reload z opisem błędu. Oba bloki pisz z wcięciami,
   jak wyżej; `agents:` obejmuje wszystkich agentów kita, także Tierów Stacku spoza Profilu.
+- `models.claude.takeover` (obok tierów, nie tier agenta): model przejęcia ticketu nocnego, gdy
+  wykonawca `/headless` zwróci limit (kod 75, #257). Tylko alias Claude Code: `haiku`, `sonnet`,
+  `opus`, `fable`; inny zapis przerywa reload. Brak klucza = model sesji.
 
 | Klient | Wspiera `model` | Plik | Format nazwy modelu | Przykład |
 |--------|-----------------|------|---------------------|----------|
