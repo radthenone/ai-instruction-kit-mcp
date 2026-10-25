@@ -63,6 +63,35 @@ COMMAND_ALIASES: dict[str, str] = {"git-pr": "git-end"}
 # Placeholdery w prozie (``/nazwa``), nie komendy.
 PLACEHOLDER_COMMANDS = frozenset({"nazwa", "name", "command", "komenda"})
 
+# Pliki zależności wymieniane w regułach jako alternatywy („gdy zmienia się
+# ``package.json``, ``bun.lock``, …”). Brak jednego z nich nie jest rozjazdem —
+# projekt używa innego menedżera, a reguła odpala na tym, który istnieje.
+OPTIONAL_MANIFESTS = frozenset(
+    {
+        "package.json",
+        "package-lock.json",
+        "bun.lock",
+        "bun.lockb",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "poetry.lock",
+        "Pipfile",
+        "Pipfile.lock",
+        "pyproject.toml",
+        "uv.lock",
+        "Cargo.toml",
+        "Cargo.lock",
+        "go.mod",
+        "go.sum",
+        "Gemfile",
+        "Gemfile.lock",
+        "composer.json",
+        "composer.lock",
+    }
+)
+
 # Segmenty ścieżek absolutnych, które wyglądają jak komenda (``/tmp``).
 FILESYSTEM_ROOTS = frozenset(
     {
@@ -307,7 +336,11 @@ def _skip_path(value: str, *, clients: set[str], kit_root: Path | None) -> bool:
 
     AGENTS.md opisuje wszystkie warstwy naraz: ścieżki klientów spoza ``clients:``
     i pliki samego kita (``scripts/…``, ``manifest.yaml``) nie muszą tu istnieć.
+    Gołe nazwy plików zależności (``bun.lock``, ``requirements.txt``) są
+    alternatywami, nie ścieżkami projektu.
     """
+    if "/" not in value and value in OPTIONAL_MANIFESTS:
+        return True
     client = CLIENT_DIRS.get(value.split("/", 1)[0])
     if client is not None and client not in clients:
         return True

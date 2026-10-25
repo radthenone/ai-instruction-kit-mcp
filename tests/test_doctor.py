@@ -106,6 +106,19 @@ class TestPathFindings(unittest.TestCase):
 
             self.assertEqual(_report(workspace).warnings, ())
 
+    def test_dependency_file_alternatives_do_not_warn(self) -> None:
+        """Reguła wymienia lockfile'y różnych menedżerów — brak jednego to nie rozjazd."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "package.json", "{}\n")
+            _write(
+                workspace / "BUGBOT.md",
+                "If dependency files change (`package.json`, `bun.lock`, "
+                "`requirements.txt`, `uv.lock`):\n",
+            )
+
+            self.assertEqual(_report(workspace).warnings, ())
+
 
 class TestOverlayPaths(unittest.TestCase):
     def test_missing_overlay_directory_warns(self) -> None:
