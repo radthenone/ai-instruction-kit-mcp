@@ -270,6 +270,12 @@ Kroki:
    reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
    → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
+   Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
+   w logu) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
+   jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (bez `brak`: bez godziny
+   wpisz „nieznana”) i kończysz turę. Orkiestrator zapisuje pauzę w `## Stan` jako
+   `pauza limitu od <ts>; wznowienie <ISO+5 min> (epoch N)` (format watchdoga) i wznawia po resecie
+   tym samym ticketem (`/headless` od nowa, ten sam branch).
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).

@@ -32,6 +32,7 @@ if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git comm
 if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
 if [ -n "$FAKE_PARTIAL" ]; then printf 'bez nowej linii'; fi
+if [ -n "$FAKE_LIMIT" ]; then echo "$FAKE_LIMIT"; fi
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 exit "${FAKE_CODE:-0}"
 """
@@ -182,6 +183,28 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_CODE="3")
         self.assertEqual(result.returncode, 3)
         self.assert_tree_killed()
+
+    def test_rate_limit_is_pause_with_reset_not_failure(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x",
+            FAKE_CODE="1", FAKE_LIMIT="Error: rate limit exceeded, resets at 2099-01-01T10:00:00Z",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit reset=2099-01-01T10:00:00.000Z", result.stdout)
+        self.assert_tree_killed()
+
+    def test_plain_failure_without_limit_text_stays_failure(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="boom: config broken",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_limit_text_on_success_is_not_pause(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="0", FAKE_LIMIT="docs mention rate limit",
+        )
+        self.assertEqual(result.returncode, 0)
 
     def test_tree_is_killed_after_timeout(self) -> None:
         started = time.time()

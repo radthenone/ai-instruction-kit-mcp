@@ -11,7 +11,8 @@
  *
  * Po zakończeniu, błędzie albo timeoucie wrapper zabija całe drzewo procesów wykonawcy
  * (Unix: grupa procesów, Windows: `taskkill /T /F`) — razem z jego LSP i serwerami MCP.
- * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie.
+ * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie, 75 = pauza limitu
+ * dostawcy wykonawcy (nie błąd; linia `PAUSE=rate-limit reset=<ISO|brak>` w logu).
  *
  * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `.ai/headless-runs/<start>/`
  * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
@@ -29,9 +30,26 @@ const FLAGS = ["--model", "--timeout", "--heartbeat"]
 const DEFAULT_TIMEOUT_MIN = 30
 const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
+// Pauza limitu dostawcy wykonawcy (nie błąd): kod wyjścia 75 (EX_TEMPFAIL).
+export const PAUSE_CODE = 75
+const LIMIT_PATTERN = /rate.?limit|usage limit|session limit|quota exceeded|too many requests|\b429\b/i
 
 // Numer ticketu z brancha `typ/<N>-slug`; inny branch (dev, detached, brak gita) — linia pominięta.
 const ticketNumber = () => /^[a-z]+\/(\d+)-/.exec(git("branch", "--show-current") || "")?.[1]
+
+// Godzina resetu z komunikatu limitu → ISO (czas lokalny; „resets 3:30pm” / „try again at 15:30”
+// liczone do najbliższej takiej godziny, ≤ 6 h — jak `reset_epoch` w watchdog.sh). Brak → null.
+export function resetIso(text, now = Date.now()) {
+  const iso = /reset\D{0,20}?(\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)/i.exec(text)
+  if (iso && !Number.isNaN(Date.parse(iso[1]))) return new Date(iso[1]).toISOString()
+  const clock = /(?:resets?|try again)(?: at)? (\d{1,2}):(\d{2})(?: ?([ap]m))?/i.exec(text)
+  if (!clock) return null
+  const h = clock[3] ? (Number(clock[1]) % 12) + (clock[3].toLowerCase() === "pm" ? 12 : 0) : Number(clock[1])
+  const at = new Date(now)
+  at.setHours(h, Number(clock[2]), 0, 0)
+  if (at.getTime() <= now) at.setDate(at.getDate() + 1)
+  return at.getTime() - now <= 6 * 3_600_000 ? at.toISOString() : null
+}
 
 const footer = (runDir, ticket) => `
 
@@ -276,11 +294,14 @@ async function main() {
   const partial = new Map()
   let lastOutput = Date.now()
   let stallReported = false
+  // Ogon wyjścia (64 KB) — komunikat limitu rozpoznajemy dopiero po zakończeniu wykonawcy.
+  let output = ""
   const capture = (source, stream) => {
     source.setEncoding("utf8")
     partial.set(source, "")
     source.on("data", (text) => {
       log(text, stream)
+      output = (output + text).slice(-65_536)
       lastOutput = Date.now()
       stallReported = false
       const parts = (partial.get(source) + text).split(/\r?\n/)
@@ -354,6 +375,10 @@ async function main() {
   if (timedOut) {
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
     code = 124
+  } else if (code !== 0 && LIMIT_PATTERN.test(output)) {
+    // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
+    log(`[headless] PAUSE=rate-limit reset=${resetIso(output) ?? "brak"}\n`)
+    code = PAUSE_CODE
   }
   log(finalReport({ startHead, startStash, tail: fullTail() }))
   log(`[headless] kod wyjścia: ${code}\n`)
