@@ -272,8 +272,9 @@ git status --short -uall .claude .codex .github/prompts
 
 `kit-ai reload` kończy się raportem `doctor:`, `kit-ai status` i MCP `check_kit_status`
 dokładają go do swojego wyniku, a `kit-ai doctor` uruchamia samą kontrolę. Doctor czyta
-`BUGBOT.md`, `.ai/project.md`, `AGENTS.md` i `CODING_STANDARDS.md` (oraz komendy
-w `templates/shared/agents/*` kita):
+`BUGBOT.md`, `.ai/project.md`, `AGENTS.md` i `CODING_STANDARDS.md` (w repo kita także
+komendy w `templates/shared/agents/*`). Linie `AGENTS.md` / `BUGBOT.md` skopiowane bez
+zmian z szablonu kita są pomijane — to treść kita, nie reguły projektu:
 
 - ścieżki w backtickach — brak w drzewie = `OSTRZEŻENIE` z plikiem i numerem linii;
   globy (`**/auth/**`) i placeholdery (`<N>`) są pomijane;
