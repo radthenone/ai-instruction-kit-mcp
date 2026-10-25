@@ -29,7 +29,8 @@ LIMIT_LINE = (
 )
 TOOL_RESULT_LIMIT_TEXT = (
     '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1",'
-    '"content":"LIMIT_PATTERN session limit reached, API Error: 429 (czytany plik watchdog.sh)"}]}}\n'
+    '"content":"session limit reached, API Error: 429 (czytany plik watchdog.sh) '
+    '\\"isApiErrorMessage\\":true,\\"error\\":\\"rate_limit\\""}]}}\n'
 )
 
 
@@ -143,6 +144,17 @@ class TestWatchdogScript(unittest.TestCase):
         stdout, stderr = proc.communicate(timeout=60)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         self.assertEqual(self._pause_lines(), [], self.ctx.read_text(encoding="utf-8"))
+
+    def test_api_error_entry_with_extra_whitespace_is_a_limit(self) -> None:
+        proc = self._start("60", "110", recheck="1")
+        time.sleep(1.5)
+        self._append_transcript(
+            '{"type":"assistant","message":{"model":"<synthetic>"},'
+            '"isApiErrorMessage":  true,"error":\t"rate_limit"}\n'
+        )
+        stdout, stderr = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 0, stdout + stderr)
+        self.assertIn("wznowienie po pauzie limitu", stdout)
 
     def test_fake_429_in_id_or_token_is_not_a_limit(self) -> None:
         self._append_transcript('{"id":"toolu_429abc","token":"x429y"}\n')

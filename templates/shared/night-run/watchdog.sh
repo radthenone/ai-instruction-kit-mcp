@@ -16,7 +16,6 @@ TICK="${WATCHDOG_TICK_SEC:-60}"
 RECHECK="${WATCHDOG_RECHECK_SEC:-1800}"
 PAUSE_MARGIN_SEC=300
 MAX_RESET_AHEAD_SEC=$(( 6 * 3600 ))
-LIMIT_PATTERN='session limit|usage limit reached|"error": ?"rate_limit|API Error: 429|"status": ?429'
 DIR="$(dirname "$CTX")"
 START=$(date +%s)
 
@@ -62,8 +61,8 @@ new_limit_line() {
   (( total < limit_offset )) && limit_offset=0
   # Tylko wpisy błędu API (isApiErrorMessage + rate_limit): fraza w tool_result (czytany plik) to nie limit (#262).
   LIMIT_LINE_FOUND=$(cat_transcripts | tail -n +$(( limit_offset + 1 )) \
-    | grep -E '"isApiErrorMessage": ?true' | grep -E '"error": ?"rate_limit"' \
-    | grep -i -E "$LIMIT_PATTERN" | tail -n1)
+    | grep -E '"isApiErrorMessage"[[:space:]]*:[[:space:]]*true' \
+    | grep -E '"error"[[:space:]]*:[[:space:]]*"rate_limit"' | tail -n1)
   limit_offset=$total
 }
 
