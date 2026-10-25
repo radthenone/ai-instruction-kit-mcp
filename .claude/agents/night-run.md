@@ -40,7 +40,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
     i w NIGHT-RUN REPORT.
 - Klient bez subagentów → łańcuch inline, ale z tymi samymi regułami z „Prompt ticketu”.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
-  „#155 pomiń PDF”, inny próg dużego ticketu).
+  „#155 pomiń PDF”, inny próg dużego ticketu; `watchdog: próg N, życie M` — progi watchdoga, §7).
 - **Model ticketu** (`MODEL`) z celu, np. „model: sonnet”; w Claude parametr `model` Agenta
   (tylko aliasy: sonnet/opus/haiku/fable). Brak lub „gdzie uważasz” → model sesji; tańszy tylko
   dla ticketu mechanicznego (≤2 kryteria, 1 aplikacja, bez pieniędzy, płatności
@@ -172,7 +172,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 - **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
   per ticket`, pauzy limitu: otwarta `pauza limitu od <ts>; wznowienie <ts> (epoch N)` (zapisuje
-  ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamykasz **Ty**). Nadpisujesz **Ty**
+  ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamyka ją watchdog po wznowieniu; ty tylko sprawdzasz). Nadpisujesz **Ty**
   przy każdej zmianie kroku; tik czyta ją jako pierwszą.
 
 ### 7. Watchdog i cron (tylko Claude Code)
@@ -182,7 +182,8 @@ więc nie jest mechanizmem oczekiwania.
 
 - **Watchdog w tle (`.ai/night-run-watchdog.sh`, instalowany przy kliencie claude):** Bash
   `run_in_background` z pełną ścieżką repo: `bash "$(git rev-parse --show-toplevel)/.ai/night-run-watchdog.sh" "$CTX" 60 110`
-  (próg anomalii 60 min, życie 110 min — poniżej twardych 2 h Bash w tle). Skrypt śpi i
+  (domyślnie próg anomalii 60 min, życie 110 min — poniżej twardych 2 h Bash w tle; cel
+  `watchdog: próg N, życie M` (min) zamienia te liczby, życie ≤ 110). Skrypt śpi i
   **nie budzi orkiestratora**, dopóki idzie praca: postępem jest zapis w katalogu CTX albo
   w transkrypcie subagenta z `subagent: <id>`. Kończy się, czyli budzi orkiestratora
   powiadomieniem o zakończeniu, tylko gdy:
@@ -190,13 +191,14 @@ więc nie jest mechanizmem oczekiwania.
   - exit 0 `życie` — minęło 110 min → odnów (niżej);
   - exit 0 `koniec nocy` — w `## Stan` jest `krok: koniec`;
   - exit 0 `wznowienie po pauzie limitu` — wykrył komunikat limitu (429 / „session limit”)
-    w logu lub transkrypcie, zapisał otwartą pauzę do `## Stan` i spał do godziny resetu
-    z komunikatu + 5 min (bez godziny: co 30 min). Pauza limitu **nie jest** anomalią.
+    w transkrypcie subagenta, zapisał otwartą pauzę do `## Stan` i spał do godziny resetu
+    z komunikatu + 5 min (bez godziny: co 30 min, przedłużane, gdy przyjdzie nowa linia
+    limitu). Zamyka pauzę `do <ts>` sam watchdog. Pauza limitu **nie jest** anomalią.
 - **Odnowienie w tej samej turze co start:** przy starcie ticketu, review, wznowienia i każdym
   hand-backu, w tym samym wywołaniu narzędzi co Agent/Bash: `TaskStop` starego watchdoga
   (`watchdog:` z `## Stan`, jeśli żyje), start nowego `run_in_background`, zapis
-  `watchdog: <id>` do `## Stan`. Po wybudzeniu z pauzy najpierw zamknij pauzę
-  (`pauza limitu od X do <teraz>`), potem odnów.
+  `watchdog: <id>` do `## Stan`. Po wybudzeniu z pauzy sprawdź, że otwarta pauza ma
+  już `do <ts>` (zamyka ją watchdog); jeśli nie — dopisz `pauza limitu od X do <teraz>`, potem odnów.
 - **Jeden watchdog naraz:** przed odnowieniem sprawdź listę zadań w tle; działa → `TaskStop`,
   nie dubluj.
 - **Cron co 4 h jako siatka:** cron łapie to, co ginie razem z sesją (watchdog) i pauzę
@@ -417,7 +419,7 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 - failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
   subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
   (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
-- działa, ale bez zmian w gicie i PR od > 90 min (`git log -1 --format=%ct` na branchu +
+- działa, ale bez zmian w gicie i PR dłużej niż próg anomalii watchdoga (§7) (`git log -1 --format=%ct` na branchu +
   ostatni check) → `TaskStop`, potem wznowienie jak wyżej;
 - nic nie działa, a noc nieskończona (także przerwana tura orkiestratora) → łańcuch od kroku
   z `## Stan` (przypadek D).
