@@ -759,7 +759,7 @@ prune_tier_agents() {
 # Reszta pliku odświeża się z szablonu przy każdym reloadzie, ale blok
 # `<!-- project:rules -->…<!-- /project:rules -->` przechodzi bez zmian (reguły projektu).
 # Plik dostosowany przed wprowadzeniem bloku jest migrowany po historii szablonu (#240);
-# gdy migracja jest niepewna, plik zostaje, a reload wypisuje instrukcję ręczną.
+# gdy migracja jest niepewna, plik zostaje, a reload wypisuje jedną linię z trybem naprawy (#266).
 # Na stdout: komunikat migracji albo ostrzeżenie (ścieżka „utworzono” należy do bash).
 copy_bugbot_md() {
   SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" \

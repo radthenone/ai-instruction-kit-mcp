@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -303,6 +304,16 @@ class TestFalsePositives(unittest.TestCase):
             self.assertEqual(warnings[0].kind, "stale-path")
             self.assertEqual(warnings[0].suggestion, "frontend/web/src/components/ui/")
 
+    def test_api_segment_inside_path_is_not_url_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "Regeneruj `frontend/src/api/generated/`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["frontend/src/api/generated/"])
+            self.assertEqual(warnings[0].suggestion, "frontend/packages/api/generated/")
+
     def test_negated_path_that_exists_warns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _monorepo(tmp)
@@ -313,6 +324,80 @@ class TestFalsePositives(unittest.TestCase):
             self.assertEqual(len(warnings), 1, warnings)
             self.assertEqual(warnings[0].kind, "negated-path-exists")
             self.assertIn("nie istnieje, a istnieje", warnings[0].message)
+
+
+OLD_BUGBOT = """\
+# Bugbot
+
+## Frontend
+
+- UI w `frontend/web/components/ui/` musi być czyste.
+- Klient z `frontend/src/api/generated/` regeneruj po zmianie API.
+- Zmiana `app.json` wymaga buildu natywnego.
+"""
+
+OLD_AGENTS = """\
+# AGENTS.md
+
+Hooki: `.claude/hooks/gate-push.sh` i `.claude/hooks/gate-destructive.sh`.
+"""
+
+
+def _kit_with_history(tmp: str) -> Path:
+    """Kit z gitem: stare wersje szablonów, potem aktualne (historia jak w `bugbot_md`)."""
+    kit = Path(tmp) / "kit"
+    bugbot = _write(kit / "templates" / "cursor" / "BUGBOT.md", OLD_BUGBOT)
+    agents = _write(kit / "templates" / "AGENTS.md", OLD_AGENTS)
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(kit), *args],
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@test.local")
+    git("config", "user.name", "test")
+    git("add", ".")
+    git("commit", "-q", "-m", "old")
+    _write(bugbot, "# Bugbot\n\n<!-- project:rules -->\n<!-- /project:rules -->\n")
+    _write(agents, "# AGENTS.md\n\nGuardy: `git-guard.mjs`.\n")
+    git("commit", "-q", "-am", "current")
+    return kit
+
+
+class TestStaleKitContent(unittest.TestCase):
+    """#266: treść starej wersji szablonu kita to jedno zgłoszenie, nie N ścieżek."""
+
+    def _kit(self, tmp: str) -> Path:
+        try:
+            return _kit_with_history(tmp)
+        except (OSError, subprocess.CalledProcessError):
+            self.skipTest("brak gita w środowisku")
+
+    def test_bugbot_from_old_template_is_one_stale_kit_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", OLD_BUGBOT.replace("# Bugbot", "# Bugbot (nasz)"))
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual([w.kind for w in warnings], ["stale-kit-content"], warnings)
+            self.assertEqual(warnings[0].file, "BUGBOT.md")
+            self.assertIn("4 linie", warnings[0].message)  # nagłówek + 3 reguły
+
+    def test_agents_from_old_template_is_stale_kit_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "AGENTS.md", OLD_AGENTS)
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual([(w.kind, w.file) for w in warnings], [("stale-kit-content", "AGENTS.md")])
 
 
 class TestCommands(unittest.TestCase):

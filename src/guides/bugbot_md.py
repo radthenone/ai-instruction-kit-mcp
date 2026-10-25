@@ -6,7 +6,7 @@ przez reload bez zmian. Plik dostosowany przed wprowadzeniem bloku jest migrowan
 znajdujemy w historii ``templates/cursor/BUGBOT.md`` wersję najbliższą plikowi
 (najmniejszy diff), a linie dopisane względem niej przenosimy do bloku. Gdy migracja
 nie jest pewna (brak historii — np. instalacja z koła — albo za duży diff), plik
-zostaje bez zmian, a reload wypisuje instrukcję ręcznego przeniesienia.
+zostaje bez zmian, a reload wypisuje jedną linię z trybem naprawy (#266).
 
 Moduł jest stdlib-only: bootstrap woła go przez ``scripts/bugbot_md.py``.
 """
@@ -248,12 +248,10 @@ def _migration_message(moved: Sequence[str], label: str = "BUGBOT.md") -> str:
 
 
 def _uncertain_message(reason: str, label: str = "BUGBOT.md") -> str:
-    return "\n".join(
-        [
-            f"  ! {label}: nie przeniosłem reguł projektu do bloku project:rules ({reason}).",
-            "    Plik bez zmian — przenieś własne reguły ręcznie między",
-            f"    {BLOCK_OPEN} i {BLOCK_CLOSE}, potem uruchom reload ponownie.",
-        ]
+    # Jedna linia z trybem naprawy (#266) — przeniesienie reguł robi tryb C, nie człowiek.
+    return (
+        f"  ! {label}: bez zmian, reguły projektu nie trafiły do bloku project:rules "
+        f'({reason}) → /kit-project-edit "napraw zgłoszenia doctora"'
     )
 
 

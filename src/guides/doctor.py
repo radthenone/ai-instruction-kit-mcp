@@ -28,6 +28,7 @@ from pathlib import Path
 
 import yaml
 
+from guides.bugbot_md import read_template_history
 from guides.clients import expand_clients, parse_clients
 
 RULE_FILES: tuple[str, ...] = (
@@ -474,7 +475,8 @@ def _path_findings(
         line_start = text.rfind("\n", 0, match.start()) + 1
         line_end = text.find("\n", match.start())
         line_text = text[line_start : None if line_end < 0 else line_end]
-        if _URL_CONTEXT.search(line_text):
+        # Prozę linii bez inline-code: `/api/` wewnątrz samej ścieżki to nie trasa.
+        if _URL_CONTEXT.search(_INLINE_CODE.sub("", line_text)):
             continue
         exists = _exists(workspace, value, layout)
         if _NEGATION.search(text[line_start : match.start()]):
@@ -550,6 +552,35 @@ def _kit_template_lines(
         for number, line in enumerate(text.splitlines(), start=1)
         if line.strip() in kit_lines
     }
+
+
+def _stale_kit_lines(
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool
+) -> set[int]:
+    """
+    Linie równe historycznej (nie aktualnej) wersji szablonu kita (#266, R2/R3).
+
+    Plik zamrożony na starej wersji szablonu to przestarzała treść kita, a nie
+    reguły użytkownika — historię czytamy z gita kita tylko, gdy plik ma linie
+    spoza aktualnego szablonu.
+    """
+    template = KIT_TEMPLATES.get(rel)
+    if is_kit or kit_root is None or template is None:
+        return set()
+    current = {line.strip() for line in _read(kit_root / template).splitlines()}
+    own = {
+        number: line.strip()
+        for number, line in enumerate(text.splitlines(), start=1)
+        if line.strip() and line.strip() not in current
+    }
+    if not own:
+        return set()
+    history = {
+        line.strip()
+        for version in read_template_history(kit_root, template)
+        for line in version.splitlines()
+    } - current
+    return {number for number, line in own.items() if line in history}
 
 
 def _command_findings(
@@ -847,6 +878,20 @@ def run_doctor(
             continue
         text = _read(path)
         skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit)
+        stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit)
+        if stale:
+            skip_lines |= stale
+            findings.append(
+                Finding(
+                    "warning",
+                    rel,
+                    None,
+                    f"{_plural(len(stale), 'linia', 'linie', 'linii')} ze starej wersji "
+                    "szablonu kita — odśwież plik (`/kit-project-edit "
+                    '"napraw zgłoszenia doctora"`)',
+                    "stale-kit-content",
+                )
+            )
         findings.extend(
             _path_findings(
                 rel,

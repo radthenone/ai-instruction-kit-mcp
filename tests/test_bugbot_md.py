@@ -264,6 +264,9 @@ class TestMigration(unittest.TestCase):
             self.assertEqual(result.action, "uncertain")
             self.assertEqual(dest.read_text(encoding="utf-8"), dest_text)
             self.assertIn("project:rules", result.message)
+            # #266: jedna linia z trybem naprawy zamiast instrukcji ręcznego przenoszenia.
+            self.assertEqual(len(result.message.splitlines()), 1, result.message)
+            self.assertIn('/kit-project-edit "napraw zgłoszenia doctora"', result.message)
 
     def test_migration_message_lists_moved_lines(self) -> None:
         dest_text = render(OLD_TEMPLATE, "") + "\n- Moja reguła A\n- Moja reguła B\n"
