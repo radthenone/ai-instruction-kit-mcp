@@ -732,9 +732,7 @@ install_headless() {
 # Watchdog nocy /night-run (#249): skrypt odpalany przez Bash w tle — tylko z klientem claude
 # (tam działa `run_in_background`). Bez claude albo z --skip-agents: usuwany przy reloadzie.
 install_night_run_watchdog() {
-  local c has_claude=0
-  for c in "${CLIENTS_LIST[@]}"; do [[ "$c" == claude ]] && has_claude=1; done
-  if [[ "$has_claude" -ne 1 || "$SKIP_AGENTS" -ne 0 ]]; then
+  if ! client_enabled claude || [[ "$SKIP_AGENTS" -ne 0 ]]; then
     kit_rm .ai/night-run-watchdog.sh
     return 0
   fi
