@@ -24,7 +24,9 @@ from guides.matt_contract import (
     has_matt_skills,
     merge_agent_skills,
     remove,
+    render_domain,
     sync,
+    triage_labels,
 )
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -185,6 +187,44 @@ class TestContractFiles(unittest.TestCase):
             for path in (workspace / "docs/agents").glob("*.md"):
                 with self.subTest(path=path.name):
                     self.assertNotIn(b"\r\n", path.read_bytes())
+
+
+    def test_crlf_seeds_render_as_lf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp, seeds=False)
+            crlf = {name: text.replace("\n", "\r\n") for name, text in (
+                ("tracker", SEED_ISSUE_TRACKER), ("triage", SEED_TRIAGE), ("domain", SEED_DOMAIN))}
+            target = workspace / SEED_DIR
+            target.mkdir(parents=True)
+            for seed, key in (("issue-tracker-github.md", "tracker"),
+                              ("triage-labels.md", "triage"), ("domain.md", "domain")):
+                (target / seed).write_bytes(crlf[key].encode("utf-8"))
+            sync(workspace, KIT_ROOT)
+            for name in ("issue-tracker.md", "triage-labels.md", "domain.md"):
+                with self.subTest(path=name):
+                    self.assertNotIn(b"\r", (workspace / "docs/agents" / name).read_bytes())
+
+    def test_triage_labels_follow_kit_labels_tsv(self) -> None:
+        kit_names = {
+            line.split("\t", 1)[0]
+            for line in _read(KIT_ROOT / "templates/shared/labels.tsv").splitlines()
+        }
+        labels = triage_labels(KIT_ROOT)
+        self.assertTrue(labels)
+        self.assertTrue(all(name in kit_names for _, name in labels))
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = Path(tmp)
+            (kit / "templates/shared").mkdir(parents=True)
+            (kit / "templates/shared/labels.tsv").write_text(
+                "needs-triage\tFBCA04\tx\talways\n", encoding="utf-8")
+            self.assertEqual(triage_labels(kit), (("needs-triage", "needs-triage"),))
+
+    def test_domain_replaces_only_glossary_file_names(self) -> None:
+        seed = "# Domain\n\nRead `GLOSSARY.md` and `GLOSSARY-MAP.md`. A GLOSSARY term stays.\n"
+        text = render_domain(seed, "single-context")
+        self.assertIn("`CONTEXT.md`", text)
+        self.assertIn("`CONTEXT-MAP.md`", text)
+        self.assertIn("A GLOSSARY term stays.", text)
 
 
 class TestAgentSkillsBlock(unittest.TestCase):

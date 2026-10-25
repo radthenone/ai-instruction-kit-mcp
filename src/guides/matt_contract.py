@@ -31,10 +31,11 @@ AGENT_SKILLS_HEADING = "## Agent skills"
 
 # Kolejność jak w ``templates/shared/labels.tsv`` — to samo źródło co ``ensure_labels``.
 STATE_LABELS = ("needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix")
-DEFAULT_TRIAGE = tuple((label, label) for label in STATE_LABELS)
 
 _HEADING_RE = re.compile(r"(?m)^## Agent skills[ \t]*$")
 _NEXT_SECTION_RE = re.compile(r"(?m)^## ")
+# Tylko nazwy plików słownika z ziarna Matta — inne wystąpienia słowa zostają.
+_GLOSSARY_RE = re.compile(r"\bGLOSSARY(?=(?:-MAP)?\.md\b)")
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,10 @@ def triage_labels(kit_root: Path) -> tuple[tuple[str, str], ...]:
     """
     Role triage z kita → nazwy etykiet (to samo źródło co ``ensure_labels``).
 
+    ``labels.tsv`` ma jedną kolumnę nazwy (pierwszą); kit nazywa etykiety stanu
+    tak jak role Matta, więc rola trafia do mapy tylko wtedy, gdy ``labels.tsv``
+    ma etykietę o tej nazwie. Rola bez etykiety w kicie zostaje z wartością ziarna.
+
     Args:
         kit_root: Root instruction-kita (``templates/shared/labels.tsv``).
 
@@ -97,13 +102,10 @@ def triage_labels(kit_root: Path) -> tuple[tuple[str, str], ...]:
         tuple: Pary ``(rola, nazwa etykiety)`` w kolejności ``STATE_LABELS``.
     """
     path = kit_root / "templates" / "shared" / "labels.tsv"
-    known: dict[str, str] = {}
-    if path.is_file():
-        for line in _read(path).splitlines():
-            cells = line.split("\t")
-            if len(cells) >= 2 and cells[0] in STATE_LABELS:
-                known[cells[0]] = cells[0]
-    return tuple((role, known.get(role, role)) for role in STATE_LABELS)
+    if not path.is_file():
+        return ()
+    names = {line.split("\t", 1)[0] for line in _read(path).splitlines()}
+    return tuple((role, role) for role in STATE_LABELS if role in names)
 
 
 def render_triage_labels(seed: str, labels: tuple[tuple[str, str], ...]) -> str:
@@ -150,7 +152,7 @@ def render_domain(seed: str, layout: str) -> str:
     Returns:
         str: Treść ``docs/agents/domain.md`` (LF).
     """
-    text = seed.replace("GLOSSARY", "CONTEXT")
+    text = _GLOSSARY_RE.sub("CONTEXT", seed)
     if layout == "multi-context":
         note = (
             "**Layout in this repo:** multi-context (`CONTEXT-MAP.md` with per-context "

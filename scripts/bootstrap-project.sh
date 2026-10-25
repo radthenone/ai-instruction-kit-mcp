@@ -1189,13 +1189,14 @@ PY
 remove_kit() {
   local id
   echo "Usuwanie instruction-kit → $TARGET"
+  # Kontrakt Matta i indeks standardów — tylko gdy to nietknięty render kita (#241).
+  # Przed porównaniem AGENTS.md z szablonem: zdejmujemy blok `## Agent skills`, żeby
+  # plik utworzony przez kit znów był identyczny z szablonem. Przed prune_client,
+  # żeby porównanie z renderem widziało repo (ziarna, źródła indeksu) jak przy reloadzie.
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/matt_contract.py" "$TARGET" "$KIT_ROOT" --remove
   for id in cursor claude codex vscode kiro kilo antigravity opencode; do
     prune_client "$id"
   done
-  # Kontrakt Matta i indeks standardów — tylko gdy to nietknięty render kita (#241).
-  # Przed porównaniem AGENTS.md z szablonem: zdejmujemy blok `## Agent skills`, żeby
-  # plik utworzony przez kit znów był identyczny z szablonem.
-  "$PYTHON_BIN" "$KIT_ROOT/scripts/matt_contract.py" "$TARGET" "$KIT_ROOT" --remove
   # Pliki tworzone raz: tylko gdy identyczne z szablonem — zmienione należą do użytkownika.
   if [[ -f "$TARGET/AGENTS.md" ]] && cmp -s "$TARGET/AGENTS.md" "$KIT_ROOT/templates/AGENTS.md"; then
     kit_rm AGENTS.md
