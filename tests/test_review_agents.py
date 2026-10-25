@@ -154,24 +154,29 @@ class TestReviewSecurityContent(unittest.TestCase):
         self.assertIn("| Severity | Location | Finding | Fix |", self.text)
 
     def test_security_areas(self) -> None:
-        areas = (
-            "CSRF",
-            "MFA",
-            "token",
-            "ACL",
-            "IDOR",
-            "webhook",
-            "idempotenc",
-            "sekrety",
-            "dane osobowe",
-            "log",
-            "URL",
-            "limit",
-            "auth",
-        )
-        for needle in areas:
-            with self.subTest(area=needle):
-                self.assertIn(needle.lower(), self.text.lower())
+        # Punkt checklisty = `N. **Nagłówek** — treść` aż do następnego punktu.
+        # Usunięcie punktu albo jego kluczowego terminu ma wywalić test.
+        items = {
+            match.group(1): match.group(2)
+            for match in re.finditer(
+                r"^\d+\. \*\*(.+?)\*\*(.*?)(?=^\d+\. \*\*|^## |\Z)",
+                self.text,
+                re.MULTILINE | re.DOTALL,
+            )
+        }
+        required = {
+            "Uwierzytelnianie i sesje": ("cookies", "CSRF", "token", "MFA"),
+            "ACL i izolacja danych per użytkownik": ("IDOR",),
+            "Webhooki": ("podpisu", "idempotencja"),
+            "Sekrety i dane osobowe": ("logach", "PII"),
+            "Tokeny w URL-ach": ("query string",),
+            "Limity żądań na endpointach auth": ("rate limit",),
+        }
+        for header, terms in required.items():
+            with self.subTest(area=header):
+                self.assertIn(header, items)
+                for term in terms:
+                    self.assertIn(term, items[header])
 
     def test_does_not_edit_files(self) -> None:
         self.assertIn("Nie edytujesz", self.text)
