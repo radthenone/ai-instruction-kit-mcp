@@ -18,24 +18,45 @@ class NightRunTakeoverTest(unittest.TestCase):
         self.assertIn("DOSŁOWNIE tą samą treścią", self.night)
 
     def test_limit_mode_switch_defaults_to_takeover(self) -> None:
-        self.assertIn("`limit: przejmij`", self.night)
-        self.assertIn("`limit: czekaj`", self.night)
-        self.assertIn("domyślny", self.night)
+        self.assertIn("`LIMIT: przejmij` (domyślny)", self.night)
+        self.assertIn("`LIMIT: czekaj`", self.night)
+        self.assertIn("zostaje powyższa pauza do resetu", self.night)
 
     def test_takeover_alias_goal_override_is_documented(self) -> None:
         self.assertIn("`przejęcie: <alias>`", self.night)
 
+    def test_orchestrator_resolves_limit_and_takeover_for_ticket_subagent(self) -> None:
+        # Subagent ticketu nie widzi tekstu celu — wartości rozstrzyga orkiestrator w łańcuchu.
+        chain = self.night.index("## Łańcuch na ticket")
+        self.assertIn("`LIMIT`", self.night[chain:])
+        self.assertIn("`PRZEJĘCIE`", self.night[chain:])
+
     def test_takeover_model_source_order(self) -> None:
-        self.assertIn("models.claude.takeover", self.night)
-        source_order = self.night.index("tekst celu") < self.night.index("models.claude.takeover")
-        self.assertTrue(source_order)
-        self.assertIn("model sesji", self.night)
+        chain = self.night.index("## Łańcuch na ticket")
+        goal = self.night.index("tekst celu", chain)
+        profile = self.night.index("models.claude.takeover", chain)
+        session = self.night.index("`sesja`", chain)
+        self.assertLess(goal, profile)
+        self.assertLess(profile, session)
+
+    def test_unknown_goal_alias_falls_back_to_session_with_report_note(self) -> None:
+        self.assertIn("nieznany alias przejęcia", self.night)
 
     def test_takeover_inherits_session_effort(self) -> None:
         self.assertIn("dziedziczy effort sesji", self.night)
 
     def test_takeover_commits_locally_and_keeps_nesting_limit(self) -> None:
-        self.assertIn("limit zagnieżdżenia 3", self.night)
+        self.assertIn("przy limicie zagnieżdżenia 3", self.night)
+        self.assertNotIn("przy limit zagnieżdżenia", self.night)
+
+    def test_failed_takeover_is_needs_human_not_a_wrapper_attempt(self) -> None:
+        self.assertIn("Przejęcie, które pada", self.night)
+        self.assertIn("needs-human", self.night)
+        self.assertIn("nie liczy się jako druga próba wrappera", self.night)
+
+    def test_report_has_takeover_executor_variant(self) -> None:
+        self.assertIn("opencode → przejęte (<model>, limit)", self.night)
+        self.assertIn("przejęcie: <model> (<źródło>)", self.night)
 
 
 if __name__ == "__main__":

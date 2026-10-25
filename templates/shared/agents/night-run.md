@@ -224,8 +224,11 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
    poprawiasz `## Stan`, jeśli hand-back zmienia krok. Z `/headless` kroki 2–3 promptu
-   zastępujesz linią „2–3. (z `/headless`)” z wpisanymi `EXEC`, `FLAGI` i `TREŚĆ`; bez
-   `/headless` tę linię usuwasz.
+   zastępujesz linią „2–3. (z `/headless`)” z wpisanymi `EXEC`, `FLAGI` i `TREŚĆ` oraz dwiema
+   rozstrzygniętymi wartościami: `LIMIT` (`przejmij` / `czekaj`; z tekstu celu `limit:`, brak → `przejmij`)
+   i `PRZEJĘCIE` (alias + źródło): (a) tekst celu `przejęcie: <alias>` (tylko ta noc), (b) Profil
+   `models.claude.takeover`, (c) brak → `sesja` (model sesji). Alias z celu spoza `haiku`/`sonnet`/
+   `opus`/`fable` → `sesja` z wpisem w raporcie („nieznany alias przejęcia”). Bez `/headless` tę linię usuwasz.
 2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
    skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co
    uruchomienie review. Ze skillami review z argumentów: uruchamiasz je **Ty** według reguły
@@ -279,18 +282,17 @@ Kroki:
    `wznowienie <teraz+30 min> (epoch N)` — kolejne sprawdzenie, nie zgadywanie godziny.
    ISO+5 min liczy orkiestrator; linię zamyka sam watchdog (watchdog dopisuje `do`). Po wznowieniu wznawiasz
    ten sam ticket od kroku 2–3 (`/headless` od nowa, ten sam branch).
-   **Przejęcie zamiast czekania (#257).** Tryb z tekstu celu: `limit: przejmij` (domyślny) albo
-   `limit: czekaj` (wtedy zostaje powyższa pauza do resetu). Przy `limit: przejmij` kod 75 nie
-   czeka: uruchamiasz **subagenta przejęcia** (Agent z parametrem `model` = model przejęcia) z
-   DOSŁOWNIE tą samą treścią z cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem
-   wrappera (commity, `git status`, ostatnie linie) i stanem brancha. Model przejęcia, priorytet:
-   (a) tekst celu `przejęcie: <alias>` (tylko ta noc); (b) Profil `models.claude.takeover`
-   (`.ai/project.profile.yaml`); (c) brak → model sesji. Effort: bez parametru — subagent przejęcia
+   **Przejęcie zamiast czekania (#257).** Wartości `LIMIT` i `PRZEJĘCIE` z linii kroku 2–3
+   ustawia orkiestrator (łańcuch, krok 1). `LIMIT: czekaj` → zostaje powyższa pauza do resetu
+   (zachowanie z #250). `LIMIT: przejmij` (domyślny) → kod 75 nie czeka: uruchamiasz
+   **subagenta przejęcia** (Agent z parametrem `model` = model z `PRZEJĘCIE`) z DOSŁOWNIE tą samą treścią z
+   cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem wrappera (commity,
+   `git status`, ostatnie linie) i stanem brancha. Effort: bez parametru — subagent przejęcia
    dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; skill z `disable-model-invocation`
    przez odczyt jego `SKILL.md` i wykonanie treści. Przejęcie nie rusza niezacommitowanych zmian
-   (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limit zagnieżdżenia 3
+   (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limicie zagnieżdżenia 3
    (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
-   W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
+   Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
@@ -510,7 +512,12 @@ Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja g�
 | --- | --- | --- | --- | --- | --- | --- |
 | #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
+| #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
 | #J | skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
+
+Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
+nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako
+`przejęcie: <model> (<źródło>)`.
 
 Założenia: <co przyjęto bez danych z repo>
 Pomiar per agent: <wiersze ze snippetu>
