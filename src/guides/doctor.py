@@ -195,11 +195,19 @@ NODE_BUILTINS = frozenset(
 SOURCE_SUBDIRS = ("src", "app")
 
 _INLINE_CODE = re.compile(r"`([^`\n]+)`")
-# F4: zaprzeczenie przed backtickiem — overlay dokumentuje, czego w repo NIE ma.
-_NEGATION = re.compile(
-    r"\b(?:brak|nie istnieje|nie ma|nie zakładaj|no|not|does not exist|don't assume)\b",
-    re.IGNORECASE,
+# F4: overlay dokumentuje, czego w repo NIE ma. Liczy się tylko jednoznaczna fraza
+# tuż przed backtickiem (ewentualnie z dopowiedzeniem zakończonym dwukropkiem:
+# „Nie istnieje po stronie web:** `x/`”) albo tuż za nim — bez gołego no/not.
+_NEGATION_PHRASE = (
+    r"(?:brak|nie istniej\w*|nie ma|nie zakładaj|does not exist|doesn't exist|"
+    r"don't assume)"
 )
+_NEGATION_BEFORE = re.compile(
+    rf"\b{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?[\s*:]*$", re.IGNORECASE
+)
+_NEGATION_AFTER = re.compile(rf"^[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE)
+# Wcześniejsze pozycje tej samej listy (`a/`, `b/`, `c/`) — zaprzeczenie obejmuje całą listę.
+_CODE_LIST_TAIL = re.compile(r"(?:`[^`\n]*`\s*,\s*)+$")
 # F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo.
 _URL_CONTEXT = re.compile(
     r"(?i:prefiks|endpoint|\broute|\burl\b)|/api/|\b(?:GET|POST|PUT|PATCH|DELETE)\b"
@@ -484,8 +492,11 @@ def _path_findings(
         if _URL_CONTEXT.search(_INLINE_CODE.sub("", line_text)):
             continue
         exists = _exists(workspace, value, layout)
-        if _NEGATION.search(text[line_start : match.start()]):
-            if exists:
+        before = _CODE_LIST_TAIL.sub("", text[line_start : match.start()])
+        after = text[match.end() : None if line_end < 0 else line_end]
+        if _NEGATION_BEFORE.search(before) or _NEGATION_AFTER.search(after):
+            # „Overlay twierdzi, że nie istnieje” — tylko overlay opisuje brak celowo.
+            if exists and rel == OVERLAY_FILE:
                 reported.add((rel, line, value))
                 findings.append(
                     Finding(

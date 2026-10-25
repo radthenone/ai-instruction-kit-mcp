@@ -318,13 +318,51 @@ class TestFalsePositives(unittest.TestCase):
     def test_negated_path_that_exists_warns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _monorepo(tmp)
-            _write(workspace / "AGENTS.md", "- Brak `backend/src/core/` w tym repo.\n")
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY + "- Brak `backend/src/core/` w tym repo.\n",
+            )
 
             warnings = _report(workspace).warnings
 
             self.assertEqual(len(warnings), 1, warnings)
             self.assertEqual(warnings[0].kind, "negated-path-exists")
             self.assertIn("nie istnieje, a istnieje", warnings[0].message)
+
+    def test_negated_existing_path_outside_overlay_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "AGENTS.md", "- Brak `backend/src/core/` w tym repo.\n")
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_negation_word_far_from_backtick_does_not_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            (workspace / "tests").mkdir()
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY
+                + "- Do not edit `backend/src/core/envs.py` ręcznie.\n"
+                + "- Brak testów → `tests/`.\n"
+                + "- No raw SQL outside `backend/src/db/`.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(
+                [(w.kind, w.value) for w in warnings], [("stale-path", "backend/src/db/")]
+            )
+
+    def test_negation_after_backtick_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY + "- `features/orders/` nie istnieje po stronie web.\n",
+            )
+
+            self.assertEqual(_report(workspace).warnings, ())
 
 
 OLD_BUGBOT = """\
