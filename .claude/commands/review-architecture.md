@@ -5,6 +5,8 @@ argument-hint: [args]
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review.

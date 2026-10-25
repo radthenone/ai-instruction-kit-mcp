@@ -46,6 +46,7 @@ Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Na VPS \`uv run\` zawsze z \`--no-sync\`.
 - Maks. 2 próby naprawy tego samego błędu, potem stop i opis w sekcji Problemy raportu.
 - Nie pushuj i nie otwieraj PR — zrobi to host po review.
+- Język odpowiedzi i raportu: język \`language\` z Profilu (\`get_language\`), niezależnie od języka wejścia.
 - Na końcu raport w tym formacie:
 ## Zmiany
 <pliki i co w nich zmieniono>
