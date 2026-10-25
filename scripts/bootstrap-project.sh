@@ -729,6 +729,20 @@ install_headless() {
   echo "  + .ai/headless.mjs (/headless — wykonawcy: $HEADLESS_EXECUTORS)"
 }
 
+# Watchdog nocy /night-run (#249): skrypt odpalany przez Bash w tle — tylko z klientem claude
+# (tam działa `run_in_background`). Bez claude albo z --skip-agents: usuwany przy reloadzie.
+install_night_run_watchdog() {
+  local c has_claude=0
+  for c in "${CLIENTS_LIST[@]}"; do [[ "$c" == claude ]] && has_claude=1; done
+  if [[ "$has_claude" -ne 1 || "$SKIP_AGENTS" -ne 0 ]]; then
+    kit_rm .ai/night-run-watchdog.sh
+    return 0
+  fi
+  cp "$KIT_ROOT/templates/shared/night-run/watchdog.sh" "$TARGET/.ai/night-run-watchdog.sh"
+  chmod +x "$TARGET/.ai/night-run-watchdog.sh"
+  echo "  + .ai/night-run-watchdog.sh (watchdog /night-run)"
+}
+
 # Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
 # (mapa 1:1 z copy_shared_agents / copy_claude_commands / install_codex_agents /
 # render_agent_commands). Tier zmieniony na `none` = agenci znikają przy reload.
@@ -1231,6 +1245,7 @@ remove_kit() {
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
   kit_rm .ai/headless.mjs
+  kit_rm .ai/night-run-watchdog.sh
   kit_rm "$DESIGN_HANDOFF"
   echo ""
   echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
@@ -1298,6 +1313,7 @@ for c in "${CLIENTS_LIST[@]}"; do
 done
 
 install_headless
+install_night_run_watchdog
 install_design_handoff
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then

@@ -13,6 +13,8 @@ import time
 import unittest
 from pathlib import Path
 
+from guides.bootstrap import run_bootstrap
+
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = KIT_ROOT / "templates" / "shared" / "night-run" / "watchdog.sh"
 
@@ -98,6 +100,21 @@ class TestWatchdogScript(unittest.TestCase):
         result = self._run("0", "0")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("anomalia", result.stdout)
+
+
+class TestWatchdogInstall(unittest.TestCase):
+    """Instalacja .ai/night-run-watchdog.sh tylko z klientem claude (#249)."""
+
+    def test_installed_for_claude_and_removed_without_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
+            target = workspace / ".ai/night-run-watchdog.sh"
+            self.assertEqual(target.read_bytes(), SCRIPT.read_bytes())
+            self.assertTrue(os.access(target, os.X_OK))
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="codex,cursor")
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":
