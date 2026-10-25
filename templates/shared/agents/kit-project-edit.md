@@ -45,7 +45,7 @@ Cały wywiad od zera: /kit-project-begin
    | `codegen` | Profil | `orval` \| `none` \| `graphql` |
    | `clients` | Profil | `all` albo lista z MCP `get_clients` |
    | `language` | Profil | `pl` \| `en` |
-   | Model przejęcia ticketu nocnego (#257) | Profil `models:` → `claude:` → `takeover` | `haiku` \| `sonnet` \| `opus` \| `fable` (tylko Claude; brak = model sesji) |
+   | Model przejęcia ticketu nocnego (#257) | Profil: `models.claude.takeover` | `haiku` \| `sonnet` \| `opus` \| `fable` (tylko Claude; brak = model sesji) |
    | Pytanie tak/nie (docker, taskfile, ci-cd, …) | Profil `include:` / `patterns:` | Wpisy z linii `Zapis` pytania |
    | Ścieżka Tieru, inna sekcja | `.ai/project.md` | Tekst użytkownika |
    | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (wyjątki `allow` wygrywają z deny) |
