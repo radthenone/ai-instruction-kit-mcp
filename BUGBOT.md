@@ -1,6 +1,16 @@
-# Bugbot — reguły projektu (monorepo Django + Expo)
+# Bugbot — reguły projektu
 
-Dostosuj ścieżki i taski do `.ai/project.md`. Bugbot ładuje ten plik przy review PR.
+Sekcje Tierów (backend, web/mobile) Bootstrap zostawia tylko dla Tierów wybranych w `.ai/project.profile.yaml`.
+Stack każdego Tieru: MCP `get_bundle`. Dostosuj ścieżki i taski do `.ai/project.md` (sekcja `## Ścieżki`). Bugbot ładuje ten plik przy review PR.
+
+## Reguły projektu
+
+<!-- project:rules -->
+If the diff adds or renames a function, class, or test (`test_*`, `class Test*`; strings in `describe`/`it` are prose, not names) with a non-English name:
+
+- Add a blocking bug titled "Non-English identifier"
+- Body: "Nazwy funkcji, klas i testów po angielsku (terminy z nagłówków `CONTEXT.md`, jeśli istnieje); opis zachowania w docstringu."
+<!-- /project:rules -->
 
 ## Ogólne
 
@@ -12,38 +22,6 @@ If the diff adds or renames a function, class, or test (`test_*`, `class Test*`;
 
 - Add a blocking bug titled "Non-English identifier"
 - Body: "Nazwy funkcji, klas i testów po angielsku (terminy z nagłówków `CONTEXT.md`, jeśli istnieje); opis zachowania w docstringu."
-
-## Backend (`backend/`)
-
-If the PR modifies files under `backend/` and there are no changes in `backend/**/test*.py`, `backend/**/tests/**`, or `backend/**/*_test.py`:
-
-- Add a blocking bug titled "Missing tests for backend changes"
-- Body: "Dodaj lub zaktualizuj testy pytest dla zmian w backendzie."
-
-If changed files include serializers, viewsets, urls, or models affecting API
-**and** the project uses Orval (`codegen: orval` in `.ai/project.md` / extras, or REST+FE without `codegen: manual|none`):
-
-- Add a blocking bug unless `frontend/src/api/generated/` or Orval output was regenerated.
-- Body: "Po zmianie kontraktu API uruchom `task ovral:generate` i commituj wygenerowany klient."
-
-If overlay says `codegen: manual` or `codegen: none`: do **not** require Orval regeneration.
-
-If any changed Python file lacks type hints on new public functions:
-
-- Add a non-blocking finding per `core:typing-python`.
-
-Flag `eval(`, `exec(`, raw SQL string concatenation with user input, and `permission_classes = []` on new viewsets without justification.
-
-## Frontend (`frontend/`)
-
-If the PR modifies `frontend/` without `task lints:frontend:typecheck` passing (assume CI will catch — flag risky patterns):
-
-- Flag imports from `react-native` in `.web.tsx` files.
-- Flag `any` on new public interfaces without `@ts-expect-error` justification.
-
-If Expo native modules or `app.json` plugins change without EAS note in PR description:
-
-- Add a non-blocking finding: "Zmiana native — wymaga EAS build, nie tylko OTA."
 
 ## Auth, ACL, płatności
 
