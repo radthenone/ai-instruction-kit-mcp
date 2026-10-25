@@ -22,11 +22,18 @@ import json
 import os
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import yaml
 
+from guides.bugbot_md import (
+    PATH_PLACEHOLDER,
+    overlay_path_entries,
+    read_template_history,
+    render_paths,
+)
+from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
 
 RULE_FILES: tuple[str, ...] = (
@@ -45,6 +52,9 @@ KIT_TEMPLATES: dict[str, str] = {
     "BUGBOT.md": "templates/cursor/BUGBOT.md",
 }
 AGENT_TEMPLATES = "templates/shared/agents"
+
+# Pliki reguł, których część kitową odświeża się ręcznie — tryb C ich nie zapisuje.
+MANUAL_REFRESH_FILES = frozenset({"AGENTS.md"})
 
 # Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
 # Ich brak to brak warstwy zewnętrznej — nie rozjazd reguł projektu — więc doctor
@@ -132,7 +142,10 @@ KIT_ONLY_ROOTS = frozenset({"templates", "modules", "manifest.yaml"})
 # Katalogi pomijane przy szukaniu gołej nazwy pliku: zależności i artefakty
 # narzędzi (wolne, a plik z ``node_modules`` maskowałby brak w projekcie).
 SEARCH_SKIP_DIRS = frozenset(
-    {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".tox"}
+    {
+        ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".tox",
+        ".next", "target", "coverage", ".cache", ".mypy_cache", "vendor", ".turbo", "out",
+    }
 )
 
 # Katalogi konfiguracji klientów. Ścieżkę klienta spoza ``clients:`` pomijamy —
@@ -161,19 +174,65 @@ COMMAND_SURFACES: dict[str, tuple[str, ...]] = {
     "opencode": (".opencode/command/*.md",),
 }
 
+# Znane rozszerzenia plików (F3, #266): goła nazwa z kropką bez nich to zwykle
+# atrybut albo wyrażenie (`request.user`), nie plik — liczy się tylko, gdy istnieje.
+FILE_EXTENSIONS = frozenset(
+    {
+        "py", "pyi", "js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts", "vue",
+        "svelte", "json", "jsonc", "yaml", "yml", "toml", "ini", "cfg", "conf", "env",
+        "lock", "lockb", "md", "mdx", "mdc", "txt", "rst", "html", "css", "scss",
+        "sass", "less", "sh", "bash", "ps1", "bat", "sql", "go", "rs", "java", "kt",
+        "kts", "swift", "rb", "php", "cs", "c", "h", "cpp", "hpp", "dart", "xml",
+        "gradle", "properties", "graphql", "gql", "prisma", "proto", "svg", "png",
+        "jpg", "ipynb", "csv", "mod", "sum", "plist", "pem", "tf", "hcl", "ex", "lua",
+        "scala", "astro", "gif", "webp", "jpeg", "pdf", "ico", "j2", "tpl", "example",
+    }
+)
+
+# Moduły wbudowane Node — pierwszy segment specyfikatora importu (F2, #266).
+NODE_BUILTINS = frozenset(
+    {
+        "assert", "buffer", "child_process", "crypto", "dns", "events", "fs", "http",
+        "https", "net", "os", "path", "process", "readline", "stream", "timers",
+        "url", "util", "worker_threads", "zlib",
+    }
+)
+
+# Podkatalogi źródeł sprawdzane pod każdym rootem z `## Ścieżki` (F1, #266).
+SOURCE_SUBDIRS = ("src", "app")
+
 _INLINE_CODE = re.compile(r"`([^`\n]+)`")
+# F4: overlay dokumentuje, czego w repo NIE ma. Liczy się tylko jednoznaczna fraza
+# tuż przed backtickiem (ewentualnie z dopowiedzeniem zakończonym dwukropkiem:
+# „Nie istnieje po stronie web:** `x/`”) albo tuż za nim — bez gołego no/not.
+_NEGATION_PHRASE = (
+    r"(?:brak|nie istniej\w*|nie ma|nie zakładaj|does not exist|doesn't exist|"
+    r"don't assume)"
+)
+_NEGATION_BEFORE = re.compile(
+    rf"\b{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?[\s*:]*$", re.IGNORECASE
+)
+_NEGATION_AFTER = re.compile(rf"^[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE)
+# Wcześniejsze pozycje tej samej listy (`a/`, `b/`, `c/`) — zaprzeczenie obejmuje całą listę.
+_CODE_LIST_TAIL = re.compile(r"(?:`[^`\n]*`\s*,\s*)+$")
+# F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo. Całe
+# słowa (``router``, ``Endpointy`` to nie kontekst trasy); segment ``api/…`` pomijamy
+# osobno, bez wycinania całej linii.
+_URL_CONTEXT = re.compile(
+    r"(?i:\bprefiks\w*|\bendpoints?\b|\broutes?\b|\burl\b)"
+    r"|\b(?:GET|POST|PUT|PATCH|DELETE)\b"
+)
 # Komenda: `/nazwa` albo `/nazwa-z-myslnikami`. Odrzuca fragmenty ścieżek
 # (`src/foo`, `/dev/null`), wildcardy (`/review-*`) i URL-e (`https://`).
 _COMMAND = re.compile(
     r"(?<![\w/.\-*?<>])/([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?![-\w/.*:]|\s*-->)"
 )
-_OVERLAY_SECTION = re.compile(r"^##\s+Ścieżki\s*$")
-_BULLET = re.compile(r"^\s*[-*]\s+([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$")
 _FILE_NAME = re.compile(r"[^/\\]+\.[A-Za-z][A-Za-z0-9]{0,5}")
 _DOMAIN = re.compile(
     r"[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|dev|ai|pl|co|app)(/.*)?$"
 )
 _DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+_WORD_CHARS = re.compile(r"[\W_]+")
 
 
 @dataclass(frozen=True)
@@ -185,18 +244,44 @@ class Finding:
         file: Ścieżka pliku względem repo aplikacji (albo kita dla szablonów agentów).
         line: Numer linii 1-based; ``None`` dla zgłoszeń o całym pliku.
         message: Co jest nie tak i co wskazuje.
+        kind: Klasa zgłoszenia (``stale-path``, ``negated-path-exists``,
+            ``missing-command``, ``undescribed-package``, ``invalid-clients``, …).
+        suggestion: Proponowana poprawka (np. jedyny kandydat w drzewie) albo ``None``.
+        value: Wartość z pliku, której dotyczy zgłoszenie (ścieżka) albo ``None``.
     """
 
     severity: str
     file: str
     line: int | None
     message: str
+    kind: str
+    suggestion: str | None = None
+    value: str | None = None
 
     def render(self) -> str:
         """Linia raportu zaczynająca się od ``doctor:``."""
         where = f"{self.file}:{self.line}" if self.line else self.file
         label = "OSTRZEŻENIE" if self.severity == "warning" else "INFO"
-        return f"doctor: {label} {where} — {self.message}"
+        hint = f" (propozycja: `{self.suggestion}`)" if self.suggestion else ""
+        return f"doctor: {label} {where} — {self.message}{hint}"
+
+
+@dataclass(frozen=True)
+class _Layout:
+    """Struktura repo liczona raz na przebieg doctora (#266).
+
+    Attributes:
+        roots: Katalogi, względem których rozwiązujemy ścieżki (``## Ścieżki``,
+            ich ``src/``/``app/`` i pakiety workspace'u).
+        dependencies: Pierwsze segmenty specyfikatorów modułów (zależności JS + moduły Node).
+        tree: Ścieżki względne repo bez katalogów narzędzi; katalogi z ``/`` na końcu.
+        names: Indeks ostatnich segmentów ``tree`` — szukanie gołej nazwy w O(1).
+    """
+
+    roots: tuple[str, ...] = ()
+    dependencies: frozenset[str] = frozenset()
+    tree: tuple[str, ...] = ()
+    names: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -209,6 +294,19 @@ class DoctorReport:
     def warnings(self) -> tuple[Finding, ...]:
         """Zgłoszenia, które łamią regułę (nieistniejąca ścieżka albo komenda)."""
         return tuple(finding for finding in self.findings if finding.severity == "warning")
+
+    @property
+    def fixable(self) -> tuple[Finding, ...]:
+        """Ostrzeżenia, które naprawia tryb C — tylko one liczą się do autostartu.
+
+        Przestarzałej treści ``AGENTS.md`` tryb C nie zapisuje (brak mechanizmu
+        odświeżania), więc liczenie jej dawałoby przypomnienie po każdym reloadzie.
+        """
+        return tuple(
+            finding
+            for finding in self.warnings
+            if not (finding.kind == "stale-kit-content" and finding.file in MANUAL_REFRESH_FILES)
+        )
 
     @property
     def infos(self) -> tuple[Finding, ...]:
@@ -224,6 +322,18 @@ class DoctorReport:
             f"{_plural(len(self.infos), 'informacja', 'informacje', 'informacji')}"
         )
         return "\n".join([header, *(finding.render() for finding in self.findings)])
+
+    def to_json(self) -> str:
+        """Wynik maszynowy dla trybu C i MCP (#266) — bez parsowania linii ``doctor:``."""
+        return json.dumps(
+            {
+                "warnings": len(self.warnings),
+                "infos": len(self.infos),
+                "findings": [asdict(finding) for finding in self.findings],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
 
 
 def _plural(count: int, one: str, few: str, many: str) -> str:
@@ -279,19 +389,67 @@ def _normalise_path(raw: str) -> str | None:
     return value
 
 
-def _exists(workspace: Path, value: str) -> bool:
-    """Czy ścieżka istnieje; goła nazwa pliku może leżeć w podkatalogu."""
-    if (workspace / value).exists():
-        return True
-    if "/" in value:
-        return False
+def _tree(workspace: Path) -> tuple[str, ...]:
+    """Ścieżki względne repo (katalogi z ``/``), bez zależności i artefaktów narzędzi."""
+    entries: list[str] = []
     # os.walk ignoruje błędy odczytu katalogów (onerror=None) — brak uprawnień
     # do podkatalogu nie wywraca doctora.
-    for _root, dirs, files in os.walk(workspace):
-        dirs[:] = [name for name in dirs if name not in SEARCH_SKIP_DIRS]
-        if value in files or value in dirs:
-            return True
-    return False
+    for root, dirs, files in os.walk(workspace):
+        dirs[:] = sorted(name for name in dirs if name not in SEARCH_SKIP_DIRS)
+        base = Path(root).relative_to(workspace).as_posix()
+        prefix = "" if base == "." else f"{base}/"
+        entries.extend(f"{prefix}{name}/" for name in dirs)
+        entries.extend(f"{prefix}{name}" for name in sorted(files))
+    return tuple(entries)
+
+
+def _exists(workspace: Path, value: str, layout: _Layout) -> bool:
+    """
+    Czy ścieżka istnieje — od roota repo, a gdy nie, względem rootów Tierów (F1).
+
+    Goła nazwa pliku albo katalogu (``server.py``, ``ui/``) może leżeć w dowolnym
+    podkatalogu (F6) — overlay używa ich jako skrótu.
+    """
+    if (workspace / value).exists():
+        return True
+    name = value.rstrip("/")
+    if "/" not in name:
+        return name in layout.names
+    return any((workspace / root / value).exists() for root in layout.roots)
+
+
+def _suggest(value: str, layout: _Layout) -> str | None:
+    """
+    Jedyny kandydat w drzewie po najdłuższym pasującym ogonie ścieżki.
+
+    ``frontend/web/components/ui/`` → ``frontend/web/src/components/ui/``, gdy
+    ``components/ui/`` występuje w repo dokładnie raz. Kilku kandydatów → ``None``.
+    """
+    segments = value.rstrip("/").split("/")
+    want_dir = value.endswith("/")
+    for size in range(len(segments), 0, -1):
+        tail = "/".join(segments[-size:])
+        candidates = [
+            entry
+            for entry in layout.tree
+            if (not want_dir or entry.endswith("/"))
+            and (entry.rstrip("/") == tail or entry.rstrip("/").endswith(f"/{tail}"))
+        ]
+        if candidates:
+            return candidates[0] if len(candidates) == 1 else None
+    return None
+
+
+def _is_module_specifier(value: str, layout: _Layout) -> bool:
+    """F2: ``next/navigation``, ``fs/promises`` — import zależności, nie ścieżka repo."""
+    head, _, rest = value.partition("/")
+    last = value.rstrip("/").rsplit("/", 1)[-1]
+    return bool(rest) and head in layout.dependencies and not _FILE_NAME.fullmatch(last)
+
+
+def _has_known_extension(value: str) -> bool:
+    """F3: czy goła nazwa ma rozszerzenie pliku (a nie np. atrybut ``.user``)."""
+    return value.rsplit(".", 1)[-1].lower() in FILE_EXTENSIONS
 
 
 def _command_name(path: Path) -> str:
@@ -337,8 +495,9 @@ def _path_findings(
     clients: set[str],
     kit_root: Path | None,
     is_kit: bool,
+    layout: _Layout,
 ) -> list[Finding]:
-    """Ścieżki w backtickach, których nie ma w drzewie."""
+    """Ścieżki w backtickach, których nie ma w drzewie (bez klas F1–F6 z #266)."""
     findings: list[Finding] = []
     for match in _INLINE_CODE.finditer(text):
         value = _normalise_path(match.group(1))
@@ -349,10 +508,46 @@ def _path_findings(
             continue
         if _skip_path(value, clients=clients, kit_root=kit_root, is_kit=is_kit):
             continue
-        if _exists(workspace, value):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.start())
+        line_text = text[line_start : None if line_end < 0 else line_end]
+        # Prozę linii bez inline-code: `/api/` wewnątrz samej ścieżki to nie trasa.
+        if _URL_CONTEXT.search(_INLINE_CODE.sub("", line_text)) or value.startswith("api/"):
+            continue
+        exists = _exists(workspace, value, layout)
+        before = _CODE_LIST_TAIL.sub("", text[line_start : match.start()])
+        after = text[match.end() : None if line_end < 0 else line_end]
+        if _NEGATION_BEFORE.search(before) or _NEGATION_AFTER.search(after):
+            # „Overlay twierdzi, że nie istnieje” — tylko overlay opisuje brak celowo.
+            if exists and rel == OVERLAY_FILE:
+                reported.add((rel, line, value))
+                findings.append(
+                    Finding(
+                        "warning",
+                        rel,
+                        line,
+                        f"overlay twierdzi, że `{value}` nie istnieje, a istnieje",
+                        "negated-path-exists",
+                        value=value,
+                    )
+                )
+            continue
+        if exists or _is_module_specifier(value, layout):
+            continue
+        if "/" not in value and not _has_known_extension(value):
             continue
         reported.add((rel, line, value))
-        findings.append(Finding("warning", rel, line, f"ścieżka `{value}` nie istnieje"))
+        findings.append(
+            Finding(
+                "warning",
+                rel,
+                line,
+                f"ścieżka `{value}` nie istnieje",
+                "stale-path",
+                _suggest(value, layout),
+                value,
+            )
+        )
     return findings
 
 
@@ -383,19 +578,95 @@ def _skip_path(
 
 
 def _kit_template_lines(
-    rel: str, text: str, kit_root: Path | None, *, is_kit: bool
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool, paths: dict[str, str]
 ) -> set[int]:
-    """Numery linii pliku reguł skopiowanych bez zmian z szablonu kita (repo aplikacji)."""
+    """Numery linii pliku reguł skopiowanych bez zmian z szablonu kita (repo aplikacji).
+
+    Szablon porównujemy po podstawieniu ``{{path:…}}`` ścieżkami overlayu — tak, jak
+    wyrenderował go reload (#266).
+    """
     template = KIT_TEMPLATES.get(rel)
     if is_kit or kit_root is None or template is None:
         return set()
-    kit_lines = {line.strip() for line in _read(kit_root / template).splitlines()}
+    kit_lines = {
+        line.strip() for line in render_paths(_read(kit_root / template), paths).splitlines()
+    }
     kit_lines.discard("")
     return {
         number
         for number, line in enumerate(text.splitlines(), start=1)
         if line.strip() in kit_lines
     }
+
+
+def _stale_kit_lines(
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool, paths: dict[str, str]
+) -> set[int]:
+    """
+    Linie równe historycznej (nie aktualnej) wersji szablonu kita (#266, R2/R3).
+
+    Plik zamrożony na starej wersji szablonu to przestarzała treść kita, a nie
+    reguły użytkownika — historię czytamy z gita kita tylko, gdy plik ma linie
+    spoza aktualnego szablonu (wyrenderowanego ścieżkami overlayu, jak robi to
+    reload). Krótkie linie i sama interpunkcja Markdowna (`## Frontend`, `---`) nie
+    są dowodem starej wersji.
+    """
+    template = KIT_TEMPLATES.get(rel)
+    if is_kit or kit_root is None or template is None:
+        return set()
+    current = {
+        line.strip() for line in render_paths(_read(kit_root / template), paths).splitlines()
+    }
+    own = {
+        number: line.strip()
+        for number, line in enumerate(text.splitlines(), start=1)
+        if line.strip() not in current and len(_WORD_CHARS.sub("", line)) >= 12
+    }
+    if not own:
+        return set()
+    history = {
+        line.strip()
+        for version in read_template_history(kit_root, template)
+        for line in render_paths(version, paths).splitlines()
+    } - current
+    return {number for number, line in own.items() if line in history}
+
+
+def _path_key_findings(
+    workspace: Path, kit_root: Path | None, paths: dict[str, str], layout: _Layout
+) -> list[Finding]:
+    """
+    Klucze ``## Ścieżki``, bez których reguła szablonu ``BUGBOT.md`` celuje w pustkę.
+
+    Brak klucza → reload renderuje wartość domyślną; zgłaszamy to tylko, gdy
+    domyślnej ścieżki nie ma w repo (reguła po cichu nigdy nie odpala, #266).
+    """
+    bugbot = workspace / "BUGBOT.md"
+    if kit_root is None or not bugbot.is_file():
+        return []
+    rendered = {line.strip() for line in _read(bugbot).splitlines()}
+    findings: list[Finding] = []
+    for line in _read(kit_root / KIT_TEMPLATES["BUGBOT.md"]).splitlines():
+        for key, default in PATH_PLACEHOLDER.findall(line):
+            if (
+                key in paths
+                or render_paths(line).strip() not in rendered
+                or (workspace / default).exists()
+            ):
+                continue
+            findings.append(
+                Finding(
+                    "warning",
+                    OVERLAY_FILE,
+                    None,
+                    f"brak klucza `{key}:` w `## Ścieżki` — reguła `BUGBOT.md` używa "
+                    f"domyślnej `{default}`, której nie ma w repo",
+                    "missing-path-key",
+                    _suggest(default, layout),
+                    key,
+                )
+            )
+    return findings
 
 
 def _command_findings(
@@ -428,32 +699,16 @@ def _command_findings(
                 line,
                 f"komenda `/{name}` nie ma agenta, komendy ani skilla "
                 f"u klientów: {clients_label}",
+                "missing-command",
             )
         )
     return findings
 
 
 def _overlay_paths(text: str) -> list[tuple[int, str, str]]:
-    """
-    Wpisy sekcji ``## Ścieżki`` overlayu jako ``(linia, klucz, ścieżka)``.
-
-    Wartość bierzemy z pierwszego inline-code w linii (``- backend: `backend/` ``),
-    a bez backticków — do myślnika/pauzy. Glob i placeholdery pomijamy.
-    """
+    """Wpisy ``## Ścieżki`` (wspólny parser z ``bugbot_md``) bez globów i placeholderów."""
     entries: list[tuple[int, str, str]] = []
-    in_section = False
-    for number, line in enumerate(text.splitlines(), start=1):
-        if line.startswith("## "):
-            in_section = bool(_OVERLAY_SECTION.match(line))
-            continue
-        if not in_section:
-            continue
-        bullet = _BULLET.match(line)
-        if bullet is None:
-            continue
-        key, rest = bullet.group(1), bullet.group(2)
-        code = _INLINE_CODE.search(rest)
-        raw = code.group(1) if code else re.split(r"\s+[—–-]\s+", rest)[0]
+    for number, key, raw in overlay_path_entries(text):
         value = _normalise_path(raw)
         if value is not None:
             entries.append((number, key, value))
@@ -464,21 +719,25 @@ def _overlay_findings(
     workspace: Path,
     text: str,
     reported: set[tuple[str, int, str]],
+    tree: tuple[str, ...],
 ) -> tuple[list[Finding], list[str]]:
-    """Walidacja kluczy ``## Ścieżki`` + lista ścieżek do opisu pakietów."""
+    """Walidacja kluczy ``## Ścieżki`` (katalog albo plik, F7) + lista ścieżek."""
     findings: list[Finding] = []
     paths: list[str] = []
     for line, key, value in _overlay_paths(text):
         paths.append(value)
         reported.add((OVERLAY_FILE, line, value))
-        if (workspace / value).is_dir():
+        if (workspace / value).exists():
             continue
         findings.append(
             Finding(
                 "warning",
                 OVERLAY_FILE,
                 line,
-                f"klucz `{key}:` wskazuje nieistniejący katalog `{value}`",
+                f"klucz `{key}:` wskazuje nieistniejącą ścieżkę `{value}`",
+                "stale-path",
+                _suggest(value, _Layout(tree=tree)),
+                value,
             )
         )
     return findings, paths
@@ -547,6 +806,39 @@ def _package_dirs(workspace: Path, patterns: list[str]) -> list[str]:
     return found
 
 
+def _dependency_names(workspace: Path, dirs: list[str]) -> set[str]:
+    """Nazwy zależności JS z ``package.json`` rootu i katalogów pakietów."""
+    names: set[str] = set()
+    for rel in ["", *dirs]:
+        package_json = workspace / rel / "package.json"
+        if package_json.is_file():
+            try:
+                data = json.loads(_read(package_json))
+            except json.JSONDecodeError:
+                data = {}
+            for key in ("dependencies", "devDependencies", "peerDependencies"):
+                section = data.get(key) if isinstance(data, dict) else None
+                if isinstance(section, dict):
+                    names.update(name for name in section if isinstance(name, str))
+    return names
+
+
+def _layout(workspace: Path, overlay_paths: list[str], tree: tuple[str, ...]) -> _Layout:
+    """Rooty Tierów, zależności i drzewo repo dla jednego przebiegu (#266)."""
+    packages = _package_dirs(workspace, _workspace_patterns(workspace))
+    roots: list[str] = []
+    for value in [*overlay_paths, *packages]:
+        base = value.rstrip("/")
+        for rel in (base, *(f"{base}/{sub}" for sub in SOURCE_SUBDIRS)):
+            if rel not in roots and (workspace / rel).is_dir():
+                roots.append(rel)
+    dependencies = _dependency_names(workspace, roots)
+    # Bez stdlib i zależności Pythona: `util/`, `json/` to częściej katalogi projektu.
+    dependencies |= NODE_BUILTINS
+    names = frozenset(entry.rstrip("/").rsplit("/", 1)[-1] for entry in tree)
+    return _Layout(tuple(roots), frozenset(dependencies), tree, names)
+
+
 def _described(rel: str, overlay_text: str, overlay_paths: list[str]) -> bool:
     """Czy overlay opisuje katalog pakietu (ścieżką, przodkiem albo globem)."""
     normalized = overlay_text.replace("\\", "/")
@@ -579,6 +871,7 @@ def _package_infos(
                 OVERLAY_FILE,
                 None,
                 f"katalog `{rel}/` z workspace'u nie jest opisany w `.ai/project.md`",
+                "undescribed-package",
             )
         )
     return findings
@@ -619,17 +912,24 @@ def run_doctor(
                 ".ai/project.profile.yaml",
                 None,
                 f"nieprawidłowe `clients: {clients}` — sprawdzam jak `all`",
+                "invalid-clients",
             )
         )
     clients_label = ", ".join(sorted(configured))
 
     overlay_text = ""
     overlay_paths: list[str] = []
+    tree = _tree(workspace)
     overlay = workspace / OVERLAY_FILE
     if overlay.is_file():
         overlay_text = _read(overlay)
-        overlay_findings, overlay_paths = _overlay_findings(workspace, overlay_text, reported)
+        overlay_findings, overlay_paths = _overlay_findings(
+            workspace, overlay_text, reported, tree
+        )
         findings.extend(overlay_findings)
+    layout = _layout(workspace, overlay_paths, tree)
+    path_keys = overlay_path_keys(overlay_text)
+    findings.extend(_path_key_findings(workspace, kit_root, path_keys, layout))
 
     available = _command_names(workspace, configured, is_kit=is_kit)
     for rel in RULE_FILES:
@@ -637,7 +937,25 @@ def run_doctor(
         if not path.is_file():
             continue
         text = _read(path)
-        skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit)
+        skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        if stale:
+            skip_lines |= stale
+            fix = (
+                f"porównaj z `{KIT_TEMPLATES[rel]}` kita i odśwież ręcznie"
+                if rel in MANUAL_REFRESH_FILES
+                else '`/kit-project-edit "napraw zgłoszenia doctora"`'
+            )
+            findings.append(
+                Finding(
+                    "warning",
+                    rel,
+                    None,
+                    f"{_plural(len(stale), 'linia', 'linie', 'linii')} ze starej wersji "
+                    f"szablonu kita — odśwież plik ({fix})",
+                    "stale-kit-content",
+                )
+            )
         findings.extend(
             _path_findings(
                 rel,
@@ -648,6 +966,7 @@ def run_doctor(
                 clients=configured,
                 kit_root=kit_root,
                 is_kit=is_kit,
+                layout=layout,
             )
         )
         findings.extend(_command_findings(rel, text, available, clients_label, skip_lines))

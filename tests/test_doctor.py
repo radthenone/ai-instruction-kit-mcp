@@ -5,12 +5,14 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from guides import cli, server
+from guides.bugbot_md import render as render_bugbot
 from guides.doctor import run_doctor
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -194,7 +196,8 @@ class TestOverlayPaths(unittest.TestCase):
             self.assertIn("web:", warnings[0].message)
             self.assertIn("frontend/web/", warnings[0].message)
 
-    def test_overlay_file_path_must_exist(self) -> None:
+    def test_overlay_key_may_point_to_existing_file(self) -> None:
+        """F7: klucz `## Ścieżki` wskazujący istniejący plik to nie rozjazd."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
             _write(
@@ -203,10 +206,20 @@ class TestOverlayPaths(unittest.TestCase):
             )
             _write(workspace / "Taskfile.yml", "version: 3\n")
 
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_overlay_key_pointing_to_missing_file_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                "## Ścieżki\n\n- Taskfile: `Taskfile.yml` — punkt wejścia\n",
+            )
+
             warnings = _report(workspace).warnings
 
             self.assertEqual(len(warnings), 1, warnings)
-            self.assertIn("Taskfile:", warnings[0].message)
+            self.assertIn("taskfile:", warnings[0].message)
 
     def test_overlay_path_is_not_reported_twice(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,6 +230,322 @@ class TestOverlayPaths(unittest.TestCase):
 
             self.assertEqual(len(warnings), 1, warnings)
             self.assertIn("backend:", warnings[0].message)
+
+
+MONOREPO_OVERLAY = """\
+# Overlay
+
+## Ścieżki
+
+- backend: `backend/`
+- frontend: `frontend/`
+- web: `frontend/web/`
+- mobile: `frontend/mobile/`
+- Taskfile: `Taskfile.yml` — główny punkt wejścia komend
+
+## Backend
+
+- Konfiguracja: `core/envs.py`, ceny: `apps/products/pricing.py`.
+- Web: `web/app/tokens.css`, mobile: `mobile/tailwind.config.js`.
+- Nawigacja przez `next/navigation`, użytkownik z `request.user`.
+- **Brak `apps/files`** — pliki trzymamy w S3.
+- **Nie istnieje po stronie frontendu:** `features/catalog`, `features/cart`.
+- API przez DRF pod prefiksem `customers/` (`customers/profile`, `customers/addresses`).
+- Komponenty w `ui/`, layout w `app/`, helpery w `src/lib/`.
+"""
+
+
+def _monorepo(tmp: str) -> Path:
+    """Fikstura #266: backend + web + mobile + pakiety workspace'u."""
+    workspace = _workspace(tmp)
+    for rel in (
+        "backend/src/core/envs.py",
+        "backend/src/apps/products/pricing.py",
+        "frontend/web/src/components/ui/button.tsx",
+        "frontend/web/src/lib/utils.ts",
+        "frontend/web/app/tokens.css",
+        "frontend/mobile/tailwind.config.js",
+        "frontend/packages/api/generated/index.ts",
+        "Taskfile.yml",
+    ):
+        _write(workspace / rel, "")
+    _write(
+        workspace / "package.json",
+        json.dumps({"workspaces": ["frontend/packages/*", "frontend/web", "frontend/mobile"]}),
+    )
+    _write(workspace / "frontend/web/package.json", json.dumps({"dependencies": {"next": "15"}}))
+    _write(workspace / "frontend/packages/api/package.json", "{}")
+    _write(workspace / ".ai" / "project.md", MONOREPO_OVERLAY)
+    return workspace
+
+
+class TestFalsePositives(unittest.TestCase):
+    """#266: klasy F1–F7 nie dają ostrzeżeń, realny rozjazd — jedno z propozycją."""
+
+    def test_monorepo_overlay_with_every_false_positive_class_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+
+            report = _report(workspace)
+
+            self.assertEqual(report.warnings, (), report.render())
+
+    def test_real_stale_path_warns_once_with_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / "BUGBOT.md",
+                "<!-- project:rules -->\nUI: `frontend/web/components/ui/`.\n"
+                "<!-- /project:rules -->\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertEqual(warnings[0].kind, "stale-path")
+            self.assertEqual(warnings[0].suggestion, "frontend/web/src/components/ui/")
+
+    def test_api_segment_inside_path_is_not_url_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "Regeneruj `frontend/src/api/generated/`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["frontend/src/api/generated/"])
+            self.assertEqual(warnings[0].suggestion, "frontend/packages/api/generated/")
+
+    def test_negated_path_that_exists_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY + "- Brak `backend/src/core/` w tym repo.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertEqual(warnings[0].kind, "negated-path-exists")
+            self.assertIn("nie istnieje, a istnieje", warnings[0].message)
+
+    def test_negated_existing_path_outside_overlay_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "AGENTS.md", "- Brak `backend/src/core/` w tym repo.\n")
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_negation_word_far_from_backtick_does_not_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            (workspace / "tests").mkdir()
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY
+                + "- Do not edit `backend/src/core/envs.py` ręcznie.\n"
+                + "- Brak testów → `tests/`.\n"
+                + "- No raw SQL outside `backend/src/db/`.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(
+                [(w.kind, w.value) for w in warnings], [("stale-path", "backend/src/db/")]
+            )
+
+    def test_router_and_endpoint_words_do_not_hide_stale_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / "BUGBOT.md",
+                "- Router w `frontend/web/src/router/`.\n"
+                "- Endpointy w `backend/src/endpoints/`.\n"
+                "- Klient `/api/` w `frontend/web/src/client.ts`.\n"
+                "- Trasa `api/v1/users/` bez zmian.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(
+                [w.value for w in warnings],
+                [
+                    "frontend/web/src/router/",
+                    "backend/src/endpoints/",
+                    "frontend/web/src/client.ts",
+                ],
+            )
+
+    def test_python_stdlib_name_is_not_module_specifier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "- Schematy w `json/schemas/`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["json/schemas/"])
+
+    def test_bare_name_in_build_output_does_not_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "frontend/web/.next/manifest.ts", "")
+            _write(workspace / "BUGBOT.md", "- Manifest: `manifest.ts`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["manifest.ts"])
+
+    def test_missing_infra_file_with_known_extension_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "- Infra: `main.tf`, szablon `nginx.j2`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["main.tf", "nginx.j2"])
+
+    def test_negation_after_backtick_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY + "- `features/orders/` nie istnieje po stronie web.\n",
+            )
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+
+OLD_BUGBOT = """\
+# Bugbot
+
+## Frontend
+
+- UI w `frontend/web/components/ui/` musi być czyste.
+- Klient z `frontend/src/api/generated/` regeneruj po zmianie API.
+- Zmiana `app.json` wymaga buildu natywnego.
+"""
+
+OLD_AGENTS = """\
+# AGENTS.md
+
+Hooki: `.claude/hooks/gate-push.sh` i `.claude/hooks/gate-destructive.sh`.
+"""
+
+
+def _kit_with_history(tmp: str) -> Path:
+    """Kit z gitem: stare wersje szablonów, potem aktualne (historia jak w `bugbot_md`)."""
+    kit = Path(tmp) / "kit"
+    bugbot = _write(kit / "templates" / "cursor" / "BUGBOT.md", OLD_BUGBOT)
+    agents = _write(kit / "templates" / "AGENTS.md", OLD_AGENTS)
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(kit), *args],
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@test.local")
+    git("config", "user.name", "test")
+    git("add", ".")
+    git("commit", "-q", "-m", "old")
+    _write(bugbot, "# Bugbot\n\n<!-- project:rules -->\n<!-- /project:rules -->\n")
+    _write(agents, "# AGENTS.md\n\nGuardy: `git-guard.mjs`.\n")
+    git("commit", "-q", "-am", "current")
+    return kit
+
+
+class TestStaleKitContent(unittest.TestCase):
+    """#266: treść starej wersji szablonu kita to jedno zgłoszenie, nie N ścieżek."""
+
+    def _kit(self, tmp: str) -> Path:
+        try:
+            return _kit_with_history(tmp)
+        except (OSError, subprocess.CalledProcessError):
+            self.skipTest("brak gita w środowisku")
+
+    def test_bugbot_from_old_template_is_one_stale_kit_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", OLD_BUGBOT.replace("# Bugbot", "# Bugbot (nasz)"))
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual([w.kind for w in warnings], ["stale-kit-content"], warnings)
+            self.assertEqual(warnings[0].file, "BUGBOT.md")
+            # 3 reguły; krótki nagłówek `## Frontend` nie jest dowodem starej wersji.
+            self.assertIn("3 linie", warnings[0].message)
+
+    def test_agents_from_old_template_is_stale_kit_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "AGENTS.md", OLD_AGENTS)
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual([(w.kind, w.file) for w in warnings], [("stale-kit-content", "AGENTS.md")])
+
+    def test_stale_agents_is_not_counted_for_mode_c(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "AGENTS.md", OLD_AGENTS)
+
+            report = run_doctor(workspace, kit, clients="claude")
+
+            self.assertEqual(len(report.warnings), 1)
+            self.assertEqual(report.fixable, ())
+            self.assertNotIn("/kit-project-edit", report.warnings[0].message)
+
+
+class TestBugbotPathKeys(unittest.TestCase):
+    """#266: reguła szablonu na ścieżce domyślnej, której nie ma — `missing-path-key`."""
+
+    TEMPLATE = (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(encoding="utf-8")
+
+    def test_missing_key_with_absent_default_warns_with_detected_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "backend").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "# Overlay\n")
+            _write(workspace / "BUGBOT.md", render_bugbot(self.TEMPLATE, "backend"))
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            self.assertEqual([w.kind for w in warnings], ["missing-path-key"], warnings)
+            self.assertEqual(warnings[0].value, "backend")
+            self.assertEqual(warnings[0].suggestion, "apps/backend/")
+
+    def test_rendered_template_does_not_read_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "backend").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- backend: `apps/backend/`\n")
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "backend", paths={"backend": "apps/backend/"}),
+            )
+
+            with mock.patch("guides.doctor.read_template_history") as history:
+                run_doctor(workspace, KIT_ROOT, clients="claude")
+
+            history.assert_not_called()
+
+    def test_rendered_overlay_path_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "backend").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- backend: `apps/backend/`\n")
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "backend", paths={"backend": "apps/backend/"}),
+            )
+
+            self.assertEqual(run_doctor(workspace, KIT_ROOT, clients="claude").warnings, ())
 
 
 class TestCommands(unittest.TestCase):
@@ -440,6 +769,50 @@ class TestCli(unittest.TestCase):
             self.assertIn("src/missing/", out)
 
 
+    def test_reload_with_warnings_points_to_mode_c_and_writes_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- web: `frontend/web/`\n")
+            state = workspace / ".ai" / ".kit-doctor.json"
+
+            code, out = self._main("reload", str(workspace))
+
+            self.assertEqual(code, 0, out)
+            self.assertEqual(
+                out.rstrip().splitlines()[-1],
+                'doctor: 1 do naprawy → /kit-project-edit "napraw zgłoszenia doctora"',
+            )
+            self.assertEqual(json.loads(state.read_text(encoding="utf-8"))["warnings"], 1)
+
+            (workspace / "frontend" / "web").mkdir(parents=True)
+            code, out = self._main("reload", str(workspace))
+
+            self.assertEqual(code, 0, out)
+            self.assertNotIn("do naprawy", out)
+            self.assertFalse(state.exists())
+
+    def test_doctor_json_lists_kind_value_and_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "UI: `frontend/web/components/ui/`.\n")
+
+            code, out = self._main("doctor", str(workspace), "--json")
+
+            self.assertEqual(code, 0, out)
+            data = json.loads(out)
+            self.assertEqual(data["warnings"], 1, out)
+            [finding] = [f for f in data["findings"] if f["severity"] == "warning"]
+            self.assertEqual(
+                {k: finding[k] for k in ("kind", "file", "line", "value", "suggestion")},
+                {
+                    "kind": "stale-path",
+                    "file": "BUGBOT.md",
+                    "line": 1,
+                    "value": "frontend/web/components/ui/",
+                    "suggestion": "frontend/web/src/components/ui/",
+                },
+            )
+
     def test_doctor_with_bogus_profile_clients_exits_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
@@ -471,6 +844,26 @@ class TestKitProjectEditMode(unittest.TestCase):
         self.assertIn("project:rules", text)
         self.assertIn("kit-ai doctor", text)
         self.assertIn("Nie edytuj szablonowych sekcji `BUGBOT.md`", text)
+        # #266: partia z pliku stanu reloadu / `--json`, jeden podgląd, start bez prośby.
+        self.assertIn(".ai/.kit-doctor.json", text)
+        self.assertIn("kit-ai doctor --json", text)
+        self.assertIn("Jeden podgląd na całą partię", text)
+
+
+class TestMcpReload(unittest.TestCase):
+    def test_reload_workspace_with_warnings_tells_agent_to_run_mode_c(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", "<!-- project:rules -->\n`src/missing/`\n<!-- /project:rules -->\n")
+
+            with (
+                mock.patch.object(server, "_workspace_root", workspace),
+                mock.patch.object(server, "_kit_root", KIT_ROOT),
+            ):
+                out = server.reload_workspace(dry_run=False)
+
+            self.assertIn("doctor: OSTRZEŻENIE", out)
+            self.assertIn('Uruchom teraz `/kit-project-edit "napraw zgłoszenia doctora"`', out)
 
 
 class TestMcpStatus(unittest.TestCase):

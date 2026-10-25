@@ -9,7 +9,14 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
-from guides.cli import SetupError, doctor_report, kit_source, own_kit_root
+from guides.cli import (
+    DOCTOR_FIX_COMMAND,
+    SetupError,
+    doctor_report,
+    kit_source,
+    own_kit_root,
+    reload_doctor,
+)
 from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
@@ -343,7 +350,9 @@ def reload_workspace(dry_run: bool = True) -> str:
     if settings.migrated:
         header.append("- Migracja: stara konfiguracja (preset) → Profil core + none")
     header.append("")
-    report = doctor_report(workspace, _get_resolved().kit_root, settings.clients)
+    report, warnings = reload_doctor(
+        workspace, _get_resolved().kit_root, settings.clients, dry_run=dry_run
+    )
     if isinstance(result, BootstrapPlan):
         return "\n".join(
             [
@@ -359,6 +368,15 @@ def reload_workspace(dry_run: bool = True) -> str:
     return "\n".join(
         ["# reload_workspace — odświeżono", "", *header, "```", result, "```", ""]
         + ["- Zrestartuj IDE w repo aplikacji, żeby wczytało hooki i komendy.", "", report]
+        + (
+            [
+                "",
+                f"**Agent:** Uruchom teraz `{DOCTOR_FIX_COMMAND}` na tej partii "
+                f"({warnings} do naprawy, `.ai/.kit-doctor.json`) — nie czekaj na prośbę.",
+            ]
+            if warnings
+            else []
+        )
     )
 
 
