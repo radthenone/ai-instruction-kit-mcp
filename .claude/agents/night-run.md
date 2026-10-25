@@ -75,7 +75,7 @@ watchdoga), nie warunek `/goal`. Pod `/goal` jego tekst to cel (niżej „Polece
     sesji) → nieznany wykonawca → needs-human na starcie nocy — żaden ticket nie startuje,
     NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
 - **Skille review z argumentów** — jeden lub kilka (`/review-edge`, `/review-bugbot`,
-  `/code-review --fix`, …), z ich własnymi flagami. Bez nich → review jak dziś (łańcuch, krok 2).
+  `/review-security`, `/code-review --fix`, …), z ich własnymi flagami. Bez nich → review jak dziś (łańcuch, krok 2).
   Każdy sprawdzasz raz na starcie nocy na liście skilli klienta:
   nieznany skill review → needs-human na starcie nocy — żaden ticket nie startuje,
   NIGHT-RUN REPORT z `needs-human: nieznany skill review <nazwa>`, koniec.

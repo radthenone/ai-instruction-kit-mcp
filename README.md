@@ -646,7 +646,6 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 | --- | --- | --- |
 | `--tag` / facety wariantów | Zaprojektowane, **nie w CLI** | Różnice trzymaj w `.ai/project.md` dopóki wariant nie powtórzy się w ≥2–3 projektach |
 | `--profile` / `--preset` / `--codegen` | Usunięte (serwer je ignoruje, bootstrap odmawia) | Profil zawsze `.ai/project.profile.yaml` w `--workspace`; migracja przez `kit-ai reload` |
-| `/review-security` jako plik kita | Nie istnieje w `templates/shared/agents/` | To skill user/global (Cursor) — dodaj we własnym środowisku, kit go nie dostarcza |
 | `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
 | Natywna weryfikacja formatu VS Code/Kilo/Antigravity/opencode | Oparta o dokumentację (sierpień 2026), **nie testowana na żywych klientach** | Jeśli `/nazwa` nie działa w Twoim kliencie, zgłoś i popraw `scripts/render_agent_commands.py` |
 | Auto-instalacja Superpowers/Autopilot | Niemożliwa ze skryptu (marketplace pluginów Claude/Cursor, wymaga interaktywnego `/plugin install`) | `--with-plugins` wypisze dokładne komendy/kroki, patrz niżej |
@@ -987,7 +986,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/teacher-frontend`                  | `templates/shared/agents/teacher-frontend.md`    |
 | `/teacher-architecture`              | `templates/shared/agents/teacher-architecture.md` |
 | `/teacher-agent`                     | `templates/shared/agents/teacher-agent.md`       |
-| `/review-security`                   | skille Cursor (user/global), nie ten kit         |
+| `/review-security`                   | `templates/shared/agents/review-security.md`      |
 
 ### `/teacher-*` — tryb nauki (przed kodem, nie po)
 
