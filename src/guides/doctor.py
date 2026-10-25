@@ -141,7 +141,10 @@ KIT_ONLY_ROOTS = frozenset({"templates", "modules", "manifest.yaml"})
 # Katalogi pomijane przy szukaniu gołej nazwy pliku: zależności i artefakty
 # narzędzi (wolne, a plik z ``node_modules`` maskowałby brak w projekcie).
 SEARCH_SKIP_DIRS = frozenset(
-    {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".tox"}
+    {
+        ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".tox",
+        ".next", "target", "coverage", ".cache", ".mypy_cache", "vendor", ".turbo", "out",
+    }
 )
 
 # Katalogi konfiguracji klientów. Ścieżkę klienta spoza ``clients:`` pomijamy —
@@ -180,7 +183,8 @@ FILE_EXTENSIONS = frozenset(
         "sass", "less", "sh", "bash", "ps1", "bat", "sql", "go", "rs", "java", "kt",
         "kts", "swift", "rb", "php", "cs", "c", "h", "cpp", "hpp", "dart", "xml",
         "gradle", "properties", "graphql", "gql", "prisma", "proto", "svg", "png",
-        "jpg", "ipynb", "csv", "mod", "sum", "plist", "pem",
+        "jpg", "ipynb", "csv", "mod", "sum", "plist", "pem", "tf", "hcl", "ex", "lua",
+        "scala", "astro", "gif", "webp", "jpeg", "pdf", "ico", "j2", "tpl", "example",
     }
 )
 
@@ -272,11 +276,13 @@ class _Layout:
             ich ``src/``/``app/`` i pakiety workspace'u).
         dependencies: Pierwsze segmenty specyfikatorów modułów (zależności JS + moduły Node).
         tree: Ścieżki względne repo bez katalogów narzędzi; katalogi z ``/`` na końcu.
+        names: Indeks ostatnich segmentów ``tree`` — szukanie gołej nazwy w O(1).
     """
 
     roots: tuple[str, ...] = ()
     dependencies: frozenset[str] = frozenset()
     tree: tuple[str, ...] = ()
+    names: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -409,7 +415,7 @@ def _exists(workspace: Path, value: str, layout: _Layout) -> bool:
         return True
     name = value.rstrip("/")
     if "/" not in name:
-        return any(entry.rstrip("/").rsplit("/", 1)[-1] == name for entry in layout.tree)
+        return name in layout.names
     return any((workspace / root / value).exists() for root in layout.roots)
 
 
@@ -847,7 +853,8 @@ def _layout(workspace: Path, overlay_paths: list[str], tree: tuple[str, ...]) ->
     dependencies = _dependency_names(workspace, roots)
     # Bez stdlib i zależności Pythona: `util/`, `json/` to częściej katalogi projektu.
     dependencies |= NODE_BUILTINS
-    return _Layout(tuple(roots), frozenset(dependencies), tree)
+    names = frozenset(entry.rstrip("/").rsplit("/", 1)[-1] for entry in tree)
+    return _Layout(tuple(roots), frozenset(dependencies), tree, names)
 
 
 def _described(rel: str, overlay_text: str, overlay_paths: list[str]) -> bool:

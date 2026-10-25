@@ -385,6 +385,25 @@ class TestFalsePositives(unittest.TestCase):
 
             self.assertEqual([w.value for w in warnings], ["json/schemas/"])
 
+    def test_bare_name_in_build_output_does_not_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "frontend/web/.next/manifest.ts", "")
+            _write(workspace / "BUGBOT.md", "- Manifest: `manifest.ts`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["manifest.ts"])
+
+    def test_missing_infra_file_with_known_extension_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "- Infra: `main.tf`, szablon `nginx.j2`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["main.tf", "nginx.j2"])
+
     def test_negation_after_backtick_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _monorepo(tmp)
