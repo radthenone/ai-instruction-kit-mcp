@@ -354,6 +354,37 @@ class TestFalsePositives(unittest.TestCase):
                 [(w.kind, w.value) for w in warnings], [("stale-path", "backend/src/db/")]
             )
 
+    def test_router_and_endpoint_words_do_not_hide_stale_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / "BUGBOT.md",
+                "- Router w `frontend/web/src/router/`.\n"
+                "- Endpointy w `backend/src/endpoints/`.\n"
+                "- Klient `/api/` w `frontend/web/src/client.ts`.\n"
+                "- Trasa `api/v1/users/` bez zmian.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(
+                [w.value for w in warnings],
+                [
+                    "frontend/web/src/router/",
+                    "backend/src/endpoints/",
+                    "frontend/web/src/client.ts",
+                ],
+            )
+
+    def test_python_stdlib_name_is_not_module_specifier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "- Schematy w `json/schemas/`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.value for w in warnings], ["json/schemas/"])
+
     def test_negation_after_backtick_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _monorepo(tmp)

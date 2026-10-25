@@ -21,7 +21,6 @@ import fnmatch
 import json
 import os
 import re
-import sys
 import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -208,11 +207,13 @@ _NEGATION_BEFORE = re.compile(
 _NEGATION_AFTER = re.compile(rf"^[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE)
 # Wcześniejsze pozycje tej samej listy (`a/`, `b/`, `c/`) — zaprzeczenie obejmuje całą listę.
 _CODE_LIST_TAIL = re.compile(r"(?:`[^`\n]*`\s*,\s*)+$")
-# F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo.
+# F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo. Całe
+# słowa (``router``, ``Endpointy`` to nie kontekst trasy); segment ``api/…`` pomijamy
+# osobno, bez wycinania całej linii.
 _URL_CONTEXT = re.compile(
-    r"(?i:prefiks|endpoint|\broute|\burl\b)|/api/|\b(?:GET|POST|PUT|PATCH|DELETE)\b"
+    r"(?i:\bprefiks\w*|\bendpoints?\b|\broutes?\b|\burl\b)"
+    r"|\b(?:GET|POST|PUT|PATCH|DELETE)\b"
 )
-_DEPENDENCY_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 # Komenda: `/nazwa` albo `/nazwa-z-myslnikami`. Odrzuca fragmenty ścieżek
 # (`src/foo`, `/dev/null`), wildcardy (`/review-*`) i URL-e (`https://`).
 _COMMAND = re.compile(
@@ -265,7 +266,7 @@ class _Layout:
     Attributes:
         roots: Katalogi, względem których rozwiązujemy ścieżki (``## Ścieżki``,
             ich ``src/``/``app/`` i pakiety workspace'u).
-        dependencies: Pierwsze segmenty specyfikatorów modułów (zależności + stdlib).
+        dependencies: Pierwsze segmenty specyfikatorów modułów (zależności JS + moduły Node).
         tree: Ścieżki względne repo bez katalogów narzędzi; katalogi z ``/`` na końcu.
     """
 
@@ -489,7 +490,7 @@ def _path_findings(
         line_end = text.find("\n", match.start())
         line_text = text[line_start : None if line_end < 0 else line_end]
         # Prozę linii bez inline-code: `/api/` wewnątrz samej ścieżki to nie trasa.
-        if _URL_CONTEXT.search(_INLINE_CODE.sub("", line_text)):
+        if _URL_CONTEXT.search(_INLINE_CODE.sub("", line_text)) or value.startswith("api/"):
             continue
         exists = _exists(workspace, value, layout)
         before = _CODE_LIST_TAIL.sub("", text[line_start : match.start()])
@@ -797,7 +798,7 @@ def _package_dirs(workspace: Path, patterns: list[str]) -> list[str]:
 
 
 def _dependency_names(workspace: Path, dirs: list[str]) -> set[str]:
-    """Nazwy zależności z ``package.json``/``pyproject.toml`` rootu i katalogów pakietów."""
+    """Nazwy zależności JS z ``package.json`` rootu i katalogów pakietów."""
     names: set[str] = set()
     for rel in ["", *dirs]:
         package_json = workspace / rel / "package.json"
@@ -810,20 +811,7 @@ def _dependency_names(workspace: Path, dirs: list[str]) -> set[str]:
                 section = data.get(key) if isinstance(data, dict) else None
                 if isinstance(section, dict):
                     names.update(name for name in section if isinstance(name, str))
-        pyproject = workspace / rel / "pyproject.toml"
-        if pyproject.is_file():
-            try:
-                data = tomllib.loads(_read(pyproject))
-            except tomllib.TOMLDecodeError:
-                data = {}
-            project = data.get("project")
-            specs = project.get("dependencies") if isinstance(project, dict) else None
-            for spec in _str_list(specs):
-                match = _DEPENDENCY_NAME.match(spec)
-                if match:
-                    names.add(match.group(1))
-    # Nazwa dystrybucji Pythona bywa z myślnikiem, import — z podkreśleniem.
-    return names | {name.lower().replace("-", "_") for name in names}
+    return names
 
 
 def _layout(workspace: Path, overlay_paths: list[str], tree: tuple[str, ...]) -> _Layout:
@@ -836,7 +824,8 @@ def _layout(workspace: Path, overlay_paths: list[str], tree: tuple[str, ...]) ->
             if rel not in roots and (workspace / rel).is_dir():
                 roots.append(rel)
     dependencies = _dependency_names(workspace, roots)
-    dependencies |= set(sys.stdlib_module_names) | NODE_BUILTINS
+    # Bez stdlib i zależności Pythona: `util/`, `json/` to częściej katalogi projektu.
+    dependencies |= NODE_BUILTINS
     return _Layout(tuple(roots), frozenset(dependencies), tree)
 
 
