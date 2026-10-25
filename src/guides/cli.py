@@ -512,7 +512,7 @@ def reload_doctor(
     """
     Doctor po reloadzie: raport, linia trybu C i plik stanu partii (#266).
 
-    Ostrzeżenia trafiają do ``.ai/.kit-doctor.json`` (wynik ``--json``), z którego
+    Zgłoszenia do naprawy trafiają do ``.ai/.kit-doctor.json`` (wynik ``--json``), z którego
     tryb C ``/kit-project-edit`` bierze partię; czysty przebieg plik usuwa.
 
     Args:
@@ -523,7 +523,7 @@ def reload_doctor(
 
     Returns:
         tuple[str, int]: Linie ``doctor:`` (z ostatnią „N do naprawy → …”, gdy są
-            ostrzeżenia) i liczba ostrzeżeń. Nigdy nie rzuca.
+            zgłoszenia do naprawy) i liczba zgłoszeń dla trybu C. Nigdy nie rzuca.
     """
     try:
         report = run_doctor(
@@ -531,7 +531,8 @@ def reload_doctor(
         )
     except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
         return f"doctor: błąd {type(exc).__name__}: {exc}", 0
-    count = len(report.warnings)
+    # Tylko zgłoszenia, które tryb C naprawia — inaczej przypomnienie wraca po każdym reloadzie.
+    count = len(report.fixable)
     if not dry_run:
         state = workspace / DOCTOR_STATE
         try:

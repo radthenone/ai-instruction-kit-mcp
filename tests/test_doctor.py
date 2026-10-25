@@ -457,7 +457,8 @@ class TestStaleKitContent(unittest.TestCase):
 
             self.assertEqual([w.kind for w in warnings], ["stale-kit-content"], warnings)
             self.assertEqual(warnings[0].file, "BUGBOT.md")
-            self.assertIn("4 linie", warnings[0].message)  # nagłówek + 3 reguły
+            # 3 reguły; krótki nagłówek `## Frontend` nie jest dowodem starej wersji.
+            self.assertIn("3 linie", warnings[0].message)
 
     def test_agents_from_old_template_is_stale_kit_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -468,6 +469,18 @@ class TestStaleKitContent(unittest.TestCase):
             warnings = run_doctor(workspace, kit, clients="claude").warnings
 
             self.assertEqual([(w.kind, w.file) for w in warnings], [("stale-kit-content", "AGENTS.md")])
+
+    def test_stale_agents_is_not_counted_for_mode_c(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "AGENTS.md", OLD_AGENTS)
+
+            report = run_doctor(workspace, kit, clients="claude")
+
+            self.assertEqual(len(report.warnings), 1)
+            self.assertEqual(report.fixable, ())
+            self.assertNotIn("/kit-project-edit", report.warnings[0].message)
 
 
 class TestBugbotPathKeys(unittest.TestCase):
@@ -487,6 +500,21 @@ class TestBugbotPathKeys(unittest.TestCase):
             self.assertEqual([w.kind for w in warnings], ["missing-path-key"], warnings)
             self.assertEqual(warnings[0].value, "backend")
             self.assertEqual(warnings[0].suggestion, "apps/backend/")
+
+    def test_rendered_template_does_not_read_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "backend").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- backend: `apps/backend/`\n")
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "backend", paths={"backend": "apps/backend/"}),
+            )
+
+            with mock.patch("guides.doctor.read_template_history") as history:
+                run_doctor(workspace, KIT_ROOT, clients="claude")
+
+            history.assert_not_called()
 
     def test_rendered_overlay_path_is_silent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

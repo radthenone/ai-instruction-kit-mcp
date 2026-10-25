@@ -52,6 +52,9 @@ KIT_TEMPLATES: dict[str, str] = {
 }
 AGENT_TEMPLATES = "templates/shared/agents"
 
+# Pliki reguł, których część kitową odświeża się ręcznie — tryb C ich nie zapisuje.
+MANUAL_REFRESH_FILES = frozenset({"AGENTS.md"})
+
 # Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
 # Ich brak to brak warstwy zewnętrznej — nie rozjazd reguł projektu — więc doctor
 # ich nie zgłasza. Komendy kita (`/review-*`, `/git-*`, …) muszą istnieć.
@@ -226,6 +229,7 @@ _DOMAIN = re.compile(
     r"[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|dev|ai|pl|co|app)(/.*)?$"
 )
 _DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+_WORD_CHARS = re.compile(r"[\W_]+")
 
 
 @dataclass(frozen=True)
@@ -285,6 +289,19 @@ class DoctorReport:
     def warnings(self) -> tuple[Finding, ...]:
         """Zgłoszenia, które łamią regułę (nieistniejąca ścieżka albo komenda)."""
         return tuple(finding for finding in self.findings if finding.severity == "warning")
+
+    @property
+    def fixable(self) -> tuple[Finding, ...]:
+        """Ostrzeżenia, które naprawia tryb C — tylko one liczą się do autostartu.
+
+        Przestarzałej treści ``AGENTS.md`` tryb C nie zapisuje (brak mechanizmu
+        odświeżania), więc liczenie jej dawałoby przypomnienie po każdym reloadzie.
+        """
+        return tuple(
+            finding
+            for finding in self.warnings
+            if not (finding.kind == "stale-kit-content" and finding.file in MANUAL_REFRESH_FILES)
+        )
 
     @property
     def infos(self) -> tuple[Finding, ...]:
@@ -578,30 +595,34 @@ def _kit_template_lines(
 
 
 def _stale_kit_lines(
-    rel: str, text: str, kit_root: Path | None, *, is_kit: bool
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool, paths: dict[str, str]
 ) -> set[int]:
     """
     Linie równe historycznej (nie aktualnej) wersji szablonu kita (#266, R2/R3).
 
     Plik zamrożony na starej wersji szablonu to przestarzała treść kita, a nie
     reguły użytkownika — historię czytamy z gita kita tylko, gdy plik ma linie
-    spoza aktualnego szablonu.
+    spoza aktualnego szablonu (wyrenderowanego ścieżkami overlayu, jak robi to
+    reload). Krótkie linie i sama interpunkcja Markdowna (`## Frontend`, `---`) nie
+    są dowodem starej wersji.
     """
     template = KIT_TEMPLATES.get(rel)
     if is_kit or kit_root is None or template is None:
         return set()
-    current = {line.strip() for line in _read(kit_root / template).splitlines()}
+    current = {
+        line.strip() for line in render_paths(_read(kit_root / template), paths).splitlines()
+    }
     own = {
         number: line.strip()
         for number, line in enumerate(text.splitlines(), start=1)
-        if line.strip() and line.strip() not in current
+        if line.strip() not in current and len(_WORD_CHARS.sub("", line)) >= 12
     }
     if not own:
         return set()
     history = {
         line.strip()
         for version in read_template_history(kit_root, template)
-        for line in version.splitlines()
+        for line in render_paths(version, paths).splitlines()
     } - current
     return {number for number, line in own.items() if line in history}
 
@@ -928,17 +949,21 @@ def run_doctor(
             continue
         text = _read(path)
         skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
-        stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit)
+        stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         if stale:
             skip_lines |= stale
+            fix = (
+                f"porównaj z `{KIT_TEMPLATES[rel]}` kita i odśwież ręcznie"
+                if rel in MANUAL_REFRESH_FILES
+                else '`/kit-project-edit "napraw zgłoszenia doctora"`'
+            )
             findings.append(
                 Finding(
                     "warning",
                     rel,
                     None,
                     f"{_plural(len(stale), 'linia', 'linie', 'linii')} ze starej wersji "
-                    "szablonu kita — odśwież plik (`/kit-project-edit "
-                    '"napraw zgłoszenia doctora"`)',
+                    f"szablonu kita — odśwież plik ({fix})",
                     "stale-kit-content",
                 )
             )
