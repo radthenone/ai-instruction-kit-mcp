@@ -346,6 +346,21 @@ class TestCli(unittest.TestCase):
             self.assertIn("src/missing/", out)
 
 
+class TestKitProjectEditMode(unittest.TestCase):
+    """`/kit-project-edit` ma tryb naprawy zgłoszeń doctora (#242)."""
+
+    def test_mode_c_fixes_overlay_and_project_rules(self) -> None:
+        text = (
+            KIT_ROOT / "templates" / "shared" / "agents" / "kit-project-edit.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Tryb C — napraw zgłoszenia doctora", text)
+        self.assertIn("napraw zgłoszenia doctora", text)
+        self.assertIn("project:rules", text)
+        self.assertIn("kit-ai doctor", text)
+        self.assertIn("Nie edytuj szablonowych sekcji `BUGBOT.md`", text)
+
+
 class TestMcpStatus(unittest.TestCase):
     def test_check_kit_status_appends_doctor_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
