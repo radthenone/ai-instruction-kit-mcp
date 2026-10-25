@@ -35,17 +35,17 @@ class TestNightRunWatchdog(unittest.TestCase):
         self.assertIn("### 7. Watchdog i cron", self.text)
         watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")
         self.assertIn("run_in_background", watchdog)
-        self.assertIn("20 min", watchdog)
-        self.assertIn("przyrost logu `/headless`", watchdog)
-        self.assertIn("postęp PR", watchdog)
-        self.assertIn("tylko przy anomalii", watchdog)
-        self.assertIn("Pauza 429 **nie jest** anomalią", watchdog)
+        self.assertIn("night-run-watchdog.sh", watchdog)
+        self.assertIn("exit 1 `anomalia`", watchdog)
+        self.assertIn("subagent: <id>", watchdog)
+        self.assertIn("nie budzi orkiestratora", watchdog)
+        self.assertIn("Pauza limitu **nie jest** anomalią", watchdog)
 
     def test_cron_stays_as_fallback(self) -> None:
         watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")
-        self.assertIn("Cron co 60 min", watchdog)
-        self.assertIn("fallback", watchdog)
-        self.assertIn("na cronie", watchdog)
+        self.assertIn("Cron co 4 h", watchdog)
+        self.assertIn("siatka", watchdog)
+        self.assertIn("57 */4 * * *", watchdog)
 
     def test_cron_list_before_cron_create_on_resume(self) -> None:
         watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")
