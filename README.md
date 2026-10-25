@@ -1569,7 +1569,32 @@ Trzy warstwy — nie bundluj Matt/Superpowers w `guides-mcp`:
 
 
 Priorytet w `AGENTS.md`: użytkownik → overlay+MCP → review kita → Matt → Superpowers.  
-TDD: jeden path na feature (preferuj Matt). Setup Matt: po instalacji uruchom `/setup-matt-pocock-skills`.
+TDD: jeden path na feature (preferuj Matt). W repo z kitem setup Matta **nie jest potrzebny**:
+`kit-ai reload` renderuje jego kontrakt (niżej); poza kitem uruchom `/setup-matt-pocock-skills`.
+
+### Kontrakt Matta w repo z kitem (#241)
+
+Gdy `skills-lock.json` zawiera `mattpocock/skills`, reload tworzy **brakujące** pliki,
+których oczekują skille Matta. Wartości bierze z repo i z kita, a format — z ziaren
+`.agents/skills/setup-matt-pocock-skills/*.md` czytanych w momencie reloadu (aktualizacja
+skilli przez `skills-lock.json` zmienia render bez zmian w kicie). Istniejących plików
+`docs/agents/*` nie nadpisuje — możesz je edytować. Brak ziaren albo brak skilli Matta →
+krok pomijany bez błędu.
+
+| Plik | Skąd wartości |
+|------|----------------|
+| `docs/agents/issue-tracker.md` | ziarno `issue-tracker-github.md` (GitHub przez `gh`; inne trackery zostają w interaktywnym `/setup-matt-pocock-skills`) |
+| `docs/agents/triage-labels.md` | ziarno `triage-labels.md` + nazwy etykiet z kita (te same co `ensure_labels`) |
+| `docs/agents/domain.md` | ziarno `domain.md` + układ kita: single-context (`CONTEXT.md` + `docs/adr/`), multi-context gdy w root jest `CONTEXT-MAP.md` |
+| blok `## Agent skills` w `AGENTS.md` | format setupu Matta; aktualizacja w miejscu, reszta pliku bez zmian |
+| `CODING_STANDARDS.md` | indeks źródeł standardów w kolejności ważności: `AGENTS.md`, `.ai/project.md`, `BUGBOT.md` (z `project:rules`), `docs/adr/`, `CONTEXT.md`, MCP `project-guides` — tylko pozycje istniejące w repo |
+
+`CODING_STANDARDS.md` to sam indeks (bez kopii reguł), odświeżany przy każdym reloadzie.
+Czytają go agenci `/review-*` kita **oraz** `/code-review` i `retro` Matta — dlatego nazwa
+jest zgodna z tym, czego szukają skille Matta. Dzięki temu `/code-review` nie prosi
+o `/setup-matt-pocock-skills`, a jego oś Standards widzi `BUGBOT.md`, overlay i ADR-y.
+`--remove` usuwa `CODING_STANDARDS.md` i `docs/agents/*` tylko wtedy, gdy są nietkniętym
+renderem kita.
 
 Context7 (docs Django/Expo): globalnie `npx ctx7 setup --cursor`.
 
