@@ -46,7 +46,8 @@ _TIER_RE = re.compile(r"<!-- tier:(\w+) -->\n(.*?)<!-- /tier:\1 -->\n?", re.DOTA
 # z `## Ścieżki` w `.ai/project.md`, a bez klucza — domyślna.
 PATH_PLACEHOLDER = re.compile(r"\{\{path:([\w-]+)\|([^}]*)\}\}")
 _PATHS_HEADING = re.compile(r"^##\s+Ścieżki\s*$")
-_PATH_BULLET = re.compile(r"^\s*[-*]\s+([A-Za-z0-9_.-]+)\s*:\s*`([^`\n]+)`")
+_PATH_BULLET = re.compile(r"^\s*[-*]\s+([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$")
+_PATH_CODE = re.compile(r"`([^`\n]+)`")
 # Blok podmieniamy po redukcji pustych linii, żeby nie zjadać pustych linii
 # wewnątrz reguł użytkownika (migracja ma zachować treść dosłownie).
 _SENTINEL = "\x00project:rules\x00"
@@ -97,9 +98,41 @@ def extract_rules(text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def overlay_path_entries(text: str) -> list[tuple[int, str, str]]:
+    """
+    Wpisy sekcji ``## Ścieżki`` overlayu jako ``(linia, klucz, wartość)``.
+
+    Jedyny parser tej sekcji — używają go render ``BUGBOT.md`` i doctor. Wartość
+    to pierwszy inline-code w linii (``- backend: `backend/` ``), a bez backticków
+    — tekst do myślnika/pauzy (``- backend: backend/ — opis``).
+
+    Args:
+        text: Treść ``.ai/project.md``.
+
+    Returns:
+        list[tuple[int, str, str]]: Numer linii (1-based), klucz małymi literami
+            i surowa wartość.
+    """
+    entries: list[tuple[int, str, str]] = []
+    in_section = False
+    for number, line in enumerate(text.replace("\r\n", "\n").splitlines(), start=1):
+        if line.startswith("## "):
+            in_section = bool(_PATHS_HEADING.match(line))
+            continue
+        match = _PATH_BULLET.match(line) if in_section else None
+        if match is None:
+            continue
+        rest = match.group(2)
+        code = _PATH_CODE.search(rest)
+        value = (code.group(1) if code else re.split(r"\s+[—–-]\s+", rest)[0]).strip()
+        if value:
+            entries.append((number, match.group(1).lower(), value))
+    return entries
+
+
 def overlay_paths(text: str) -> dict[str, str]:
     """
-    Klucze sekcji ``## Ścieżki`` overlayu → pierwsza wartość w backtickach.
+    Klucze sekcji ``## Ścieżki`` overlayu → wartość (pierwsze wystąpienie klucza).
 
     Args:
         text: Treść ``.ai/project.md``.
@@ -108,14 +141,8 @@ def overlay_paths(text: str) -> dict[str, str]:
         dict[str, str]: Np. ``{"backend": "backend/src/"}`` (klucze małymi literami).
     """
     paths: dict[str, str] = {}
-    in_section = False
-    for line in text.replace("\r\n", "\n").splitlines():
-        if line.startswith("## "):
-            in_section = bool(_PATHS_HEADING.match(line))
-            continue
-        match = _PATH_BULLET.match(line) if in_section else None
-        if match:
-            paths.setdefault(match.group(1).lower(), match.group(2).strip())
+    for _, key, value in overlay_path_entries(text):
+        paths.setdefault(key, value)
     return paths
 
 

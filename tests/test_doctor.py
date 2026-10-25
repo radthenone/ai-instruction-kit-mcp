@@ -219,7 +219,7 @@ class TestOverlayPaths(unittest.TestCase):
             warnings = _report(workspace).warnings
 
             self.assertEqual(len(warnings), 1, warnings)
-            self.assertIn("Taskfile:", warnings[0].message)
+            self.assertIn("taskfile:", warnings[0].message)
 
     def test_overlay_path_is_not_reported_twice(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

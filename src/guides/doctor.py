@@ -29,6 +29,7 @@ import yaml
 
 from guides.bugbot_md import (
     PATH_PLACEHOLDER,
+    overlay_path_entries,
     read_template_history,
     render_paths,
 )
@@ -226,8 +227,6 @@ _URL_CONTEXT = re.compile(
 _COMMAND = re.compile(
     r"(?<![\w/.\-*?<>])/([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?![-\w/.*:]|\s*-->)"
 )
-_OVERLAY_SECTION = re.compile(r"^##\s+Ścieżki\s*$")
-_BULLET = re.compile(r"^\s*[-*]\s+([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$")
 _FILE_NAME = re.compile(r"[^/\\]+\.[A-Za-z][A-Za-z0-9]{0,5}")
 _DOMAIN = re.compile(
     r"[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|dev|ai|pl|co|app)(/.*)?$"
@@ -707,26 +706,9 @@ def _command_findings(
 
 
 def _overlay_paths(text: str) -> list[tuple[int, str, str]]:
-    """
-    Wpisy sekcji ``## Ścieżki`` overlayu jako ``(linia, klucz, ścieżka)``.
-
-    Wartość bierzemy z pierwszego inline-code w linii (``- backend: `backend/` ``),
-    a bez backticków — do myślnika/pauzy. Glob i placeholdery pomijamy.
-    """
+    """Wpisy ``## Ścieżki`` (wspólny parser z ``bugbot_md``) bez globów i placeholderów."""
     entries: list[tuple[int, str, str]] = []
-    in_section = False
-    for number, line in enumerate(text.splitlines(), start=1):
-        if line.startswith("## "):
-            in_section = bool(_OVERLAY_SECTION.match(line))
-            continue
-        if not in_section:
-            continue
-        bullet = _BULLET.match(line)
-        if bullet is None:
-            continue
-        key, rest = bullet.group(1), bullet.group(2)
-        code = _INLINE_CODE.search(rest)
-        raw = code.group(1) if code else re.split(r"\s+[—–-]\s+", rest)[0]
+    for number, key, raw in overlay_path_entries(text):
         value = _normalise_path(raw)
         if value is not None:
             entries.append((number, key, value))

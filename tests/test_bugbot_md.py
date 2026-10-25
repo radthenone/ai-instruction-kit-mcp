@@ -21,6 +21,7 @@ from guides.bugbot_md import (
     main,
     migrate,
     needs_migration,
+    overlay_paths,
     read_template_history,
     render,
     sync_file,
@@ -122,6 +123,16 @@ class TestRenderPaths(unittest.TestCase):
 
         self.assertIn("`backend/`", text)
         self.assertNotIn("{{path:", text)
+
+    def test_overlay_paths_tolerate_missing_backticks_and_key_case(self) -> None:
+        overlay = (
+            "## Ścieżki\n\n- Backend: backend/src/ — kod API\n- web: `frontend/web/`\n"
+            "\n## Inne\n\n- api: `x/`\n"
+        )
+
+        self.assertEqual(
+            overlay_paths(overlay), {"backend": "backend/src/", "web": "frontend/web/"}
+        )
 
     def test_reload_reads_overlay_paths_and_keeps_file_pristine(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
