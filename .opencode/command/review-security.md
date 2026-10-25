@@ -7,7 +7,8 @@ Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
-Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności),
+gdy plik jest; brak pliku → standardy z `AGENTS.md`.
 
 ### Czym to jest
 
@@ -34,7 +35,8 @@ Brak findingów → jedna linia: "Brak uwag bezpieczeństwa w diffie."
 ### Niska pewność
 
 Brak dowodu w repo (brak testu, configu albo endpointu w diffie) → finding `info`
-z pytaniem, nie zgadywanie. Auth, ACL, płatności i sekrety: przy niepewności
+z pytaniem, nie zgadywanie. Jedyny wyjątek: brak testu dla zmiany auth/ACL widocznej
+w diffie to `medium` (Procedura pkt 3) — tu brak testu jest faktem, nie domysłem. Auth, ACL, płatności i sekrety: przy niepewności
 **zapytaj użytkownika** — nie ogłaszaj luki jako faktu.
 
 ---
@@ -62,9 +64,11 @@ z pytaniem, nie zgadywanie. Auth, ACL, płatności i sekrety: przy niepewności
 
 ## Procedura
 
-1. Ustal bazę brancha i przeczytaj diff: `git diff <base>...HEAD` oraz `git diff HEAD`.
+1. Przeczytaj diff: `git diff <base>...HEAD` (baza z `git-branch-pr.md`/`git-branch-pr.mdc`)
+   oraz `git diff HEAD`.
 2. Przejdź checklistę po zmienionych liniach; przy każdym findingu wskaż `path:line`.
 3. Sprawdź, czy zmiana ma test na publicznym seamie (np. próba dostępu do cudzego
-   zasobu); brak testu dla auth/ACL to finding co najmniej `medium`.
+   zasobu); brak testu dla zmiany auth/ACL w diffie to finding `medium` (wyjątek
+   z „Niska pewność”).
 4. Odpowiadaj po polsku. Tylko tabela plus jedno zdanie o obszarach, których diff
    nie pokrywa (np. „brak zmian w webhookach — nie weryfikowałem podpisu”).
