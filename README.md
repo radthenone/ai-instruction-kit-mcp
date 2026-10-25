@@ -36,6 +36,7 @@ zrestartuj klienta.
 uv tool upgrade guides-mcp                 # nowa wersja kita
 kit-ai reload                              # odśwież pliki kita w projekcie
 kit-ai status                              # w agencie: check_kit_status
+kit-ai doctor                              # ścieżki i komendy w regułach vs repo
 ```
 
 ## Szczegóły instalacji
@@ -58,7 +59,7 @@ uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp        
 uv tool install git+https://github.com/radthenone/ai-instruction-kit-mcp@dev      # albo gałąź dev
 cd /m/projects/moja-appka                  # repo aplikacji
 kit-ai install                             # bez ścieżki = bieżący katalog
-kit-ai reload | kit-ai status | kit-ai remove [--dry-run]
+kit-ai reload | kit-ai status | kit-ai doctor | kit-ai remove [--dry-run]
 kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --apply = plan)
 
 # jednorazowo, bez instalowania narzędzia:
@@ -266,6 +267,36 @@ printf '%s' '{"tool_input":{"command":"git reset --hard HEAD"}}' \
 # konfiguracja AI wchodzi do repo, lokalny stan nie
 git status --short -uall .claude .codex .github/prompts
 ```
+
+#### Doctor — reguły projektu vs drzewo repo
+
+`kit-ai reload` kończy się raportem `doctor:`, `kit-ai status` i MCP `check_kit_status`
+dokładają go do swojego wyniku, a `kit-ai doctor` uruchamia samą kontrolę. Doctor czyta
+`BUGBOT.md`, `.ai/project.md`, `AGENTS.md` i `CODING_STANDARDS.md` (oraz komendy
+w `templates/shared/agents/*` kita):
+
+- ścieżki w backtickach — brak w drzewie = `OSTRZEŻENIE` z plikiem i numerem linii;
+  globy (`**/auth/**`) i placeholdery (`<N>`) są pomijane;
+- klucze `## Ścieżki` w overlayu (`backend:`, `web:`, `routes-web:` …) — katalog musi
+  istnieć;
+- komendy `/nazwa` — muszą mieć agenta, komendę albo skill u któregoś klienta
+  z `clients:`; komendy innych warstw (Matt, Superpowers, Cursor) są pomijane;
+- pakiety workspace'ów Bun/npm, pnpm i uv, których overlay nie opisuje — `INFO`, nie
+  ostrzeżenie.
+
+```text
+doctor: 1 ostrzeżenie, 1 informacja
+doctor: OSTRZEŻENIE BUGBOT.md:12 — ścieżka `src/auth/` nie istnieje
+doctor: INFO .ai/project.md — katalog `packages/ui/` z workspace'u nie jest opisany w `.ai/project.md`
+```
+
+`OSTRZEŻENIE` znaczy, że reguła review albo wpis overlayu wskazuje coś, czego w repo nie
+ma — po cichu przestaje działać. `INFO` to porządki w overlayu. Doctor **nigdy nie
+blokuje** reloadu: raport i tak wychodzi, a kod wyjścia to 0. Naprawa:
+`/kit-project-edit "napraw zgłoszenia doctora"` — proponuje poprawki w overlayu i w bloku
+`project:rules` w `BUGBOT.md`, pokazuje podgląd i zapisuje po akceptacji. Zgłoszenia
+w `AGENTS.md` / `CODING_STANDARDS.md` i w szablonowych sekcjach `BUGBOT.md` wymagają
+ręcznej decyzji (reload nadpisałby szablon).
 
 ### 4. Kiedy aktualizować
 
@@ -872,7 +903,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/create-task` | Pomysł → ocena na tle repo → issue (bez brancha)   | `/create-task`, `/create-task "eksport CSV"`; flagi: `/create-task --help`                                                                          |
 | `/create-skill` | Pomysł na skill → skill czy agent → issue (bez brancha) | `/create-skill`, `/create-skill "konwencje migracji"`; flagi: `/create-skill --help`                                                            |
 | `/kit-project-begin` | Konfiguracja projektu po `kit-ai install` | `/kit-project-begin`, `/kit-project-begin --yes` |
-| `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"` |
+| `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu / naprawa doctora | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"`, `/kit-project-edit "napraw zgłoszenia doctora"` |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
 | `/night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
@@ -927,7 +958,7 @@ Długo:    [/grill-me] → /git-start → worktree → kod → [/git-check] → 
 | `/create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; `--dry-run` / `--quick` / `--split` / `--no-assign` / `--parent #N`. **Nie** zakłada brancha |
 | `/create-skill` | Rozstrzyga skill vs agent, potem karta issue z nazwą, `description` i kryterium odpalenia; `--dry-run` / `--quick` / `--no-assign` / `--parent #N`. **Nie** pisze `SKILL.md` |
 | `/kit-project-begin` | Pytania z MCP `list_questions` z propozycjami wykrytymi w repo (zawsze z wolną odpowiedzią) → karta Profilu i `.ai/project.md` → zapis → `reload_workspace`. `--yes` = same propozycje |
-| `/kit-project-edit` | (A) jedna odpowiedź: Stack per Tier, codegen, klienci, język, sekcja `project.md` → podgląd → zapis → reload; (B) spór z modułem → grillowanie → `## Odstępstwa od modułów` w `.ai/project.md`; zmiana dla wszystkich projektów → szkic `/create-task` w repo kita. **Nigdy** nie edytuje `modules/` |
+| `/kit-project-edit` | (A) jedna odpowiedź: Stack per Tier, codegen, klienci, język, sekcja `project.md` → podgląd → zapis → reload; (B) spór z modułem → grillowanie → `## Odstępstwa od modułów` w `.ai/project.md`; (C) naprawa zgłoszeń doctora → podgląd poprawek w overlayu i bloku `project:rules`; zmiana dla wszystkich projektów → szkic `/create-task` w repo kita. **Nigdy** nie edytuje `modules/` |
 | `/git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
 | `/git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
 | `/git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
