@@ -3,7 +3,7 @@ mode: "agent"
 description: "Sync GitHub issue title/body to actual file diffs. Use when /git-check, issue stale vs branch work. Wywołuj jako /git-check."
 ---
 
-Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 ## Reguły wspólne
 

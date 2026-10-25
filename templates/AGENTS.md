@@ -85,7 +85,7 @@ Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Revie
 | Tytuł issue / PR / slug brancha | EN | — |
 | Odpowiedzi agenta, docstringi, body issue/PR, komentarze, commity | — | `pl` albo `en` |
 
-Odpowiedzi, statusy, prompty dla subagentów i hand-backi idą w języku `language` z Profilu niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi).
+Wyjście (odpowiedzi, statusy, prompty dla subagentów, hand-backi) idzie w języku `language` z Profilu niezależnie od języka wejścia (wejście: prompty, skille, wyniki narzędzi, powiadomienia, hand-backi od subagentów).
 
 ## Slash commands
 

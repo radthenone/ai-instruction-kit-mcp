@@ -4,7 +4,7 @@ description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu AP
 readonly: true
 ---
 
-Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 ## Reguły wspólne (obowiązkowe)
 

@@ -3,7 +3,7 @@ mode: "agent"
 description: "Stage and create Conventional Commit(s) from local diffs. Use when /git-commit, dirty tree before /git-end. Wywołuj jako /git-commit."
 ---
 
-Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 ## Reguły wspólne
 

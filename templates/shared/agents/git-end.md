@@ -4,7 +4,7 @@ description: Domknięcie pracy — push feature branch + Pull Request (Closes #N
 model-tier: light
 ---
 
-Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 ## Reguły wspólne
 

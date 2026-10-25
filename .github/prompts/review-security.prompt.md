@@ -3,7 +3,7 @@ mode: "agent"
 description: "Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /review-security."
 ---
 
-Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 ## Reguły wspólne (obowiązkowe)
 

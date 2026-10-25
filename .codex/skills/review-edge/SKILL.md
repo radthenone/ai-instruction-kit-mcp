@@ -4,7 +4,7 @@ description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, 
 readonly: true
 ---
 
-Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia — także gdy skill review jest po angielsku.
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
 ## Reguły wspólne (obowiązkowe)
 
