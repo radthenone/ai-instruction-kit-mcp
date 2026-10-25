@@ -60,7 +60,10 @@ new_limit_line() {
   local total
   total=$(transcript_line_count)
   (( total < limit_offset )) && limit_offset=0
-  LIMIT_LINE_FOUND=$(cat_transcripts | tail -n +$(( limit_offset + 1 )) | grep -i -E "$LIMIT_PATTERN" | tail -n1)
+  # Tylko wpisy błędu API (isApiErrorMessage + rate_limit): fraza w tool_result (czytany plik) to nie limit (#262).
+  LIMIT_LINE_FOUND=$(cat_transcripts | tail -n +$(( limit_offset + 1 )) \
+    | grep -E '"isApiErrorMessage": ?true' | grep -E '"error": ?"rate_limit"' \
+    | grep -i -E "$LIMIT_PATTERN" | tail -n1)
   limit_offset=$total
 }
 
