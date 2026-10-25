@@ -8,8 +8,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from guides import cli
+from guides import cli, server
 from guides.doctor import run_doctor
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -330,6 +331,22 @@ class TestCli(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertIn("doctor:", out)
             self.assertIn("src/missing/", out)
+
+
+class TestMcpStatus(unittest.TestCase):
+    def test_check_kit_status_appends_doctor_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", "`src/missing/`\n")
+
+            with (
+                mock.patch.object(server, "_workspace_root", workspace),
+                mock.patch.object(server, "_kit_root", KIT_ROOT),
+            ):
+                out = server.check_kit_status()
+
+            self.assertIn("Kit status", out)
+            self.assertIn("doctor: OSTRZEŻENIE BUGBOT.md:1", out)
 
 
 if __name__ == "__main__":
