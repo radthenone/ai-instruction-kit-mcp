@@ -23,7 +23,7 @@ import os
 import re
 import sys
 import tomllib
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import yaml
@@ -225,6 +225,7 @@ class Finding:
         kind: Klasa zgłoszenia (``stale-path``, ``negated-path-exists``,
             ``missing-command``, ``undescribed-package``, ``invalid-clients``, …).
         suggestion: Proponowana poprawka (np. jedyny kandydat w drzewie) albo ``None``.
+        value: Wartość z pliku, której dotyczy zgłoszenie (ścieżka) albo ``None``.
     """
 
     severity: str
@@ -233,6 +234,7 @@ class Finding:
     message: str
     kind: str
     suggestion: str | None = None
+    value: str | None = None
 
     def render(self) -> str:
         """Linia raportu zaczynająca się od ``doctor:``."""
@@ -283,6 +285,18 @@ class DoctorReport:
             f"{_plural(len(self.infos), 'informacja', 'informacje', 'informacji')}"
         )
         return "\n".join([header, *(finding.render() for finding in self.findings)])
+
+    def to_json(self) -> str:
+        """Wynik maszynowy dla trybu C i MCP (#266) — bez parsowania linii ``doctor:``."""
+        return json.dumps(
+            {
+                "warnings": len(self.warnings),
+                "infos": len(self.infos),
+                "findings": [asdict(finding) for finding in self.findings],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
 
 
 def _plural(count: int, one: str, few: str, many: str) -> str:
@@ -473,6 +487,7 @@ def _path_findings(
                         line,
                         f"overlay twierdzi, że `{value}` nie istnieje, a istnieje",
                         "negated-path-exists",
+                        value=value,
                     )
                 )
             continue
@@ -489,6 +504,7 @@ def _path_findings(
                 f"ścieżka `{value}` nie istnieje",
                 "stale-path",
                 _suggest(value, layout),
+                value,
             )
         )
     return findings
@@ -621,6 +637,7 @@ def _overlay_findings(
                 f"klucz `{key}:` wskazuje nieistniejącą ścieżkę `{value}`",
                 "stale-path",
                 _suggest(value, _Layout(tree=tree)),
+                value,
             )
         )
     return findings, paths

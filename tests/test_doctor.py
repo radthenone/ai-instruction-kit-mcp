@@ -536,6 +536,28 @@ class TestCli(unittest.TestCase):
             self.assertIn("src/missing/", out)
 
 
+    def test_doctor_json_lists_kind_value_and_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "BUGBOT.md", "UI: `frontend/web/components/ui/`.\n")
+
+            code, out = self._main("doctor", str(workspace), "--json")
+
+            self.assertEqual(code, 0, out)
+            data = json.loads(out)
+            self.assertEqual(data["warnings"], 1, out)
+            [finding] = [f for f in data["findings"] if f["severity"] == "warning"]
+            self.assertEqual(
+                {k: finding[k] for k in ("kind", "file", "line", "value", "suggestion")},
+                {
+                    "kind": "stale-path",
+                    "file": "BUGBOT.md",
+                    "line": 1,
+                    "value": "frontend/web/components/ui/",
+                    "suggestion": "frontend/web/src/components/ui/",
+                },
+            )
+
     def test_doctor_with_bogus_profile_clients_exits_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
