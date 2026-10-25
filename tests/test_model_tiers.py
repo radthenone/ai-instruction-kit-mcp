@@ -64,6 +64,16 @@ class TestParseProfile(unittest.TestCase):
             parse_profile("models:\n  claude:\n    takeover: ollama/llama3:8b\n")
         self.assertIn("models.claude.takeover", str(ctx.exception))
 
+    def test_takeover_is_claude_only(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("models:\n  opencode:\n    takeover: haiku\n")
+        self.assertIn("działa tylko dla klienta `claude`", str(ctx.exception))
+
+    def test_empty_takeover_has_same_message_as_empty_tier(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("models:\n  claude:\n    takeover:\n")
+        self.assertIn("bez modelu", str(ctx.exception))
+
     def test_unknown_tier_in_agents_is_error_with_hint(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
             parse_profile("agents:\n  medium: git-start\n")

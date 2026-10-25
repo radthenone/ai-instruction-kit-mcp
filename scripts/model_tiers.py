@@ -72,10 +72,11 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[
     `models:` i `agents:` z Profilu, zwalidowane.
 
     Returns:
-        tuple: ``(models[client][tier] = model, agents[tier] = [nazwy] albo None bez bloku)``.
+        tuple: ``(models[client][tier albo takeover] = model, agents[tier] = [nazwy] albo None bez bloku)``.
 
     Raises:
-        ProfileError: Nieznany tier albo agent w dwóch tierach.
+        ProfileError: Nieznany tier, pusty model, `takeover` poza `claude` albo spoza aliasów,
+            agent w dwóch tierach.
     """
     inline = re.search(r"^(models|agents):[ \t]*[^\s#]", text, re.MULTILINE)
     if inline:
@@ -99,7 +100,13 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[
                 continue
             if client is None or indent < client_indent:
                 raise ProfileError(f"Profil: `models.{key}` ma złe wcięcie.")
+            if not value:
+                raise ProfileError(f"Profil: `models.{client_name}.{key}` bez modelu — wpisz nazwę albo usuń linię.")
             if key == TAKEOVER_KEY:
+                if client_name != "claude":
+                    raise ProfileError(
+                        f"Profil: `models.{client_name}.{TAKEOVER_KEY}` działa tylko dla klienta `claude`."
+                    )
                 if value not in TAKEOVER_ALIASES:
                     raise ProfileError(
                         f"Profil: `models.{client_name}.{TAKEOVER_KEY}` ma nieznany alias `{value}`. "
@@ -111,8 +118,6 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[
                 raise ProfileError(
                     f"Profil: nieznany tier `models.{client_name}.{key}`. Dozwolone: {_ALLOWED}."
                 )
-            if not value:
-                raise ProfileError(f"Profil: `models.{client_name}.{key}` bez modelu — wpisz nazwę albo usuń linię.")
             client[key] = value
 
     span = _block_range(lines, "agents")
