@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from guides import cli, server
+from guides.bugbot_md import render as render_bugbot
 from guides.doctor import run_doctor
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -400,6 +401,37 @@ class TestStaleKitContent(unittest.TestCase):
             self.assertEqual([(w.kind, w.file) for w in warnings], [("stale-kit-content", "AGENTS.md")])
 
 
+class TestBugbotPathKeys(unittest.TestCase):
+    """#266: reguła szablonu na ścieżce domyślnej, której nie ma — `missing-path-key`."""
+
+    TEMPLATE = (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(encoding="utf-8")
+
+    def test_missing_key_with_absent_default_warns_with_detected_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "backend").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "# Overlay\n")
+            _write(workspace / "BUGBOT.md", render_bugbot(self.TEMPLATE, "backend"))
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            self.assertEqual([w.kind for w in warnings], ["missing-path-key"], warnings)
+            self.assertEqual(warnings[0].value, "backend")
+            self.assertEqual(warnings[0].suggestion, "apps/backend/")
+
+    def test_rendered_overlay_path_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "backend").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- backend: `apps/backend/`\n")
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "backend", paths={"backend": "apps/backend/"}),
+            )
+
+            self.assertEqual(run_doctor(workspace, KIT_ROOT, clients="claude").warnings, ())
+
+
 class TestCommands(unittest.TestCase):
     def test_command_without_agent_warns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -621,6 +653,28 @@ class TestCli(unittest.TestCase):
             self.assertIn("src/missing/", out)
 
 
+    def test_reload_with_warnings_points_to_mode_c_and_writes_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- web: `frontend/web/`\n")
+            state = workspace / ".ai" / ".kit-doctor.json"
+
+            code, out = self._main("reload", str(workspace))
+
+            self.assertEqual(code, 0, out)
+            self.assertEqual(
+                out.rstrip().splitlines()[-1],
+                'doctor: 1 do naprawy → /kit-project-edit "napraw zgłoszenia doctora"',
+            )
+            self.assertEqual(json.loads(state.read_text(encoding="utf-8"))["warnings"], 1)
+
+            (workspace / "frontend" / "web").mkdir(parents=True)
+            code, out = self._main("reload", str(workspace))
+
+            self.assertEqual(code, 0, out)
+            self.assertNotIn("do naprawy", out)
+            self.assertFalse(state.exists())
+
     def test_doctor_json_lists_kind_value_and_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _monorepo(tmp)
@@ -674,6 +728,26 @@ class TestKitProjectEditMode(unittest.TestCase):
         self.assertIn("project:rules", text)
         self.assertIn("kit-ai doctor", text)
         self.assertIn("Nie edytuj szablonowych sekcji `BUGBOT.md`", text)
+        # #266: partia z pliku stanu reloadu / `--json`, jeden podgląd, start bez prośby.
+        self.assertIn(".ai/.kit-doctor.json", text)
+        self.assertIn("kit-ai doctor --json", text)
+        self.assertIn("Jeden podgląd na całą partię", text)
+
+
+class TestMcpReload(unittest.TestCase):
+    def test_reload_workspace_with_warnings_tells_agent_to_run_mode_c(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", "<!-- project:rules -->\n`src/missing/`\n<!-- /project:rules -->\n")
+
+            with (
+                mock.patch.object(server, "_workspace_root", workspace),
+                mock.patch.object(server, "_kit_root", KIT_ROOT),
+            ):
+                out = server.reload_workspace(dry_run=False)
+
+            self.assertIn("doctor: OSTRZEŻENIE", out)
+            self.assertIn('Uruchom teraz `/kit-project-edit "napraw zgłoszenia doctora"`', out)
 
 
 class TestMcpStatus(unittest.TestCase):

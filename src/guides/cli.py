@@ -502,6 +502,52 @@ def doctor_report(
         return f"doctor: błąd {type(exc).__name__}: {exc}"
 
 
+DOCTOR_STATE = ".ai/.kit-doctor.json"
+DOCTOR_FIX_COMMAND = '/kit-project-edit "napraw zgłoszenia doctora"'
+
+
+def reload_doctor(
+    workspace: Path, kit_root: Path, clients: str, *, dry_run: bool = False
+) -> tuple[str, int]:
+    """
+    Doctor po reloadzie: raport, linia trybu C i plik stanu partii (#266).
+
+    Ostrzeżenia trafiają do ``.ai/.kit-doctor.json`` (wynik ``--json``), z którego
+    tryb C ``/kit-project-edit`` bierze partię; czysty przebieg plik usuwa.
+
+    Args:
+        workspace: Repo aplikacji.
+        kit_root: Root kita.
+        clients: Wartość ``clients:`` z Profilu.
+        dry_run: Bez zapisu pliku stanu.
+
+    Returns:
+        tuple[str, int]: Linie ``doctor:`` (z ostatnią „N do naprawy → …”, gdy są
+            ostrzeżenia) i liczba ostrzeżeń. Nigdy nie rzuca.
+    """
+    try:
+        report = run_doctor(
+            workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
+        )
+    except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
+        return f"doctor: błąd {type(exc).__name__}: {exc}", 0
+    count = len(report.warnings)
+    if not dry_run:
+        state = workspace / DOCTOR_STATE
+        try:
+            if count:
+                state.parent.mkdir(parents=True, exist_ok=True)
+                state.write_text(report.to_json() + "\n", encoding="utf-8", newline="\n")
+            else:
+                state.unlink(missing_ok=True)
+        except OSError:
+            pass
+    text = report.render()
+    if count:
+        text += f"\ndoctor: {count} do naprawy → {DOCTOR_FIX_COMMAND}"
+    return text, count
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entrypoint ``kit-ai``."""
     # Windows bez konsoli (potok, agent) pisze w cp1252 i wywraca się na `→` z Bootstrapu.
@@ -555,7 +601,7 @@ def main(argv: list[str] | None = None) -> int:
             if settings.migrated:
                 print("Stara konfiguracja (preset) → Profil core + none, nowy mcp.json.")
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
-            print(doctor_report(workspace, kit_root, settings.clients))
+            print(reload_doctor(workspace, kit_root, settings.clients, dry_run=args.dry_run)[0])
         elif args.command == "remove":
             result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)

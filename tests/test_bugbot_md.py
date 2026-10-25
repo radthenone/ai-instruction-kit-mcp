@@ -7,15 +7,18 @@ Bootstrap woła go z ``scripts/bootstrap-project.sh``.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from guides.bugbot_md import (
     MAX_MIGRATED_LINES,
     extract_rules,
     is_pristine,
+    main,
     migrate,
     needs_migration,
     read_template_history,
@@ -96,6 +99,51 @@ class TestRender(unittest.TestCase):
         text = render(OLD_TEMPLATE, "backend")
         self.assertIn("- backend rule (stara treść)", text)
         self.assertIsNone(extract_rules(text))
+
+
+KIT_TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "cursor" / "BUGBOT.md"
+
+
+class TestRenderPaths(unittest.TestCase):
+    """#266: ścieżki reguł szablonu z `## Ścieżki` overlayu, bez nich — domyślne."""
+
+    def test_backend_path_comes_from_overlay(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "backend", paths={"backend": "server/"})
+
+        self.assertIn("`server/`", text)
+        self.assertNotIn("{{path:", text)
+
+    def test_missing_key_renders_default(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "backend")
+
+        self.assertIn("`backend/`", text)
+        self.assertNotIn("{{path:", text)
+
+    def test_reload_reads_overlay_paths_and_keeps_file_pristine(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            overlay = workspace / ".ai" / "project.md"
+            overlay.parent.mkdir()
+            overlay.write_text("## Ścieżki\n\n- backend: `server/` — API\n", encoding="utf-8")
+            dest = workspace / "BUGBOT.md"
+            env = {
+                "SRC": str(KIT_TEMPLATE),
+                "DEST": str(dest),
+                "TIERS": "backend",
+                "OVERLAY": str(overlay),
+            }
+
+            with mock.patch.dict(os.environ, env):
+                main()
+            with mock.patch.dict(os.environ, {**env, "CHECK_ONLY": "1"}):
+                pristine = main()
+
+            self.assertIn("`server/`", dest.read_text(encoding="utf-8"))
+            self.assertEqual(pristine, 0)
 
 
 class TestPristine(unittest.TestCase):

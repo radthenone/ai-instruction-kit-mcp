@@ -28,7 +28,12 @@ from pathlib import Path
 
 import yaml
 
-from guides.bugbot_md import read_template_history
+from guides.bugbot_md import (
+    PATH_PLACEHOLDER,
+    read_template_history,
+    render_paths,
+)
+from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
 
 RULE_FILES: tuple[str, ...] = (
@@ -539,13 +544,19 @@ def _skip_path(
 
 
 def _kit_template_lines(
-    rel: str, text: str, kit_root: Path | None, *, is_kit: bool
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool, paths: dict[str, str]
 ) -> set[int]:
-    """Numery linii pliku reguł skopiowanych bez zmian z szablonu kita (repo aplikacji)."""
+    """Numery linii pliku reguł skopiowanych bez zmian z szablonu kita (repo aplikacji).
+
+    Szablon porównujemy po podstawieniu ``{{path:…}}`` ścieżkami overlayu — tak, jak
+    wyrenderował go reload (#266).
+    """
     template = KIT_TEMPLATES.get(rel)
     if is_kit or kit_root is None or template is None:
         return set()
-    kit_lines = {line.strip() for line in _read(kit_root / template).splitlines()}
+    kit_lines = {
+        line.strip() for line in render_paths(_read(kit_root / template), paths).splitlines()
+    }
     kit_lines.discard("")
     return {
         number
@@ -581,6 +592,43 @@ def _stale_kit_lines(
         for line in version.splitlines()
     } - current
     return {number for number, line in own.items() if line in history}
+
+
+def _path_key_findings(
+    workspace: Path, kit_root: Path | None, paths: dict[str, str], layout: _Layout
+) -> list[Finding]:
+    """
+    Klucze ``## Ścieżki``, bez których reguła szablonu ``BUGBOT.md`` celuje w pustkę.
+
+    Brak klucza → reload renderuje wartość domyślną; zgłaszamy to tylko, gdy
+    domyślnej ścieżki nie ma w repo (reguła po cichu nigdy nie odpala, #266).
+    """
+    bugbot = workspace / "BUGBOT.md"
+    if kit_root is None or not bugbot.is_file():
+        return []
+    rendered = {line.strip() for line in _read(bugbot).splitlines()}
+    findings: list[Finding] = []
+    for line in _read(kit_root / KIT_TEMPLATES["BUGBOT.md"]).splitlines():
+        for key, default in PATH_PLACEHOLDER.findall(line):
+            if (
+                key in paths
+                or render_paths(line).strip() not in rendered
+                or (workspace / default).exists()
+            ):
+                continue
+            findings.append(
+                Finding(
+                    "warning",
+                    OVERLAY_FILE,
+                    None,
+                    f"brak klucza `{key}:` w `## Ścieżki` — reguła `BUGBOT.md` używa "
+                    f"domyślnej `{default}`, której nie ma w repo",
+                    "missing-path-key",
+                    _suggest(default, layout),
+                    key,
+                )
+            )
+    return findings
 
 
 def _command_findings(
@@ -870,6 +918,8 @@ def run_doctor(
         )
         findings.extend(overlay_findings)
     layout = _layout(workspace, overlay_paths, tree)
+    path_keys = overlay_path_keys(overlay_text)
+    findings.extend(_path_key_findings(workspace, kit_root, path_keys, layout))
 
     available = _command_names(workspace, configured, is_kit=is_kit)
     for rel in RULE_FILES:
@@ -877,7 +927,7 @@ def run_doctor(
         if not path.is_file():
             continue
         text = _read(path)
-        skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit)
+        skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit)
         if stale:
             skip_lines |= stale

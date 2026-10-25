@@ -497,6 +497,7 @@ MACHINE_FILES=(
   "/.agents/mcp_config.json"
   "/opencode.json"
   "/.ai/.kit-bootstrap.json"
+  "/.ai/.kit-doctor.json"
 )
 
 sync_gitignore_section() {
@@ -767,6 +768,7 @@ copy_bugbot_md() {
     LABEL="${2:-BUGBOT.md}" \
     TIERS="$PROFILE_TIERS" \
     KIT_ROOT="$KIT_ROOT" \
+    OVERLAY="$TARGET/.ai/project.md" \
     CHECK_ONLY="${CHECK_ONLY:-}" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
 }
@@ -1242,6 +1244,7 @@ remove_kit() {
   strip_gitignore_section
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
+  kit_rm .ai/.kit-doctor.json
   kit_rm .ai/headless.mjs
   kit_rm .ai/night-run-watchdog.sh
   kit_rm "$DESIGN_HANDOFF"

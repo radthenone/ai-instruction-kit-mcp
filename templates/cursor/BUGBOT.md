@@ -23,7 +23,7 @@ If the diff adds or renames a function, class, or test (`test_*`, `class Test*`;
 <!-- tier:backend -->
 ## Backend
 
-If the PR modifies backend files (path from `.ai/project.md`, default `backend/`) and there are no changes in backend test files (`**/test*.py`, `**/tests/**`, `**/*_test.py`):
+If the PR modifies backend files (`{{path:backend|backend/}}` — key `backend:` in `.ai/project.md` → `## Ścieżki`) and there are no changes in backend test files (`**/test*.py`, `**/tests/**`, `**/*_test.py`):
 
 - Add a blocking bug titled "Missing tests for backend changes"
 - Body: "Dodaj lub zaktualizuj testy dla zmian w backendzie."
