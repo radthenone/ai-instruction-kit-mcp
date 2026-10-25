@@ -8,6 +8,7 @@ model: sonnet
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot / stack vs ten agent
 

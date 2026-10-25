@@ -44,8 +44,13 @@ KIT_SURFACE: tuple[str, ...] = (
     ".gitignore",
     "AGENTS.md",
     "BUGBOT.md",
+    "CODING_STANDARDS.md",
     "docs/agents/design-handoff.md",
+    "docs/agents/domain.md",
+    "docs/agents/issue-tracker.md",
+    "docs/agents/triage-labels.md",
     "opencode.json",
+    "skills-lock.json",
 )
 
 _TIMEOUT_SECONDS = 600

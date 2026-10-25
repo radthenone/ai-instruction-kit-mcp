@@ -7,6 +7,7 @@ readonly: true
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Blocking = musi być naprawione przed push/PR. Non-blocking = sugestia.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Czym to jest
 
