@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +79,18 @@ def _alive(pid: int) -> bool:
 
 
 @unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+
+def _clock_ahead(*, hours: int, minutes: bool) -> str:
+    """Godzina zegarowa (12h, am/pm) w czasie lokalnym, `hours` od teraz.
+
+    Stała godzina („3pm”) po jej minięciu wypada za ~24 h, poza oknem 6 h
+    wrappera, i test zależałby od pory uruchomienia.
+    """
+    at = datetime.now() + timedelta(hours=hours)
+    hour = at.hour % 12 or 12
+    suffix = "pm" if at.hour >= 12 else "am"
+    return f"{hour}:{at.minute:02d}{suffix}" if minutes else f"{hour}{suffix}"
+
 class HeadlessWrapperTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
@@ -125,6 +138,8 @@ class HeadlessWrapperTest(unittest.TestCase):
             env={
                 "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
+                # Ta sama strefa co w teście — godziny resetu liczone są w czasie lokalnym.
+                **({"TZ": os.environ["TZ"]} if "TZ" in os.environ else {}),
                 **env,
             },
         )
@@ -224,14 +239,14 @@ class HeadlessWrapperTest(unittest.TestCase):
     def test_codex_limit_with_clock_reset_is_pause(self) -> None:
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x", FAKE_CODE="1",
-            FAKE_LIMIT="You've hit your usage limit. Try again at 3:30pm.",
+            FAKE_LIMIT=f"You've hit your usage limit. Try again at {_clock_ahead(hours=1, minutes=True)}.",
         )
         self.assertEqual(result.returncode, 75)
         self.assertRegex(result.stdout, r"PAUSE=rate-limit reset=\d{4}-\d{2}-\d{2}T")
 
     def test_reset_clock_without_minutes_is_parsed(self) -> None:
         result = self.run_wrapper(
-            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="rate limit reached, resets 3pm",
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT=f"rate limit reached, resets {_clock_ahead(hours=2, minutes=False)}",
         )
         self.assertEqual(result.returncode, 75)
         self.assertRegex(result.stdout, r"PAUSE=rate-limit reset=\d{4}-\d{2}-\d{2}T")
