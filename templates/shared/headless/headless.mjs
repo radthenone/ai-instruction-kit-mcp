@@ -11,7 +11,9 @@
  *
  * Po zakończeniu, błędzie albo timeoucie wrapper zabija całe drzewo procesów wykonawcy
  * (Unix: grupa procesów, Windows: `taskkill /T /F`) — razem z jego LSP i serwerami MCP.
- * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie.
+ * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie, 75 = pauza limitu
+ * dostawcy wykonawcy (nie błąd; linia `PAUSE=rate-limit reset=<ISO|brak>` w raporcie).
+ * Pierwszeństwo: limit w ogonie wyjścia wygrywa też z timeoutem (75, nie 124).
  *
  * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `.ai/headless-runs/<start>/`
  * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
@@ -29,9 +31,38 @@ const FLAGS = ["--model", "--timeout", "--heartbeat"]
 const DEFAULT_TIMEOUT_MIN = 30
 const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
+// Pauza limitu dostawcy wykonawcy (nie błąd): kod wyjścia 75 (EX_TEMPFAIL).
+const PAUSE_CODE = 75
+// Komunikaty limitu opencode/Codex i innych. Ten sam sens co LIMIT_PATTERN w watchdog.sh
+// (tam limit Claude w transkrypcie) — zmiana wzorca w jednym miejscu wymaga drugiego.
+const LIMIT_PATTERN = /usage limit|\brate[ _-]limit|session limit|quota exceeded|too many requests|api error: 429/i
+const LIMIT_TAIL_LINES = 20
+const OUTPUT_TAIL_BYTES = 65_536
+// Okno godziny resetu jak MAX_RESET_AHEAD_SEC w watchdog.sh (dalsza godzina = brak, nie zgadujemy).
+const MAX_RESET_AHEAD_MS = 6 * 3_600_000
 
 // Numer ticketu z brancha `typ/<N>-slug`; inny branch (dev, detached, brak gita) — linia pominięta.
 const ticketNumber = () => /^[a-z]+\/(\d+)-/.exec(git("branch", "--show-current") || "")?.[1]
+
+// Godzina resetu z komunikatu limitu → ISO. Formy jak w watchdog.sh: „resets 3pm”, „resets 3:30pm”,
+// „try again at 15:30” (czas lokalny, najbliższa taka godzina ≤ MAX_RESET_AHEAD_MS) albo ISO
+// po „reset”/„try again”. Brak lub za daleko → null (w raporcie `reset=brak`).
+export function resetIso(text, now = Date.now()) {
+  const iso = /(?:reset\w*|try again(?: at| after)?)\D{0,20}?(\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)/i.exec(text)
+  if (iso && !Number.isNaN(Date.parse(iso[1]))) return new Date(iso[1]).toISOString()
+  // Grupy: 1 godzina; 2 minuty + 3 am/pm (z `:MM`); 4 am/pm bez minut. Bez `:MM` i bez am/pm — nie zgadujemy.
+  const clock = /(?:resets?|try again)(?: at)? (\d{1,2})(?::(\d{2}) ?([ap]m)?| ?([ap]m))\b/i.exec(text)
+  if (!clock) return null
+  const ampm = (clock[3] || clock[4] || "").toLowerCase()
+  const h = ampm ? (Number(clock[1]) % 12) + (ampm === "pm" ? 12 : 0) : Number(clock[1])
+  const at = new Date(now)
+  at.setHours(h, Number(clock[2] || 0), 0, 0)
+  if (at.getTime() <= now) at.setDate(at.getDate() + 1)
+  return at.getTime() - now <= MAX_RESET_AHEAD_MS ? at.toISOString() : null
+}
+
+// Ostatnie linie wyjścia — tam siedzi komunikat limitu; reszta (kod, diffy, logi) nie liczy się.
+const tailLines = (text) => text.split("\n").slice(-LIMIT_TAIL_LINES).join("\n")
 
 const footer = (runDir, ticket) => `
 
@@ -46,6 +77,7 @@ Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Na VPS \`uv run\` zawsze z \`--no-sync\`.
 - Maks. 2 próby naprawy tego samego błędu, potem stop i opis w sekcji Problemy raportu.
 - Nie pushuj i nie otwieraj PR — zrobi to host po review.
+- Język odpowiedzi i raportu: język \`language\` z Profilu (\`get_language\`), niezależnie od języka wejścia.
 - Na końcu raport w tym formacie:
 ## Zmiany
 <pliki i co w nich zmieniono>
@@ -275,11 +307,14 @@ async function main() {
   const partial = new Map()
   let lastOutput = Date.now()
   let stallReported = false
+  // Ogon wyjścia (64 KB) — komunikat limitu rozpoznajemy dopiero po zakończeniu wykonawcy.
+  let outputTail = ""
   const capture = (source, stream) => {
     source.setEncoding("utf8")
     partial.set(source, "")
     source.on("data", (text) => {
       log(text, stream)
+      outputTail = (outputTail + text).slice(-OUTPUT_TAIL_BYTES)
       lastOutput = Date.now()
       stallReported = false
       const parts = (partial.get(source) + text).split(/\r?\n/)
@@ -350,11 +385,17 @@ async function main() {
   // Po ubiciu drzewa potoki się zamykają — dociągamy resztę wyjścia (maks. 3 s).
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
-  if (timedOut) {
-    log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
+  if (timedOut) log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
+  // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
+  // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
+  let pause = null
+  if ((timedOut || code !== 0) && LIMIT_PATTERN.test(tailLines(outputTail))) {
+    pause = `PAUSE=rate-limit reset=${resetIso(tailLines(outputTail)) ?? "brak"}`
+    code = PAUSE_CODE
+  } else if (timedOut) {
     code = 124
   }
-  log(finalReport({ startHead, startStash, tail: fullTail() }))
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause }))
   log(`[headless] kod wyjścia: ${code}\n`)
   // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
   process.stdout.write("", () => process.exit(code))
@@ -362,8 +403,9 @@ async function main() {
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail }) {
+function finalReport({ startHead, startStash, tail, pause }) {
   const out = ["[headless] raport końcowy"]
+  if (pause) out.push(`## ${pause}`)
   const status = git("status", "--short")
   if (status !== null) out.push("## git status --short", status || "(czysto)")
   if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")

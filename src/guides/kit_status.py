@@ -29,7 +29,11 @@ _OVERWRITTEN_GLOBS: tuple[str, ...] = (
     "templates/vscode/github/copilot-instructions.md",
     "templates/vscode/github/hooks/*.json",
     "templates/cursor/rules/*.mdc",
+    # BUGBOT.md jest renderowany na nowo przy każdym reloadzie, ale blok
+    # `project:rules` przechodzi bez zmian — stąd „nadpisywany”, nie „ręczny”.
+    "templates/cursor/BUGBOT.md",
     "scripts/bootstrap-project.sh",
+    "scripts/bugbot_md.py",
     "scripts/render_agent_commands.py",
     "scripts/install_shared_skills.py",
     "scripts/claude_settings.py",
@@ -44,7 +48,6 @@ _MANUAL_GLOBS: tuple[str, ...] = (
     "templates/AGENTS.md",
     "templates/project.md",
     "templates/project.profile.yaml",
-    "templates/cursor/BUGBOT.md",
 )
 
 

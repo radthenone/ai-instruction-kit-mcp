@@ -3,9 +3,12 @@ mode: "agent"
 description: "Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /review-architecture."
 ---
 
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 - brak commit/push na chronione branche — tylko PR;
 - przed pushem: `/review-bugbot`.
@@ -32,7 +35,7 @@ Jesteś reviewerem architektury tego repo.
 
 1. `get_bundle("architecture")`.
 2. `get_overlay()` — ścieżki; `codegen:` z profilu (MCP `get_codegen`).
-3. BUGBOT.md — unikaj overlapu.
+3. `CODING_STANDARDS.md` — źródła standardów; unikaj overlapu.
 
 ### Sprawdzaj w diffie
 

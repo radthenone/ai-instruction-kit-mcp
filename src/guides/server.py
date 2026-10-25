@@ -9,7 +9,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
-from guides.cli import SetupError, kit_source, own_kit_root
+from guides.cli import SetupError, doctor_report, kit_source, own_kit_root
 from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
@@ -258,7 +258,10 @@ def check_kit_status() -> str:
         if resolved.workspace_root
         else resolved.kit_root
     )
-    return check_kit_updates(kit_root=kit_root, workspace_root=resolved.workspace_root)
+    status = check_kit_updates(kit_root=kit_root, workspace_root=resolved.workspace_root)
+    if resolved.workspace_root is None:
+        return status
+    return f"{status}\n\n{doctor_report(resolved.workspace_root, kit_root)}"
 
 
 def _require_workspace() -> Path:
@@ -340,6 +343,7 @@ def reload_workspace(dry_run: bool = True) -> str:
     if settings.migrated:
         header.append("- Migracja: stara konfiguracja (preset) → Profil core + none")
     header.append("")
+    report = doctor_report(workspace, _get_resolved().kit_root, settings.clients)
     if isinstance(result, BootstrapPlan):
         return "\n".join(
             [
@@ -348,11 +352,13 @@ def reload_workspace(dry_run: bool = True) -> str:
                 *header,
                 *_plan_lines(result),
                 "Żeby zastosować: wywołaj ponownie z `dry_run=False`.",
+                "",
+                report,
             ]
         )
     return "\n".join(
         ["# reload_workspace — odświeżono", "", *header, "```", result, "```", ""]
-        + ["- Zrestartuj IDE w repo aplikacji, żeby wczytało hooki i komendy."]
+        + ["- Zrestartuj IDE w repo aplikacji, żeby wczytało hooki i komendy.", "", report]
     )
 
 

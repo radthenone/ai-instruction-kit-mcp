@@ -3,6 +3,12 @@
 Sekcje Tierów (backend, web/mobile) Bootstrap zostawia tylko dla Tierów wybranych w `.ai/project.profile.yaml`.
 Stack każdego Tieru: MCP `get_bundle`. Dostosuj ścieżki i taski do `.ai/project.md` (sekcja `## Ścieżki`). Bugbot ładuje ten plik przy review PR.
 
+## Reguły projektu
+
+<!-- project:rules -->
+<!-- Wpisz tu reguły własne projektu — ten blok przechodzi przez `kit-ai reload` bez zmian. -->
+<!-- /project:rules -->
+
 ## Ogólne
 
 - Odpowiedzi agentów po polsku; kod po angielsku; docstringi po polsku.

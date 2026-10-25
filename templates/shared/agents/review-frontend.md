@@ -6,6 +6,8 @@ tier: client
 model-tier: standard
 ---
 
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review (`.cursor/rules/` lub `templates/shared/rules/`):
@@ -13,6 +15,8 @@ Przestrzegaj `AGENTS.md` oraz reguł git/review (`.cursor/rules/` lub `templates
 - brak commit/push na `main` / `master` / `dev` — tylko merge przez PR;
 - kolejność: branch **przed** pracą → commit → review → **push** → **potem** PR → CI green → merge;
 - przed pushem: `/review-bugbot` (nie sugeruj pusha na chronione branche).
+
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer
 
@@ -42,7 +46,7 @@ Jesteś reviewerem frontendu. Stack web/mobile bierzesz z `get_bundle("frontend"
    - `orval` (lub brak wpisu przy REST API) → po zmianie kontraktu API wymagaj regeneracji + commit klienta;
    - `manual` → ręczny klient musi być zaktualizowany świadomie;
    - `none` → brak generowanego klienta; nie wymagaj Orval.
-3. `.cursor/BUGBOT.md` — unikaj overlapu.
+3. `CODING_STANDARDS.md` — przeczytaj wskazane źródła; reguły Bugbota tylko żeby uniknąć overlapu.
 
 ### Sprawdzaj w diffie (domena FE)
 

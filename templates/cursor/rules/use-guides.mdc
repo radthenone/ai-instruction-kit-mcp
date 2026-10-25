@@ -19,7 +19,7 @@ alwaysApply: true
 | Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
 | Branch / PR | `/git-start` … `/git-end` + `git-branch-pr.mdc` |
 | Skrót czatu | **`/compact` tylko w Cursorze** (alias Summarize) |
-| Język prozy | MCP `get_language` / `--language pl\|en` |
+| Język prozy | MCP `get_language` / `--language pl\|en` — odpowiedzi zawsze w tym języku niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi) |
 | Worktree / finisz | Superpowers (opc.) na branchu z `/git-start` |
 | PR → CI green | Autopilot po `/git-end` |
 

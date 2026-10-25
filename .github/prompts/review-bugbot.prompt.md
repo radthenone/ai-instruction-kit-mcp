@@ -3,9 +3,12 @@ mode: "agent"
 description: "Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako /review-bugbot."
 ---
 
+Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Blocking = musi być naprawione przed push/PR. Non-blocking = sugestia.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Czym to jest
 
@@ -30,8 +33,10 @@ W kolejności:
 1. `BUGBOT.md` w root repo (kopiowany przez bootstrap kita **niezależnie od `--clients`** —
    to ten plik dla wszystkich klientów, nie tylko Cursor).
 2. `.cursor/BUGBOT.md` (kopia dla natywnej usługi Cursor BugBot — istnieje tylko gdy
-   projekt bootstrapowano z `--clients cursor`/`all`; jeśli oba pliki istnieją, oba mają
-   tę samą treść — użyj root, nie czytaj dwa razy).
+   projekt bootstrapowano z `--clients cursor`/`all`; jeśli oba pliki istnieją, oba są
+   renderem tego samego szablonu — użyj root, nie czytaj dwa razy). Każdy `kit-ai reload`
+   odświeża plik z szablonu kita; reguły projektu żyją w bloku `<!-- project:rules -->`
+   i przechodzą przez reload bez zmian.
 3. Brak pliku → powiedz to wprost i zastosuj tylko reguły ogólne z `AGENTS.md` (sekrety, minimalny diff, brak testów).
 
 ### 2. Diff

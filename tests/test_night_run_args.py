@@ -24,7 +24,7 @@ class TestNightRunArgs(unittest.TestCase):
     def test_goal_not_required(self) -> None:
         self.assertNotIn("pod /goal", self.description)
         self.assertIn("`/goal` opcjonalny", self.text)
-        self.assertIn("Wznawianie nocy = tik `CronCreate`", self.text)
+        self.assertIn("Wznawianie nocy = watchdog `.ai/night-run-watchdog.sh`", self.text)
 
     def test_args_syntax(self) -> None:
         self.assertIn(
@@ -53,6 +53,11 @@ class TestNightRunArgs(unittest.TestCase):
         self.assertIn("Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`", self.text)
         chain = self.text.split("## Łańcuch na ticket", 1)[1]
         self.assertLess(chain.index("2. **Review.**"), chain.index("Dalej kroki 6–8 promptu"))
+
+    def test_code_review_gets_issue_number(self) -> None:
+        """/code-review ma oś Spec — orkiestrator dokleja numer ticketu do wywołania."""
+        self.assertIn("`/code-review <N>`", self.text)
+        self.assertIn("oś Spec czyta issue", self.text)
 
     def test_cost_note_for_headless_and_inline_review(self) -> None:
         self.assertIn("koszt bez wykonawcy headless i review w sesji głównej", self.text)

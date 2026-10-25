@@ -11,6 +11,8 @@ i commituje lokalnie po każdym zielonym kroku; push i PR robi host po review.
 
 Ten klient (host): `vscode`. Host nie wywołuje sam siebie.
 
+Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Składnia
 
 ```text
@@ -50,6 +52,8 @@ Ten klient (host): `vscode`. Host nie wywołuje sam siebie.
    `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija — robi to `--timeout`.
 2. Kod wyjścia `2` = błędne wywołanie (np. wykonawca == host, spoza `clients:`, nieznana
    flaga). Pokaż komunikat wrappera użytkownikowi i zakończ.
+   Kod `75` = pauza limitu dostawcy wykonawcy, nie błąd: linia `PAUSE=rate-limit reset=<ISO|brak>`
+   w logu. Wykonawca nie skończył pracy — zgłoś pauzę z godziną resetu (nie „błąd”) i nie ponawiaj sam.
 3. Po zakończeniu (także kod ≠ 0 albo `124` = timeout) przeczytaj z wyjścia raport
    końcowy wrappera (`[headless] raport końcowy`): `git status --short`, commity wykonawcy
    od startu, nowe wpisy stasha i ostatnie linie wykonawcy. Ostrzeżenie o stashu (`UWAGA`)

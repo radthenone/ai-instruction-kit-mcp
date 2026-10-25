@@ -29,6 +29,7 @@ from guides.clients import (
     parse_clients,
     profile_clients_arg,
 )
+from guides.doctor import run_doctor
 from guides.kit_status import STAMP_REL_PATH, check_kit_updates, direct_url_info
 from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
@@ -467,6 +468,34 @@ def _plan_report(plan: BootstrapPlan) -> str:
     return "\n".join(lines)
 
 
+def doctor_report(workspace: Path, kit_root: Path, clients: str | None = None) -> str:
+    """
+    Raport doctora dla repo aplikacji — czytany na końcu reloadu i w statusie.
+
+    Doctor tylko czyta; wynik nigdy nie zmienia kodu wyjścia (issue #242).
+
+    Args:
+        workspace: Repo aplikacji.
+        kit_root: Root kita (szablony agentów do sprawdzenia komend).
+        clients: Wartość ``clients:``; ``None`` — z Profilu, a bez niego ``all``.
+
+    Returns:
+        str: Linie ``doctor:`` — ostrzeżenia i informacje albo jedna linia o czystym
+            wyniku; każdy błąd to linia ``doctor: błąd …``, nigdy wyjątek.
+    """
+    try:
+        if clients is None:
+            try:
+                clients = workspace_settings(workspace).clients
+            except SetupError:
+                clients = "all"
+        return run_doctor(
+            workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
+        ).render()
+    except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
+        return f"doctor: błąd {type(exc).__name__}: {exc}"
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entrypoint ``kit-ai``."""
     # Windows bez konsoli (potok, agent) pisze w cp1252 i wywraca się na `→` z Bootstrapu.
@@ -498,6 +527,11 @@ def main(argv: list[str] | None = None) -> int:
     status = sub.add_parser("status", help="Czy kit zmienił się od ostatniego Bootstrapu")
     status.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
 
+    doctor = sub.add_parser(
+        "doctor", help="Czy reguły projektu wskazują istniejące ścieżki i komendy"
+    )
+    doctor.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+
     args = parser.parse_args(argv)
     kit_root = find_kit_root()
     workspace = to_path(args.path).resolve()
@@ -514,13 +548,17 @@ def main(argv: list[str] | None = None) -> int:
             if settings.migrated:
                 print("Stara konfiguracja (preset) → Profil core + none, nowy mcp.json.")
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
+            print(doctor_report(workspace, kit_root, settings.clients))
         elif args.command == "remove":
             result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
         elif args.command == "labels":
             print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
+        elif args.command == "doctor":
+            print(doctor_report(workspace, kit_root))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
+            print(doctor_report(workspace, kit_root))
     except (SetupError, BootstrapError, LabelsError, ValueError) as exc:
         print(f"kit-ai: {exc}", file=sys.stderr)
         return 1

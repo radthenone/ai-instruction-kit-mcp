@@ -3,6 +3,8 @@ name: git-check
 description: Sync GitHub issue title/body to actual file diffs. Use when /git-check, issue stale vs branch work. Wywołuj jako /git-check.
 ---
 
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev`.

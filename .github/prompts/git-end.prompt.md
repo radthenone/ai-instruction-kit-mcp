@@ -3,6 +3,8 @@ mode: "agent"
 description: "Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /git-end. Wywołuj jako /git-end. (Dawniej /git-pr.)"
 ---
 
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc`. Chronione: `main` / `master` / `dev`. Kolejność: **push → potem PR**.

@@ -13,7 +13,7 @@
 | Nauka / niepewna koncepcja **przed** kodem | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` (readonly — uczą, nie piszą) |
 | Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
 | Branch / PR | `/git-start`, `/git-check`, `/git-commit`, `/git-end` + `git-branch-pr` |
-| Język prozy | MCP `get_language` / `--language pl\|en` |
+| Język prozy | MCP `get_language` / `--language pl\|en` — odpowiedzi zawsze w tym języku niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi) |
 | Worktree / finisz | Superpowers (opc.) na branchu z `/git-start` |
 | PR → CI green | Autopilot po `/git-end` |
 

@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git comm
 if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
 if [ -n "$FAKE_PARTIAL" ]; then printf 'bez nowej linii'; fi
+if [ -n "$FAKE_LIMIT" ]; then echo "$FAKE_LIMIT"; fi
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 exit "${FAKE_CODE:-0}"
 """
@@ -77,6 +79,18 @@ def _alive(pid: int) -> bool:
 
 
 @unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+
+def _clock_ahead(*, hours: int, minutes: bool) -> str:
+    """Godzina zegarowa (12h, am/pm) w czasie lokalnym, `hours` od teraz.
+
+    Stała godzina („3pm”) po jej minięciu wypada za ~24 h, poza oknem 6 h
+    wrappera, i test zależałby od pory uruchomienia.
+    """
+    at = datetime.now() + timedelta(hours=hours)
+    hour = at.hour % 12 or 12
+    suffix = "pm" if at.hour >= 12 else "am"
+    return f"{hour}:{at.minute:02d}{suffix}" if minutes else f"{hour}{suffix}"
+
 class HeadlessWrapperTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
@@ -124,6 +138,8 @@ class HeadlessWrapperTest(unittest.TestCase):
             env={
                 "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
+                # Ta sama strefa co w teście — godziny resetu liczone są w czasie lokalnym.
+                **({"TZ": os.environ["TZ"]} if "TZ" in os.environ else {}),
                 **env,
             },
         )
@@ -182,6 +198,79 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_CODE="3")
         self.assertEqual(result.returncode, 3)
         self.assert_tree_killed()
+
+    def test_rate_limit_is_pause_with_reset_not_failure(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x",
+            FAKE_CODE="1", FAKE_LIMIT="Error: rate limit exceeded, resets at 2099-01-01T10:00:00Z",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit reset=2099-01-01T10:00:00.000Z", result.stdout)
+        self.assert_tree_killed()
+
+    def test_plain_failure_without_limit_text_stays_failure(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="boom: config broken",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_limit_text_on_success_is_not_pause(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="0", FAKE_LIMIT="docs mention rate limit",
+        )
+        self.assertEqual(result.returncode, 0)
+
+    def test_code_numbers_and_identifiers_are_not_limit(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1",
+            FAKE_LIMIT="diff a/src/429.py:429 rateLimit = 429; PR #429 too-many-requests-free",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_opencode_free_limit_is_pause_without_reset(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit reset=brak", result.stdout)
+
+    def test_codex_limit_with_clock_reset_is_pause(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1",
+            FAKE_LIMIT=f"You've hit your usage limit. Try again at {_clock_ahead(hours=1, minutes=True)}.",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertRegex(result.stdout, r"PAUSE=rate-limit reset=\d{4}-\d{2}-\d{2}T")
+
+    def test_reset_clock_without_minutes_is_parsed(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT=f"rate limit reached, resets {_clock_ahead(hours=2, minutes=False)}",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertRegex(result.stdout, r"PAUSE=rate-limit reset=\d{4}-\d{2}-\d{2}T")
+
+    def test_reset_iso_after_try_again_is_parsed(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1",
+            FAKE_LIMIT="usage limit reached, try again at 2099-01-01T10:00:00Z",
+        )
+        self.assertIn("PAUSE=rate-limit reset=2099-01-01T10:00:00.000Z", result.stdout)
+
+    def test_limit_on_timeout_is_pause(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_SLEEP="30", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit reset=brak", result.stdout)
+
+    def test_pause_line_is_also_in_final_report(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertIn("PAUSE=rate-limit", result.stdout.split("raport końcowy", 1)[1])
 
     def test_tree_is_killed_after_timeout(self) -> None:
         started = time.time()

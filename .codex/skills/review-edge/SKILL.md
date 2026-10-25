@@ -4,9 +4,12 @@ description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, 
 readonly: true
 ---
 
+Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
+
 ## Reguły wspólne (obowiązkowe)
 
 Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer
 
