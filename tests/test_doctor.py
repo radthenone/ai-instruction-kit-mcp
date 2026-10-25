@@ -194,7 +194,8 @@ class TestOverlayPaths(unittest.TestCase):
             self.assertIn("web:", warnings[0].message)
             self.assertIn("frontend/web/", warnings[0].message)
 
-    def test_overlay_file_path_must_exist(self) -> None:
+    def test_overlay_key_may_point_to_existing_file(self) -> None:
+        """F7: klucz `## Ścieżki` wskazujący istniejący plik to nie rozjazd."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
             _write(
@@ -202,6 +203,16 @@ class TestOverlayPaths(unittest.TestCase):
                 "## Ścieżki\n\n- Taskfile: `Taskfile.yml` — punkt wejścia\n",
             )
             _write(workspace / "Taskfile.yml", "version: 3\n")
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_overlay_key_pointing_to_missing_file_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                "## Ścieżki\n\n- Taskfile: `Taskfile.yml` — punkt wejścia\n",
+            )
 
             warnings = _report(workspace).warnings
 
@@ -217,6 +228,91 @@ class TestOverlayPaths(unittest.TestCase):
 
             self.assertEqual(len(warnings), 1, warnings)
             self.assertIn("backend:", warnings[0].message)
+
+
+MONOREPO_OVERLAY = """\
+# Overlay
+
+## Ścieżki
+
+- backend: `backend/`
+- frontend: `frontend/`
+- web: `frontend/web/`
+- mobile: `frontend/mobile/`
+- Taskfile: `Taskfile.yml` — główny punkt wejścia komend
+
+## Backend
+
+- Konfiguracja: `core/envs.py`, ceny: `apps/products/pricing.py`.
+- Web: `web/app/tokens.css`, mobile: `mobile/tailwind.config.js`.
+- Nawigacja przez `next/navigation`, użytkownik z `request.user`.
+- **Brak `apps/files`** — pliki trzymamy w S3.
+- **Nie istnieje po stronie frontendu:** `features/catalog`, `features/cart`.
+- API przez DRF pod prefiksem `customers/` (`customers/profile`, `customers/addresses`).
+- Komponenty w `ui/`, layout w `app/`, helpery w `src/lib/`.
+"""
+
+
+def _monorepo(tmp: str) -> Path:
+    """Fikstura #266: backend + web + mobile + pakiety workspace'u."""
+    workspace = _workspace(tmp)
+    for rel in (
+        "backend/src/core/envs.py",
+        "backend/src/apps/products/pricing.py",
+        "frontend/web/src/components/ui/button.tsx",
+        "frontend/web/src/lib/utils.ts",
+        "frontend/web/app/tokens.css",
+        "frontend/mobile/tailwind.config.js",
+        "frontend/packages/api/generated/index.ts",
+        "Taskfile.yml",
+    ):
+        _write(workspace / rel, "")
+    _write(
+        workspace / "package.json",
+        json.dumps({"workspaces": ["frontend/packages/*", "frontend/web", "frontend/mobile"]}),
+    )
+    _write(workspace / "frontend/web/package.json", json.dumps({"dependencies": {"next": "15"}}))
+    _write(workspace / "frontend/packages/api/package.json", "{}")
+    _write(workspace / ".ai" / "project.md", MONOREPO_OVERLAY)
+    return workspace
+
+
+class TestFalsePositives(unittest.TestCase):
+    """#266: klasy F1–F7 nie dają ostrzeżeń, realny rozjazd — jedno z propozycją."""
+
+    def test_monorepo_overlay_with_every_false_positive_class_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+
+            report = _report(workspace)
+
+            self.assertEqual(report.warnings, (), report.render())
+
+    def test_real_stale_path_warns_once_with_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / "BUGBOT.md",
+                "<!-- project:rules -->\nUI: `frontend/web/components/ui/`.\n"
+                "<!-- /project:rules -->\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertEqual(warnings[0].kind, "stale-path")
+            self.assertEqual(warnings[0].suggestion, "frontend/web/src/components/ui/")
+
+    def test_negated_path_that_exists_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(workspace / "AGENTS.md", "- Brak `backend/src/core/` w tym repo.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertEqual(warnings[0].kind, "negated-path-exists")
+            self.assertIn("nie istnieje, a istnieje", warnings[0].message)
 
 
 class TestCommands(unittest.TestCase):
