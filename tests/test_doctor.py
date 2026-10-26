@@ -251,7 +251,7 @@ MONOREPO_OVERLAY = """\
 - **Brak `apps/files`** — pliki trzymamy w S3.
 - **Nie istnieje po stronie frontendu:** `features/catalog`, `features/cart`.
 - API przez DRF pod prefiksem `customers/` (`customers/profile`, `customers/addresses`).
-- Komponenty w `ui/`, layout w `app/`, helpery w `src/lib/`.
+- Web: komponenty w `ui/`, layout w `app/`, helpery w `src/lib/`.
 """
 
 
@@ -455,6 +455,114 @@ def _kit_with_history(tmp: str) -> Path:
     _write(agents, "# AGENTS.md\n\nGuardy: `git-guard.mjs`.\n")
     git("commit", "-q", "-am", "current")
     return kit
+
+
+TIERED_OVERLAY = """\
+## Ścieżki
+
+- backend: `backend/`
+- web: `frontend/web/`
+"""
+
+
+def _tiered(tmp: str) -> Path:
+    """Backend + web; ``config/settings.json`` w obu Tierach, ``utils/date.ts`` tylko w web."""
+    workspace = _workspace(tmp)
+    for rel in (
+        "backend/config/settings.json",
+        "frontend/web/config/settings.json",
+        "frontend/web/src/utils/date.ts",
+    ):
+        _write(workspace / rel, "")
+    _write(workspace / ".ai" / "project.md", TIERED_OVERLAY)
+    return workspace
+
+
+class TestVerboseCandidates(unittest.TestCase):
+    """#268: ``--verbose`` pokazuje kandydatów, gdy ścieżka pasuje do kilku miejsc."""
+
+    def test_verbose_lists_candidates_when_path_matches_several_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "Ustawienia: `config/settings.json`.\n")
+
+            report = run_doctor(workspace, clients="claude", verbose=True)
+
+            self.assertEqual(report.warnings, (), report.render())
+            [info] = [f for f in report.infos if f.kind == "path-candidates"]
+            self.assertEqual((info.file, info.line, info.value), ("BUGBOT.md", 1, "config/settings.json"))
+            self.assertIn("`backend/config/settings.json`", info.message)
+            self.assertIn("`frontend/web/config/settings.json`", info.message)
+
+    def test_without_verbose_ambiguous_path_adds_no_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "Ustawienia: `config/settings.json`.\n")
+
+            report = _report(workspace)
+
+            self.assertEqual(report.findings, (), report.render())
+
+    def test_verbose_single_candidate_adds_no_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "Daty: `utils/date.ts`.\n")
+
+            report = run_doctor(workspace, clients="claude", verbose=True)
+
+            self.assertEqual(report.findings, (), report.render())
+
+
+class TestTierScopedRoots(unittest.TestCase):
+    """#268: ścieżka przy Tierze (nagłówek / prefiks linii) liczy się tylko w jego rootach."""
+
+    def test_path_under_tier_heading_existing_only_in_other_tier_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "# Reguły\n\n## Backend\n\nDaty: `utils/date.ts`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([(w.kind, w.line, w.value) for w in warnings], [("stale-path", 5, "utils/date.ts")])
+
+    def test_bare_name_under_tier_heading_existing_only_in_other_tier_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "## Backend\n\nDaty: `date.ts`.\n")
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([(w.kind, w.value) for w in warnings], [("stale-path", "date.ts")])
+
+    def test_path_under_its_own_tier_heading_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "## Frontend (web)\n\n### Helpery\n\nDaty: `utils/date.ts`.\n")
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_tier_line_prefix_overrides_heading(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "## Backend\n\n- web: `utils/date.ts`.\n")
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_heading_without_tier_resets_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "## Backend\n\n## Ogólne\n\nDaty: `utils/date.ts`.\n")
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_verbose_candidates_are_limited_to_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "## Backend\n\nUstawienia: `config/settings.json`.\n")
+
+            report = run_doctor(workspace, clients="claude", verbose=True)
+
+            self.assertEqual(report.findings, (), report.render())
 
 
 class TestStaleKitContent(unittest.TestCase):
@@ -862,6 +970,17 @@ class TestCli(unittest.TestCase):
                 },
             )
 
+    def test_doctor_verbose_prints_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _tiered(tmp)
+            _write(workspace / "BUGBOT.md", "Ustawienia: `config/settings.json`.\n")
+
+            code, out = self._main("doctor", str(workspace), "--verbose")
+
+            self.assertEqual(code, 0, out)
+            self.assertIn("backend/config/settings.json", out)
+            self.assertIn("frontend/web/config/settings.json", out)
+
     def test_doctor_with_bogus_profile_clients_exits_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
@@ -878,6 +997,27 @@ class TestCli(unittest.TestCase):
             out = cli.doctor_report(Path("."), KIT_ROOT)
 
         self.assertEqual(out, "doctor: błąd RuntimeError: boom")
+
+
+class TestReadmeVerification(unittest.TestCase):
+    """#268: sekcja „Weryfikacja” README opisuje zachowanie doctora."""
+
+    def test_verification_section_covers_doctor_behaviour(self) -> None:
+        text = (KIT_ROOT / "README.md").read_text(encoding="utf-8")
+        section = text.split("### 3. Weryfikacja", 1)[1].split("\n### ", 1)[0]
+
+        for needle in (
+            "`stale-path`",
+            "`negated-path-exists`",
+            "`stale-kit-content`",
+            "`missing-path-key`",
+            "kit-ai doctor --json",
+            "kit-ai doctor --verbose",
+            "`path-candidates`",
+            ".ai/.kit-doctor.json",
+            "Tier",
+        ):
+            self.assertIn(needle, section)
 
 
 class TestKitProjectEditMode(unittest.TestCase):

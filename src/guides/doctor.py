@@ -22,7 +22,7 @@ import json
 import os
 import re
 import tomllib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import yaml
@@ -198,6 +198,9 @@ NODE_BUILTINS = frozenset(
 # Podkatalogi źródeł sprawdzane pod każdym rootem z `## Ścieżki` (F1, #266).
 SOURCE_SUBDIRS = ("src", "app")
 
+# Tiery, których klucz w `## Ścieżki` zawęża rozwiązywanie ścieżek (#268).
+TIERS = ("backend", "web", "mobile")
+
 _INLINE_CODE = re.compile(r"`([^`\n]+)`")
 # F4: overlay dokumentuje, czego w repo NIE ma. Liczy się tylko jednoznaczna fraza
 # tuż przed backtickiem (ewentualnie z dopowiedzeniem zakończonym dwukropkiem:
@@ -230,6 +233,10 @@ _DOMAIN = re.compile(
 )
 _DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 _WORD_CHARS = re.compile(r"[\W_]+")
+# #268: kontekst Tieru — słowo w nagłówku Markdowna albo prefiks ``web:`` przed ścieżką.
+_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+_TIER_WORD = re.compile(r"\b(backend|web|mobile)\b", re.IGNORECASE)
+_TIER_PREFIX = re.compile(r"\b(backend|web|mobile)\**\s*:", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -272,13 +279,15 @@ class _Layout:
             ich ``src/``/``app/`` i pakiety workspace'u).
         dependencies: Pierwsze segmenty specyfikatorów modułów (zależności JS + moduły Node).
         tree: Ścieżki względne repo bez katalogów narzędzi; katalogi z ``/`` na końcu.
-        names: Indeks ostatnich segmentów ``tree`` — szukanie gołej nazwy w O(1).
+        names: Ostatni segment ``tree`` → pełne ścieżki (bez ``/``) — szukanie gołej nazwy.
+        tiers: Tier → katalog z klucza ``## Ścieżki`` (``{"backend": "backend"}``, #268).
     """
 
     roots: tuple[str, ...] = ()
     dependencies: frozenset[str] = frozenset()
     tree: tuple[str, ...] = ()
-    names: frozenset[str] = frozenset()
+    names: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    tiers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -396,19 +405,54 @@ def _tree(workspace: Path) -> tuple[str, ...]:
     return tuple(entries)
 
 
-def _exists(workspace: Path, value: str, layout: _Layout) -> bool:
+def _candidates(
+    workspace: Path, value: str, layout: _Layout, bases: tuple[str, ...] = ()
+) -> list[str]:
     """
-    Czy ścieżka istnieje — od roota repo, a gdy nie, względem rootów Tierów (F1).
+    Istniejące ścieżki, na które wskazuje wartość — od roota repo i względem rootów Tierów (F1).
 
     Goła nazwa pliku albo katalogu (``server.py``, ``ui/``) może leżeć w dowolnym
-    podkatalogu (F6) — overlay używa ich jako skrótu.
+    podkatalogu (F6) — overlay używa ich jako skrótu. ``bases`` (#268) zostawia tylko
+    kandydatów wewnątrz katalogów Tieru; ścieżka od roota repo jest jawna i zostaje zawsze.
+    Pusta lista = ścieżki nie ma.
     """
-    if (workspace / value).exists():
-        return True
     name = value.rstrip("/")
+    found = [name] if (workspace / value).exists() else []
     if "/" not in name:
-        return name in layout.names
-    return any((workspace / root / value).exists() for root in layout.roots)
+        found += layout.names.get(name, ())
+    else:
+        found += [f"{root}/{name}" for root in layout.roots if (workspace / root / value).exists()]
+    if bases:
+        found = [
+            path
+            for path in found
+            if path == name or any(path == base or path.startswith(f"{base}/") for base in bases)
+        ]
+    return list(dict.fromkeys(found))
+
+
+def _heading_tiers(text: str) -> list[frozenset[str]]:
+    """
+    Tiery z nagłówków Markdowna obejmujących każdą linię (indeks = numer linii - 1).
+
+    ``## Backend`` → ``{"backend"}``, ``## Frontend (web / mobile)`` → ``{"web", "mobile"}``.
+    Nagłówek bez Tieru na tym samym albo wyższym poziomie kończy zakres; podsekcja
+    dziedziczy Tier rodzica. Linie w blokach kodu nie są nagłówkami.
+    """
+    stack: list[tuple[int, frozenset[str]]] = []
+    tiers: list[frozenset[str]] = []
+    in_fence = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        match = None if in_fence else _HEADING.match(line)
+        if match:
+            level = len(match.group(1))
+            stack = [entry for entry in stack if entry[0] < level]
+            found = frozenset(word.lower() for word in _TIER_WORD.findall(match.group(2)))
+            stack.append((level, found))
+        tiers.append(next((found for _, found in reversed(stack) if found), frozenset()))
+    return tiers
 
 
 def _suggest(value: str, layout: _Layout) -> str | None:
@@ -489,9 +533,15 @@ def _path_findings(
     kit_root: Path | None,
     is_kit: bool,
     layout: _Layout,
+    verbose: bool = False,
 ) -> list[Finding]:
-    """Ścieżki w backtickach, których nie ma w drzewie (bez klas F1–F6 z #266)."""
+    """
+    Ścieżki w backtickach, których nie ma w drzewie (bez klas F1–F6 z #266).
+
+    ``verbose`` (#268): ścieżka pasująca do kilku miejsc dostaje ``info`` z listą kandydatów.
+    """
     findings: list[Finding] = []
+    heading_tiers = _heading_tiers(text)
     for match in _INLINE_CODE.finditer(text):
         value = _normalise_path(match.group(1))
         if value is None:
@@ -507,7 +557,12 @@ def _path_findings(
         # Prozę linii bez inline-code: `/api/` wewnątrz samej ścieżki to nie trasa.
         if _URL_CONTEXT.search(_INLINE_CODE.sub("", line_text)) or value.startswith("api/"):
             continue
-        exists = _exists(workspace, value, layout)
+        # #268: prefiks ``web:`` przed ścieżką wygrywa z nagłówkiem sekcji.
+        prefix = _TIER_PREFIX.findall(_INLINE_CODE.sub("", text[line_start : match.start()]))
+        tiers = {prefix[-1].lower()} if prefix else heading_tiers[line - 1]
+        bases = tuple(layout.tiers[tier] for tier in sorted(tiers) if tier in layout.tiers)
+        candidates = _candidates(workspace, value, layout, bases)
+        exists = bool(candidates)
         before = _CODE_LIST_TAIL.sub("", text[line_start : match.start()])
         after = text[match.end() : None if line_end < 0 else line_end]
         if _NEGATION_BEFORE.search(before) or _NEGATION_AFTER.search(after):
@@ -525,6 +580,18 @@ def _path_findings(
                     )
                 )
             continue
+        if exists and verbose and len(candidates) > 1:
+            listed = ", ".join(f"`{candidate}`" for candidate in candidates)
+            findings.append(
+                Finding(
+                    "info",
+                    rel,
+                    line,
+                    f"ścieżka `{value}` pasuje do kilku miejsc: {listed}",
+                    "path-candidates",
+                    value=value,
+                )
+            )
         if exists or _is_module_specifier(value, layout):
             continue
         if "/" not in value and not _has_known_extension(value):
@@ -816,8 +883,13 @@ def _dependency_names(workspace: Path, dirs: list[str]) -> set[str]:
     return names
 
 
-def _layout(workspace: Path, overlay_paths: list[str], tree: tuple[str, ...]) -> _Layout:
-    """Rooty Tierów, zależności i drzewo repo dla jednego przebiegu (#266)."""
+def _layout(
+    workspace: Path,
+    overlay_paths: list[str],
+    tree: tuple[str, ...],
+    path_keys: dict[str, str] | None = None,
+) -> _Layout:
+    """Rooty Tierów, zależności i drzewo repo dla jednego przebiegu (#266, #268)."""
     packages = _package_dirs(workspace, _workspace_patterns(workspace))
     roots: list[str] = []
     for value in [*overlay_paths, *packages]:
@@ -828,8 +900,17 @@ def _layout(workspace: Path, overlay_paths: list[str], tree: tuple[str, ...]) ->
     dependencies = _dependency_names(workspace, roots)
     # Bez stdlib i zależności Pythona: `util/`, `json/` to częściej katalogi projektu.
     dependencies |= NODE_BUILTINS
-    names = frozenset(entry.rstrip("/").rsplit("/", 1)[-1] for entry in tree)
-    return _Layout(tuple(roots), frozenset(dependencies), tree, names)
+    index: dict[str, list[str]] = {}
+    for entry in tree:
+        path = entry.rstrip("/")
+        index.setdefault(path.rsplit("/", 1)[-1], []).append(path)
+    names = {name: tuple(paths) for name, paths in index.items()}
+    tiers: dict[str, str] = {}
+    for tier in TIERS:
+        base = _normalise_path((path_keys or {}).get(tier, ""))
+        if base and base.rstrip("/"):
+            tiers[tier] = base.rstrip("/")
+    return _Layout(tuple(roots), frozenset(dependencies), tree, names, tiers)
 
 
 def _described(rel: str, overlay_text: str, overlay_paths: list[str]) -> bool:
@@ -875,6 +956,7 @@ def run_doctor(
     kit_root: Path | None = None,
     *,
     clients: str = "all",
+    verbose: bool = False,
 ) -> DoctorReport:
     """
     Sprawdź, czy reguły projektu nie wskazują nieistniejących ścieżek i komend.
@@ -885,6 +967,7 @@ def run_doctor(
             w szablonach agentów); inny — repo aplikacji (pomija tylko pliki
             wyłącznie kitowe); ``None`` — bez wiedzy o kicie.
         clients: Wartość ``clients:`` z Profilu (``all`` albo lista po przecinku).
+        verbose: ``info`` z listą kandydatów, gdy ścieżka pasuje do kilku miejsc (#268).
 
     Returns:
         DoctorReport: Ostrzeżenia i informacje w kolejności plików; pusty raport,
@@ -920,8 +1003,8 @@ def run_doctor(
             workspace, overlay_text, reported, tree
         )
         findings.extend(overlay_findings)
-    layout = _layout(workspace, overlay_paths, tree)
     path_keys = overlay_path_keys(overlay_text)
+    layout = _layout(workspace, overlay_paths, tree, path_keys)
     findings.extend(_path_key_findings(workspace, kit_root, path_keys, layout))
 
     available = _command_names(workspace, configured, is_kit=is_kit)
@@ -956,6 +1039,7 @@ def run_doctor(
                 kit_root=kit_root,
                 is_kit=is_kit,
                 layout=layout,
+                verbose=verbose,
             )
         )
         findings.extend(_command_findings(rel, text, available, clients_label, skip_lines))

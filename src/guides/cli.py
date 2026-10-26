@@ -469,7 +469,12 @@ def _plan_report(plan: BootstrapPlan) -> str:
 
 
 def doctor_report(
-    workspace: Path, kit_root: Path, clients: str | None = None, *, as_json: bool = False
+    workspace: Path,
+    kit_root: Path,
+    clients: str | None = None,
+    *,
+    as_json: bool = False,
+    verbose: bool = False,
 ) -> str:
     """
     Raport doctora dla repo aplikacji — czytany na końcu reloadu i w statusie.
@@ -481,6 +486,7 @@ def doctor_report(
         kit_root: Root kita (szablony agentów do sprawdzenia komend).
         clients: Wartość ``clients:``; ``None`` — z Profilu, a bez niego ``all``.
         as_json: Wynik maszynowy (``kit-ai doctor --json``, #266) zamiast linii.
+        verbose: Lista kandydatów przy ścieżce pasującej do kilku miejsc (``--verbose``, #268).
 
     Returns:
         str: Linie ``doctor:`` — ostrzeżenia i informacje albo jedna linia o czystym
@@ -493,7 +499,10 @@ def doctor_report(
             except SetupError:
                 clients = "all"
         report = run_doctor(
-            workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
+            workspace,
+            kit_root=own_kit_root(workspace, kit_root),
+            clients=clients,
+            verbose=verbose,
         )
         return report.to_json() if as_json else report.render()
     except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
@@ -585,6 +594,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     doctor.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
     doctor.add_argument("--json", action="store_true", help="Wynik maszynowy (kind, suggestion)")
+    doctor.add_argument(
+        "--verbose", action="store_true", help="Kandydaci, gdy ścieżka pasuje do kilku miejsc"
+    )
 
     args = parser.parse_args(argv)
     kit_root = find_kit_root()
@@ -609,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "labels":
             print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
         elif args.command == "doctor":
-            print(doctor_report(workspace, kit_root, as_json=args.json))
+            print(doctor_report(workspace, kit_root, as_json=args.json, verbose=args.verbose))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
             print(doctor_report(workspace, kit_root))
