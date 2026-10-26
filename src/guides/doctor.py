@@ -53,9 +53,6 @@ KIT_TEMPLATES: dict[str, str] = {
 }
 AGENT_TEMPLATES = "templates/shared/agents"
 
-# Pliki reguł, których część kitową odświeża się ręcznie — tryb C ich nie zapisuje.
-MANUAL_REFRESH_FILES = frozenset({"AGENTS.md"})
-
 # Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
 # Ich brak to brak warstwy zewnętrznej — nie rozjazd reguł projektu — więc doctor
 # ich nie zgłasza. Komendy kita (`/review-*`, `/git-*`, …) muszą istnieć.
@@ -299,14 +296,10 @@ class DoctorReport:
     def fixable(self) -> tuple[Finding, ...]:
         """Ostrzeżenia, które naprawia tryb C — tylko one liczą się do autostartu.
 
-        Przestarzałej treści ``AGENTS.md`` tryb C nie zapisuje (brak mechanizmu
-        odświeżania), więc liczenie jej dawałoby przypomnienie po każdym reloadzie.
+        Od #269 także przestarzała treść ``AGENTS.md``: reload odświeża część kitową,
+        a tryb C przenosi własne linie do bloku ``project:agents``.
         """
-        return tuple(
-            finding
-            for finding in self.warnings
-            if not (finding.kind == "stale-kit-content" and finding.file in MANUAL_REFRESH_FILES)
-        )
+        return self.warnings
 
     @property
     def infos(self) -> tuple[Finding, ...]:
@@ -941,11 +934,7 @@ def run_doctor(
         stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         if stale:
             skip_lines |= stale
-            fix = (
-                f"porównaj z `{KIT_TEMPLATES[rel]}` kita i odśwież ręcznie"
-                if rel in MANUAL_REFRESH_FILES
-                else '`/kit-project-edit "napraw zgłoszenia doctora"`'
-            )
+            fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
             findings.append(
                 Finding(
                     "warning",

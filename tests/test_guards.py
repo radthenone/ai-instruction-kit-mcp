@@ -355,6 +355,48 @@ class SensitiveFilesGuardTest(unittest.TestCase):
 
 
 @unittest.skipUnless(NODE, "brak node")
+class KitDoctorReminderTest(unittest.TestCase):
+    """#269: SessionStart przypomina o otwartej partii doctora; bez pliku — cisza."""
+
+    MODE_C = '/kit-project-edit "napraw zgłoszenia doctora"'
+
+    def test_reminds_when_doctor_state_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".ai").mkdir()
+            (Path(tmp) / ".ai" / ".kit-doctor.json").write_text('{"warnings": 2}', encoding="utf-8")
+            out = run_guard("kit-doctor-reminder.mjs", {}, {"CLAUDE_PROJECT_DIR": tmp})
+            self.assertEqual(out.get("hookEventName"), "SessionStart")
+            self.assertIn(".ai/.kit-doctor.json", out.get("additionalContext", ""))
+            self.assertIn(self.MODE_C, out.get("additionalContext", ""))
+
+    def test_silent_without_doctor_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = run_guard("kit-doctor-reminder.mjs", {}, {"CLAUDE_PROJECT_DIR": tmp})
+            self.assertEqual(out, {})
+
+    def test_uses_payload_cwd_without_claude_project_dir(self) -> None:
+        """Codex i Copilot nie ustawiają CLAUDE_PROJECT_DIR — katalog z `cwd` wejścia."""
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".ai").mkdir()
+            (Path(tmp) / ".ai" / ".kit-doctor.json").write_text("{}", encoding="utf-8")
+            out = run_guard("kit-doctor-reminder.mjs", {"cwd": tmp}, {"CLAUDE_PROJECT_DIR": ""})
+            self.assertIn(self.MODE_C, out.get("additionalContext", ""))
+
+    def test_registered_once_per_session_for_each_client(self) -> None:
+        """Tylko SessionStart (raz na sesję) — nie przy każdym prompcie."""
+        templates = Path(__file__).resolve().parents[1] / "templates"
+        for rel in (
+            "claude/settings.json",
+            "codex/hooks.json",
+            "vscode/github/hooks/kit-guards.json",
+        ):
+            with self.subTest(rel=rel):
+                hooks = json.loads((templates / rel).read_text(encoding="utf-8"))["hooks"]
+                events = [event for event, entries in hooks.items() if "kit-doctor-reminder.mjs" in json.dumps(entries)]
+                self.assertEqual(events, ["SessionStart"])
+
+
+@unittest.skipUnless(NODE, "brak node")
 class RtkCheckTest(unittest.TestCase):
     def test_silent_when_configured(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

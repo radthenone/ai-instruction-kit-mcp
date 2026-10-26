@@ -70,6 +70,9 @@ GUARD_COPIES: tuple[tuple[str, str], ...] = (
     (".claude/hooks", "bash-guard.mjs"),
     (".claude/hooks", "linters-guard.mjs"),
     (".claude/hooks", "rtk-check.mjs"),
+    (".claude/hooks", "kit-doctor-reminder.mjs"),
+    (".codex/hooks", "kit-doctor-reminder.mjs"),
+    (".github/hooks", "kit-doctor-reminder.mjs"),
 )
 
 

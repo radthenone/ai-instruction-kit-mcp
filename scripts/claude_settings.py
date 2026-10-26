@@ -34,6 +34,7 @@ GUARD_MARKERS: tuple[str, ...] = (
     "linters-guard.mjs",
     "rtk-check.mjs",
     "language-reminder.mjs",
+    "kit-doctor-reminder.mjs",
     # Guards v1 — tylko do prune przy reinstalacji.
     "invoke-hook.js",
     "gate-file-writes.mjs",
