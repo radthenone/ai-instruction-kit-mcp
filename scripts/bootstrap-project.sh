@@ -119,6 +119,18 @@ fi
 mkdir -p "$TARGET"
 TARGET="$(cd "$TARGET" && pwd)"
 
+# Ścieżka Workspace'u wpisywana do konfiguracji (Codex, opencode) i repo, z którego
+# czytamy Taskfile / package.json. Dry-run (`plan_bootstrap`) leci na sandboxie
+# i podaje tu prawdziwe repo przez KIT_WORKSPACE — wtedy plan widzi te same bajty,
+# które zapisałby prawdziwy reload, w tej samej postaci ścieżki co `pwd` (#279).
+WORKSPACE_PATH="$TARGET"
+if [[ -n "${KIT_WORKSPACE:-}" ]]; then
+  WORKSPACE_PATH="$(cd "$KIT_WORKSPACE" 2>/dev/null && pwd)" || {
+    echo "KIT_WORKSPACE nie istnieje: $KIT_WORKSPACE" >&2
+    exit 1
+  }
+fi
+
 if [[ -d "$FROM_SRC" ]]; then
   FROM_SRC="$(cd "$FROM_SRC" && pwd)"
 fi
@@ -884,7 +896,7 @@ install_guards() {
   # `server:` z Profilu → server-guard.json obok guarda. Guard bez reloadu działa
   # na starej liście wrapperów. Render nigdy nie wywala bootstrapu (ADR-0004).
   PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_server_guard.py" \
-    "$TARGET" "$dest" "$TARGET/.ai/project.profile.yaml" || echo "  ! server-guard.json nie wyrenderowany — guard działa na wbudowanej liście kita" >&2
+    "$WORKSPACE_PATH" "$dest" "$TARGET/.ai/project.profile.yaml" || echo "  ! server-guard.json nie wyrenderowany — guard działa na wbudowanej liście kita" >&2
 }
 
 install_cursor() {
@@ -1004,7 +1016,7 @@ install_codex_agents() {
 }
 
 install_codex() {
-  fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$TARGET"
+  fill_mcp "$KIT_ROOT/templates/codex/config.toml" "$TARGET/.codex/config.toml" "$WORKSPACE_PATH"
   echo "  + .codex/config.toml"
   # Guardy kita (git-guard, sensitive-files-guard, server-guard) przed każdym
   # narzędziem Codexa — PreToolUse woła invoke-hook.js --to codex, deny działa
@@ -1166,7 +1178,7 @@ PY
 
 install_opencode() {
   mkdir -p "$TARGET/.opencode"
-  fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$TARGET"
+  fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$WORKSPACE_PATH"
   echo "  + opencode.json"
   inherit_opencode_model
   render_agent_commands opencode "$TARGET/.opencode/command"

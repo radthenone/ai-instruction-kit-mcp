@@ -175,6 +175,10 @@ def write(path: Path, settings: dict) -> None:
     if not settings:
         path.unlink(missing_ok=True)
         return
+    if path.is_file() and load(path) == settings:
+        # Ta sama treść (kolejność kluczy bez znaczenia) — bez przepisywania, żeby
+        # drugi reload nie zmieniał pliku samą kolejnością (#279).
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 

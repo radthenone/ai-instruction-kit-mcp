@@ -10,6 +10,7 @@ z drugiej, rozjeżdżającej się listy ścieżek w Pythonie.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,7 +45,12 @@ KIT_SURFACE: tuple[str, ...] = (
     ".gitignore",
     "AGENTS.md",
     "BUGBOT.md",
+    "CLAUDE.md",
     "CODING_STANDARDS.md",
+    # Tylko czytane: od nich zależy treść `CODING_STANDARDS.md` (#279).
+    "CONTEXT.md",
+    "CONTEXT-MAP.md",
+    "docs/adr",
     "docs/agents/design-handoff.md",
     "docs/agents/domain.md",
     "docs/agents/issue-tracker.md",
@@ -54,6 +60,11 @@ KIT_SURFACE: tuple[str, ...] = (
 )
 
 _TIMEOUT_SECONDS = 600
+
+# Stamp dostaje świeży znacznik czasu przy każdym przebiegu; plik jest w .gitignore,
+# więc sama zmiana czasu nie jest zmianą, którą plan ma raportować (#279).
+_STAMP_REL = ".ai/.kit-bootstrap.json"
+_STAMP_TIME = re.compile(rb'"bootstrapped_at": "[^"]*"')
 
 
 class BootstrapError(RuntimeError):
@@ -169,7 +180,9 @@ def run_bootstrap(**kwargs) -> str:
     Uruchom bootstrap na wskazanym katalogu (**zapisuje na dysk**).
 
     Args:
-        **kwargs: Jak w :func:`build_args` (``kit_root``, ``target``, flagi).
+        **kwargs: Jak w :func:`build_args` (``kit_root``, ``target``, flagi), plus
+            opcjonalny ``workspace``: prawdziwe repo, gdy ``target`` to sandbox dry-runu — skrypt
+            wpisuje jego ścieżkę do konfiguracji i czyta z niego Taskfile / package.json.
 
     Returns:
         str: Stdout skryptu (lista założonych plików).
@@ -177,6 +190,7 @@ def run_bootstrap(**kwargs) -> str:
     Raises:
         BootstrapError: Brak skryptu, brak basha, timeout albo niezerowy exit code.
     """
+    workspace = kwargs.pop("workspace", None)
     argv = build_args(**kwargs)
     bash = find_bash()
     # Skrypt dostaje ten interpreter (widzi pakiet `guides` także bez klonu z `src/`)
@@ -189,6 +203,11 @@ def run_bootstrap(**kwargs) -> str:
         # Skrypt i jego Pythony piszą UTF-8; bez tego Windows dekoduje stdout jako cp1250.
         "PYTHONUTF8": "1",
     }
+    if workspace is not None:
+        env["KIT_WORKSPACE"] = str(workspace).replace("\\", "/")
+    else:
+        # Zmienna odziedziczona z otoczenia nie może przekierować prawdziwego reloadu.
+        env.pop("KIT_WORKSPACE", None)
     try:
         result = subprocess.run(
             [bash, "--noprofile", "--norc", *argv],
@@ -272,7 +291,7 @@ def plan_bootstrap(*, workspace_root: Path, **kwargs) -> BootstrapPlan:
         _seed_sandbox(workspace_root, sandbox)
         before = _relative_files(sandbox)
 
-        output = run_bootstrap(target=sandbox, **kwargs)
+        output = run_bootstrap(target=sandbox, workspace=workspace_root, **kwargs)
 
         after = _relative_files(sandbox)
         plan = BootstrapPlan(script_output=output)
@@ -280,19 +299,14 @@ def plan_bootstrap(*, workspace_root: Path, **kwargs) -> BootstrapPlan:
             plan.created.append(rel)
         for rel in sorted(before - after):
             plan.deleted.append(rel)
-        # Codex i opencode dostają absolutny `--workspace` — w sandboxie to ścieżka
-        # sandboxu, więc porównujemy po podmianie jej na prawdziwy Workspace.
-        real = str(workspace_root.resolve()).replace("\\", "/").encode()
-        # Najdłuższa najpierw: na macOS `/var/…` jest podciągiem `/private/var/…`.
-        fakes = sorted(
-            {str(path).replace("\\", "/").encode() for path in (sandbox, sandbox.resolve())},
-            key=len,
-            reverse=True,
-        )
+        # Ścieżkę Workspace'u w konfiguracji (Codex, opencode) skrypt wpisuje już
+        # prawdziwą (KIT_WORKSPACE), więc porównanie jest bajt w bajt.
         for rel in sorted(before & after):
             produced = (sandbox / rel).read_bytes()
-            for fake in fakes:
-                produced = produced.replace(fake, real)
-            same = produced == (workspace_root / rel).read_bytes()
+            current = (workspace_root / rel).read_bytes()
+            if rel == _STAMP_REL:
+                produced = _STAMP_TIME.sub(b"", produced)
+                current = _STAMP_TIME.sub(b"", current)
+            same = produced == current
             (plan.unchanged if same else plan.modified).append(rel)
         return plan
