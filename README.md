@@ -307,7 +307,7 @@ Klasy zgłoszeń (pole `kind`):
 | `negated-path-exists` | ostrzeżenie | overlay pisze, że ścieżki nie ma („brak `x/`”, „nie istnieje”), a ona istnieje |
 | `stale-kit-content` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` ma linie ze starej wersji szablonu kita — do odświeżenia |
 | `uncertain-migration` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` bez bloku projektu, migracji reload nie zastosował sam — `value` niesie propozycję treści bloku; zgłoszenia per linia z szablonowej części pliku są wyciszone |
-| `missing-path-key` | ostrzeżenie | brak klucza w `## Ścieżki`, a reguła szablonu `BUGBOT.md` używa domyślnej ścieżki, której nie ma w repo |
+| `missing-path-key` | ostrzeżenie | brak klucza w `## Ścieżki`, a reguła szablonu `BUGBOT.md` używa domyślnej ścieżki, której nie ma w repo (`ui` / `api-generated` domyślnie pod `web:`); kilku kandydatów w drzewie → lista w komunikacie zamiast propozycji |
 | `missing-command` | ostrzeżenie | komenda `/nazwa` bez agenta, komendy ani skilla u klientów z `clients:` |
 | `undescribed-package` | info | pakiet workspace'u bez opisu w `.ai/project.md` |
 | `invalid-clients` | info | nieprawidłowe `clients:` w Profilu — doctor sprawdza jak `all` |
