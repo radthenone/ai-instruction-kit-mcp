@@ -27,3 +27,4 @@ models:
     light: haiku
     standard: sonnet
     heavy: opus
+    takeover: haiku
