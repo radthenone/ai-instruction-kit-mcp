@@ -557,12 +557,14 @@ class TestBugbotPathKeys(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
             (workspace / "gen").mkdir()
-            (workspace / "backend").mkdir()
+            for default in ("backend", "frontend/web/components/ui", "frontend/mobile"):
+                (workspace / default).mkdir(parents=True)
             _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- codegen-output: `gen/`\n")
-            _write(
-                workspace / "BUGBOT.md",
-                render_bugbot(self.TEMPLATE, "backend", paths={"api-generated": "gen/"}),
+            rendered = render_bugbot(
+                self.TEMPLATE, "backend client", paths={"api-generated": "gen/"}
             )
+            self.assertIn("`gen/`", rendered)
+            _write(workspace / "BUGBOT.md", rendered)
 
             self.assertEqual(run_doctor(workspace, KIT_ROOT, clients="claude").warnings, ())
 
