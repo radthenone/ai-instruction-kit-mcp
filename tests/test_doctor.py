@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from guides import cli, server
+from guides.bugbot_md import MAX_MIGRATED_LINES
 from guides.bugbot_md import render as render_bugbot
 from guides.doctor import run_doctor
 
@@ -42,6 +43,11 @@ def _write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
     return path
+
+
+def _rules_block(line: str, block: str = "rules") -> str:
+    """Reguła w bloku projektu — plik z blokiem nie jest kandydatem do migracji (#277)."""
+    return f"<!-- project:{block} -->\n{line}\n<!-- /project:{block} -->\n"
 
 
 def _report(workspace: Path, clients: str = "claude"):
@@ -126,7 +132,7 @@ class TestPathFindings(unittest.TestCase):
         """Repo aplikacji bez `src/` i `README.md` — kit je ma, ale to nie maskuje braku."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
-            _write(workspace / "BUGBOT.md", "Reguła: `src/` i `README.md`.\n")
+            _write(workspace / "BUGBOT.md", _rules_block("Reguła: `src/` i `README.md`."))
 
             warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
 
@@ -137,8 +143,11 @@ class TestPathFindings(unittest.TestCase):
             workspace = _workspace(tmp)
             _write(
                 workspace / "AGENTS.md",
-                "Kit: `templates/shared/agents/`, `manifest.yaml`, "
-                "`scripts/bootstrap-project.sh`, `modules/`.\n",
+                _rules_block(
+                    "Kit: `templates/shared/agents/`, `manifest.yaml`, "
+                    "`scripts/bootstrap-project.sh`, `modules/`.",
+                    "agents",
+                ),
             )
 
             self.assertEqual(run_doctor(workspace, KIT_ROOT, clients="claude").warnings, ())
@@ -642,7 +651,8 @@ class TestStaleKitContent(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             kit = self._kit(tmp)
             workspace = _workspace(tmp)
-            _write(workspace / "BUGBOT.md", OLD_BUGBOT.replace("# Bugbot", "# Bugbot (nasz)"))
+            # Dopisana reguła (bez zmiany linii szablonu) — migracja pewna, nie #277.
+            _write(workspace / "BUGBOT.md", OLD_BUGBOT + "- Nasza reguła projektu bez ścieżek.\n")
 
             warnings = run_doctor(workspace, kit, clients="claude").warnings
 
@@ -673,6 +683,110 @@ class TestStaleKitContent(unittest.TestCase):
             self.assertEqual(len(report.warnings), 1)
             self.assertEqual(report.fixable, report.warnings)
             self.assertIn('/kit-project-edit "napraw zgłoszenia doctora"', report.warnings[0].message)
+
+
+class TestUncertainMigration(unittest.TestCase):
+    """#277: niepewna migracja to jedno zgłoszenie z propozycją bloku projektu."""
+
+    def _kit(self, tmp: str) -> Path:
+        try:
+            return _kit_with_history(tmp)
+        except (OSError, subprocess.CalledProcessError):
+            self.skipTest("brak gita w środowisku")
+
+    def _uncertain(self, report, rel: str) -> list:
+        return [w for w in report.warnings if w.kind == "uncertain-migration" and w.file == rel]
+
+    def test_bugbot_changed_template_line_proposes_project_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            text = OLD_BUGBOT.replace("# Bugbot", "# Bugbot (nasz)") + "- Moja reguła A.\n"
+            path = _write(workspace / "BUGBOT.md", text)
+
+            report = run_doctor(workspace, kit, clients="claude")
+
+            found = self._uncertain(report, "BUGBOT.md")
+            self.assertEqual(len(found), 1, report.findings)
+            self.assertEqual(found[0].value, "# Bugbot (nasz)\n- Moja reguła A.")
+            self.assertIn("project:rules", found[0].message)
+            self.assertEqual(path.read_text(encoding="utf-8"), text)
+
+    def test_bugbot_template_part_is_silenced(self) -> None:
+        """Szablonowa część: bez `stale-path` / `stale-kit-content`; część projektu — bez zmian."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(
+                workspace / "BUGBOT.md",
+                OLD_BUGBOT.replace("# Bugbot", "# Bugbot (nasz)") + "- Patrz `docs/brak.md`.\n",
+            )
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual(
+                [(w.kind, w.value) for w in warnings if w.kind != "uncertain-migration"],
+                [("stale-path", "docs/brak.md")],
+                warnings,
+            )
+
+    def test_bugbot_over_limit_proposes_full_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            added = [f"- reguła projektu {i}" for i in range(MAX_MIGRATED_LINES + 1)]
+            _write(workspace / "BUGBOT.md", OLD_BUGBOT + "\n" + "\n".join(added) + "\n")
+
+            found = self._uncertain(run_doctor(workspace, kit, clients="claude"), "BUGBOT.md")
+
+            self.assertEqual(len(found), 1)
+            self.assertEqual((found[0].value or "").splitlines(), added)
+
+    def test_without_template_history_no_uncertain_migration(self) -> None:
+        """Kit bez gita (koło): brak propozycji — zostaje linia reloadu (`bugbot_md`)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = Path(tmp) / "kit"
+            _write(kit / "templates" / "cursor" / "BUGBOT.md", "# Bugbot\n\n<!-- project:rules -->\n<!-- /project:rules -->\n")
+            _write(kit / "templates" / "AGENTS.md", "# AGENTS.md\n")
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", OLD_BUGBOT.replace("# Bugbot", "# Bugbot (nasz)"))
+            _write(workspace / "AGENTS.md", OLD_AGENTS.replace("# AGENTS.md", "# AGENTS (nasz)"))
+
+            report = run_doctor(workspace, kit, clients="claude")
+
+            self.assertEqual([w for w in report.warnings if w.kind == "uncertain-migration"], [])
+
+    def test_agents_changed_template_line_proposes_project_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            text = OLD_AGENTS.replace("# AGENTS.md", "# AGENTS (nasz)") + "Nasza zasada A.\n"
+            path = _write(workspace / "AGENTS.md", text)
+
+            report = run_doctor(workspace, kit, clients="claude")
+
+            found = self._uncertain(report, "AGENTS.md")
+            self.assertEqual(len(found), 1, report.findings)
+            self.assertEqual(found[0].value, "# AGENTS (nasz)\nNasza zasada A.")
+            self.assertIn("project:agents", found[0].message)
+            self.assertEqual(path.read_text(encoding="utf-8"), text)
+            # `.claude/hooks/…` z szablonowej części nie istnieją — wyciszone.
+            self.assertEqual(
+                [w.kind for w in report.warnings if w.file == "AGENTS.md"],
+                ["uncertain-migration"],
+            )
+
+    def test_agents_over_limit_proposes_full_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            added = [f"Zasada projektu numer {i}." for i in range(MAX_MIGRATED_LINES + 1)]
+            _write(workspace / "AGENTS.md", OLD_AGENTS + "\n" + "\n".join(added) + "\n")
+
+            found = self._uncertain(run_doctor(workspace, kit, clients="claude"), "AGENTS.md")
+
+            self.assertEqual(len(found), 1)
+            self.assertEqual((found[0].value or "").splitlines(), added)
 
 
 class TestBugbotPathKeys(unittest.TestCase):
@@ -800,7 +914,7 @@ class TestCommands(unittest.TestCase):
                 workspace / ".cursor" / "skills" / "review-security" / "SKILL.md",
                 "---\nname: review-security\n---\n",
             )
-            _write(workspace / "BUGBOT.md", "Uruchom `/review-security`.\n")
+            _write(workspace / "BUGBOT.md", _rules_block("Uruchom `/review-security`."))
 
             warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
 
@@ -1015,7 +1129,7 @@ class TestCli(unittest.TestCase):
     def test_doctor_json_lists_kind_value_and_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _monorepo(tmp)
-            _write(workspace / "BUGBOT.md", "UI: `frontend/web/components/ui/`.\n")
+            _write(workspace / "BUGBOT.md", _rules_block("UI: `frontend/web/components/ui/`."))
 
             code, out = self._main("doctor", str(workspace), "--json")
 
@@ -1028,7 +1142,7 @@ class TestCli(unittest.TestCase):
                 {
                     "kind": "stale-path",
                     "file": "BUGBOT.md",
-                    "line": 1,
+                    "line": 2,
                     "value": "frontend/web/components/ui/",
                     "suggestion": "frontend/web/src/components/ui/",
                 },
@@ -1101,6 +1215,8 @@ class TestKitProjectEditMode(unittest.TestCase):
         self.assertIn(".ai/.kit-doctor.json", text)
         self.assertIn("kit-ai doctor --json", text)
         self.assertIn("Jeden podgląd na całą partię", text)
+        # #277: niepewna migracja — propozycja bloku projektu, zapis po akceptacji.
+        self.assertIn("| `uncertain-migration`", text)
 
 
 class TestMcpReload(unittest.TestCase):

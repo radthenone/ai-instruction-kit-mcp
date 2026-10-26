@@ -306,6 +306,7 @@ Klasy zgłoszeń (pole `kind`):
 | `stale-path` | ostrzeżenie | ścieżka w regule albo klucz `## Ścieżki` wskazuje coś, czego nie ma (z `suggestion`, gdy w drzewie jest dokładnie jeden kandydat) |
 | `negated-path-exists` | ostrzeżenie | overlay pisze, że ścieżki nie ma („brak `x/`”, „nie istnieje”), a ona istnieje |
 | `stale-kit-content` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` ma linie ze starej wersji szablonu kita — do odświeżenia |
+| `uncertain-migration` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` bez bloku projektu, migracji reload nie zastosował sam — `value` niesie propozycję treści bloku; zgłoszenia per linia z szablonowej części pliku są wyciszone |
 | `missing-path-key` | ostrzeżenie | brak klucza w `## Ścieżki`, a reguła szablonu `BUGBOT.md` używa domyślnej ścieżki, której nie ma w repo |
 | `missing-command` | ostrzeżenie | komenda `/nazwa` bez agenta, komendy ani skilla u klientów z `clients:` |
 | `undescribed-package` | info | pakiet workspace'u bez opisu w `.ai/project.md` |
