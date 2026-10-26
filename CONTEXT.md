@@ -82,6 +82,14 @@ _Avoid_: repo root, source dir
 The root of the consuming repo — where the Overlay and the Bootstrap Stamp live. Never the Kit Root.
 _Avoid_: project dir, target, cwd
 
+**Project Block**:
+The protected section of a Kit-rendered rules file — `project:rules` in `BUGBOT.md`, `project:agents` in `AGENTS.md` — that holds the Workspace's own lines and passes through every Bootstrap unchanged while the rest of the file is refreshed from the Kit template.
+_Avoid_: custom section, user block
+
+**Uncertain Migration**:
+A migration of a rules file without a Project Block that the Kit does not apply on its own — the template lines were edited, or too many lines were added — and only proposes, leaving the move into the Project Block to an explicit, accepted fix.
+_Avoid_: failed migration, manual migration
+
 **Bootstrap**:
 Writing Kit files into a Workspace as its Profile dictates: client configuration, agent definitions, slash commands and Guards. Repeatable — rerun whenever the Profile or the Kit changes; never touches the Overlay. Distinct from serving instructions, which happens live over MCP and copies nothing.
 _Avoid_: setup, deploy
