@@ -207,12 +207,15 @@ _INLINE_CODE = re.compile(r"`([^`\n]+)`")
 # „Nie istnieje po stronie web:** `x/`”) albo tuż za nim — bez gołego no/not.
 _NEGATION_PHRASE = (
     r"(?:brak|nie istniej\w*|nie ma|nie zakładaj|does not exist|doesn't exist|"
-    r"don't assume)"
+    r"don't assume|removed|usunięt\w*|no longer)"
 )
 _NEGATION_BEFORE = re.compile(
     rf"\b{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?[\s*:]*$", re.IGNORECASE
 )
-_NEGATION_AFTER = re.compile(rf"^[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE)
+# Dalsze pozycje tej samej listy (`a/`, `b/` removed) — fraza za ostatnią obejmuje całą listę.
+_NEGATION_AFTER = re.compile(
+    rf"^(?:\s*,\s*`[^`\n]*`)*[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE
+)
 # Wcześniejsze pozycje tej samej listy (`a/`, `b/`, `c/`) — zaprzeczenie obejmuje całą listę.
 _CODE_LIST_TAIL = re.compile(r"(?:`[^`\n]*`\s*,\s*)+$")
 # F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo. Całe
