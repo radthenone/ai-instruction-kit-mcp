@@ -32,9 +32,11 @@ from guides.bugbot_md import (
     PATH_PLACEHOLDER,
     needs_migration,
     overlay_path_entries,
+    path_defaults,
     propose_migration,
     read_template_history,
     render_paths,
+    resolve_path,
 )
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
@@ -477,6 +479,12 @@ def _suggest(value: str, layout: _Layout) -> str | None:
     ``frontend/web/components/ui/`` → ``frontend/web/src/components/ui/``, gdy
     ``components/ui/`` występuje w repo dokładnie raz. Kilku kandydatów → ``None``.
     """
+    candidates = _tail_candidates(value, layout)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _tail_candidates(value: str, layout: _Layout) -> list[str]:
+    """Wpisy drzewa pasujące do najdłuższego ogona ścieżki, który w ogóle coś trafia."""
     segments = value.rstrip("/").split("/")
     want_dir = value.endswith("/")
     for size in range(len(segments), 0, -1):
@@ -488,8 +496,8 @@ def _suggest(value: str, layout: _Layout) -> str | None:
             and (entry.rstrip("/") == tail or entry.rstrip("/").endswith(f"/{tail}"))
         ]
         if candidates:
-            return candidates[0] if len(candidates) == 1 else None
-    return None
+            return candidates
+    return []
 
 
 def _is_module_specifier(value: str, layout: _Layout) -> bool:
@@ -771,24 +779,34 @@ def _path_key_findings(
     if kit_root is None or not bugbot.is_file():
         return []
     rendered = {line.strip() for line in _read(bugbot).splitlines()}
+    template = _read(kit_root / KIT_TEMPLATES["BUGBOT.md"])
+    defaults = path_defaults(template)
     findings: list[Finding] = []
-    for line in _read(kit_root / KIT_TEMPLATES["BUGBOT.md"]).splitlines():
+    for line in template.splitlines():
         for key, default in PATH_PLACEHOLDER.findall(line):
+            value = resolve_path(key, default, paths, defaults)
             if (
                 key in paths
-                or render_paths(line, paths).strip() not in rendered
-                or (workspace / default).exists()
+                or render_paths(line, paths, defaults).strip() not in rendered
+                or (workspace / value).exists()
             ):
                 continue
+            candidates = _tail_candidates(value, layout)
+            message = (
+                f"brak klucza `{key}:` w `## Ścieżki` — reguła `BUGBOT.md` używa "
+                f"domyślnej `{value}`, której nie ma w repo"
+            )
+            if len(candidates) > 1:
+                listed = ", ".join(f"`{candidate}`" for candidate in candidates)
+                message += f"; kandydaci w drzewie: {listed}"
             findings.append(
                 Finding(
                     "warning",
                     OVERLAY_FILE,
                     None,
-                    f"brak klucza `{key}:` w `## Ścieżki` — reguła `BUGBOT.md` używa "
-                    f"domyślnej `{default}`, której nie ma w repo",
+                    message,
                     "missing-path-key",
-                    _suggest(default, layout),
+                    candidates[0] if len(candidates) == 1 else None,
                     key,
                 )
             )
