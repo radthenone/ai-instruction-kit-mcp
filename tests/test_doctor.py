@@ -414,6 +414,70 @@ class TestFalsePositives(unittest.TestCase):
 
             self.assertEqual(_report(workspace).warnings, ())
 
+    def test_removed_and_no_longer_phrases_silence_missing_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY
+                + "- `apps/example/` removed.\n"
+                + "- Katalog `apps/legacy/` usunięty.\n"
+                + "- `apps/old/` no longer exists.\n"
+                + "- Removed: `apps/gone/`.\n"
+                + "- `apps/a/`, `apps/b/` removed.\n",
+            )
+
+            self.assertEqual(_report(workspace).warnings, ())
+
+    def test_removed_phrase_on_existing_path_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY + "- `backend/src/core/` removed.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([w.kind for w in warnings], ["negated-path-exists"])
+
+    def test_removed_word_does_not_silence_later_path_in_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY
+                + "- `apps/example/` removed, kod w `backend/src/db/`.\n"
+                + "- `apps/old/` removed, kod teraz w: `backend/src/models/`.\n"
+                + "- Removed legacy app, moved to: `apps/new/`.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual(
+                [(w.kind, w.value) for w in warnings],
+                [
+                    ("stale-path", "backend/src/db/"),
+                    ("stale-path", "backend/src/models/"),
+                    ("stale-path", "apps/new/"),
+                ],
+            )
+
+    def test_removal_phrase_with_continuation_is_not_negation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY
+                + "- `backend/src/core/` no longer uses Celery.\n"
+                + "- `backend/src/core/` removed from CI.\n"
+                + "- `apps/ci/` usunięty z pipeline'u.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([(w.kind, w.value) for w in warnings], [("stale-path", "apps/ci/")])
+
 
 OLD_BUGBOT = """\
 # Bugbot

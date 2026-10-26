@@ -209,10 +209,20 @@ _NEGATION_PHRASE = (
     r"(?:brak|nie istniej\w*|nie ma|nie zakładaj|does not exist|doesn't exist|"
     r"don't assume)"
 )
+# #278: „removed / usunięty / no longer exists” liczą się tylko jako całe zdanie
+# o braku — bez dopowiedzenia (`x/` removed from CI, `x/` no longer uses Celery
+# to zmiana zachowania, nie brak) i bez ogona „…:” (Removed X, moved to: `y/`).
+_REMOVAL_PHRASE = r"(?:removed|usunięt[aeyo]|usunięci|no longer exists?)"
 _NEGATION_BEFORE = re.compile(
-    rf"\b{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?[\s*:]*$", re.IGNORECASE
+    rf"\b(?:{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?|{_REMOVAL_PHRASE})[\s*:]*$",
+    re.IGNORECASE,
 )
-_NEGATION_AFTER = re.compile(rf"^[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE)
+# Dalsze pozycje tej samej listy (`a/`, `b/` removed) — fraza za ostatnią obejmuje całą listę.
+_NEGATION_AFTER = re.compile(
+    rf"^(?:\s*,\s*`[^`\n]*`)*[\s*]*"
+    rf"(?:{_NEGATION_PHRASE}\b|{_REMOVAL_PHRASE}\s*(?:[.;,)]|$))",
+    re.IGNORECASE,
+)
 # Wcześniejsze pozycje tej samej listy (`a/`, `b/`, `c/`) — zaprzeczenie obejmuje całą listę.
 _CODE_LIST_TAIL = re.compile(r"(?:`[^`\n]*`\s*,\s*)+$")
 # F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo. Całe
