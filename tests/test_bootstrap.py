@@ -111,6 +111,40 @@ class TestDryRun(_BootstrapTestCase):
             listed = plan.created + plan.modified + plan.deleted + plan.unchanged
             self.assertFalse([rel for rel in listed if "headless-runs" in rel], listed)
 
+    def test_dry_run_does_not_list_existing_claude_md_as_created(self) -> None:
+        """Bootstrap tworzy `CLAUDE.md` tylko gdy brak — istniejący nie jest „Nowy” (#279)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            (workspace / "CLAUDE.md").write_text("@AGENTS.md\n# własne\n", encoding="utf-8")
+
+            plan = plan_bootstrap(workspace_root=workspace, kit_root=KIT_ROOT, clients="claude")
+            self.assertNotIn("CLAUDE.md", plan.created)
+            self.assertNotIn("CLAUDE.md", plan.modified)
+
+    def test_dry_run_right_after_real_run_reports_no_changes(self) -> None:
+        """Dry-run zaraz po prawdziwym reloadzie nie ma nic do zrobienia (#279)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / "docs" / "adr").mkdir(parents=True)
+            (workspace / "docs" / "adr" / "0001-x.md").write_text("# x\n", encoding="utf-8")
+            (workspace / "CONTEXT.md").write_text("# Słownik\n", encoding="utf-8")
+            (workspace / "web").mkdir()
+            (workspace / "web" / "package.json").write_text(
+                json.dumps({"scripts": {"build": "next build"}}), encoding="utf-8"
+            )
+            (workspace / "Taskfile.yml").write_text(
+                "version: '3'\ntasks:\n  test:\n    cmds:\n      - pytest -n auto\n",
+                encoding="utf-8",
+            )
+
+            run_bootstrap(kit_root=KIT_ROOT, target=workspace)
+            plan = plan_bootstrap(workspace_root=workspace, kit_root=KIT_ROOT)
+
+            self.assertEqual(plan.created, [])
+            self.assertEqual(plan.modified, [])
+            self.assertEqual(plan.deleted, [])
+
 
 class TestRealRun(_BootstrapTestCase):
     def test_run_installs_hooks_settings_and_stamp(self) -> None:
