@@ -446,14 +446,37 @@ class TestFalsePositives(unittest.TestCase):
             workspace = _monorepo(tmp)
             _write(
                 workspace / ".ai" / "project.md",
-                MONOREPO_OVERLAY + "- `apps/example/` removed, kod w `backend/src/db/`.\n",
+                MONOREPO_OVERLAY
+                + "- `apps/example/` removed, kod w `backend/src/db/`.\n"
+                + "- `apps/old/` removed, kod teraz w: `backend/src/models/`.\n"
+                + "- Removed legacy app, moved to: `apps/new/`.\n",
             )
 
             warnings = _report(workspace).warnings
 
             self.assertEqual(
-                [(w.kind, w.value) for w in warnings], [("stale-path", "backend/src/db/")]
+                [(w.kind, w.value) for w in warnings],
+                [
+                    ("stale-path", "backend/src/db/"),
+                    ("stale-path", "backend/src/models/"),
+                    ("stale-path", "apps/new/"),
+                ],
             )
+
+    def test_removal_phrase_with_continuation_is_not_negation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _monorepo(tmp)
+            _write(
+                workspace / ".ai" / "project.md",
+                MONOREPO_OVERLAY
+                + "- `backend/src/core/` no longer uses Celery.\n"
+                + "- `backend/src/core/` removed from CI.\n"
+                + "- `apps/ci/` usunięty z pipeline'u.\n",
+            )
+
+            warnings = _report(workspace).warnings
+
+            self.assertEqual([(w.kind, w.value) for w in warnings], [("stale-path", "apps/ci/")])
 
 
 OLD_BUGBOT = """\
