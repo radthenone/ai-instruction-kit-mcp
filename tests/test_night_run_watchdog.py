@@ -70,6 +70,17 @@ class TestNightRunWatchdog(unittest.TestCase):
         tick = self.text.split("## Tick watchdoga i crona", 1)[1]
         self.assertIn("odpala watchdoga", tick)
 
+    def test_watchdog_bash_sets_explicit_timeout_above_lifetime(self) -> None:
+        watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")
+        flat = " ".join(watchdog.split())
+        self.assertIn("`timeout: 7200000`", flat)
+        self.assertIn("30 min", flat)
+        self.assertIn("życie ≤ 110 min < `timeout`", flat)
+        renewal = flat.split("**Odnowienie w tej samej turze co start:**", 1)[1]
+        self.assertIn("`timeout: 7200000`", renewal.split("- **", 1)[0])
+        tick = " ".join(self.text.split("## Tick watchdoga i crona", 1)[1].split())
+        self.assertIn("`timeout: 7200000`", tick.split("## Pomiar kosztu", 1)[0])
+
     def test_subagent_waits_with_foreground_bash(self) -> None:
         self.assertIn("pierwszoplanowym Bash z limitem czasu", self.text)
 

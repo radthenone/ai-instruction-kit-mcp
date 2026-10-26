@@ -182,9 +182,11 @@ Orkiestrator budzi się tylko wtedy, gdy jest co robić. Tik kosztuje turę i ca
 więc nie jest mechanizmem oczekiwania.
 
 - **Watchdog w tle (`.ai/night-run-watchdog.sh`, instalowany przy kliencie claude):** Bash
-  `run_in_background` z pełną ścieżką repo: `bash "$(git rev-parse --show-toplevel)/.ai/night-run-watchdog.sh" "$CTX" 60 110`
-  (domyślnie próg anomalii 60 min, życie 110 min — poniżej twardych 2 h Bash w tle; cel
-  `watchdog: próg N, życie M` (min) zamienia te liczby, życie ≤ 110). Skrypt śpi i
+  `run_in_background` z **jawnym `timeout: 7200000`** i pełną ścieżką repo: `bash "$(git rev-parse --show-toplevel)/.ai/night-run-watchdog.sh" "$CTX" 60 110`
+  (domyślnie próg anomalii 60 min, życie 110 min; cel `watchdog: próg N, życie M` (min)
+  zamienia te liczby, życie ≤ 110). Bez `timeout` Bash w tle dostaje domyślne 30 min
+  (1 800 000 ms) i ginie przed końcem życia — watchdog przestaje pilnować w kroku dłuższym
+  niż 30 min. Zależność: życie ≤ 110 min < `timeout` (7 200 000 ms = 2 h, maksimum Bash w tle). Skrypt śpi i
   **nie budzi orkiestratora**, dopóki idzie praca: postępem jest zapis w katalogu CTX albo
   w transkrypcie subagenta z `subagent: <id>`. Kończy się, czyli budzi orkiestratora
   powiadomieniem o zakończeniu, tylko gdy:
@@ -197,7 +199,7 @@ więc nie jest mechanizmem oczekiwania.
     limitu). Zamyka pauzę `do <ts>` sam watchdog. Pauza limitu **nie jest** anomalią.
 - **Odnowienie w tej samej turze co start:** przy starcie ticketu, review, wznowienia i każdym
   hand-backu, w tym samym wywołaniu narzędzi co Agent/Bash: `TaskStop` starego watchdoga
-  (`watchdog:` z `## Stan`, jeśli żyje), start nowego `run_in_background`, zapis
+  (`watchdog:` z `## Stan`, jeśli żyje), start nowego `run_in_background` z `timeout: 7200000`, zapis
   `watchdog: <id>` do `## Stan`. Po wybudzeniu z pauzy sprawdź, że otwarta pauza ma
   już `do <ts>` (zamyka ją watchdog); jeśli nie — dopisz `pauza limitu od X do <teraz>`, potem odnów.
 - **Jeden watchdog naraz:** przed odnowieniem sprawdź listę zadań w tle; działa → `TaskStop`,
@@ -439,7 +441,7 @@ robisz tik. To jedyny moment, w którym orkiestrator budzi się bez pracy do wyk
 Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents`):
 
 - watchdog `życie` albo tik crona, a subagent działa → odnów watchdoga
-  (`TaskStop` + start + `watchdog:` w `## Stan`); cron bez zmian: jedna linia „ok”, koniec tiku;
+  (`TaskStop` + start z `timeout: 7200000` + `watchdog:` w `## Stan`); cron bez zmian: jedna linia „ok”, koniec tiku;
 - wznowienie po pauzie → zamknij pauzę w `## Stan`, potem jak w przypadku D i odpala watchdoga;
 - hand-back „pauza wykonawcy do <ISO>” → jak w przypadku D (pauza w `## Stan`, odnów watchdoga);
   po wznowieniu ponowny `/headless` dla tego ticketu (krok 2–3), pauza nie liczy się do wznowień ticketu;
