@@ -22,8 +22,10 @@ from guides.bugbot_md import (
     migrate,
     needs_migration,
     overlay_paths,
+    path_defaults,
     read_template_history,
     render,
+    render_paths,
     sync_file,
 )
 
@@ -124,6 +126,47 @@ class TestRenderPaths(unittest.TestCase):
         self.assertIn("`backend/`", text)
         self.assertNotIn("{{path:", text)
 
+    def test_derived_paths_follow_web_key(self) -> None:
+        """#280: `ui` i `api-generated` bez własnego klucza idą za `web:`."""
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "backend client", paths={"web": "apps/web/"})
+
+        self.assertIn("`apps/web/src/components/ui/`", text)
+        self.assertIn("`apps/web/src/api/generated/`", text)
+
+    def test_explicit_ui_key_wins_over_derived(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "client", paths={"web": "apps/web", "ui": "packages/ui/"})
+
+        self.assertIn("`packages/ui/`", text)
+        self.assertNotIn("apps/web/src/components/ui/", text)
+
+    def test_derived_paths_without_web_key_use_web_default(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "backend client")
+
+        self.assertIn("`frontend/web/src/components/ui/`", text)
+        self.assertIn("`frontend/web/src/api/generated/`", text)
+        self.assertNotIn("@web", text)
+
+    def test_unknown_derived_key_keeps_literal_default(self) -> None:
+        """#280: `@nieznany/…` nie daje ścieżki bezwzględnej."""
+        self.assertEqual(render_paths("{{path:x|@nope/src/}}"), "@nope/src/")
+        self.assertEqual(render_paths("{{path:x|@/src/}}"), "@/src/")
+
+    def test_every_derived_ref_in_template_has_its_placeholder(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+        keys = set(path_defaults(template))
+
+        defaults = path_defaults(template).values()
+        refs = {d.split("/", 1)[0][1:] for d in defaults if d.startswith("@")}
+
+        self.assertTrue(refs)
+        self.assertLessEqual(refs, keys)
+
     def test_overlay_paths_tolerate_missing_backticks_and_key_case(self) -> None:
         overlay = (
             "## Ścieżki\n\n- Backend: backend/src/ — kod API\n- web: `frontend/web/`\n"
@@ -162,10 +205,10 @@ class TestRenderPaths(unittest.TestCase):
         template = KIT_TEMPLATE.read_text(encoding="utf-8")
         defaults = {
             "backend": "backend/",
-            "ui": "frontend/web/components/ui/",
+            "ui": "frontend/web/src/components/ui/",
             "web": "frontend/web/",
             "mobile": "frontend/mobile/",
-            "api-generated": "frontend/src/api/generated/",
+            "api-generated": "frontend/web/src/api/generated/",
         }
 
         self.assertEqual(
@@ -180,7 +223,7 @@ class TestRenderPaths(unittest.TestCase):
         self.assertNotIn("Orval", render(template, "backend"))
         self.assertNotIn("Orval", render(template, "client"))
         both = render(template, "backend client")
-        self.assertIn("`frontend/src/api/generated/`", both)
+        self.assertIn("`frontend/web/src/api/generated/`", both)
         self.assertNotIn("<!-- tier:", both)
         self.assertNotIn("<!-- /tier:", render(template, "backend"))
 

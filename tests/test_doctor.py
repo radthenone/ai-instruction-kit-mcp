@@ -870,8 +870,7 @@ class TestBugbotPathKeys(unittest.TestCase):
         """Klucz `web:` ustawiony, `mobile:` nie — linia z obiema ścieżkami nadal sprawdzana."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
-            (workspace / "apps" / "web").mkdir(parents=True)
-            (workspace / "frontend" / "web" / "components" / "ui").mkdir(parents=True)
+            (workspace / "apps" / "web" / "src" / "components" / "ui").mkdir(parents=True)
             overlay = "## Ścieżki\n\n- web: `apps/web/`\n"
             _write(workspace / ".ai" / "project.md", overlay)
             _write(
@@ -885,11 +884,59 @@ class TestBugbotPathKeys(unittest.TestCase):
                 [w.value for w in warnings if w.kind == "missing-path-key"], ["mobile"], warnings
             )
 
+    def test_derived_ui_path_under_web_key_is_silent(self) -> None:
+        """#280: `web: apps/web/` + istniejące `apps/web/src/components/ui/` → bez `ui`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "web" / "src" / "components" / "ui").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- web: `apps/web/`\n")
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "client", paths={"web": "apps/web/"}),
+            )
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            keys = [w.value for w in warnings if w.kind == "missing-path-key"]
+            self.assertNotIn("ui", keys, warnings)
+
+    def test_derived_default_is_reported_rendered(self) -> None:
+        """#280: zgłoszenie mówi o wyrenderowanej pochodnej, nie o `@web/…`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "web").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- web: `apps/web/`\n")
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "client", paths={"web": "apps/web/"}),
+            )
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            [ui] = [w for w in warnings if w.kind == "missing-path-key" and w.value == "ui"]
+            self.assertIn("`apps/web/src/components/ui/`", ui.message)
+
+    def test_several_candidates_are_listed(self) -> None:
+        """#280: kilku kandydatów → lista w zgłoszeniu, bez `suggestion`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            for app in ("admin", "shop"):
+                (workspace / "apps" / app / "src" / "components" / "ui").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "# Overlay\n")
+            _write(workspace / "BUGBOT.md", render_bugbot(self.TEMPLATE, "client"))
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            [ui] = [w for w in warnings if w.kind == "missing-path-key" and w.value == "ui"]
+            self.assertIsNone(ui.suggestion)
+            self.assertIn("`apps/admin/src/components/ui/`", ui.message)
+            self.assertIn("`apps/shop/src/components/ui/`", ui.message)
+
     def test_codegen_output_alias_satisfies_api_generated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
             (workspace / "gen").mkdir()
-            for default in ("backend", "frontend/web/components/ui", "frontend/mobile"):
+            for default in ("backend", "frontend/web/src/components/ui", "frontend/mobile"):
                 (workspace / default).mkdir(parents=True)
             _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- codegen-output: `gen/`\n")
             rendered = render_bugbot(
@@ -1262,6 +1309,10 @@ class TestKitProjectEditMode(unittest.TestCase):
         self.assertIn("Jeden podgląd na całą partię", text)
         # #277: niepewna migracja — propozycja bloku projektu, zapis po akceptacji.
         self.assertIn("| `uncertain-migration`", text)
+        # #280: kilku kandydatów dla `missing-path-key` — wybór z listy.
+        row = next(line for line in text.splitlines() if line.startswith("   | `missing-path-key`"))
+        self.assertIn("kandydaci w drzewie", row)
+        self.assertIn("do wyboru", row)
 
 
 class TestMcpReload(unittest.TestCase):

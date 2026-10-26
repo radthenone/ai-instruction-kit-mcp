@@ -132,7 +132,7 @@ leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
    | Ścieżka w szablonowej części `AGENTS.md` / w `CODING_STANDARDS.md` | poza zakresem trybu | Pokaż propozycję i poproś o ręczną decyzję — tych części ten tryb nie zapisuje |
    | Komenda bez agenta/komendy/skilla | overlay albo `project:rules` | Usuń odwołanie **albo** — gdy komenda ma istnieć w kicie — daj szkic `/create-task` (nie edytuj `templates/`) |
    | `INFO` o pakiecie workspace'u | overlay | Dopisz pakiet (albo jego katalog nadrzędny) do `## Ścieżki` / sekcji struktury |
-   | `missing-path-key` (reguła szablonu `BUGBOT.md` na ścieżce domyślnej, której nie ma) | overlay: `## Ścieżki` | Dopisz klucz z `value` (wartość z `suggestion`), potem reload — szablon wyrenderuje regułę z tą ścieżką |
+   | `missing-path-key` (reguła szablonu `BUGBOT.md` na ścieżce domyślnej, której nie ma; `ui` / `api-generated` domyślnie idą za `web:`) | overlay: `## Ścieżki` | Dopisz klucz z `value` (wartość z `suggestion`), potem reload — szablon wyrenderuje regułę z tą ścieżką. Bez `suggestion`, a komunikat ma „kandydaci w drzewie” → pokaż listę do wyboru (w jednym podglądzie partii) i dopisz klucz z wybraną ścieżką |
    | `negated-path-exists` | overlay | Zdanie twierdzi, że ścieżki nie ma, a jest — popraw albo usuń zdanie |
    | `stale-kit-content` w `BUGBOT.md` | blok `project:rules` + reload | Własne linie przenieś do bloku; resztę odświeży reload |
    | `stale-kit-content` w `AGENTS.md` | blok `project:agents` + reload | Własne linie przenieś do bloku; resztę odświeży reload |
