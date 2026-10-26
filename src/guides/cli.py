@@ -273,7 +273,7 @@ def reload_workspace(
     kit_root: Path,
     *,
     dry_run: bool = False,
-) -> tuple[WorkspaceSettings, BootstrapPlan | str]:
+) -> tuple[WorkspaceSettings, BootstrapPlan | str, str]:
     """
     Bootstrap z istniejącego Profilu — wspólny kod ``kit-ai reload`` i MCP.
 
@@ -287,7 +287,9 @@ def reload_workspace(
         dry_run: ``True`` — tylko plan z sandboxu, nic nie zapisuje.
 
     Returns:
-        tuple: ``(ustawienia, plan albo stdout Bootstrapu)``.
+        tuple: ``(ustawienia, plan albo stdout Bootstrapu, podpowiedź commita)``. Podpowiedź
+            (:func:`_commit_hint`) jest pusta w dry-runie, poza gitem i gdy reload nic nie zmienił;
+            wołający drukuje ją na samym końcu wydruku.
 
     Raises:
         SetupError: Brak kita w repo.
@@ -303,12 +305,12 @@ def reload_workspace(
         "from_src": kit_source(kit_root).value,
     }
     if dry_run:
-        return settings, plan_bootstrap(workspace_root=workspace, **kwargs)
+        return settings, plan_bootstrap(workspace_root=workspace, **kwargs), ""
     before = _dirty_kit_files(workspace)
     if settings.migrated:
         write_profile(workspace, kit_root, language=settings.language, clients=settings.clients)
     output = run_bootstrap(target=workspace, **kwargs)
-    return settings, output + _commit_hint(workspace, before)
+    return settings, output, _commit_hint(workspace, before)
 
 
 def _dirty_kit_files(workspace: Path) -> dict[str, bytes | None] | None:
@@ -340,7 +342,7 @@ def _commit_hint(workspace: Path, before: dict[str, bytes | None] | None) -> str
     changed = sorted(rel for rel, data in after.items() if rel not in before or before[rel] != data)
     if not changed:
         return ""
-    lines = ["", "", "Reload zmienił pliki kita:", *(f"  {rel}" for rel in changed)]
+    lines = ["Reload zmienił pliki kita:", *(f"  {rel}" for rel in changed)]
     lines.append('Zacommituj je przed następnym `git pull`, np. `git commit -m "chore: sync kit files"`.')
     return "\n".join(lines)
 
@@ -652,11 +654,13 @@ def main(argv: list[str] | None = None) -> int:
             print(install_workspace(workspace, kit_root, language=language, clients=clients))
             print(install_summary(workspace, kit_root, language=language, clients=clients))
         elif args.command == "reload":
-            settings, result = reload_workspace(workspace, kit_root, dry_run=args.dry_run)
+            settings, result, hint = reload_workspace(workspace, kit_root, dry_run=args.dry_run)
             if settings.migrated:
                 print("Stara konfiguracja (preset) → Profil core + none, nowy mcp.json.")
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
             print(reload_doctor(workspace, kit_root, settings.clients, dry_run=args.dry_run)[0])
+            if hint:
+                print(hint)
         elif args.command == "remove":
             result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
