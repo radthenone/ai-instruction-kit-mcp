@@ -19,6 +19,14 @@
         "cwd": ".",
         "timeout": 5
       }
+    ],
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node .github/hooks/kit-doctor-reminder.mjs",
+        "cwd": ".",
+        "timeout": 5
+      }
     ]
   }
 }

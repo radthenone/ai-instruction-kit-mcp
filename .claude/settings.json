@@ -79,6 +79,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/rtk-check.mjs\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/kit-doctor-reminder.mjs\"",
+            "timeout": 10
           }
         ]
       }
