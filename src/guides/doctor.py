@@ -650,7 +650,7 @@ def _path_key_findings(
         for key, default in PATH_PLACEHOLDER.findall(line):
             if (
                 key in paths
-                or render_paths(line).strip() not in rendered
+                or render_paths(line, paths).strip() not in rendered
                 or (workspace / default).exists()
             ):
                 continue

@@ -520,6 +520,54 @@ class TestBugbotPathKeys(unittest.TestCase):
             self.assertEqual(warnings[0].value, "backend")
             self.assertEqual(warnings[0].suggestion, "apps/backend/")
 
+    def test_client_keys_missing_with_absent_defaults_warn(self) -> None:
+        """#270: `ui:`/`web:`/`mobile:`/`api-generated:` bez klucza i bez domyślnej."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "web" / "src" / "components" / "ui").mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- backend: `apps/`\n")
+            _write(workspace / "BUGBOT.md", render_bugbot(self.TEMPLATE, "backend client"))
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            by_key = {w.value: w for w in warnings if w.kind == "missing-path-key"}
+            self.assertEqual(set(by_key), {"ui", "web", "mobile", "api-generated"}, warnings)
+            self.assertEqual(by_key["ui"].suggestion, "apps/web/src/components/ui/")
+
+    def test_key_set_for_one_placeholder_still_reports_its_neighbour(self) -> None:
+        """Klucz `web:` ustawiony, `mobile:` nie — linia z obiema ścieżkami nadal sprawdzana."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "apps" / "web").mkdir(parents=True)
+            (workspace / "frontend" / "web" / "components" / "ui").mkdir(parents=True)
+            overlay = "## Ścieżki\n\n- web: `apps/web/`\n"
+            _write(workspace / ".ai" / "project.md", overlay)
+            _write(
+                workspace / "BUGBOT.md",
+                render_bugbot(self.TEMPLATE, "client", paths={"web": "apps/web/"}),
+            )
+
+            warnings = run_doctor(workspace, KIT_ROOT, clients="claude").warnings
+
+            self.assertEqual(
+                [w.value for w in warnings if w.kind == "missing-path-key"], ["mobile"], warnings
+            )
+
+    def test_codegen_output_alias_satisfies_api_generated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            (workspace / "gen").mkdir()
+            for default in ("backend", "frontend/web/components/ui", "frontend/mobile"):
+                (workspace / default).mkdir(parents=True)
+            _write(workspace / ".ai" / "project.md", "## Ścieżki\n\n- codegen-output: `gen/`\n")
+            rendered = render_bugbot(
+                self.TEMPLATE, "backend client", paths={"api-generated": "gen/"}
+            )
+            self.assertIn("`gen/`", rendered)
+            _write(workspace / "BUGBOT.md", rendered)
+
+            self.assertEqual(run_doctor(workspace, KIT_ROOT, clients="claude").warnings, ())
+
     def test_rendered_template_does_not_read_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
