@@ -22,8 +22,10 @@ from guides.bugbot_md import (
     migrate,
     needs_migration,
     overlay_paths,
+    path_defaults,
     read_template_history,
     render,
+    render_paths,
     sync_file,
 )
 
@@ -149,6 +151,21 @@ class TestRenderPaths(unittest.TestCase):
         self.assertIn("`frontend/web/src/components/ui/`", text)
         self.assertIn("`frontend/web/src/api/generated/`", text)
         self.assertNotIn("@web", text)
+
+    def test_unknown_derived_key_keeps_literal_default(self) -> None:
+        """#280: `@nieznany/…` nie daje ścieżki bezwzględnej."""
+        self.assertEqual(render_paths("{{path:x|@nope/src/}}"), "@nope/src/")
+        self.assertEqual(render_paths("{{path:x|@/src/}}"), "@/src/")
+
+    def test_every_derived_ref_in_template_has_its_placeholder(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+        keys = set(path_defaults(template))
+
+        defaults = path_defaults(template).values()
+        refs = {d.split("/", 1)[0][1:] for d in defaults if d.startswith("@")}
+
+        self.assertTrue(refs)
+        self.assertLessEqual(refs, keys)
 
     def test_overlay_paths_tolerate_missing_backticks_and_key_case(self) -> None:
         overlay = (

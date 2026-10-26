@@ -187,8 +187,11 @@ def resolve_path(
     ref, slash, rest = default.partition("/")
     if not ref.startswith("@"):
         return default
-    base = paths.get(ref[1:]) or defaults.get(ref[1:], "")
-    return base.rstrip("/") + slash + rest
+    base = (paths.get(ref[1:]) or defaults.get(ref[1:], "")).rstrip("/")
+    if not base:
+        # Nieznany klucz — literalna domyślna zamiast ścieżki bezwzględnej `/reszta`.
+        return default
+    return base + slash + rest
 
 
 def path_defaults(text: str) -> dict[str, str]:
