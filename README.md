@@ -277,9 +277,17 @@ komendy w `templates/shared/agents/*`). Linie `AGENTS.md` / `BUGBOT.md` skopiowa
 zmian z szablonu kita są pomijane — to treść kita, nie reguły projektu:
 
 - ścieżki w backtickach — brak w drzewie = `OSTRZEŻENIE` z plikiem i numerem linii;
-  globy (`**/auth/**`) i placeholdery (`<N>`) są pomijane;
-- klucze `## Ścieżki` w overlayu (`backend:`, `web:`, `routes-web:` …) — katalog musi
-  istnieć;
+  globy (`**/auth/**`) i placeholdery (`<N>`) są pomijane. Ścieżka może być od roota
+  repo, względem katalogów z `## Ścieżki` (i ich `src/` / `app/`) albo gołą nazwą
+  (`server.py`, `ui/`) szukaną w całym drzewie;
+- **zakres Tieru** — ścieżka w sekcji z nagłówkiem Tieru (`## Backend`,
+  `## Frontend (web / mobile)`) albo w linii z prefiksem `backend:` / `web:` / `mobile:`
+  liczy się tylko wewnątrz katalogu tego Tieru (klucz `backend:` / `web:` / `mobile:`
+  w `## Ścieżki`). Plik, który leży wyłącznie w innym Tierze, daje `stale-path`. Prefiks
+  linii wygrywa z nagłówkiem; ścieżka pełna od roota repo i sekcja bez Tieru — bez
+  zawężania;
+- klucze `## Ścieżki` w overlayu (`backend:`, `web:`, `routes-web:` …) — katalog albo plik
+  musi istnieć;
 - komendy `/nazwa` — muszą mieć agenta, komendę albo skill u któregoś klienta
   z `clients:`; komendy innych warstw (Matt, Superpowers, Cursor) są pomijane;
 - pakiety workspace'ów Bun/npm, pnpm i uv, których overlay nie opisuje — `INFO`, nie
@@ -291,13 +299,45 @@ doctor: OSTRZEŻENIE BUGBOT.md:12 — ścieżka `src/auth/` nie istnieje
 doctor: INFO .ai/project.md — katalog `packages/ui/` z workspace'u nie jest opisany w `.ai/project.md`
 ```
 
+Klasy zgłoszeń (pole `kind`):
+
+| `kind` | Poziom | Co znaczy |
+|--------|--------|-----------|
+| `stale-path` | ostrzeżenie | ścieżka w regule albo klucz `## Ścieżki` wskazuje coś, czego nie ma (z `suggestion`, gdy w drzewie jest dokładnie jeden kandydat) |
+| `negated-path-exists` | ostrzeżenie | overlay pisze, że ścieżki nie ma („brak `x/`”, „nie istnieje”), a ona istnieje |
+| `stale-kit-content` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` ma linie ze starej wersji szablonu kita — do odświeżenia |
+| `missing-path-key` | ostrzeżenie | brak klucza w `## Ścieżki`, a reguła szablonu `BUGBOT.md` używa domyślnej ścieżki, której nie ma w repo |
+| `missing-command` | ostrzeżenie | komenda `/nazwa` bez agenta, komendy ani skilla u klientów z `clients:` |
+| `undescribed-package` | info | pakiet workspace'u bez opisu w `.ai/project.md` |
+| `invalid-clients` | info | nieprawidłowe `clients:` w Profilu — doctor sprawdza jak `all` |
+| `path-candidates` | info | tylko z `--verbose`: ścieżka pasuje do kilku miejsc — lista kandydatów |
+
+```bash
+kit-ai doctor            # linie doctor:, kod wyjścia 0
+kit-ai doctor --json     # {"warnings", "infos", "findings": [{kind, file, line, value, suggestion, …}]}
+kit-ai doctor --verbose  # + INFO `path-candidates`, gdy ścieżka pasuje do >1 miejsca
+```
+
+Bez `--verbose` ścieżka pasująca do kilku miejsc przechodzi po cichu (jak dotąd);
+z flagą każde takie trafienie dostaje linię `INFO` z listą kandydatów, w obrębie zakresu
+Tieru. `--verbose` łączy się z `--json`.
+
 `OSTRZEŻENIE` znaczy, że reguła review albo wpis overlayu wskazuje coś, czego w repo nie
 ma — po cichu przestaje działać. `INFO` to porządki w overlayu. Doctor **nigdy nie
-blokuje** reloadu: raport i tak wychodzi, a kod wyjścia to 0. Naprawa:
-`/kit-project-edit "napraw zgłoszenia doctora"` — proponuje poprawki w overlayu i w bloku
-`project:rules` w `BUGBOT.md`, pokazuje podgląd i zapisuje po akceptacji. Zgłoszenia
-w `AGENTS.md` / `CODING_STANDARDS.md` i w szablonowych sekcjach `BUGBOT.md` wymagają
-ręcznej decyzji (reload nadpisałby szablon).
+blokuje** reloadu: raport i tak wychodzi, a kod wyjścia to 0.
+
+**Naprawa — tryb C** `/kit-project-edit "napraw zgłoszenia doctora"`: proponuje poprawki
+w overlayu, w bloku `project:rules` w `BUGBOT.md` i w bloku `project:agents` w `AGENTS.md`
+(przestarzała treść kita), pokazuje jeden podgląd na całą partię i zapisuje po
+akceptacji. Ścieżki w szablonowych częściach `BUGBOT.md` / `AGENTS.md` i w
+`CODING_STANDARDS.md` wymagają ręcznej decyzji (reload nadpisałby szablon).
+
+**Po reloadzie** (`kit-ai reload`, MCP `reload_workspace`) ostrzeżenia do naprawy trafiają
+do pliku stanu `.ai/.kit-doctor.json` (ten sam format co `kit-ai doctor --json`); czysty
+przebieg plik usuwa, `--dry-run` go nie dotyka. Raport kończy linia
+`doctor: N do naprawy → /kit-project-edit "napraw zgłoszenia doctora"`, a MCP
+`reload_workspace` każe agentowi od razu uruchomić tryb C na tej partii — bez czekania na
+prośbę (auto-start). Tryb C bierze partię z pliku stanu albo z `kit-ai doctor --json`.
 
 ### 4. Kiedy aktualizować
 
