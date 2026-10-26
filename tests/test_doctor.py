@@ -489,7 +489,8 @@ class TestStaleKitContent(unittest.TestCase):
 
             self.assertEqual([(w.kind, w.file) for w in warnings], [("stale-kit-content", "AGENTS.md")])
 
-    def test_stale_agents_is_not_counted_for_mode_c(self) -> None:
+    def test_stale_agents_counts_for_mode_c(self) -> None:
+        """#269: reload odświeża część kitową AGENTS.md, więc zgłoszenie jest do naprawy."""
         with tempfile.TemporaryDirectory() as tmp:
             kit = self._kit(tmp)
             workspace = _workspace(tmp)
@@ -498,8 +499,8 @@ class TestStaleKitContent(unittest.TestCase):
             report = run_doctor(workspace, kit, clients="claude")
 
             self.assertEqual(len(report.warnings), 1)
-            self.assertEqual(report.fixable, ())
-            self.assertNotIn("/kit-project-edit", report.warnings[0].message)
+            self.assertEqual(report.fixable, report.warnings)
+            self.assertIn('/kit-project-edit "napraw zgłoszenia doctora"', report.warnings[0].message)
 
 
 class TestBugbotPathKeys(unittest.TestCase):
