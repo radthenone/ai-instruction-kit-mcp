@@ -135,6 +135,7 @@ leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
    | `negated-path-exists` | overlay | Zdanie twierdzi, że ścieżki nie ma, a jest — popraw albo usuń zdanie |
    | `stale-kit-content` w `BUGBOT.md` | blok `project:rules` + reload | Własne linie przenieś do bloku; resztę odświeży reload |
    | `stale-kit-content` w `AGENTS.md` | blok `project:agents` + reload | Własne linie przenieś do bloku; resztę odświeży reload |
+   | `uncertain-migration` w `BUGBOT.md` / `AGENTS.md` | blok `project:rules` / `project:agents` + reload | Pokaż propozycję z `value` (linie projektu, po jednej w linii); po akceptacji wpisz je do bloku, potem reload odświeży resztę pliku z szablonu |
 
    **Propozycje:** `suggestion` z doctora = propozycja pewna (jedyny kandydat w drzewie).
    Bez niej szukaj w aktualnym drzewie: `git ls-files` (bez `node_modules`/`.venv`) po
@@ -156,8 +157,8 @@ leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
 
 4. **Zapis** po akceptacji — tylko wskazane linie w overlayu i/lub bloku
    `project:rules` / `project:agents`. Overlay, `BUGBOT.md` i `AGENTS.md` czyta się na
-   żywo, więc reload nie jest potrzebny (wyjątek: `missing-path-key` i `stale-kit-content`
-   — wtedy reload); nie ruszaj Profilu. Po zapisie uruchom ponownie `kit-ai doctor` i raportuj,
+   żywo, więc reload nie jest potrzebny (wyjątek: `missing-path-key`, `stale-kit-content`
+   i `uncertain-migration` — wtedy reload); nie ruszaj Profilu. Po zapisie uruchom ponownie `kit-ai doctor` i raportuj,
    ile zostało i dlaczego (np. zgłoszenie w `AGENTS.md` odrzucone świadomie). Zero
    ostrzeżeń → usuń `.ai/.kit-doctor.json`.
 5. **Zakazy.** Nie edytuj szablonowych sekcji `BUGBOT.md` i `AGENTS.md` (poza blokami),

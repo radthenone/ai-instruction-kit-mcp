@@ -79,11 +79,15 @@ class Migration:
         text: Nowa treść pliku albo ``None``, gdy migracja jest niepewna.
         moved: Linie przeniesione do bloku ``project:rules``.
         reason: Powód niepewności (tylko gdy ``text is None``).
+        proposal: Propozycja treści bloku projektu przy niepewnej migracji (#277):
+            linie dopisane i zmienione względem najbliższej wersji szablonu; pusta
+            bez historii szablonu.
     """
 
     text: str | None
     moved: list[str] = field(default_factory=list)
     reason: str | None = None
+    proposal: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -304,20 +308,26 @@ def migrate(
     if best is None:
         return Migration(None, reason="brak historii szablonu w kicie")
 
-    _, deleted, added = best
-    if deleted:
-        return Migration(None, reason="plik zmienia lub usuwa linie szablonu")
-    if len(added) > MAX_MIGRATED_LINES:
-        return Migration(
-            None,
-            reason=f"diff za duży ({len(added)} dopisanych linii, limit {MAX_MIGRATED_LINES})",
-        )
-
+    _, deleted, raw_added = best
     # Puste linie na brzegach to zwykle odstęp przed dopisanymi regułami, nie reguła.
+    added = list(raw_added)
     while added and not added[0].strip():
         added.pop(0)
     while added and not added[-1].strip():
         added.pop()
+    # Niepewna migracja niesie propozycję bloku (#277): zmieniona linia szablonu idzie
+    # jako linia projektu — oryginał wróci z szablonu przy reloadzie.
+    if deleted:
+        return Migration(
+            None, reason="plik zmienia lub usuwa linie szablonu", proposal=added
+        )
+    if len(raw_added) > MAX_MIGRATED_LINES:
+        return Migration(
+            None,
+            reason=f"diff za duży ({len(raw_added)} dopisanych linii, limit {MAX_MIGRATED_LINES})",
+            proposal=added,
+        )
+
     if not added:
         return Migration(render(template, tiers, paths=paths, block=block), moved=[])
 
@@ -339,6 +349,32 @@ def needs_migration(text: str, template: str, block: str = "rules") -> bool:
     """
     text, _ = _split_aside(text, block)
     return extract_rules(text, block) is None and not is_pristine(text, template, block)
+
+
+def propose_migration(
+    text: str,
+    template: str,
+    history: Sequence[str],
+    paths: Mapping[str, str] | None = None,
+    block: str = "rules",
+) -> Migration:
+    """
+    Migracja pliku bez bloku liczona na potrzeby doctora (#277) — bez zapisu.
+
+    Odkłada sekcję kita spoza szablonu (``## Agent skills``) tak jak ``sync_file``.
+
+    Args:
+        text: Treść pliku w repo aplikacji.
+        template: Aktualny szablon kita.
+        history: Historyczne wersje szablonu, od najnowszej.
+        paths: Klucze ``## Ścieżki`` overlayu.
+        block: Nazwa bloku projektu.
+
+    Returns:
+        Migration: Wynik ``migrate`` (przy niepewnej — ``reason`` i ``proposal``).
+    """
+    rest, _ = _split_aside(text.replace("\r\n", "\n"), block)
+    return migrate(rest, template, (), history, paths, block)
 
 
 def _line_count(count: int) -> str:

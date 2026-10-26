@@ -28,8 +28,11 @@ from pathlib import Path
 import yaml
 
 from guides.bugbot_md import (
+    ASIDE_SECTIONS,
     PATH_PLACEHOLDER,
+    needs_migration,
     overlay_path_entries,
+    propose_migration,
     read_template_history,
     render_paths,
 )
@@ -51,6 +54,8 @@ KIT_TEMPLATES: dict[str, str] = {
     "AGENTS.md": "templates/AGENTS.md",
     "BUGBOT.md": "templates/cursor/BUGBOT.md",
 }
+# Blok projektu pliku reguł z szablonu (``project:rules`` / ``project:agents``, #277).
+PROJECT_BLOCKS: dict[str, str] = {"AGENTS.md": "agents", "BUGBOT.md": "rules"}
 AGENT_TEMPLATES = "templates/shared/agents"
 
 # Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
@@ -702,6 +707,57 @@ def _stale_kit_lines(
     return {number for number, line in own.items() if line in history}
 
 
+def _uncertain_migration(
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool, paths: dict[str, str]
+) -> Finding | None:
+    """
+    Niepewna migracja pliku bez bloku projektu jako jedno zgłoszenie z propozycją (#277).
+
+    Reload zostawia taki plik bez zmian; tu liczymy tę samą migrację i oddajemy trybowi C
+    linie projektu w ``value`` (po jednej w linii). Bez historii szablonu — brak zgłoszenia.
+    """
+    template = KIT_TEMPLATES.get(rel)
+    block = PROJECT_BLOCKS.get(rel)
+    if is_kit or kit_root is None or template is None or block is None:
+        return None
+    template_text = _read(kit_root / template)
+    if not template_text or not needs_migration(text, template_text, block):
+        return None
+    history = read_template_history(kit_root, template)
+    if not history:
+        return None
+    migration = propose_migration(text, template_text, history, paths, block)
+    if migration.text is not None:
+        return None
+    fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
+    if migration.proposal:
+        count = _plural(len(migration.proposal), "linia", "linie", "linii")
+        what = f"propozycja bloku: {count} w `value`"
+    else:
+        what = f"brak linii projektu — wstaw pusty blok project:{block} i zrób reload"
+    return Finding(
+        "warning",
+        rel,
+        None,
+        f"niepewna migracja do bloku project:{block} ({migration.reason}) — {what} ({fix})",
+        "uncertain-migration",
+        value="\n".join(migration.proposal),
+    )
+
+
+def _aside_lines(rel: str, text: str) -> set[int]:
+    """Numery linii sekcji kita spoza szablonu (``## Agent skills`` w ``AGENTS.md``)."""
+    heading = ASIDE_SECTIONS.get(PROJECT_BLOCKS.get(rel, ""))
+    lines: set[int] = set()
+    inside = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("## "):
+            inside = bool(heading and heading.match(line))
+        if inside:
+            lines.add(number)
+    return lines
+
+
 def _path_key_findings(
     workspace: Path, kit_root: Path | None, paths: dict[str, str], layout: _Layout
 ) -> list[Finding]:
@@ -1024,7 +1080,23 @@ def run_doctor(
             continue
         text = _read(path)
         skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
-        stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        uncertain = _uncertain_migration(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        stale: set[int] = set()
+        if uncertain is not None:
+            # Jedno zbiorcze zgłoszenie: szablonową część pliku (wszystko poza
+            # propozycją) wyciszamy — tę odświeży reload po przeniesieniu linii.
+            findings.append(uncertain)
+            # Sekcja odłożona przez migrację (``## Agent skills``) nie jest szablonem —
+            # jej zgłoszenia zostają jak bez migracji.
+            own = {line.strip() for line in (uncertain.value or "").splitlines()}
+            aside = _aside_lines(rel, text)
+            skip_lines = (skip_lines & aside) | {
+                number
+                for number, line in enumerate(text.splitlines(), start=1)
+                if number not in aside and line.strip() not in own
+            }
+        else:
+            stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         if stale:
             skip_lines |= stale
             fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
