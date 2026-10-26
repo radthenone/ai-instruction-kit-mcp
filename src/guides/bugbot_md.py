@@ -51,6 +51,10 @@ _PATH_CODE = re.compile(r"`([^`\n]+)`")
 # Blok podmieniamy po redukcji pustych linii, żeby nie zjadać pustych linii
 # wewnątrz reguł użytkownika (migracja ma zachować treść dosłownie).
 _SENTINEL = "\x00project:rules\x00"
+# Dowolna ścieżka z overlayu w miejscu `{{path:…}}` przy rozpoznawaniu renderu (#270).
+_ANY_PATH = "\x00path\x00"
+# Alias klucza `## Ścieżki` → klucz placeholdera (#270); jawny klucz wygrywa z aliasem.
+PATH_KEY_ALIASES = {"codegen-output": "api-generated"}
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,9 @@ def overlay_paths(text: str) -> dict[str, str]:
     paths: dict[str, str] = {}
     for _, key, value in overlay_path_entries(text):
         paths.setdefault(key, value)
+    for alias, key in PATH_KEY_ALIASES.items():
+        if alias in paths:
+            paths.setdefault(key, paths[alias])
     return paths
 
 
@@ -181,24 +188,34 @@ def render(
     def keep(match: re.Match[str]) -> str:
         return match.group(2).strip("\n") + "\n" if match.group(1) in chosen else ""
 
-    text = _TIER_RE.sub(keep, text)
+    # Sekcja w sekcji (reguła Orvala: backend + klient, #270) — kolejne przejście
+    # zdejmuje znaczniki wewnętrzne, które zewnętrzne dopasowanie zostawiło w treści.
+    while (nested := _TIER_RE.sub(keep, text)) != text:
+        text = nested
     text = re.sub(r"\n{3,}", "\n\n", text)
     if default_rules is not None:
         text = text.replace(_SENTINEL, block_rules or "")
     return text
 
 
-def is_pristine(text: str, template: str, paths: Mapping[str, str] | None = None) -> bool:
+def _render_pattern(template: str, tiers: frozenset[str]) -> re.Pattern[str]:
+    """Render szablonu jako regex: każde ``{{path:…}}`` to dowolna ścieżka bez spacji."""
+    rendered = render(PATH_PLACEHOLDER.sub(_ANY_PATH, template), tiers)
+    return re.compile(r"[^\s`]+".join(map(re.escape, rendered.split(_ANY_PATH))))
+
+
+def is_pristine(text: str, template: str) -> bool:
     """
     Czy plik to nietknięty render szablonu (dowolny zestaw Tierów)?
 
     Blok ``project:rules`` bez własnych reguł — pusty albo z samą instrukcją
     z szablonu — liczy się jak nietknięty, więc ``--remove`` może taki plik usunąć.
+    Ścieżki ``{{path:…}}`` mogą mieć dowolną wartość: render sprzed zmiany klucza
+    w overlayu to nadal plik kita, nie edycja (#270).
 
     Args:
         text: Treść pliku w repo aplikacji.
         template: Aktualny szablon kita.
-        paths: Klucze ``## Ścieżki`` overlayu użyte przy renderze.
 
     Returns:
         bool: ``True`` gdy plik można bezpiecznie nadpisać/usunąć.
@@ -214,7 +231,7 @@ def is_pristine(text: str, template: str, paths: Mapping[str, str] | None = None
         normalized = _BLOCK_RE.sub(
             lambda _: BLOCK_OPEN + default_rules + BLOCK_CLOSE, text, count=1
         )
-    return any(normalized == render(template, tiers, paths=paths) for tiers in TIER_SETS)
+    return any(_render_pattern(template, tiers).fullmatch(normalized) for tiers in TIER_SETS)
 
 
 def _diff(candidate: str, dest: str) -> tuple[int, int, list[str]]:
@@ -255,7 +272,7 @@ def migrate(
     best: tuple[tuple[int, int], int, list[str]] | None = None
     for index, version in enumerate(history):
         for tier_set in TIER_SETS:
-            score, deleted, added = _diff(render(version, tier_set), dest)
+            score, deleted, added = _diff(render(version, tier_set, paths=paths), dest)
             key = (score, index)
             if best is None or key < best[0]:
                 best = (key, deleted, added)
@@ -284,7 +301,7 @@ def migrate(
     return Migration(render(template, tiers, rules, paths), moved=added)
 
 
-def needs_migration(text: str, template: str, paths: Mapping[str, str] | None = None) -> bool:
+def needs_migration(text: str, template: str) -> bool:
     """
     Czy plik wymaga migracji (jest dostosowany i nie ma jeszcze bloku)?
 
@@ -295,7 +312,7 @@ def needs_migration(text: str, template: str, paths: Mapping[str, str] | None = 
     Returns:
         bool: ``True`` gdy trzeba dopasować plik do historii szablonu.
     """
-    return extract_rules(text) is None and not is_pristine(text, template, paths)
+    return extract_rules(text) is None and not is_pristine(text, template)
 
 
 def _line_count(count: int) -> str:
@@ -373,7 +390,7 @@ def sync_file(
             return SyncResult("refreshed")
         return SyncResult("unchanged")
 
-    if is_pristine(text, template, paths):
+    if is_pristine(text, template):
         fresh = render(template, tiers, paths=paths)
         if fresh != raw:
             _write(dest, fresh)
@@ -458,9 +475,7 @@ def main() -> int:
     if os.environ.get("CHECK_ONLY"):
         if not dest.is_file():
             return 1
-        pristine = is_pristine(
-            dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"), paths
-        )
+        pristine = is_pristine(dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"))
         return 0 if pristine else 1
 
     kit_root = Path(os.environ.get("KIT_ROOT") or source.parents[2])
@@ -468,7 +483,7 @@ def main() -> int:
     # nie potrzebuje kilkudziesięciu wywołań gita przy każdym reloadzie.
     history: Sequence[str] = ()
     if dest.is_file() and needs_migration(
-        dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"), paths
+        dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")
     ):
         history = read_template_history(kit_root)
     result = sync_file(
