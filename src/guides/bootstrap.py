@@ -205,6 +205,9 @@ def run_bootstrap(**kwargs) -> str:
     }
     if workspace is not None:
         env["KIT_WORKSPACE"] = str(workspace).replace("\\", "/")
+    else:
+        # Zmienna odziedziczona z otoczenia nie może przekierować prawdziwego reloadu.
+        env.pop("KIT_WORKSPACE", None)
     try:
         result = subprocess.run(
             [bash, "--noprofile", "--norc", *argv],

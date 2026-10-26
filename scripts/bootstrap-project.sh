@@ -125,7 +125,10 @@ TARGET="$(cd "$TARGET" && pwd)"
 # które zapisałby prawdziwy reload, w tej samej postaci ścieżki co `pwd` (#279).
 WORKSPACE_PATH="$TARGET"
 if [[ -n "${KIT_WORKSPACE:-}" ]]; then
-  WORKSPACE_PATH="$(cd "$KIT_WORKSPACE" && pwd)"
+  WORKSPACE_PATH="$(cd "$KIT_WORKSPACE" 2>/dev/null && pwd)" || {
+    echo "KIT_WORKSPACE nie istnieje: $KIT_WORKSPACE" >&2
+    exit 1
+  }
 fi
 
 if [[ -d "$FROM_SRC" ]]; then

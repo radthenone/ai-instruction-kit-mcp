@@ -160,6 +160,23 @@ class TestRealRun(_BootstrapTestCase):
             settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
             self.assertIn("PreToolUse", settings)
 
+    def test_inherited_kit_workspace_does_not_leak_into_real_run(self) -> None:
+        """`KIT_WORKSPACE` z otoczenia nie przekierowuje prawdziwego reloadu (#279)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            other = Path(tmp) / "other"
+            other.mkdir()
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(other)}):
+                run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="codex,opencode")
+
+            for rel in (".codex/config.toml", "opencode.json"):
+                with self.subTest(config=rel):
+                    text = (workspace / rel).read_text(encoding="utf-8")
+                    self.assertNotIn(str(other), text)
+                    self.assertIn(str(workspace.resolve()), text)
+
     def test_local_source_uses_uv_run_not_uvx(self) -> None:
         """Lokalny klon: `uv run --project` czyta kod i moduły z dysku.
 
