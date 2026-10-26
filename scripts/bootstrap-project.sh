@@ -497,6 +497,7 @@ MACHINE_FILES=(
   "/.agents/mcp_config.json"
   "/opencode.json"
   "/.ai/.kit-bootstrap.json"
+  "/.ai/.kit-doctor.json"
 )
 
 sync_gitignore_section() {
@@ -759,7 +760,7 @@ prune_tier_agents() {
 # Reszta pliku odświeża się z szablonu przy każdym reloadzie, ale blok
 # `<!-- project:rules -->…<!-- /project:rules -->` przechodzi bez zmian (reguły projektu).
 # Plik dostosowany przed wprowadzeniem bloku jest migrowany po historii szablonu (#240);
-# gdy migracja jest niepewna, plik zostaje, a reload wypisuje instrukcję ręczną.
+# gdy migracja jest niepewna, plik zostaje, a reload wypisuje jedną linię z trybem naprawy (#266).
 # Na stdout: komunikat migracji albo ostrzeżenie (ścieżka „utworzono” należy do bash).
 copy_bugbot_md() {
   SRC="$KIT_ROOT/templates/cursor/BUGBOT.md" \
@@ -767,6 +768,7 @@ copy_bugbot_md() {
     LABEL="${2:-BUGBOT.md}" \
     TIERS="$PROFILE_TIERS" \
     KIT_ROOT="$KIT_ROOT" \
+    OVERLAY="$TARGET/.ai/project.md" \
     CHECK_ONLY="${CHECK_ONLY:-}" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
 }
@@ -828,9 +830,19 @@ prune_shared_skills() {
   rmdir "$dest_dir" 2>/dev/null || true
 }
 
+# AGENTS.md tym samym modelem co BUGBOT.md (#269): część kita z szablonu przy każdym
+# reloadzie, treść projektu w bloku `<!-- project:agents -->`; plik sprzed bloku migrowany
+# po historii `templates/AGENTS.md`, a niepewna migracja to jedna linia z trybem C.
 install_agenty_md_once() {
-  if [[ ! -f "$TARGET/AGENTS.md" ]]; then
-    cp "$KIT_ROOT/templates/AGENTS.md" "$TARGET/AGENTS.md"
+  local existed=0
+  [[ -f "$TARGET/AGENTS.md" ]] && existed=1
+  SRC="$KIT_ROOT/templates/AGENTS.md" \
+    DEST="$TARGET/AGENTS.md" \
+    LABEL="AGENTS.md" \
+    BLOCK="agents" \
+    KIT_ROOT="$KIT_ROOT" \
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
+  if [[ "$existed" -eq 0 ]]; then
     echo "  + AGENTS.md"
   fi
 }
@@ -951,6 +963,8 @@ install_claude() {
   cp "$SHARED_GUARDS/bash-guard.mjs" "$TARGET/.claude/hooks/bash-guard.mjs"
   cp "$SHARED_GUARDS/linters-guard.mjs" "$TARGET/.claude/hooks/linters-guard.mjs"
   cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
+  # Przypomnienie o otwartej partii doctora (#269) — SessionStart, też Codex i Copilot.
+  cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
   # Przypomnienie języka (#248): hook UserPromptSubmit tylko przy language ≠ en.
   # Reinstalacja zdejmuje stary wpis (marker language-reminder.mjs), więc przy en znika.
   SETTINGS_TEMPLATE="$KIT_ROOT/templates/claude/settings.json"
@@ -996,8 +1010,9 @@ install_codex() {
   # narzędziem Codexa — PreToolUse woła invoke-hook.js --to codex, deny działa
   # tak samo jak w Claude Code.
   install_guards "$TARGET/.codex/hooks"
+  cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.codex/hooks/kit-doctor-reminder.mjs"
   cp "$KIT_ROOT/templates/codex/hooks.json" "$TARGET/.codex/hooks.json"
-  echo "  + .codex/hooks/ + .codex/hooks.json (guardy kita, PreToolUse)"
+  echo "  + .codex/hooks/ + .codex/hooks.json (guardy kita PreToolUse, przypomnienie doctora SessionStart)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # Codex czyta skille natywnie (.agents/skills i .codex/skills) — agenci i
     # skille z kita lądują jako katalogi SKILL.md, nie jako TOML-prompts
@@ -1034,9 +1049,10 @@ install_vscode() {
   # jak w Claude Code. bash-guard/linters-guard/rtk-check zostają wyłącznie dla Claude
   # Code — Copilot ma jedno narzędzie powłoki, więc nie ma czego rozdzielać.
   install_guards "$TARGET/.github/hooks"
+  cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.github/hooks/kit-doctor-reminder.mjs"
   cp "$KIT_ROOT/templates/vscode/github/hooks/kit-guards.json" \
     "$TARGET/.github/hooks/kit-guards.json"
-  echo "  + .github/hooks/ + .github/hooks/kit-guards.json (guardy kita, PreToolUse)"
+  echo "  + .github/hooks/ + .github/hooks/kit-guards.json (guardy kita PreToolUse, przypomnienie doctora SessionStart)"
   # rtk dla Copilota istnieje tylko per-repo (`rtk init --copilot` nie ma trybu globalnego),
   # a bootstrap nadpisuje copilot-instructions.md — więc hook idzie z kita, nie z `rtk init`.
   # No-op bez `rtk` w PATH: hook nie odpali, Copilot przepuszcza komendę bez zmian.
@@ -1242,6 +1258,7 @@ remove_kit() {
   strip_gitignore_section
   kit_rm .ai/project.profile.yaml
   kit_rm .ai/.kit-bootstrap.json
+  kit_rm .ai/.kit-doctor.json
   kit_rm .ai/headless.mjs
   kit_rm .ai/night-run-watchdog.sh
   kit_rm "$DESIGN_HANDOFF"

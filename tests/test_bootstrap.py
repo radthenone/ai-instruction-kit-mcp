@@ -608,6 +608,83 @@ Intro (stara wersja szablonu).
             self.assertIn("  ~ .cursor/BUGBOT.md: reguły", out)
 
 
+class TestAgentsProjectBlock(_BootstrapTestCase):
+    """AGENTS.md: część kita odświeżana przy reloadzie, blok ``project:agents`` zostaje (#269)."""
+
+    # Kopia kita z gitem jak w testach BUGBOT.md (bez dziedziczenia ich testów).
+    OLD_TEMPLATE = TestBugbotProjectRules.OLD_TEMPLATE
+    _git = TestBugbotProjectRules._git
+    _kit_with_history = TestBugbotProjectRules._kit_with_history
+
+    OLD_AGENTS = "# AGENTS.md\n\nHooki: `.claude/hooks/gate-push.sh`.\n"
+
+    def _kit_with_old_agents(self, root: Path) -> Path:
+        """Kopia kita: commit ze starym ``templates/AGENTS.md``, potem bieżący szablon."""
+        kit = self._kit_with_history(root)
+        template = kit / "templates" / "AGENTS.md"
+        template.write_text(self.OLD_AGENTS, encoding="utf-8", newline="\n")
+        self._git(kit, "commit", "-q", "-am", "old agents")
+        return kit
+
+    def _restore_current(self, kit: Path) -> None:
+        shutil.copy2(KIT_ROOT / "templates" / "AGENTS.md", kit / "templates" / "AGENTS.md")
+        self._git(kit, "commit", "-q", "-am", "current agents")
+
+    def test_untouched_old_agents_is_replaced(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit_with_old_agents(Path(tmp) / "kit")
+            workspace = Path(tmp) / "app"
+            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+            self.assertEqual((workspace / "AGENTS.md").read_text(encoding="utf-8"), self.OLD_AGENTS)
+            self._restore_current(kit)
+
+            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+
+            self.assertEqual(
+                (workspace / "AGENTS.md").read_text(encoding="utf-8"),
+                (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8"),
+            )
+
+    def test_own_lines_move_into_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit_with_old_agents(Path(tmp) / "kit")
+            workspace = Path(tmp) / "app"
+            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+            agents = workspace / "AGENTS.md"
+            agents.write_text(
+                self.OLD_AGENTS + "\n- Nasza reguła projektu\n", encoding="utf-8", newline="\n"
+            )
+            self._restore_current(kit)
+
+            out = run_bootstrap(target=workspace, kit_root=kit, clients="claude")
+
+            text = agents.read_text(encoding="utf-8")
+            self.assertEqual(extract_rules(text, "agents"), "\n- Nasza reguła projektu\n")
+            self.assertNotIn("gate-push.sh", text)
+            self.assertIn("  ~ AGENTS.md: reguły", out)
+
+    def test_block_survives_reload_and_kit_part_is_refreshed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            agents = workspace / "AGENTS.md"
+            text = agents.read_text(encoding="utf-8")
+            hint = extract_rules(text, "agents")
+            assert hint is not None
+            rules = "\n- Nasza reguła A\n"
+            agents.write_text(
+                text.replace(hint, rules).replace("## Code review", "## Code review (stare)"),
+                encoding="utf-8",
+                newline="\n",
+            )
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+
+            text = agents.read_text(encoding="utf-8")
+            self.assertEqual(extract_rules(text, "agents"), rules)
+            self.assertNotIn("(stare)", text)
+
+
 class TestServerTool(_BootstrapTestCase):
     """Narzędzie MCP — domyślki, bramka dry-run i odmowy."""
 

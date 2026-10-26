@@ -109,3 +109,9 @@ Format stack review: `Severity | Location | Finding | Fix`.
 `/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
 Guardy (zero `ask`): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na main/master/dev, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile), `server-guard.mjs` (tylko VPS: deny kontenery, instalacja paczek, buildy, e2e, `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn` z `reload`).
 Bootstrap: `scripts/bootstrap-project.sh`.
+
+## Reguły projektu
+
+<!-- project:agents -->
+<!-- Wpisz tu reguły własne projektu — ten blok przechodzi przez `kit-ai reload` bez zmian; resztę pliku reload odświeża z szablonu kita. -->
+<!-- /project:agents -->

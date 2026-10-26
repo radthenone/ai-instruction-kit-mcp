@@ -468,7 +468,14 @@ def _plan_report(plan: BootstrapPlan) -> str:
     return "\n".join(lines)
 
 
-def doctor_report(workspace: Path, kit_root: Path, clients: str | None = None) -> str:
+def doctor_report(
+    workspace: Path,
+    kit_root: Path,
+    clients: str | None = None,
+    *,
+    as_json: bool = False,
+    verbose: bool = False,
+) -> str:
     """
     Raport doctora dla repo aplikacji — czytany na końcu reloadu i w statusie.
 
@@ -478,6 +485,8 @@ def doctor_report(workspace: Path, kit_root: Path, clients: str | None = None) -
         workspace: Repo aplikacji.
         kit_root: Root kita (szablony agentów do sprawdzenia komend).
         clients: Wartość ``clients:``; ``None`` — z Profilu, a bez niego ``all``.
+        as_json: Wynik maszynowy (``kit-ai doctor --json``, #266) zamiast linii.
+        verbose: Lista kandydatów przy ścieżce pasującej do kilku miejsc (``--verbose``, #268).
 
     Returns:
         str: Linie ``doctor:`` — ostrzeżenia i informacje albo jedna linia o czystym
@@ -489,11 +498,64 @@ def doctor_report(workspace: Path, kit_root: Path, clients: str | None = None) -
                 clients = workspace_settings(workspace).clients
             except SetupError:
                 clients = "all"
-        return run_doctor(
-            workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
-        ).render()
+        report = run_doctor(
+            workspace,
+            kit_root=own_kit_root(workspace, kit_root),
+            clients=clients,
+            verbose=verbose,
+        )
+        return report.to_json() if as_json else report.render()
     except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
+        if as_json:
+            return json.dumps({"error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
         return f"doctor: błąd {type(exc).__name__}: {exc}"
+
+
+DOCTOR_STATE = ".ai/.kit-doctor.json"
+DOCTOR_FIX_COMMAND = '/kit-project-edit "napraw zgłoszenia doctora"'
+
+
+def reload_doctor(
+    workspace: Path, kit_root: Path, clients: str, *, dry_run: bool = False
+) -> tuple[str, int]:
+    """
+    Doctor po reloadzie: raport, linia trybu C i plik stanu partii (#266).
+
+    Zgłoszenia do naprawy trafiają do ``.ai/.kit-doctor.json`` (wynik ``--json``), z którego
+    tryb C ``/kit-project-edit`` bierze partię; czysty przebieg plik usuwa.
+
+    Args:
+        workspace: Repo aplikacji.
+        kit_root: Root kita.
+        clients: Wartość ``clients:`` z Profilu.
+        dry_run: Bez zapisu pliku stanu.
+
+    Returns:
+        tuple[str, int]: Linie ``doctor:`` (z ostatnią „N do naprawy → …”, gdy są
+            zgłoszenia do naprawy) i liczba zgłoszeń dla trybu C. Nigdy nie rzuca.
+    """
+    try:
+        report = run_doctor(
+            workspace, kit_root=own_kit_root(workspace, kit_root), clients=clients
+        )
+    except Exception as exc:  # noqa: BLE001 — doctor nigdy nie blokuje reloadu
+        return f"doctor: błąd {type(exc).__name__}: {exc}", 0
+    # Tylko zgłoszenia, które tryb C naprawia — inaczej przypomnienie wraca po każdym reloadzie.
+    count = len(report.fixable)
+    if not dry_run:
+        state = workspace / DOCTOR_STATE
+        try:
+            if count:
+                state.parent.mkdir(parents=True, exist_ok=True)
+                state.write_text(report.to_json() + "\n", encoding="utf-8", newline="\n")
+            else:
+                state.unlink(missing_ok=True)
+        except OSError:
+            pass
+    text = report.render()
+    if count:
+        text += f"\ndoctor: {count} do naprawy → {DOCTOR_FIX_COMMAND}"
+    return text, count
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -531,6 +593,10 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="Czy reguły projektu wskazują istniejące ścieżki i komendy"
     )
     doctor.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+    doctor.add_argument("--json", action="store_true", help="Wynik maszynowy (kind, suggestion)")
+    doctor.add_argument(
+        "--verbose", action="store_true", help="Kandydaci, gdy ścieżka pasuje do kilku miejsc"
+    )
 
     args = parser.parse_args(argv)
     kit_root = find_kit_root()
@@ -548,14 +614,14 @@ def main(argv: list[str] | None = None) -> int:
             if settings.migrated:
                 print("Stara konfiguracja (preset) → Profil core + none, nowy mcp.json.")
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
-            print(doctor_report(workspace, kit_root, settings.clients))
+            print(reload_doctor(workspace, kit_root, settings.clients, dry_run=args.dry_run)[0])
         elif args.command == "remove":
             result = remove_workspace(workspace, kit_root, dry_run=args.dry_run)
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
         elif args.command == "labels":
             print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
         elif args.command == "doctor":
-            print(doctor_report(workspace, kit_root))
+            print(doctor_report(workspace, kit_root, as_json=args.json, verbose=args.verbose))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
             print(doctor_report(workspace, kit_root))

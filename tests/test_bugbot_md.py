@@ -7,17 +7,21 @@ Bootstrap woła go z ``scripts/bootstrap-project.sh``.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from guides.bugbot_md import (
     MAX_MIGRATED_LINES,
     extract_rules,
     is_pristine,
+    main,
     migrate,
     needs_migration,
+    overlay_paths,
     read_template_history,
     render,
     sync_file,
@@ -98,6 +102,129 @@ class TestRender(unittest.TestCase):
         self.assertIsNone(extract_rules(text))
 
 
+KIT_TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "cursor" / "BUGBOT.md"
+
+
+class TestRenderPaths(unittest.TestCase):
+    """#266: ścieżki reguł szablonu z `## Ścieżki` overlayu, bez nich — domyślne."""
+
+    def test_backend_path_comes_from_overlay(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "backend", paths={"backend": "server/"})
+
+        self.assertIn("`server/`", text)
+        self.assertNotIn("{{path:", text)
+
+    def test_missing_key_renders_default(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "backend")
+
+        self.assertIn("`backend/`", text)
+        self.assertNotIn("{{path:", text)
+
+    def test_overlay_paths_tolerate_missing_backticks_and_key_case(self) -> None:
+        overlay = (
+            "## Ścieżki\n\n- Backend: backend/src/ — kod API\n- web: `frontend/web/`\n"
+            "\n## Inne\n\n- api: `x/`\n"
+        )
+
+        self.assertEqual(
+            overlay_paths(overlay), {"backend": "backend/src/", "web": "frontend/web/"}
+        )
+
+    def test_client_and_codegen_paths_come_from_overlay(self) -> None:
+        """#270: `ui:`/`web:`/`mobile:`/`api-generated:` trafiają do reguł szablonu."""
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+        paths = {
+            "ui": "apps/web/src/ui/",
+            "web": "apps/web/",
+            "mobile": "apps/native/",
+            "api-generated": "packages/api/gen/",
+        }
+
+        text = render(template, "backend client", paths=paths)
+
+        for value in paths.values():
+            self.assertIn(f"`{value}`", text)
+        for default in (
+            "frontend/web/components/ui/",
+            "frontend/web/",
+            "frontend/mobile/",
+            "frontend/src/api/generated/",
+        ):
+            self.assertNotIn(f"`{default}`", text)
+        self.assertNotIn("{{path:", text)
+
+    def test_without_keys_render_equals_defaults(self) -> None:
+        """#270: bez kluczy render = render z kluczami równymi dzisiejszym ścieżkom."""
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+        defaults = {
+            "backend": "backend/",
+            "ui": "frontend/web/components/ui/",
+            "web": "frontend/web/",
+            "mobile": "frontend/mobile/",
+            "api-generated": "frontend/src/api/generated/",
+        }
+
+        self.assertEqual(
+            render(template, "backend client"),
+            render(template, "backend client", paths=defaults),
+        )
+
+    def test_orval_rule_needs_backend_and_client(self) -> None:
+        """#270: bez pary backend + klient codegen jest `none` — reguła Orvala znika."""
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        self.assertNotIn("Orval", render(template, "backend"))
+        self.assertNotIn("Orval", render(template, "client"))
+        both = render(template, "backend client")
+        self.assertIn("`frontend/src/api/generated/`", both)
+        self.assertNotIn("<!-- tier:", both)
+        self.assertNotIn("<!-- /tier:", render(template, "backend"))
+
+    def test_codegen_output_is_alias_for_api_generated(self) -> None:
+        overlay = "## Ścieżki\n\n- codegen-output: `packages/api/gen/`\n"
+
+        self.assertEqual(overlay_paths(overlay)["api-generated"], "packages/api/gen/")
+
+    def test_api_generated_wins_over_alias(self) -> None:
+        overlay = "## Ścieżki\n\n- codegen-output: `a/`\n- api-generated: `b/`\n"
+
+        self.assertEqual(overlay_paths(overlay)["api-generated"], "b/")
+
+    def test_expo_rule_accepts_app_config_js_and_ts(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+
+        text = render(template, "client")
+
+        for name in ("app.json", "app.config.js", "app.config.ts"):
+            self.assertIn(name, text)
+
+    def test_reload_reads_overlay_paths_and_keeps_file_pristine(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            overlay = workspace / ".ai" / "project.md"
+            overlay.parent.mkdir()
+            overlay.write_text("## Ścieżki\n\n- backend: `server/` — API\n", encoding="utf-8")
+            dest = workspace / "BUGBOT.md"
+            env = {
+                "SRC": str(KIT_TEMPLATE),
+                "DEST": str(dest),
+                "TIERS": "backend",
+                "OVERLAY": str(overlay),
+            }
+
+            with mock.patch.dict(os.environ, env):
+                main()
+            with mock.patch.dict(os.environ, {**env, "CHECK_ONLY": "1"}):
+                pristine = main()
+
+            self.assertIn("`server/`", dest.read_text(encoding="utf-8"))
+            self.assertEqual(pristine, 0)
+
+
 class TestPristine(unittest.TestCase):
     def test_current_render_is_pristine(self) -> None:
         self.assertTrue(is_pristine(render(CURRENT_TEMPLATE, "backend"), CURRENT_TEMPLATE))
@@ -110,6 +237,20 @@ class TestPristine(unittest.TestCase):
     def test_project_rules_make_file_customized(self) -> None:
         custom = render(CURRENT_TEMPLATE, "backend", "\n- moja reguła\n")
         self.assertFalse(is_pristine(custom, CURRENT_TEMPLATE))
+
+    def test_render_with_previous_overlay_paths_stays_pristine(self) -> None:
+        """#270: zmiana klucza w overlayu nie robi ze starego renderu pliku edytowanego."""
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+        old = render(template, "backend client", paths={"web": "apps/web/", "ui": "apps/ui/"})
+
+        self.assertTrue(is_pristine(old, template))
+        self.assertFalse(needs_migration(old, template))
+
+    def test_edited_kit_line_next_to_path_is_not_pristine(self) -> None:
+        template = KIT_TEMPLATE.read_text(encoding="utf-8")
+        edited = render(template, "client").replace("app.config.ts", "app.config.mjs")
+
+        self.assertFalse(is_pristine(edited, template))
 
     def test_needs_migration_only_for_customized_file_without_block(self) -> None:
         self.assertFalse(needs_migration(render(CURRENT_TEMPLATE, ""), CURRENT_TEMPLATE))
@@ -219,6 +360,16 @@ class TestMigration(unittest.TestCase):
         )
         self.assertIsNone(result.reason)
 
+    def test_migration_matches_history_rendered_with_overlay_paths(self) -> None:
+        """#270: wersja historyczna z `{{path:…}}` porównywana po podstawieniu ścieżek."""
+        old = OLD_TEMPLATE.replace("- client rule", "- client rule `{{path:web|frontend/web/}}`")
+        paths = {"web": "apps/web/"}
+        dest = render(old, "client", paths=paths) + "\n- Moja reguła\n"
+
+        result = migrate(dest, CURRENT_TEMPLATE, "client", [old], paths)
+
+        self.assertEqual(result.moved, ["- Moja reguła"], result.reason)
+
     def test_old_render_without_additions_is_just_refreshed(self) -> None:
         result = migrate(render(OLD_TEMPLATE, ""), CURRENT_TEMPLATE, "", [OLD_TEMPLATE])
 
@@ -264,6 +415,9 @@ class TestMigration(unittest.TestCase):
             self.assertEqual(result.action, "uncertain")
             self.assertEqual(dest.read_text(encoding="utf-8"), dest_text)
             self.assertIn("project:rules", result.message)
+            # #266: jedna linia z trybem naprawy zamiast instrukcji ręcznego przenoszenia.
+            self.assertEqual(len(result.message.splitlines()), 1, result.message)
+            self.assertIn('/kit-project-edit "napraw zgłoszenia doctora"', result.message)
 
     def test_migration_message_lists_moved_lines(self) -> None:
         dest_text = render(OLD_TEMPLATE, "") + "\n- Moja reguła A\n- Moja reguła B\n"

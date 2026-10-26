@@ -1,4 +1,4 @@
-"""Render i migracja ``BUGBOT.md`` z zachowaniem bloku ``project:rules`` (#240).
+"""Render i migracja ``BUGBOT.md`` i ``AGENTS.md`` z zachowaniem bloku projektu (#240, #269).
 
 Szablon kita odświeża się przy każdym ``kit-ai reload``, ale reguły projektu żyją
 w chronionym bloku ``<!-- project:rules -->`` … ``<!-- /project:rules -->`` i przechodzą
@@ -6,7 +6,11 @@ przez reload bez zmian. Plik dostosowany przed wprowadzeniem bloku jest migrowan
 znajdujemy w historii ``templates/cursor/BUGBOT.md`` wersję najbliższą plikowi
 (najmniejszy diff), a linie dopisane względem niej przenosimy do bloku. Gdy migracja
 nie jest pewna (brak historii — np. instalacja z koła — albo za duży diff), plik
-zostaje bez zmian, a reload wypisuje instrukcję ręcznego przeniesienia.
+zostaje bez zmian, a reload wypisuje jedną linię z trybem naprawy (#266).
+
+``AGENTS.md`` idzie tym samym modelem z blokiem ``project:agents`` (``block="agents"``,
+#269); jego sekcja ``## Agent skills`` (kontrakt Matta) to treść kita spoza szablonu —
+na czas porównania odkładamy ją na bok i dokładamy z powrotem na końcu.
 
 Moduł jest stdlib-only: bootstrap woła go przez ``scripts/bugbot_md.py``.
 """
@@ -19,10 +23,8 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
-BLOCK_OPEN = "<!-- project:rules -->"
-BLOCK_CLOSE = "<!-- /project:rules -->"
 TEMPLATE_REL_PATH = "templates/cursor/BUGBOT.md"
 
 # Ile dopisanych linii uznajemy jeszcze za „własne reguły projektu”, a nie za
@@ -40,11 +42,33 @@ TIER_SETS: tuple[frozenset[str], ...] = (
     frozenset({"backend", "client"}),
 )
 
-_BLOCK_RE = re.compile(re.escape(BLOCK_OPEN) + r"(.*?)" + re.escape(BLOCK_CLOSE), re.DOTALL)
+# Sekcje kita spoza szablonu, które sync odkłada na bok (blok → nagłówek sekcji).
+ASIDE_SECTIONS = {"agents": re.compile(r"(?m)^## Agent skills[ \t]*$")}
+
+
+def _markers(block: str) -> tuple[str, str]:
+    """Znaczniki bloku projektu, np. ``project:rules`` albo ``project:agents``."""
+    return f"<!-- project:{block} -->", f"<!-- /project:{block} -->"
+
+
+def _block_re(block: str) -> re.Pattern[str]:
+    opener, closer = _markers(block)
+    return re.compile(re.escape(opener) + r"(.*?)" + re.escape(closer), re.DOTALL)
+
 _TIER_RE = re.compile(r"<!-- tier:(\w+) -->\n(.*?)<!-- /tier:\1 -->\n?", re.DOTALL)
+# Ścieżka reguły z overlayu (#266): `{{path:klucz|domyślna}}` → wartość klucza
+# z `## Ścieżki` w `.ai/project.md`, a bez klucza — domyślna.
+PATH_PLACEHOLDER = re.compile(r"\{\{path:([\w-]+)\|([^}]*)\}\}")
+_PATHS_HEADING = re.compile(r"^##\s+Ścieżki\s*$")
+_PATH_BULLET = re.compile(r"^\s*[-*]\s+([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$")
+_PATH_CODE = re.compile(r"`([^`\n]+)`")
 # Blok podmieniamy po redukcji pustych linii, żeby nie zjadać pustych linii
 # wewnątrz reguł użytkownika (migracja ma zachować treść dosłownie).
 _SENTINEL = "\x00project:rules\x00"
+# Dowolna ścieżka z overlayu w miejscu `{{path:…}}` przy rozpoznawaniu renderu (#270).
+_ANY_PATH = "\x00path\x00"
+# Alias klucza `## Ścieżki` → klucz placeholdera (#270); jawny klucz wygrywa z aliasem.
+PATH_KEY_ALIASES = {"codegen-output": "api-generated"}
 
 
 @dataclass(frozen=True)
@@ -77,22 +101,86 @@ class SyncResult:
     moved: list[str] = field(default_factory=list)
 
 
-def extract_rules(text: str) -> str | None:
+def extract_rules(text: str, block: str = "rules") -> str | None:
     """
-    Wyciągnij surową treść bloku ``project:rules``.
+    Wyciągnij surową treść bloku ``project:<block>``.
 
     Args:
-        text: Treść pliku ``BUGBOT.md``.
+        text: Treść pliku ``BUGBOT.md`` / ``AGENTS.md``.
+        block: Nazwa bloku (``rules`` dla ``BUGBOT.md``, ``agents`` dla ``AGENTS.md``).
 
     Returns:
         str | None: Wszystko między znacznikami (bajt w bajt) albo ``None``, gdy
             plik nie ma bloku.
     """
-    match = _BLOCK_RE.search(text)
+    match = _block_re(block).search(text)
     return match.group(1) if match else None
 
 
-def render(template: str, tiers: str | Iterable[str], rules: str | None = None) -> str:
+def overlay_path_entries(text: str) -> list[tuple[int, str, str]]:
+    """
+    Wpisy sekcji ``## Ścieżki`` overlayu jako ``(linia, klucz, wartość)``.
+
+    Jedyny parser tej sekcji — używają go render ``BUGBOT.md`` i doctor. Wartość
+    to pierwszy inline-code w linii (``- backend: `backend/` ``), a bez backticków
+    — tekst do myślnika/pauzy (``- backend: backend/ — opis``).
+
+    Args:
+        text: Treść ``.ai/project.md``.
+
+    Returns:
+        list[tuple[int, str, str]]: Numer linii (1-based), klucz małymi literami
+            i surowa wartość.
+    """
+    entries: list[tuple[int, str, str]] = []
+    in_section = False
+    for number, line in enumerate(text.replace("\r\n", "\n").splitlines(), start=1):
+        if line.startswith("## "):
+            in_section = bool(_PATHS_HEADING.match(line))
+            continue
+        match = _PATH_BULLET.match(line) if in_section else None
+        if match is None:
+            continue
+        rest = match.group(2)
+        code = _PATH_CODE.search(rest)
+        value = (code.group(1) if code else re.split(r"\s+[—–-]\s+", rest)[0]).strip()
+        if value:
+            entries.append((number, match.group(1).lower(), value))
+    return entries
+
+
+def overlay_paths(text: str) -> dict[str, str]:
+    """
+    Klucze sekcji ``## Ścieżki`` overlayu → wartość (pierwsze wystąpienie klucza).
+
+    Args:
+        text: Treść ``.ai/project.md``.
+
+    Returns:
+        dict[str, str]: Np. ``{"backend": "backend/src/"}`` (klucze małymi literami).
+    """
+    paths: dict[str, str] = {}
+    for _, key, value in overlay_path_entries(text):
+        paths.setdefault(key, value)
+    for alias, key in PATH_KEY_ALIASES.items():
+        if alias in paths:
+            paths.setdefault(key, paths[alias])
+    return paths
+
+
+def render_paths(text: str, paths: Mapping[str, str] | None = None) -> str:
+    """Podstaw ``{{path:klucz|domyślna}}`` wartością z overlayu albo domyślną."""
+    paths = paths or {}
+    return PATH_PLACEHOLDER.sub(lambda m: paths.get(m.group(1)) or m.group(2), text)
+
+
+def render(
+    template: str,
+    tiers: str | Iterable[str],
+    rules: str | None = None,
+    paths: Mapping[str, str] | None = None,
+    block: str = "rules",
+) -> str:
     """
     Wyrenderuj szablon: wybrane sekcje Tierów + blok reguł projektu.
 
@@ -100,54 +188,72 @@ def render(template: str, tiers: str | Iterable[str], rules: str | None = None) 
         template: Treść szablonu ``templates/cursor/BUGBOT.md``.
         tiers: Tiery projektu, np. ``"backend"`` albo ``{"backend", "client"}``.
         rules: Treść bloku ``project:rules``; ``None`` zostawia instrukcję z szablonu.
+        paths: Klucze ``## Ścieżki`` overlayu dla ``{{path:…}}`` (#266).
+        block: Nazwa bloku projektu.
 
     Returns:
         str: Gotowa treść pliku (LF).
     """
     chosen = set(tiers.split()) if isinstance(tiers, str) else set(tiers)
-    default_rules = extract_rules(template)
+    default_rules = extract_rules(template, block)
     block_rules = default_rules if rules is None else rules
+    opener, closer = _markers(block)
 
-    text = template
+    text = render_paths(template, paths)
     if default_rules is not None:
-        text = _BLOCK_RE.sub(lambda _: BLOCK_OPEN + _SENTINEL + BLOCK_CLOSE, text)
+        text = _block_re(block).sub(lambda _: opener + _SENTINEL + closer, text)
 
     def keep(match: re.Match[str]) -> str:
         return match.group(2).strip("\n") + "\n" if match.group(1) in chosen else ""
 
-    text = _TIER_RE.sub(keep, text)
+    # Sekcja w sekcji (reguła Orvala: backend + klient, #270) — kolejne przejście
+    # zdejmuje znaczniki wewnętrzne, które zewnętrzne dopasowanie zostawiło w treści.
+    while (nested := _TIER_RE.sub(keep, text)) != text:
+        text = nested
     text = re.sub(r"\n{3,}", "\n\n", text)
     if default_rules is not None:
         text = text.replace(_SENTINEL, block_rules or "")
     return text
 
 
-def is_pristine(text: str, template: str) -> bool:
+def _render_pattern(template: str, tiers: frozenset[str], block: str) -> re.Pattern[str]:
+    """Render szablonu jako regex: każde ``{{path:…}}`` to dowolna ścieżka bez spacji."""
+    rendered = render(PATH_PLACEHOLDER.sub(_ANY_PATH, template), tiers, block=block)
+    return re.compile(r"[^\s`]+".join(map(re.escape, rendered.split(_ANY_PATH))))
+
+
+def is_pristine(text: str, template: str, block: str = "rules") -> bool:
     """
     Czy plik to nietknięty render szablonu (dowolny zestaw Tierów)?
 
     Blok ``project:rules`` bez własnych reguł — pusty albo z samą instrukcją
     z szablonu — liczy się jak nietknięty, więc ``--remove`` może taki plik usunąć.
+    Ścieżki ``{{path:…}}`` mogą mieć dowolną wartość: render sprzed zmiany klucza
+    w overlayu to nadal plik kita, nie edycja (#270).
 
     Args:
         text: Treść pliku w repo aplikacji.
         template: Aktualny szablon kita.
+        block: Nazwa bloku projektu.
 
     Returns:
         bool: ``True`` gdy plik można bezpiecznie nadpisać/usunąć.
     """
-    default_rules = extract_rules(template)
-    current_rules = extract_rules(text)
+    default_rules = extract_rules(template, block)
+    current_rules = extract_rules(text, block)
+    opener, closer = _markers(block)
     normalized = text
     if (
         default_rules is not None
         and current_rules is not None
         and current_rules.strip() in ("", default_rules.strip())
     ):
-        normalized = _BLOCK_RE.sub(
-            lambda _: BLOCK_OPEN + default_rules + BLOCK_CLOSE, text, count=1
+        normalized = _block_re(block).sub(
+            lambda _: opener + default_rules + closer, text, count=1
         )
-    return any(normalized == render(template, tiers) for tiers in TIER_SETS)
+    return any(
+        _render_pattern(template, tiers, block).fullmatch(normalized) for tiers in TIER_SETS
+    )
 
 
 def _diff(candidate: str, dest: str) -> tuple[int, int, list[str]]:
@@ -170,6 +276,8 @@ def migrate(
     template: str,
     tiers: str | Iterable[str],
     history: Sequence[str],
+    paths: Mapping[str, str] | None = None,
+    block: str = "rules",
 ) -> Migration:
     """
     Zmigruj plik bez bloku: dopisane linie → ``project:rules``, reszta z szablonu.
@@ -179,6 +287,8 @@ def migrate(
         template: Aktualny szablon kita.
         tiers: Tiery projektu.
         history: Treści historycznych wersji szablonu, od najnowszej.
+        paths: Klucze ``## Ścieżki`` overlayu dla nowej treści.
+        block: Nazwa bloku projektu.
 
     Returns:
         Migration: Nowa treść albo powód, dla którego migracja jest niepewna.
@@ -186,7 +296,7 @@ def migrate(
     best: tuple[tuple[int, int], int, list[str]] | None = None
     for index, version in enumerate(history):
         for tier_set in TIER_SETS:
-            score, deleted, added = _diff(render(version, tier_set), dest)
+            score, deleted, added = _diff(render(version, tier_set, paths=paths), dest)
             key = (score, index)
             if best is None or key < best[0]:
                 best = (key, deleted, added)
@@ -209,24 +319,26 @@ def migrate(
     while added and not added[-1].strip():
         added.pop()
     if not added:
-        return Migration(render(template, tiers), moved=[])
+        return Migration(render(template, tiers, paths=paths, block=block), moved=[])
 
     rules = "\n" + "\n".join(added) + "\n"
-    return Migration(render(template, tiers, rules), moved=added)
+    return Migration(render(template, tiers, rules, paths, block), moved=added)
 
 
-def needs_migration(text: str, template: str) -> bool:
+def needs_migration(text: str, template: str, block: str = "rules") -> bool:
     """
     Czy plik wymaga migracji (jest dostosowany i nie ma jeszcze bloku)?
 
     Args:
         text: Treść pliku w repo aplikacji.
         template: Aktualny szablon kita.
+        block: Nazwa bloku projektu.
 
     Returns:
         bool: ``True`` gdy trzeba dopasować plik do historii szablonu.
     """
-    return extract_rules(text) is None and not is_pristine(text, template)
+    text, _ = _split_aside(text, block)
+    return extract_rules(text, block) is None and not is_pristine(text, template, block)
 
 
 def _line_count(count: int) -> str:
@@ -238,27 +350,43 @@ def _line_count(count: int) -> str:
     return f"{count} linii"
 
 
-def _migration_message(moved: Sequence[str], label: str = "BUGBOT.md") -> str:
+def _migration_message(moved: Sequence[str], label: str = "BUGBOT.md", block: str = "rules") -> str:
     lines = [
-        f"  ~ {label}: reguły projektu przeniesione do bloku project:rules "
+        f"  ~ {label}: reguły projektu przeniesione do bloku project:{block} "
         f"({_line_count(len(moved))}):"
     ]
     lines.extend(f"    {line}" for line in moved)
     return "\n".join(lines)
 
 
-def _uncertain_message(reason: str, label: str = "BUGBOT.md") -> str:
-    return "\n".join(
-        [
-            f"  ! {label}: nie przeniosłem reguł projektu do bloku project:rules ({reason}).",
-            "    Plik bez zmian — przenieś własne reguły ręcznie między",
-            f"    {BLOCK_OPEN} i {BLOCK_CLOSE}, potem uruchom reload ponownie.",
-        ]
+def _uncertain_message(reason: str, label: str = "BUGBOT.md", block: str = "rules") -> str:
+    # Jedna linia z trybem naprawy (#266) — przeniesienie reguł robi tryb C, nie człowiek.
+    return (
+        f"  ! {label}: bez zmian, reguły projektu nie trafiły do bloku project:{block} "
+        f'({reason}) → /kit-project-edit "napraw zgłoszenia doctora"'
     )
 
 
 def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _split_aside(text: str, block: str) -> tuple[str, str]:
+    """Odłóż sekcję kita spoza szablonu (``## Agent skills``): ``(reszta, sekcja)``."""
+    heading = ASIDE_SECTIONS.get(block)
+    match = heading.search(text) if heading else None
+    if match is None:
+        return text, ""
+    nxt = re.compile(r"(?m)^## ").search(text, match.end())
+    end = nxt.start() if nxt else len(text)
+    suffix = text[end:]
+    rest = text[: match.start()].rstrip("\n") + "\n" + ("\n" + suffix if suffix else "")
+    return rest, text[match.start() : end].strip("\n") + "\n"
+
+
+def _with_aside(text: str, aside: str) -> str:
+    """Dołóż odłożoną sekcję na koniec — tak, jak dopisuje ją ``matt_contract``."""
+    return text.rstrip("\n") + "\n\n" + aside if aside else text
 
 
 def sync_file(
@@ -267,9 +395,11 @@ def sync_file(
     tiers: str | Iterable[str] = "",
     history: Sequence[str] = (),
     label: str = "BUGBOT.md",
+    paths: Mapping[str, str] | None = None,
+    block: str = "rules",
 ) -> SyncResult:
     """
-    Doprowadź plik ``BUGBOT.md`` do stanu zgodnego z szablonem i blokiem projektu.
+    Doprowadź plik ``BUGBOT.md`` / ``AGENTS.md`` do stanu zgodnego z szablonem i blokiem.
 
     Args:
         dest: Plik w repo aplikacji (może nie istnieć).
@@ -277,45 +407,55 @@ def sync_file(
         tiers: Tiery z Profilu.
         history: Historyczne wersje szablonu (od najnowszej) do migracji.
         label: Ścieżka pliku w komunikatach reloadu (np. ``.cursor/BUGBOT.md``).
+        paths: Klucze ``## Ścieżki`` overlayu dla ``{{path:…}}`` (#266).
+        block: Nazwa bloku projektu (``rules`` / ``agents``).
 
     Returns:
         SyncResult: Akcja, komunikat dla reloadu i lista przeniesionych linii.
     """
     template = source.read_text(encoding="utf-8")
     if not dest.is_file():
-        _write(dest, render(template, tiers))
+        _write(dest, render(template, tiers, paths=paths, block=block))
         return SyncResult("created")
 
     # Surowe bajty: read_text tłumaczy CRLF po cichu, a plik ma skończyć z LF.
     raw = dest.read_bytes().decode("utf-8")
-    text = raw.replace("\r\n", "\n")
-    rules = extract_rules(text)
-    if (BLOCK_OPEN in text or BLOCK_CLOSE in text) and (
-        rules is None or text.count(BLOCK_OPEN) != 1 or text.count(BLOCK_CLOSE) != 1
+    text, aside = _split_aside(raw.replace("\r\n", "\n"), block)
+    opener, closer = _markers(block)
+    rules = extract_rules(text, block)
+    if (opener in text or closer in text) and (
+        rules is None or text.count(opener) != 1 or text.count(closer) != 1
     ):
         # Migracja wkleiłaby osierocony znacznik do nowego bloku (zagnieżdżenie).
         return SyncResult(
-            "uncertain", message=_uncertain_message("niedomknięty blok project:rules", label)
+            "uncertain",
+            message=_uncertain_message(f"niedomknięty blok project:{block}", label, block),
         )
+
+    def refresh(fresh: str) -> SyncResult:
+        fresh = _with_aside(fresh, aside)
+        if fresh != raw:
+            _write(dest, fresh)
+            return SyncResult("refreshed")
+        return SyncResult("unchanged")
+
     if rules is not None:
-        fresh = render(template, tiers, rules)
-        if fresh != raw:
-            _write(dest, fresh)
-            return SyncResult("refreshed")
-        return SyncResult("unchanged")
+        return refresh(render(template, tiers, rules, paths, block))
+    if is_pristine(text, template, block):
+        return refresh(render(template, tiers, paths=paths, block=block))
 
-    if is_pristine(text, template):
-        fresh = render(template, tiers)
-        if fresh != raw:
-            _write(dest, fresh)
-            return SyncResult("refreshed")
-        return SyncResult("unchanged")
-
-    migration = migrate(text, template, tiers, history)
+    migration = migrate(text, template, tiers, history, paths, block)
     if migration.text is None:
-        return SyncResult("uncertain", message=_uncertain_message(migration.reason or "nieznany powód", label))
-    _write(dest, migration.text)
-    return SyncResult("migrated", message=_migration_message(migration.moved, label), moved=migration.moved)
+        return SyncResult(
+            "uncertain",
+            message=_uncertain_message(migration.reason or "nieznany powód", label, block),
+        )
+    _write(dest, _with_aside(migration.text, aside))
+    return SyncResult(
+        "migrated",
+        message=_migration_message(migration.moved, label, block),
+        moved=migration.moved,
+    )
 
 
 def _git(kit_root: Path, *args: str) -> str | None:
@@ -370,7 +510,9 @@ def read_template_history(kit_root: Path, rel_path: str = TEMPLATE_REL_PATH) -> 
 
 def main() -> int:
     """
-    Wejście z bootstrapu: ``SRC``, ``DEST``, ``LABEL``, ``TIERS``, ``KIT_ROOT``, ``CHECK_ONLY``.
+    Wejście z bootstrapu: ``SRC``, ``DEST``, ``LABEL``, ``TIERS``, ``KIT_ROOT``, ``CHECK_ONLY``,
+    ``OVERLAY`` (``.ai/project.md`` — ścieżki reguł, #266), ``BLOCK`` (``rules`` /
+    ``agents``, #269).
 
     Returns:
         int: Kod wyjścia (``CHECK_ONLY=1``: 0 = plik nietknięty, 1 = dostosowany).
@@ -378,24 +520,36 @@ def main() -> int:
     source = Path(os.environ["SRC"])
     dest = Path(os.environ["DEST"])
     tiers = os.environ.get("TIERS", "")
+    block = os.environ.get("BLOCK") or "rules"
+    overlay = Path(os.environ["OVERLAY"]) if os.environ.get("OVERLAY") else None
+    paths = (
+        overlay_paths(overlay.read_text(encoding="utf-8"))
+        if overlay is not None and overlay.is_file()
+        else {}
+    )
 
     if os.environ.get("CHECK_ONLY"):
         if not dest.is_file():
             return 1
-        pristine = is_pristine(
-            dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")
-        )
+        text, _ = _split_aside(dest.read_text(encoding="utf-8"), block)
+        pristine = is_pristine(text, source.read_text(encoding="utf-8"), block)
         return 0 if pristine else 1
 
     kit_root = Path(os.environ.get("KIT_ROOT") or source.parents[2])
+    try:
+        rel_path = source.resolve().relative_to(kit_root.resolve()).as_posix()
+    except ValueError:
+        rel_path = TEMPLATE_REL_PATH
     # Historię czytamy tylko przy migracji — nietknięty plik albo plik z blokiem
     # nie potrzebuje kilkudziesięciu wywołań gita przy każdym reloadzie.
     history: Sequence[str] = ()
     if dest.is_file() and needs_migration(
-        dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8")
+        dest.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"), block
     ):
-        history = read_template_history(kit_root)
-    result = sync_file(dest, source, tiers, history, os.environ.get("LABEL") or dest.name)
+        history = read_template_history(kit_root, rel_path)
+    result = sync_file(
+        dest, source, tiers, history, os.environ.get("LABEL") or dest.name, paths, block
+    )
     if result.message:
         print(result.message)
     return 0

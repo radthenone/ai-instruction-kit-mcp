@@ -110,6 +110,8 @@ skills-lock.json
 /opencode.json
 /opencode.json.bak
 /.ai/.kit-bootstrap.json
+/.ai/.kit-doctor.json
+/.ai/.kit-doctor.json.bak
 
 # --- Skille spoza kita (npx skills add …) ------------------------------------
 # Instalowane globalnie w ~/.agents/skills/ i linkowane do projektu. Kopia w repo

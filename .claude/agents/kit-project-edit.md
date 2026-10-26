@@ -1,13 +1,14 @@
 ---
 name: kit-project-edit
-description: Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i bloku project:rules w BUGBOT.md. Use when /kit-project-edit, "zmień web na angular", "nie zgadzam się z modułem X", "napraw zgłoszenia doctora". Wywołuj jako /kit-project-edit.
+description: Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i blokach project:rules w BUGBOT.md / project:agents w AGENTS.md. Use when /kit-project-edit, "zmień web na angular", "nie zgadzam się z modułem X", "napraw zgłoszenia doctora". Wywołuj jako /kit-project-edit.
 model: sonnet
 ---
 
 ## Reguły wspólne
 
 Przestrzegaj `AGENTS.md`. Zapisujesz **wyłącznie** `.ai/project.profile.yaml`,
-`.ai/project.md` i blok `project:rules` w `BUGBOT.md` w repo projektu. Nie edytujesz `modules/`,
+`.ai/project.md`, blok `project:rules` w `BUGBOT.md` i blok `project:agents` w `AGENTS.md`
+w repo projektu. Nie edytujesz `modules/`,
 `manifest.yaml` ani plików kita — także wtedy, gdy repo kita jest pod ręką.
 Bez akceptacji podglądu nic nie zapisujesz.
 
@@ -19,7 +20,7 @@ Trzy tryby. Rozpoznaj go z polecenia; niejasne → zapytaj jednym zdaniem.
 | --- | --- | --- |
 | **A — jedna odpowiedź** | „zmień web na angular", „codegen none", „dodaj klienta codex", „ścieżka backendu to api/" | Jedna zmiana w Profilu albo `.ai/project.md` + reload |
 | **B — odstępstwo** | „nie zgadzam się z X w module Y", „u nas robimy to inaczej" | Wpis w `## Odstępstwa od modułów` w `.ai/project.md` |
-| **C — naprawa doctora** | „napraw zgłoszenia doctora", „doctor", „posprzątaj ścieżki w regułach" | Poprawki w `.ai/project.md` i bloku `project:rules` w `BUGBOT.md` + podgląd |
+| **C — naprawa doctora** | „napraw zgłoszenia doctora", „doctor", „posprzątaj ścieżki w regułach" | Poprawki w `.ai/project.md` i blokach `project:rules` (`BUGBOT.md`) / `project:agents` (`AGENTS.md`) + podgląd |
 
 ## `--help` / `help` / `-h`
 
@@ -112,8 +113,14 @@ Cały wywiad od zera: /kit-project-begin
 Doctor nie blokuje reloadu: pokazuje `doctor: OSTRZEŻENIE <plik>:<linia> — …` i
 `doctor: INFO …`. Ten tryb zamienia zgłoszenia w poprawki reguł — nie w kod.
 
-1. **Raport.** `kit-ai doctor` z terminala albo MCP `check_kit_status` (ma sekcję
-   `doctor:`). Brak zgłoszeń → jedna linia i koniec. Nie zgaduj treści raportu.
+Start bez prośby: reload kończy się linią `doctor: N do naprawy → /kit-project-edit
+"napraw zgłoszenia doctora"` (MCP `reload_workspace` — poleceniem dla agenta), a partia
+leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
+
+1. **Raport.** `.ai/.kit-doctor.json` (zapisany przez reload) albo `kit-ai doctor --json`;
+   każde zgłoszenie ma `kind`, `file`, `line`, `value`, `suggestion`. Bez CLI — MCP
+   `check_kit_status` (sekcja `doctor:`). Brak zgłoszeń → jedna linia i koniec. Nie
+   zgaduj treści raportu.
 2. **Podział zgłoszeń:**
 
    | Zgłoszenie | Gdzie poprawka | Jak |
@@ -121,13 +128,22 @@ Doctor nie blokuje reloadu: pokazuje `doctor: OSTRZEŻENIE <plik>:<linia> — �
    | Ścieżka w `.ai/project.md` | overlay: właściwa sekcja albo `## Ścieżki` | Podmień na ścieżkę, która istnieje w drzewie; klucz Tieru bez katalogu → usuń linię albo popraw |
    | Ścieżka w bloku `project:rules` w `BUGBOT.md` | tylko ten blok | Podmień/usuń linię; blok przechodzi przez reload bez zmian |
    | Ścieżka w szablonowej części `BUGBOT.md` | **nie edytuj** — reload nadpisze | Jeśli reguła ma zostać, dopisz jej wersję z właściwą ścieżką do `project:rules` |
-   | Ścieżka w `AGENTS.md` / `CODING_STANDARDS.md` | poza zakresem trybu | Pokaż propozycję i poproś o ręczną decyzję — tych plików ten tryb nie zapisuje |
+   | Ścieżka w bloku `project:agents` w `AGENTS.md` | tylko ten blok | Podmień/usuń linię; blok przechodzi przez reload bez zmian |
+   | Ścieżka w szablonowej części `AGENTS.md` / w `CODING_STANDARDS.md` | poza zakresem trybu | Pokaż propozycję i poproś o ręczną decyzję — tych części ten tryb nie zapisuje |
    | Komenda bez agenta/komendy/skilla | overlay albo `project:rules` | Usuń odwołanie **albo** — gdy komenda ma istnieć w kicie — daj szkic `/create-task` (nie edytuj `templates/`) |
    | `INFO` o pakiecie workspace'u | overlay | Dopisz pakiet (albo jego katalog nadrzędny) do `## Ścieżki` / sekcji struktury |
+   | `missing-path-key` (reguła szablonu `BUGBOT.md` na ścieżce domyślnej, której nie ma) | overlay: `## Ścieżki` | Dopisz klucz z `value` (wartość z `suggestion`), potem reload — szablon wyrenderuje regułę z tą ścieżką |
+   | `negated-path-exists` | overlay | Zdanie twierdzi, że ścieżki nie ma, a jest — popraw albo usuń zdanie |
+   | `stale-kit-content` w `BUGBOT.md` | blok `project:rules` + reload | Własne linie przenieś do bloku; resztę odświeży reload |
+   | `stale-kit-content` w `AGENTS.md` | blok `project:agents` + reload | Własne linie przenieś do bloku; resztę odświeży reload |
 
-   Nie wiesz, gdzie plik się przeniósł → zapytaj. Zgadywanie ścieżki zamieni jeden
-   fałszywy alarm w drugi.
-3. **Podgląd** — diff per plik, tylko zmieniane linie:
+   **Propozycje:** `suggestion` z doctora = propozycja pewna (jedyny kandydat w drzewie).
+   Bez niej szukaj w aktualnym drzewie: `git ls-files` (bez `node_modules`/`.venv`) po
+   nazwie i ostatnich segmentach ścieżki. Jeden kandydat → propozycja; kilku → pytanie
+   z listą; zero → propozycja usunięcia odwołania albo pytanie. Nie zgaduj.
+3. **Jeden podgląd na całą partię** — pogrupowany po plikach i klasach (`kind`), tylko
+   zmieniane linie; propozycje pewne zaznaczone domyślnie, niepewne osobno. Jedna
+   akceptacja:
 
    ```text
    .ai/project.md
@@ -140,10 +156,12 @@ Doctor nie blokuje reloadu: pokazuje `doctor: OSTRZEŻENIE <plik>:<linia> — �
    ```
 
 4. **Zapis** po akceptacji — tylko wskazane linie w overlayu i/lub bloku
-   `project:rules`. Overlay i `BUGBOT.md` czyta się na żywo, więc reload nie jest
-   potrzebny; nie ruszaj Profilu. Po zapisie pokaż ponowny wynik `doctor` (może zostać
-   zgłoszenie spoza zakresu, np. w `AGENTS.md`).
-5. **Zakazy.** Nie edytuj szablonowych sekcji `BUGBOT.md` (poza blokiem), `AGENTS.md`,
+   `project:rules` / `project:agents`. Overlay, `BUGBOT.md` i `AGENTS.md` czyta się na
+   żywo, więc reload nie jest potrzebny (wyjątek: `missing-path-key` i `stale-kit-content`
+   — wtedy reload); nie ruszaj Profilu. Po zapisie uruchom ponownie `kit-ai doctor` i raportuj,
+   ile zostało i dlaczego (np. zgłoszenie w `AGENTS.md` odrzucone świadomie). Zero
+   ostrzeżeń → usuń `.ai/.kit-doctor.json`.
+5. **Zakazy.** Nie edytuj szablonowych sekcji `BUGBOT.md` i `AGENTS.md` (poza blokami),
    `CODING_STANDARDS.md`, `templates/`, `modules/`. Jedno wywołanie = jedna partia
    zgłoszeń; kolejna partia → kolejne `/kit-project-edit`.
 

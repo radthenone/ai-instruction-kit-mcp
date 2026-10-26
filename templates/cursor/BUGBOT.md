@@ -23,18 +23,20 @@ If the diff adds or renames a function, class, or test (`test_*`, `class Test*`;
 <!-- tier:backend -->
 ## Backend
 
-If the PR modifies backend files (path from `.ai/project.md`, default `backend/`) and there are no changes in backend test files (`**/test*.py`, `**/tests/**`, `**/*_test.py`):
+If the PR modifies backend files (`{{path:backend|backend/}}` — key `backend:` in `.ai/project.md` → `## Ścieżki`) and there are no changes in backend test files (`**/test*.py`, `**/tests/**`, `**/*_test.py`):
 
 - Add a blocking bug titled "Missing tests for backend changes"
 - Body: "Dodaj lub zaktualizuj testy dla zmian w backendzie."
 
+<!-- tier:client -->
 If changed files include API schema, endpoints, routes, or models affecting API
 **and** the project uses Orval (`codegen: orval` in `.ai/project.profile.yaml`; MCP `get_codegen`):
 
-- Add a blocking bug unless the generated API client (path from `.ai/project.md`) was regenerated.
+- Add a blocking bug unless the generated API client (`{{path:api-generated|frontend/src/api/generated/}}` — key `api-generated:` or `codegen-output:` in `.ai/project.md` → `## Ścieżki`) was regenerated.
 - Body: "Po zmianie kontraktu API uruchom `task ovral:generate` i commituj wygenerowany klient."
 
 If profile says `codegen: manual` or `codegen: none`: do **not** require Orval regeneration.
+<!-- /tier:client -->
 
 If any changed Python file lacks type hints on new public functions:
 
@@ -46,12 +48,17 @@ Flag `eval(`, `exec(`, raw SQL string concatenation with user input, and new end
 <!-- tier:client -->
 ## Frontend (web / mobile)
 
-If the PR modifies client code (paths from `.ai/project.md`) without the typecheck task passing (assume CI will catch — flag risky patterns):
+If the PR modifies client code (`{{path:web|frontend/web/}}`, `{{path:mobile|frontend/mobile/}}` — keys `web:` / `mobile:` in `.ai/project.md` → `## Ścieżki`) without the typecheck task passing (assume CI will catch — flag risky patterns):
 
 - Flag native-only imports in web-only files (and DOM-only APIs in native files), if the Stack splits platforms.
 - Flag `any` on new public interfaces without `@ts-expect-error` justification.
 
-If native modules or app config plugins change without a native-build note in PR description:
+If the PR changes UI library components (`{{path:ui|frontend/web/components/ui/}}` — key `ui:` in `.ai/project.md` → `## Ścieżki`) and they import the API client, stores, or feature code:
+
+- Add a non-blocking finding titled "Impure UI library component"
+- Body: "Komponenty biblioteki UI są czyste — dane i logika przychodzą przez propsy."
+
+If native modules, Expo app config (`**/app.json`, `**/app.config.js`, `**/app.config.ts`) or config plugins change without a native-build note in PR description:
 
 - Add a non-blocking finding: "Zmiana native — wymaga nowego buildu natywnego, nie tylko OTA."
 <!-- /tier:client -->
