@@ -28,6 +28,7 @@ from pathlib import Path
 import yaml
 
 from guides.bugbot_md import (
+    ASIDE_SECTIONS,
     PATH_PLACEHOLDER,
     needs_migration,
     overlay_path_entries,
@@ -729,16 +730,32 @@ def _uncertain_migration(
     if migration.text is not None:
         return None
     fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
-    count = _plural(len(migration.proposal), "linia", "linie", "linii")
+    if migration.proposal:
+        count = _plural(len(migration.proposal), "linia", "linie", "linii")
+        what = f"propozycja bloku: {count} w `value`"
+    else:
+        what = f"brak linii projektu — wstaw pusty blok project:{block} i zrób reload"
     return Finding(
         "warning",
         rel,
         None,
-        f"niepewna migracja do bloku project:{block} ({migration.reason}) — "
-        f"propozycja bloku: {count} w `value` ({fix})",
+        f"niepewna migracja do bloku project:{block} ({migration.reason}) — {what} ({fix})",
         "uncertain-migration",
         value="\n".join(migration.proposal),
     )
+
+
+def _aside_lines(rel: str, text: str) -> set[int]:
+    """Numery linii sekcji kita spoza szablonu (``## Agent skills`` w ``AGENTS.md``)."""
+    heading = ASIDE_SECTIONS.get(PROJECT_BLOCKS.get(rel, ""))
+    lines: set[int] = set()
+    inside = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("## "):
+            inside = bool(heading and heading.match(line))
+        if inside:
+            lines.add(number)
+    return lines
 
 
 def _path_key_findings(
@@ -1069,11 +1086,14 @@ def run_doctor(
             # Jedno zbiorcze zgłoszenie: szablonową część pliku (wszystko poza
             # propozycją) wyciszamy — tę odświeży reload po przeniesieniu linii.
             findings.append(uncertain)
+            # Sekcja odłożona przez migrację (``## Agent skills``) nie jest szablonem —
+            # jej zgłoszenia zostają jak bez migracji.
             own = {line.strip() for line in (uncertain.value or "").splitlines()}
-            skip_lines = {
+            aside = _aside_lines(rel, text)
+            skip_lines = (skip_lines & aside) | {
                 number
                 for number, line in enumerate(text.splitlines(), start=1)
-                if line.strip() not in own
+                if number not in aside and line.strip() not in own
             }
         else:
             stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)

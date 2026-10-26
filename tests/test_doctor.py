@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from guides import cli, server
-from guides.bugbot_md import MAX_MIGRATED_LINES
+from guides.bugbot_md import MAX_MIGRATED_LINES, read_template_history
 from guides.bugbot_md import render as render_bugbot
 from guides.doctor import run_doctor
 
@@ -775,6 +775,51 @@ class TestUncertainMigration(unittest.TestCase):
                 [w.kind for w in report.warnings if w.file == "AGENTS.md"],
                 ["uncertain-migration"],
             )
+
+    def test_agents_aside_section_is_not_silenced(self) -> None:
+        """`## Agent skills` to treść spoza szablonu — jej zgłoszenia zostają (review #277)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(
+                workspace / "AGENTS.md",
+                OLD_AGENTS.replace("# AGENTS.md", "# AGENTS (nasz)")
+                + "\n## Agent skills\n\nSee `docs/agents/brak.md`.\n",
+            )
+
+            warnings = run_doctor(workspace, kit, clients="claude").warnings
+
+            self.assertEqual(
+                [(w.kind, w.value) for w in warnings if w.kind != "uncertain-migration"],
+                [("stale-path", "docs/agents/brak.md")],
+                warnings,
+            )
+
+    def test_only_removed_template_lines_says_what_to_do(self) -> None:
+        """Pusta propozycja: komunikat mówi, że wystarczy pusty blok i reload (review #277)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = self._kit(tmp)
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", OLD_BUGBOT.replace("- Zmiana `app.json` wymaga buildu natywnego.\n", ""))
+
+            found = self._uncertain(run_doctor(workspace, kit, clients="claude"), "BUGBOT.md")
+
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0].value, "")
+            self.assertIn("brak linii projektu", found[0].message)
+            self.assertIn("pusty blok project:rules", found[0].message)
+
+    def test_real_kit_project_line_keeps_stale_path(self) -> None:
+        """Kit z historią (repo kita): linia projektu w pliku bez bloku nadal daje `stale-path`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / "BUGBOT.md", "Reguła: `docs/brak.md`.\n")
+
+            kinds = [w.kind for w in run_doctor(workspace, KIT_ROOT, clients="claude").warnings]
+
+            self.assertIn("stale-path", kinds)
+            if read_template_history(KIT_ROOT, "templates/cursor/BUGBOT.md"):
+                self.assertIn("uncertain-migration", kinds)
 
     def test_agents_over_limit_proposes_full_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
