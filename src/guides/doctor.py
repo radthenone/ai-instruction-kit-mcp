@@ -28,10 +28,15 @@ from pathlib import Path
 import yaml
 
 from guides.bugbot_md import (
+    ASIDE_SECTIONS,
     PATH_PLACEHOLDER,
+    needs_migration,
     overlay_path_entries,
+    path_defaults,
+    propose_migration,
     read_template_history,
     render_paths,
+    resolve_path,
 )
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
@@ -51,6 +56,8 @@ KIT_TEMPLATES: dict[str, str] = {
     "AGENTS.md": "templates/AGENTS.md",
     "BUGBOT.md": "templates/cursor/BUGBOT.md",
 }
+# Blok projektu pliku reguł z szablonu (``project:rules`` / ``project:agents``, #277).
+PROJECT_BLOCKS: dict[str, str] = {"AGENTS.md": "agents", "BUGBOT.md": "rules"}
 AGENT_TEMPLATES = "templates/shared/agents"
 
 # Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
@@ -209,10 +216,20 @@ _NEGATION_PHRASE = (
     r"(?:brak|nie istniej\w*|nie ma|nie zakładaj|does not exist|doesn't exist|"
     r"don't assume)"
 )
+# #278: „removed / usunięty / no longer exists” liczą się tylko jako całe zdanie
+# o braku — bez dopowiedzenia (`x/` removed from CI, `x/` no longer uses Celery
+# to zmiana zachowania, nie brak) i bez ogona „…:” (Removed X, moved to: `y/`).
+_REMOVAL_PHRASE = r"(?:removed|usunięt[aeyo]|usunięci|no longer exists?)"
 _NEGATION_BEFORE = re.compile(
-    rf"\b{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?[\s*:]*$", re.IGNORECASE
+    rf"\b(?:{_NEGATION_PHRASE}(?:[^`.;:→\n]{{0,40}}:)?|{_REMOVAL_PHRASE})[\s*:]*$",
+    re.IGNORECASE,
 )
-_NEGATION_AFTER = re.compile(rf"^[\s*]*{_NEGATION_PHRASE}\b", re.IGNORECASE)
+# Dalsze pozycje tej samej listy (`a/`, `b/` removed) — fraza za ostatnią obejmuje całą listę.
+_NEGATION_AFTER = re.compile(
+    rf"^(?:\s*,\s*`[^`\n]*`)*[\s*]*"
+    rf"(?:{_NEGATION_PHRASE}\b|{_REMOVAL_PHRASE}\s*(?:[.;,)]|$))",
+    re.IGNORECASE,
+)
 # Wcześniejsze pozycje tej samej listy (`a/`, `b/`, `c/`) — zaprzeczenie obejmuje całą listę.
 _CODE_LIST_TAIL = re.compile(r"(?:`[^`\n]*`\s*,\s*)+$")
 # F5: linia o trasach URL / prefiksach API — segmenty to nie ścieżki repo. Całe
@@ -462,6 +479,12 @@ def _suggest(value: str, layout: _Layout) -> str | None:
     ``frontend/web/components/ui/`` → ``frontend/web/src/components/ui/``, gdy
     ``components/ui/`` występuje w repo dokładnie raz. Kilku kandydatów → ``None``.
     """
+    candidates = _tail_candidates(value, layout)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _tail_candidates(value: str, layout: _Layout) -> list[str]:
+    """Wpisy drzewa pasujące do najdłuższego ogona ścieżki, który w ogóle coś trafia."""
     segments = value.rstrip("/").split("/")
     want_dir = value.endswith("/")
     for size in range(len(segments), 0, -1):
@@ -473,8 +496,8 @@ def _suggest(value: str, layout: _Layout) -> str | None:
             and (entry.rstrip("/") == tail or entry.rstrip("/").endswith(f"/{tail}"))
         ]
         if candidates:
-            return candidates[0] if len(candidates) == 1 else None
-    return None
+            return candidates
+    return []
 
 
 def _is_module_specifier(value: str, layout: _Layout) -> bool:
@@ -692,6 +715,57 @@ def _stale_kit_lines(
     return {number for number, line in own.items() if line in history}
 
 
+def _uncertain_migration(
+    rel: str, text: str, kit_root: Path | None, *, is_kit: bool, paths: dict[str, str]
+) -> Finding | None:
+    """
+    Niepewna migracja pliku bez bloku projektu jako jedno zgłoszenie z propozycją (#277).
+
+    Reload zostawia taki plik bez zmian; tu liczymy tę samą migrację i oddajemy trybowi C
+    linie projektu w ``value`` (po jednej w linii). Bez historii szablonu — brak zgłoszenia.
+    """
+    template = KIT_TEMPLATES.get(rel)
+    block = PROJECT_BLOCKS.get(rel)
+    if is_kit or kit_root is None or template is None or block is None:
+        return None
+    template_text = _read(kit_root / template)
+    if not template_text or not needs_migration(text, template_text, block):
+        return None
+    history = read_template_history(kit_root, template)
+    if not history:
+        return None
+    migration = propose_migration(text, template_text, history, paths, block)
+    if migration.text is not None:
+        return None
+    fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
+    if migration.proposal:
+        count = _plural(len(migration.proposal), "linia", "linie", "linii")
+        what = f"propozycja bloku: {count} w `value`"
+    else:
+        what = f"brak linii projektu — wstaw pusty blok project:{block} i zrób reload"
+    return Finding(
+        "warning",
+        rel,
+        None,
+        f"niepewna migracja do bloku project:{block} ({migration.reason}) — {what} ({fix})",
+        "uncertain-migration",
+        value="\n".join(migration.proposal),
+    )
+
+
+def _aside_lines(rel: str, text: str) -> set[int]:
+    """Numery linii sekcji kita spoza szablonu (``## Agent skills`` w ``AGENTS.md``)."""
+    heading = ASIDE_SECTIONS.get(PROJECT_BLOCKS.get(rel, ""))
+    lines: set[int] = set()
+    inside = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("## "):
+            inside = bool(heading and heading.match(line))
+        if inside:
+            lines.add(number)
+    return lines
+
+
 def _path_key_findings(
     workspace: Path, kit_root: Path | None, paths: dict[str, str], layout: _Layout
 ) -> list[Finding]:
@@ -705,24 +779,34 @@ def _path_key_findings(
     if kit_root is None or not bugbot.is_file():
         return []
     rendered = {line.strip() for line in _read(bugbot).splitlines()}
+    template = _read(kit_root / KIT_TEMPLATES["BUGBOT.md"])
+    defaults = path_defaults(template)
     findings: list[Finding] = []
-    for line in _read(kit_root / KIT_TEMPLATES["BUGBOT.md"]).splitlines():
+    for line in template.splitlines():
         for key, default in PATH_PLACEHOLDER.findall(line):
+            value = resolve_path(key, default, paths, defaults)
             if (
                 key in paths
-                or render_paths(line, paths).strip() not in rendered
-                or (workspace / default).exists()
+                or render_paths(line, paths, defaults).strip() not in rendered
+                or (workspace / value).exists()
             ):
                 continue
+            candidates = _tail_candidates(value, layout)
+            message = (
+                f"brak klucza `{key}:` w `## Ścieżki` — reguła `BUGBOT.md` używa "
+                f"domyślnej `{value}`, której nie ma w repo"
+            )
+            if len(candidates) > 1:
+                listed = ", ".join(f"`{candidate}`" for candidate in candidates)
+                message += f"; kandydaci w drzewie: {listed}"
             findings.append(
                 Finding(
                     "warning",
                     OVERLAY_FILE,
                     None,
-                    f"brak klucza `{key}:` w `## Ścieżki` — reguła `BUGBOT.md` używa "
-                    f"domyślnej `{default}`, której nie ma w repo",
+                    message,
                     "missing-path-key",
-                    _suggest(default, layout),
+                    candidates[0] if len(candidates) == 1 else None,
                     key,
                 )
             )
@@ -1014,7 +1098,23 @@ def run_doctor(
             continue
         text = _read(path)
         skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
-        stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        uncertain = _uncertain_migration(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        stale: set[int] = set()
+        if uncertain is not None:
+            # Jedno zbiorcze zgłoszenie: szablonową część pliku (wszystko poza
+            # propozycją) wyciszamy — tę odświeży reload po przeniesieniu linii.
+            findings.append(uncertain)
+            # Sekcja odłożona przez migrację (``## Agent skills``) nie jest szablonem —
+            # jej zgłoszenia zostają jak bez migracji.
+            own = {line.strip() for line in (uncertain.value or "").splitlines()}
+            aside = _aside_lines(rel, text)
+            skip_lines = (skip_lines & aside) | {
+                number
+                for number, line in enumerate(text.splitlines(), start=1)
+                if number not in aside and line.strip() not in own
+            }
+        else:
+            stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         if stale:
             skip_lines |= stale
             fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'

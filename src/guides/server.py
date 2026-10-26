@@ -338,7 +338,7 @@ def reload_workspace(dry_run: bool = True) -> str:
     """
     try:
         workspace = _require_workspace()
-        settings, result = reload_workspace_files(
+        settings, result, hint = reload_workspace_files(
             workspace, _get_resolved().kit_root, dry_run=dry_run
         )
     except (SetupError, BootstrapError, ValueError) as exc:
@@ -377,6 +377,7 @@ def reload_workspace(dry_run: bool = True) -> str:
             if warnings
             else []
         )
+        + (["", hint] if hint else [])
     )
 
 

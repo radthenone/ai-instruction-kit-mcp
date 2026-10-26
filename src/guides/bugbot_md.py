@@ -57,7 +57,8 @@ def _block_re(block: str) -> re.Pattern[str]:
 
 _TIER_RE = re.compile(r"<!-- tier:(\w+) -->\n(.*?)<!-- /tier:\1 -->\n?", re.DOTALL)
 # Ścieżka reguły z overlayu (#266): `{{path:klucz|domyślna}}` → wartość klucza
-# z `## Ścieżki` w `.ai/project.md`, a bez klucza — domyślna.
+# z `## Ścieżki` w `.ai/project.md`, a bez klucza — domyślna. Domyślna `@inny/reszta`
+# jest pochodna od klucza `inny` (#280).
 PATH_PLACEHOLDER = re.compile(r"\{\{path:([\w-]+)\|([^}]*)\}\}")
 _PATHS_HEADING = re.compile(r"^##\s+Ścieżki\s*$")
 _PATH_BULLET = re.compile(r"^\s*[-*]\s+([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$")
@@ -79,11 +80,15 @@ class Migration:
         text: Nowa treść pliku albo ``None``, gdy migracja jest niepewna.
         moved: Linie przeniesione do bloku ``project:rules``.
         reason: Powód niepewności (tylko gdy ``text is None``).
+        proposal: Propozycja treści bloku projektu przy niepewnej migracji (#277):
+            linie dopisane i zmienione względem najbliższej wersji szablonu; pusta
+            bez historii szablonu.
     """
 
     text: str | None
     moved: list[str] = field(default_factory=list)
     reason: str | None = None
+    proposal: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -168,10 +173,48 @@ def overlay_paths(text: str) -> dict[str, str]:
     return paths
 
 
-def render_paths(text: str, paths: Mapping[str, str] | None = None) -> str:
-    """Podstaw ``{{path:klucz|domyślna}}`` wartością z overlayu albo domyślną."""
+def resolve_path(
+    key: str, default: str, paths: Mapping[str, str], defaults: Mapping[str, str]
+) -> str:
+    """
+    Wartość ``{{path:klucz|domyślna}}``: klucz z overlayu, a bez niego domyślna.
+
+    Domyślna ``@web/src/components/ui/`` jest pochodna (#280): ``@web`` to wartość
+    klucza ``web`` (z overlayu albo jego domyślna z ``defaults``), reszta doklejana.
+    """
+    if value := paths.get(key):
+        return value
+    ref, slash, rest = default.partition("/")
+    if not ref.startswith("@"):
+        return default
+    base = (paths.get(ref[1:]) or defaults.get(ref[1:], "")).rstrip("/")
+    if not base:
+        # Nieznany klucz — literalna domyślna zamiast ścieżki bezwzględnej `/reszta`.
+        return default
+    return base + slash + rest
+
+
+def path_defaults(text: str) -> dict[str, str]:
+    """Domyślne wartości kluczy ``{{path:…}}`` z treści szablonu."""
+    return dict(PATH_PLACEHOLDER.findall(text))
+
+
+def render_paths(
+    text: str,
+    paths: Mapping[str, str] | None = None,
+    defaults: Mapping[str, str] | None = None,
+) -> str:
+    """
+    Podstaw ``{{path:klucz|domyślna}}`` wartością z overlayu albo domyślną.
+
+    ``defaults`` (domyślne całego szablonu) rozwiązuje pochodne ``@klucz/…`` przy
+    renderze fragmentu; bez nich bierzemy domyślne z samego ``text``.
+    """
     paths = paths or {}
-    return PATH_PLACEHOLDER.sub(lambda m: paths.get(m.group(1)) or m.group(2), text)
+    defaults = path_defaults(text) if defaults is None else defaults
+    return PATH_PLACEHOLDER.sub(
+        lambda m: resolve_path(m.group(1), m.group(2), paths, defaults), text
+    )
 
 
 def render(
@@ -304,20 +347,26 @@ def migrate(
     if best is None:
         return Migration(None, reason="brak historii szablonu w kicie")
 
-    _, deleted, added = best
-    if deleted:
-        return Migration(None, reason="plik zmienia lub usuwa linie szablonu")
-    if len(added) > MAX_MIGRATED_LINES:
-        return Migration(
-            None,
-            reason=f"diff za duży ({len(added)} dopisanych linii, limit {MAX_MIGRATED_LINES})",
-        )
-
+    _, deleted, raw_added = best
     # Puste linie na brzegach to zwykle odstęp przed dopisanymi regułami, nie reguła.
+    added = list(raw_added)
     while added and not added[0].strip():
         added.pop(0)
     while added and not added[-1].strip():
         added.pop()
+    # Niepewna migracja niesie propozycję bloku (#277): zmieniona linia szablonu idzie
+    # jako linia projektu — oryginał wróci z szablonu przy reloadzie.
+    if deleted:
+        return Migration(
+            None, reason="plik zmienia lub usuwa linie szablonu", proposal=added
+        )
+    if len(raw_added) > MAX_MIGRATED_LINES:
+        return Migration(
+            None,
+            reason=f"diff za duży ({len(raw_added)} dopisanych linii, limit {MAX_MIGRATED_LINES})",
+            proposal=added,
+        )
+
     if not added:
         return Migration(render(template, tiers, paths=paths, block=block), moved=[])
 
@@ -339,6 +388,32 @@ def needs_migration(text: str, template: str, block: str = "rules") -> bool:
     """
     text, _ = _split_aside(text, block)
     return extract_rules(text, block) is None and not is_pristine(text, template, block)
+
+
+def propose_migration(
+    text: str,
+    template: str,
+    history: Sequence[str],
+    paths: Mapping[str, str] | None = None,
+    block: str = "rules",
+) -> Migration:
+    """
+    Migracja pliku bez bloku liczona na potrzeby doctora (#277) — bez zapisu.
+
+    Odkłada sekcję kita spoza szablonu (``## Agent skills``) tak jak ``sync_file``.
+
+    Args:
+        text: Treść pliku w repo aplikacji.
+        template: Aktualny szablon kita.
+        history: Historyczne wersje szablonu, od najnowszej.
+        paths: Klucze ``## Ścieżki`` overlayu.
+        block: Nazwa bloku projektu.
+
+    Returns:
+        Migration: Wynik ``migrate`` (przy niepewnej — ``reason`` i ``proposal``).
+    """
+    rest, _ = _split_aside(text.replace("\r\n", "\n"), block)
+    return migrate(rest, template, (), history, paths, block)
 
 
 def _line_count(count: int) -> str:

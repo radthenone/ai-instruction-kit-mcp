@@ -160,6 +160,125 @@ class TestReload(_BootstrapTestCase):
             self.assertIn("kit-ai install", out)
 
 
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, check=True)
+
+
+class TestReloadCommitHint(_BootstrapTestCase):
+    """Po reloadzie lista plików kita do zacommitowania przed `git pull` (#281)."""
+
+    HINT = "chore: sync kit files"
+    HOOK = ".claude/hooks/git-guard.mjs"
+
+    def _installed_repo(self, tmp: str) -> Path:
+        app = Path(tmp) / "app"
+        self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+        _git(app, "init", "-q")
+        _git(app, "config", "user.email", "test@test.local")
+        _git(app, "config", "user.name", "test")
+        (app / self.HOOK).write_text("// stara wersja kita\n", encoding="utf-8")
+        _git(app, "add", "-A")
+        _git(app, "commit", "-q", "-m", "init")
+        return app
+
+    def test_reload_lists_changed_kit_files_and_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._installed_repo(tmp)
+            (app / "src").mkdir()
+            (app / "src" / "app.py").write_text("print('moje')\n", encoding="utf-8")
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            self.assertTrue(out.rstrip().endswith(f'"{self.HINT}"`.'), out[-300:])
+            self.assertIn(self.HOOK, self._hint_section(out))
+            self.assertNotIn("src/app.py", out)
+
+    def test_reload_lists_file_dirty_before_and_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._installed_repo(tmp)
+            (app / self.HOOK).write_text("// moja zmiana\n", encoding="utf-8")
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            self.assertIn(self.HOOK, self._hint_section(out))
+
+    def test_reload_lists_pruned_tracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude,cursor")[0], 0)
+            _git(app, "init", "-q")
+            _git(app, "config", "user.email", "test@test.local")
+            _git(app, "config", "user.name", "test")
+            _git(app, "add", "-A")
+            _git(app, "commit", "-q", "-m", "init")
+            profile = app / ".ai" / "project.profile.yaml"
+            text = profile.read_text(encoding="utf-8")
+            self.assertIn("clients: cursor,claude", text)
+            profile.write_text(text.replace("clients: cursor,claude", "clients: claude"), encoding="utf-8")
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            self.assertIn(".cursor/", self._hint_section(out))
+
+    def test_dry_run_prints_no_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._installed_repo(tmp)
+
+            code, out = _quiet_main("reload", str(app), "--dry-run")
+            mcp_out = self._mcp_reload(app, dry_run=True)
+
+            self.assertEqual(code, 0, out)
+            self.assertNotIn(self.HINT, out)
+            self.assertNotIn(self.HINT, mcp_out)
+
+    def test_second_reload_prints_no_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._installed_repo(tmp)
+            self.assertEqual(_quiet_main("reload", str(app))[0], 0)
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            self.assertNotIn(self.HINT, out)
+
+    def test_reload_outside_git_prints_no_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude")[0], 0)
+            (app / self.HOOK).write_text("// stara wersja kita\n", encoding="utf-8")
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            self.assertNotIn(self.HINT, out)
+
+    def test_mcp_reload_lists_changed_kit_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._installed_repo(tmp)
+            out = self._mcp_reload(app, dry_run=False)
+
+            self.assertTrue(out.rstrip().endswith(f'"{self.HINT}"`.'), out[-300:])
+            hint = self._hint_section(out)
+            self.assertIn(self.HOOK, hint)
+            self.assertNotIn("```", hint)
+
+    @staticmethod
+    def _hint_section(out: str) -> str:
+        return out.partition("Reload zmienił pliki kita:")[2]
+
+    @staticmethod
+    def _mcp_reload(app: Path, *, dry_run: bool) -> str:
+        saved = (server._kit_root, server._workspace_root)
+        server._kit_root, server._workspace_root = KIT_ROOT, app
+        try:
+            return server.reload_workspace(dry_run=dry_run)
+        finally:
+            server._kit_root, server._workspace_root = saved
+
+
 class TestReloadTool(_BootstrapTestCase):
     def test_mcp_reload_dry_run_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
