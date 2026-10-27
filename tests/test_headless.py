@@ -179,6 +179,15 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.argv()[0], "opencode")
 
+    def test_antigravity_runs_headless_print_with_prompt_argument(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "antigravity", "--model", "flash", "treść zadania")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.argv()
+        self.assertEqual(argv[:5], ["agy", "-p", "--dangerously-skip-permissions", "--model", "flash"])
+        self.assertTrue("\n".join(argv[5:]).startswith("treść zadania"))
+
     def test_missing_executor_binary_is_error(self) -> None:
         (self.bin / "claude").unlink()
         result = self.run_wrapper("--host", "opencode", "claude", "x")

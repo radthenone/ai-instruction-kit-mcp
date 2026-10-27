@@ -107,6 +107,17 @@ const EXECUTORS = {
     ],
     stdin: false,
   },
+  antigravity: {
+    // `agy -p`: jednorazowy prompt bez TUI. `--dangerously-skip-permissions` = auto-approve
+    // dla narzędzi (jak bypassPermissions w claude); guardy kita to hooki `.agents/hooks.json`
+    // i działają dalej (deny przebija tę flagę, sprawdzone na agy 1.3.0 — README, Antigravity).
+    bins: ["agy"],
+    args: (model, prompt) => [
+      "-p", "--dangerously-skip-permissions", ...(model ? ["--model", model] : []),
+      prompt.startsWith("-") ? `\n${prompt}` : prompt,
+    ],
+    stdin: false,
+  },
 }
 
 function fail(message) {
