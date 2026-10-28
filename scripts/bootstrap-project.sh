@@ -705,7 +705,7 @@ install_design_handoff() {
 # /headless (#169): wrapper wspólny dla hostów + `@KIT_HOST@` w pliku agenta każdego
 # klienta, żeby wrapper wiedział, kto woła (wykonawca != host). Wykonawcy = klienci
 # z trybem headless i guardami kita — ta sama lista co EXECUTORS w headless.mjs.
-HEADLESS_EXECUTORS="claude opencode"
+HEADLESS_EXECUTORS="claude opencode antigravity"
 
 headless_enabled() {
   local c n=0

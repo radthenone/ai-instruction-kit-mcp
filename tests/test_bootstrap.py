@@ -1121,7 +1121,7 @@ class TestHeadlessAgent(_BootstrapTestCase):
             workspace.mkdir()
             self._install(workspace, "claude,opencode,antigravity")
             self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
-            self._install(workspace, "claude,antigravity")
+            self._install(workspace, "claude,codex")
             self.assertFalse((workspace / ".agents/skills/headless").exists())
             self.assertFalse((workspace / ".ai/headless.mjs").exists())
             self.assertFalse((workspace / ".claude/agents/headless.md").exists())

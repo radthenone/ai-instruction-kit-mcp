@@ -108,13 +108,14 @@ const EXECUTORS = {
     stdin: false,
   },
   antigravity: {
-    // `agy -p`: jednorazowy prompt bez TUI. `--dangerously-skip-permissions` = auto-approve
-    // dla narzędzi (jak bypassPermissions w claude); guardy kita to hooki `.agents/hooks.json`
-    // i działają dalej (deny przebija tę flagę, sprawdzone na agy 1.3.0 — README, Antigravity).
+    // `-p` bierze następny argument jako prompt, więc prompt idzie zaraz po nim.
+    // `--dangerously-skip-permissions` (agy 1.4.8) auto-approve narzędzi; że hooki guardów
+    // `.agents/hooks.json` działają mimo tej flagi, niezweryfikowane na 1.4.8.
     bins: ["agy"],
     args: (model, prompt) => [
-      "-p", "--dangerously-skip-permissions", ...(model ? ["--model", model] : []),
-      prompt.startsWith("-") ? `\n${prompt}` : prompt,
+      "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
+      "--dangerously-skip-permissions",
+      "--model", model || "gemini-3.8-flash-medium", "--effort", "medium",
     ],
     stdin: false,
   },

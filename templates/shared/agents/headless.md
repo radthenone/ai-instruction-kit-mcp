@@ -21,7 +21,7 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 ```
 
 - `<wykonawca>` — klient z `clients:` w `.ai/project.profile.yaml`, inny niż host, z trybem
-  headless (dziś: `claude`, `opencode`).
+  headless (dziś: `claude`, `opencode`, `antigravity`).
 - `--model` — model sesji wykonawcy; bez flagi decyduje jego projektowy config (np. `model`
   w `opencode.json`), potem jego domyślny model.
 - `--timeout` — minuty, domyślnie 30.

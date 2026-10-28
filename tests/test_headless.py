@@ -185,8 +185,28 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "antigravity", "--model", "flash", "treść zadania")
         self.assertEqual(result.returncode, 0, result.stderr)
         argv = self.argv()
-        self.assertEqual(argv[:5], ["agy", "-p", "--dangerously-skip-permissions", "--model", "flash"])
-        self.assertTrue("\n".join(argv[5:]).startswith("treść zadania"))
+        self.assertEqual(argv[1], "-p")
+        self.assertTrue("\n".join(argv[2:]).startswith("treść zadania"))
+        self.assertEqual(argv[-5:], ["--dangerously-skip-permissions", "--model", "flash", "--effort", "medium"])
+
+    def test_antigravity_without_model_omits_model_flag(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "antigravity", "treść zadania")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.argv()[-5:],
+            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium", "--effort", "medium"],
+        )
+
+    def test_antigravity_prompt_starting_with_dash_is_not_read_as_flag(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "antigravity", "-zadanie")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.argv()
+        self.assertEqual(argv[1], "-p")
+        self.assertTrue("\n".join(argv[2:]).startswith("\n-zadanie"))
 
     def test_missing_executor_binary_is_error(self) -> None:
         (self.bin / "claude").unlink()
