@@ -1094,7 +1094,7 @@ Dla Pythona tryb `venv: auto` (oraz `overlay`) tworzy lekki overlay venv bazują
 
 - **Linkowane zależności są tylko do odczytu**: `node_modules` czy współdzielony `site-packages` nie powinny być modyfikowane z poziomu worktree (postinstall, ensurepip czy instalacja paczek zmieniają środowisko główne).
 - **Pliki konfiguracyjne MCP**: kopiowane pliki wskazują ścieżkę `--workspace` głównego checkoutu (jest to zamierzone i bezpieczne).
-- **Server guard w worktree**: działa w worktree tylko wtedy, gdy projekt commituje pliki hooków kita (np. `.cursor/hooks/`, `.claude/hooks/`). Doctor weryfikuje ich obecność w repozytorium.
+- **Server guard w worktree**: działa w worktree tylko wtedy, gdy projekt commituje pliki hooków kita (np. `.cursor/hooks/`, `.claude/hooks/`). Doctor **nie** sprawdza obecności hooków w repozytorium; przed założeniem worktree zweryfikuj ręcznie, np. `git ls-files .cursor/hooks .claude/hooks`.
 
 
 ### `/teacher-*` — tryb nauki (przed kodem, nie po)

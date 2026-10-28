@@ -7,13 +7,13 @@
  *   add [<ścieżka>] --detach <ref> [--plain]
  *   sync [<ścieżka>]
  *   remove <ścieżka> [--force]
- *   prune
+ *   prune [--base <ref>]
  *
  * Format wyjścia: linie `[worktree] key: value`.
  * Kody wyjścia: 0 = OK, 1 = błąd setup: (worktree zostaje), 2 = błędne wywołanie.
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -53,19 +53,67 @@ const GUARD_LOCATIONS = [
   ".codex/hooks/server-guard.mjs",
 ];
 
-function git(cmd, cwd = process.cwd(), allowFail = false) {
+// Argumenty idą jako tablica do execFileSync, bez powłoki (brak wstrzyknięcia).
+function git(args, cwd = process.cwd()) {
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+function gitTry(args, cwd = process.cwd()) {
   try {
-    return execSync(`git ${cmd}`, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  } catch (err) {
-    if (allowFail) return null;
-    throw err;
+    return git(args, cwd);
+  } catch {
+    return null;
   }
 }
 
+function real(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+function lexists(p) {
+  try {
+    fs.lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Względna ścieżka `p` wewnątrz `root`, albo null gdy poza `root` (lub absolutna).
+function relInside(root, p) {
+  const rel = path.relative(root, p);
+  if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) return null;
+  return rel;
+}
+
+function isInside(root, p) {
+  const rel = relInside(root, p);
+  return rel !== null && rel !== "";
+}
+
 function getMainRepoRoot(cwd = process.cwd()) {
-  const common = git("rev-parse --git-common-dir", cwd);
+  const common = git(["rev-parse", "--git-common-dir"], cwd);
   const resolved = path.isAbsolute(common) ? common : path.resolve(cwd, common);
   return path.resolve(resolved, "..");
+}
+
+function listWorktrees(mainRoot) {
+  const raw = git(["worktree", "list", "--porcelain"], mainRoot);
+  const out = [];
+  for (const block of raw.split("\n\n")) {
+    let wtPath = null;
+    let branch = null;
+    for (const l of block.split("\n")) {
+      if (l.startsWith("worktree ")) wtPath = l.slice(9).trim();
+      if (l.startsWith("branch ")) branch = l.slice(7).trim().replace(/^refs\/heads\//, "");
+    }
+    if (wtPath) out.push({ path: wtPath, branch });
+  }
+  return out;
 }
 
 function loadConfig(mainRoot) {
@@ -135,13 +183,17 @@ function askServerGuard(mainRoot, command) {
   return { allowed: true };
 }
 
-function performCopy(mainRoot, wtPath, copyList) {
+function performCopy(mainRoot, wtPath, copyList, warnings) {
   const copied = [];
   for (const item of copyList || []) {
-    const src = path.join(mainRoot, item);
-    const dest = path.join(wtPath, item);
+    const src = path.resolve(mainRoot, item);
+    const dest = path.resolve(wtPath, item);
+    if (!isInside(mainRoot, src) || !isInside(wtPath, dest)) {
+      warnings.push(`pominięto copy poza repo: ${item}`);
+      continue;
+    }
     if (!fs.existsSync(src)) continue;
-    if (fs.existsSync(dest)) continue;
+    if (lexists(dest)) continue;
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
@@ -158,10 +210,17 @@ function performLink(mainRoot, wtPath, linkList, warnings) {
   const linked = [];
   const isWin = process.platform === "win32";
   for (const item of linkList || []) {
-    const src = path.join(mainRoot, item);
-    const dest = path.join(wtPath, item);
+    const src = path.resolve(mainRoot, item);
+    const dest = path.resolve(wtPath, item);
+    if (!isInside(mainRoot, src) || !isInside(wtPath, dest)) {
+      warnings.push(`pominięto link poza repo: ${item}`);
+      continue;
+    }
     if (!fs.existsSync(src)) continue;
-    if (fs.existsSync(dest)) continue;
+    if (lexists(dest)) {
+      if (!fs.existsSync(dest)) warnings.push(`zerwany symlink w worktree, pomijam: ${item}`);
+      continue;
+    }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (isWin) {
@@ -230,6 +289,10 @@ function setupVenvOverlay(mainRoot, wtPath, venvMode, warnings) {
   const wtVenv = path.join(wtPath, ".venv");
 
   if (venvMode === "none") return "none";
+  if (real(wtPath) === real(mainRoot)) {
+    warnings.push("overlay venv pominięty: ścieżka to główny checkout");
+    return "none";
+  }
   const shouldCreate = venvMode === "overlay" || (venvMode === "auto" && fs.existsSync(mainVenv) && !fs.existsSync(wtVenv));
   if (!shouldCreate) {
     return fs.existsSync(wtVenv) ? "full" : "none";
@@ -242,7 +305,7 @@ function setupVenvOverlay(mainRoot, wtPath, venvMode, warnings) {
   if (!fs.existsSync(pyExe)) return "none";
 
   try {
-    execSync(`"${pyExe}" -m venv --without-pip "${wtVenv}"`, { stdio: "ignore" });
+    execFileSync(pyExe, ["-m", "venv", "--without-pip", wtVenv], { stdio: "ignore" });
   } catch {
     return "none";
   }
@@ -264,8 +327,9 @@ function setupVenvOverlay(mainRoot, wtPath, venvMode, warnings) {
     for (const l of lines) {
       const trimmed = l.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
-      if (trimmed.startsWith(mainRoot)) {
-        const rel = path.relative(mainRoot, trimmed);
+      if (!path.isAbsolute(trimmed)) continue;
+      const rel = relInside(mainRoot, trimmed);
+      if (rel !== null) {
         rewrittenPaths.push(path.join(wtPath, rel));
       }
     }
@@ -342,13 +406,15 @@ function cmdAdd(args) {
 
   // Wykonanie git worktree add
   if (detach) {
-    git(`worktree add --detach "${targetPath}" "${targetRef}"`, mainRoot);
+    git(["worktree", "add", "--detach", targetPath, targetRef], mainRoot);
   } else {
-    const branchExists = git(`show-ref --verify refs/heads/${targetRef}`, mainRoot, true) !== null;
-    if (branchExists) {
-      git(`worktree add "${targetPath}" "${targetRef}"`, mainRoot);
+    const hasLocal = gitTry(["show-ref", "--verify", "--quiet", `refs/heads/${targetRef}`], mainRoot) !== null;
+    const hasRemote = gitTry(["show-ref", "--verify", "--quiet", `refs/remotes/origin/${targetRef}`], mainRoot) !== null;
+    if (hasLocal || hasRemote) {
+      // DWIM: lokalny branch albo tracking origin/<branch>, bez -b
+      git(["worktree", "add", targetPath, targetRef], mainRoot);
     } else {
-      git(`worktree add -b "${targetRef}" "${targetPath}"`, mainRoot);
+      git(["worktree", "add", "-b", targetRef, targetPath], mainRoot);
     }
   }
 
@@ -363,7 +429,7 @@ function cmdAdd(args) {
   const config = loadConfig(mainRoot);
   const warnings = [];
 
-  const copied = performCopy(mainRoot, targetPath, config.copy);
+  const copied = performCopy(mainRoot, targetPath, config.copy, warnings);
   console.log(`[worktree] copied: ${copied.join(", ")}`);
 
   const linked = performLink(mainRoot, targetPath, config.link, warnings);
@@ -393,16 +459,24 @@ function cmdAdd(args) {
 }
 
 function cmdSync(args) {
-  let targetPath = args[0] ? path.resolve(process.cwd(), args[0]) : process.cwd();
+  const targetPath = path.resolve(process.cwd(), args[0] || ".");
   const mainRoot = getMainRepoRoot(targetPath);
+  if (real(targetPath) === real(mainRoot)) {
+    console.error("odmowa: to główny checkout, sync działa tylko na worktree");
+    process.exit(2);
+  }
+  if (!listWorktrees(mainRoot).some((w) => real(w.path) === real(targetPath))) {
+    console.error(`odmowa: ścieżka nie jest worktree tego repo: ${targetPath}`);
+    process.exit(2);
+  }
   const config = loadConfig(mainRoot);
   const warnings = [];
 
-  const branch = git("branch --show-current", targetPath, true) || "detached";
+  const branch = gitTry(["branch", "--show-current"], targetPath) || "detached";
   console.log(`[worktree] path: ${targetPath}`);
   console.log(`[worktree] branch: ${branch}`);
 
-  const copied = performCopy(mainRoot, targetPath, config.copy);
+  const copied = performCopy(mainRoot, targetPath, config.copy, warnings);
   console.log(`[worktree] copied: ${copied.join(", ")}`);
 
   const linked = performLink(mainRoot, targetPath, config.link, warnings);
@@ -434,50 +508,69 @@ function cmdRemove(args) {
   }
 
   const mainRoot = getMainRepoRoot(targetPath);
-  const status = git("status --porcelain", targetPath, true);
-  if (status && status.trim().length > 0 && !force) {
+  if (real(targetPath) === real(mainRoot)) {
+    console.error("odmowa: to główny checkout, nie worktree");
+    process.exit(2);
+  }
+  if (!listWorktrees(mainRoot).some((w) => real(w.path) === real(targetPath))) {
+    console.error(`odmowa: ścieżka nie jest worktree tego repo: ${targetPath}`);
+    process.exit(2);
+  }
+
+  const status = gitTry(["status", "--porcelain"], targetPath);
+  if (status && status.length > 0 && !force) {
     console.error("drzewo robocze jest brudne, użyj --force aby usunąć");
     process.exit(2);
   }
 
-  const wtVenv = path.join(targetPath, ".venv");
-  if (fs.existsSync(wtVenv)) {
-    try {
-      fs.rmSync(wtVenv, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
-  }
-
-  git(`worktree remove "${targetPath}" ${force ? "--force" : ""}`, mainRoot);
-  git("worktree prune", mainRoot, true);
+  // Dopiero po sprawdzeniu, że to worktree; git worktree remove usuwa też overlay .venv.
+  git(["worktree", "remove", ...(force ? ["--force"] : []), targetPath], mainRoot);
+  gitTry(["worktree", "prune"], mainRoot);
   console.log(`[worktree] removed: ${targetPath}`);
   process.exit(0);
 }
 
-function cmdPrune() {
+function cmdPrune(args) {
   const mainRoot = getMainRepoRoot();
-  git("worktree prune", mainRoot);
-  const listRaw = git("worktree list --porcelain", mainRoot);
-  const blocks = listRaw.split("\n\n");
-  for (const b of blocks) {
-    const lines = b.split("\n");
-    let wtPath = null;
-    let branchRef = null;
-    for (const l of lines) {
-      if (l.startsWith("worktree ")) wtPath = l.slice(9).trim();
-      if (l.startsWith("branch ")) branchRef = l.slice(7).trim();
+  const baseIdx = args.indexOf("--base");
+  let base = baseIdx >= 0 ? args[baseIdx + 1] : null;
+  if (!base) base = gitTry(["branch", "--show-current"], mainRoot);
+  if (!base) {
+    console.error("prune: brak bazy (detached HEAD) — podaj --base <ref>");
+    process.exit(2);
+  }
+
+  gitTry(["worktree", "prune"], mainRoot);
+  const kitDir = real(path.join(mainRoot, ".worktrees"));
+  for (const wt of listWorktrees(mainRoot)) {
+    if (!isInside(kitDir, real(wt.path))) {
+      console.log(`[worktree] skipped: ${wt.path} — nie jest worktree kita`);
+      continue;
     }
-    if (wtPath && branchRef && wtPath !== mainRoot) {
-      const branchName = branchRef.replace("refs/heads/", "");
-      const merged = git(`branch --merged main`, mainRoot, true) || git(`branch --merged master`, mainRoot, true) || "";
-      if (merged.split(/\s+/).includes(branchName)) {
-        try {
-          git(`worktree remove "${wtPath}" --force`, mainRoot, true);
-        } catch {
-          // ignore
-        }
-      }
+    if (!wt.branch) {
+      console.log(`[worktree] skipped: ${wt.path} — detached`);
+      continue;
+    }
+    const dirty = gitTry(["status", "--porcelain"], wt.path);
+    if (dirty && dirty.length > 0) {
+      console.log(`[worktree] skipped: ${wt.path} — niezacommitowane zmiany`);
+      continue;
+    }
+    const merged = gitTry(["merge-base", "--is-ancestor", `refs/heads/${wt.branch}`, base], mainRoot) !== null;
+    if (!merged) {
+      console.log(`[worktree] skipped: ${wt.path} — branch nie jest zmergowany do ${base}`);
+      continue;
+    }
+    // Branch bez własnych commitów (tylko utworzony) zostaje.
+    const reflog = gitTry(["reflog", "show", "--format=%gs", `refs/heads/${wt.branch}`], mainRoot) || "";
+    if (!reflog.split("\n").some((l) => l.startsWith("commit"))) {
+      console.log(`[worktree] skipped: ${wt.path} — branch bez własnych commitów`);
+      continue;
+    }
+    if (gitTry(["worktree", "remove", wt.path], mainRoot) !== null) {
+      console.log(`[worktree] removed: ${wt.path}`);
+    } else {
+      console.log(`[worktree] skipped: ${wt.path} — git worktree remove odmówił`);
     }
   }
   console.log("[worktree] pruned");
@@ -496,7 +589,7 @@ switch (cmd) {
     cmdRemove(rest);
     break;
   case "prune":
-    cmdPrune();
+    cmdPrune(rest);
     break;
   default:
     console.error("Nieznana komenda. Dozwolone: add, sync, remove, prune");

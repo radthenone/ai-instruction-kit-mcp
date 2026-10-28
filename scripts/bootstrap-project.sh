@@ -728,8 +728,6 @@ install_headless() {
   local c rel
   if [[ "$HEADLESS" != "1" ]]; then
     kit_rm .ai/headless.mjs
-  kit_rm .ai/worktree.mjs
-  kit_rm .ai/worktree.json
     return 0
   fi
   cp "$KIT_ROOT/templates/shared/headless/headless.mjs" "$TARGET/.ai/headless.mjs"

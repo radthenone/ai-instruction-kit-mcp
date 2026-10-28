@@ -425,3 +425,138 @@ class TestWorktreeCLI(unittest.TestCase):
             self.assertTrue((workspace / ".ai" / "worktree.json").is_file())
             data = json.loads((workspace / ".ai" / "worktree.json").read_text(encoding="utf-8"))
             self.assertEqual(data["venv"], "auto")
+
+
+def _run_wt(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([NODE, str(WRAPPER), *args], cwd=repo, capture_output=True, text=True)
+
+
+def _write_config(repo: Path, cfg: dict) -> None:
+    (repo / ".ai").mkdir(exist_ok=True)
+    (repo / ".ai" / "worktree.json").write_text(json.dumps(cfg), encoding="utf-8")
+
+
+class TestWorktreeSafety(unittest.TestCase):
+    def test_copy_does_not_overwrite_existing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            (repo / ".env").write_text("MAIN=1\n", encoding="utf-8")
+            _write_config(repo, {"copy": [".env"], "link": [], "setup": [], "venv": "none"})
+            wt = repo / ".worktrees" / "keep-wt"
+            res = _run_wt(repo, "add", str(wt), "--detach", "HEAD")
+            self.assertEqual(res.returncode, 0, res.stderr)
+            wt_env = wt / ".env"
+            self.assertEqual(wt_env.read_text(encoding="utf-8"), "MAIN=1\n")
+            # sync nie nadpisuje istniejącego pliku w worktree
+            wt_env.write_text("WT=2\n", encoding="utf-8")
+            res_sync = _run_wt(repo, "sync", str(wt))
+            self.assertEqual(res_sync.returncode, 0, res_sync.stderr)
+            self.assertEqual(wt_env.read_text(encoding="utf-8"), "WT=2\n")
+
+    def test_link_with_existing_destination_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            (repo / "node_modules").mkdir()
+            _write_config(repo, {"copy": [], "link": ["node_modules"], "setup": [], "venv": "none"})
+            wt = repo / ".worktrees" / "link-wt"
+            res = _run_wt(repo, "add", str(wt), "--detach", "HEAD", "--plain")
+            self.assertEqual(res.returncode, 0, res.stderr)
+            # Cel już istnieje w worktree (lokalny katalog) — link go nie zastępuje
+            (wt / "node_modules").mkdir()
+            res_sync = _run_wt(repo, "sync", str(wt))
+            self.assertEqual(res_sync.returncode, 0, res_sync.stderr)
+            self.assertTrue((wt / "node_modules").is_dir())
+            self.assertFalse((wt / "node_modules").is_symlink())
+
+    def test_paths_outside_repo_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            (Path(tmp) / "x").write_text("outside\n", encoding="utf-8")
+            _write_config(repo, {"copy": ["../x"], "link": ["../x"], "setup": [], "venv": "none"})
+            wt = repo / ".worktrees" / "escape-wt"
+            res = _run_wt(repo, "add", str(wt), "--detach", "HEAD")
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertIn("pominięto copy poza repo: ../x", res.stdout)
+            self.assertIn("pominięto link poza repo: ../x", res.stdout)
+            self.assertFalse((repo / ".worktrees" / "x").exists())
+
+    def test_remove_refuses_main_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            # .venv ignorowany, żeby główne drzewo było czyste (test ma dotykać gałęzi "główny checkout")
+            (repo / ".gitignore").write_text(".venv/\n", encoding="utf-8")
+            subprocess.run(["git", "add", ".gitignore"], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "ignore venv"], cwd=repo, check=True, capture_output=True)
+            venv = repo / ".venv"
+            (venv / "bin").mkdir(parents=True)
+            (venv / "bin" / "marker").write_text("keep\n", encoding="utf-8")
+            res = _run_wt(repo, "remove", ".")
+            self.assertEqual(res.returncode, 2)
+            self.assertTrue((venv / "bin" / "marker").is_file())
+            self.assertTrue((repo / ".git").exists())
+
+    def test_sync_refuses_main_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            res = _run_wt(repo, "sync", ".")
+            self.assertEqual(res.returncode, 2)
+
+    def test_prune_keeps_dirty_foreign_and_uncommitted_branches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+
+            def make_merged(wt: Path, branch: str) -> None:
+                res = _run_wt(repo, "add", str(wt), branch, "--plain")
+                self.assertEqual(res.returncode, 0, res.stderr)
+                (wt / f"{branch}.txt").write_text("c\n", encoding="utf-8")
+                subprocess.run(["git", "add", "."], cwd=wt, check=True, capture_output=True)
+                subprocess.run(["git", "commit", "-m", branch], cwd=wt, check=True, capture_output=True)
+                subprocess.run(["git", "merge", "--ff-only", branch], cwd=repo, check=True, capture_output=True)
+
+            dirty = repo / ".worktrees" / "dirty-wt"
+            make_merged(dirty, "dirty-branch")
+            (dirty / "scratch.txt").write_text("uncommitted\n", encoding="utf-8")
+
+            foreign = Path(tmp) / "foreign-wt"
+            make_merged(foreign, "foreign-branch")
+
+            empty = repo / ".worktrees" / "empty-wt"
+            res = _run_wt(repo, "add", str(empty), "empty-branch", "--plain")
+            self.assertEqual(res.returncode, 0, res.stderr)
+
+            res_prune = _run_wt(repo, "prune")
+            self.assertEqual(res_prune.returncode, 0, res_prune.stderr)
+            self.assertTrue(dirty.exists())
+            self.assertTrue(foreign.exists())
+            self.assertTrue(empty.exists())
+            self.assertIn("niezacommitowane zmiany", res_prune.stdout)
+            self.assertIn("nie jest worktree kita", res_prune.stdout)
+            self.assertIn("bez własnych commitów", res_prune.stdout)
+
+    def test_add_remote_only_branch_uses_dwim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            bare = Path(tmp) / "origin.git"
+            subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True, capture_output=True)
+            subprocess.run(["git", "remote", "add", "origin", str(bare)], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "push", "-q", "origin", "HEAD:refs/heads/remote-only"], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "fetch", "-q", "origin"], cwd=repo, check=True, capture_output=True)
+            wt = repo / ".worktrees" / "remote-only"
+            res = _run_wt(repo, "add", str(wt), "remote-only", "--plain")
+            self.assertEqual(res.returncode, 0, res.stderr)
+            branch = subprocess.run(["git", "branch", "--show-current"], cwd=wt, capture_output=True, text=True).stdout.strip()
+            self.assertEqual(branch, "remote-only")
