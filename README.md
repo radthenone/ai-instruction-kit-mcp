@@ -1260,6 +1260,8 @@ tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`)
 w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Limit u ostatniego →
 kod `75` i zadanie przejmuje host (agent `/headless`, krok 2). Z Claude:
 `/headless opencode "…"` → `gemini` → Claude sam; `/headless gemini "…"` → `opencode` → Claude sam.
+Limit rozpoznaje tekst w ogonie wyjścia; agy po błędzie dodatkowo `agy -p "/quota"` — grupa
+`Gemini Models` na 0% = limit, reset z najwcześniejszego wyczerpanego wiersza.
 
 **`.agents/agy.json`** — agy nie ma projektowego configu z modelem (tylko globalny
 `~/.gemini/antigravity-cli/settings.json`), więc wrapper czyta ten plik (gitignored):

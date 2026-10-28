@@ -33,13 +33,14 @@ const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
 // Pauza limitu dostawcy wykonawcy (nie błąd): kod wyjścia 75 (EX_TEMPFAIL).
 const PAUSE_CODE = 75
-// Komunikaty limitu opencode/Codex i innych. Ten sam sens co LIMIT_PATTERN w watchdog.sh
-// (tam limit Claude w transkrypcie) — zmiana wzorca w jednym miejscu wymaga drugiego.
-const LIMIT_PATTERN = /usage limit|\brate[ _-]limit|session limit|quota exceeded|too many requests|api error: 429/i
+// Komunikaty limitu opencode/Codex/agy i innych (watchdog.sh czyta limit Claude z pól JSON
+// transkryptu, nie z tekstu — tam wzorca nie ma). agy sprawdza też `/quota` (`quota` w EXECUTORS).
+const LIMIT_PATTERN = /usage limit|\brate[ _-]limit|session limit|quota exceeded|quota exhausted|resource_exhausted|too many requests|api error: 429/i
 const LIMIT_TAIL_LINES = 20
 const OUTPUT_TAIL_BYTES = 65_536
 // Okno godziny resetu jak MAX_RESET_AHEAD_SEC w watchdog.sh (dalsza godzina = brak, nie zgadujemy).
 const MAX_RESET_AHEAD_MS = 6 * 3_600_000
+const QUOTA_TIMEOUT_MS = 60_000
 
 // Numer ticketu z brancha `typ/<N>-slug`; inny branch (dev, detached, brak gita) — linia pominięta.
 const ticketNumber = () => /^[a-z]+\/(\d+)-/.exec(git("branch", "--show-current") || "")?.[1]
@@ -125,6 +126,17 @@ const EXECUTORS = {
       ]
     },
     stdin: false,
+    // Komunikat limitu agy nieznany (#293), więc po błędzie pytamy wprost: `agy -p /quota` daje
+    // wiersze `<grupa>\t<limit>\t<procent>%\t<ISO reset>`. Grupa `Gemini Models` na 0% = limit.
+    quota: (bin) => {
+      const r = spawnSync(bin, ["-p", "/quota"], { encoding: "utf8", timeout: QUOTA_TIMEOUT_MS, windowsHide: true })
+      if (r.status !== 0 || !r.stdout) return null
+      const empty = lines(r.stdout).map((l) => l.trimEnd().split("\t"))
+        .filter(([group, , left]) => group === "Gemini Models" && /^0+%$/.test(left?.trim() || ""))
+      if (!empty.length) return null
+      const resets = empty.map(([, , , at]) => Date.parse(at)).filter((t) => !Number.isNaN(t))
+      return { reset: resets.length ? new Date(Math.min(...resets)).toISOString() : null }
+    },
   },
 }
 
@@ -462,8 +474,12 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
-  if ((timedOut || code !== 0) && LIMIT_PATTERN.test(tailLines(outputTail))) {
-    pause = `PAUSE=rate-limit reset=${resetIso(tailLines(outputTail)) ?? "brak"}`
+  const failed = timedOut || code !== 0
+  const textLimit = failed && LIMIT_PATTERN.test(tailLines(outputTail))
+  const quota = failed && !textLimit && executor.quota ? executor.quota(bin) : null
+  if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
+  if (textLimit || quota) {
+    pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(tailLines(outputTail))) ?? "brak"}`
     code = PAUSE_CODE
   } else if (timedOut) {
     code = 124
