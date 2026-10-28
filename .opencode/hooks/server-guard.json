@@ -83,55 +83,55 @@
     {
       "id": "uv-run",
       "kind": "deny",
-      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements)?(?=[\\s=]|$))",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$))",
       "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"
     },
     {
       "id": "uv-run-no-sync",
       "kind": "allow",
-      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements)?(?=[\\s=]|$)).*?--no-sync",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$)).*?--no-sync",
       "reason": "uruchomienie bez synchronizacji"
     },
     {
       "id": "uv-run-with",
       "kind": "deny",
-      "pattern": "^\\s*uv\\s+run(?=\\s|$).*--with(?:-requirements)?(?=[\\s=]|$)",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$).*--with(?:-requirements|-editable)?(?=[\\s=]|$)",
       "reason": "`uv run --with` pobiera paczkę z sieci, także z `--no-sync` — zależności instaluj na PC albo w CI"
     },
     {
       "id": "uvx",
       "kind": "deny",
-      "pattern": "^\\s*uvx(?=\\s|$)(?!.*--offline(?=\\s|$))",
+      "pattern": "^\\s*uvx(?=\\s|$)(?!(?:\\s+-\\S+)*\\s+--offline(?=\\s|$))",
       "reason": "`uvx` pobiera narzędzie z sieci — użyj `uvx --offline` / `UV_OFFLINE=1` albo `uv run --no-sync python -m …`"
     },
     {
       "id": "bun-pkg",
       "kind": "deny",
-      "pattern": "^\\s*bun\\s+(?:install|add|remove|i|a|update|up|upgrade)(?=\\s|$)",
+      "pattern": "^\\s*bun\\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\\s|$)",
       "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
     },
     {
       "id": "npm-pkg",
       "kind": "deny",
-      "pattern": "^\\s*npm\\s+(?:install|i|ci|add|it|install-test|update|up|upgrade|remove)(?=\\s|$)",
+      "pattern": "^\\s*npm\\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\\s|$)",
       "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
     },
     {
       "id": "pnpm-pkg",
       "kind": "deny",
-      "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove)(?=\\s|$)",
+      "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\\s|$)",
       "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
     },
     {
       "id": "yarn-pkg",
       "kind": "deny",
-      "pattern": "^\\s*yarn\\s+(?:install|add|update|up|upgrade|remove)(?=\\s|$)",
+      "pattern": "^\\s*yarn\\s+(?:global\\s+add|install|add|update|up|upgrade|remove)(?=\\s|$)",
       "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
     },
     {
       "id": "yarn-bare",
       "kind": "deny",
-      "pattern": "^\\s*yarn\\s*$",
+      "pattern": "^\\s*yarn(?=(?:\\s+(?:--cwd(?:=|\\s+)\\S+|-\\S+))*\\s*$)(?!.*\\s(?:-v|--version|-h|--help)(?=\\s|$))",
       "reason": "goły `yarn` instaluje zależności — instalacja tylko na PC albo w CI"
     },
     {
@@ -161,7 +161,7 @@
     {
       "id": "apt-install",
       "kind": "deny",
-      "pattern": "^\\s*apt(?:-get)?\\s+install(?=\\s|$)",
+      "pattern": "^\\s*apt(?:-get)?(?:\\s+-\\S+)*\\s+install(?=\\s|$)",
       "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"
     },
     {
@@ -239,20 +239,32 @@
     {
       "id": "npx-launcher",
       "kind": "deny",
-      "pattern": "^\\s*npx(?=\\s|$)(?!.*\\s--no(?=\\s|$))",
-      "reason": "`npx` pobiera paczkę z sieci — użyj `npx --no <bin>`, `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"
+      "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=\\s|$)",
+      "reason": "`npx` / `npm exec` pobiera paczkę z sieci — użyj `npx --no <bin>`, `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"
+    },
+    {
+      "id": "npx-no",
+      "kind": "allow",
+      "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=(?:\\s+-\\S+)*\\s+--no(?=\\s|$))(?!(?:\\s+-\\S+)*\\s+(?:-y|--yes)(?=\\s|$))",
+      "reason": "`--no` przed nazwą: tylko pakiet już w node_modules/.bin, bez pobierania"
     },
     {
       "id": "bunx-launcher",
       "kind": "deny",
-      "pattern": "^\\s*bunx(?=\\s|$)(?!.*\\s--no-install(?=\\s|$))",
+      "pattern": "^\\s*(?:bunx|bun\\s+x)(?=\\s|$)",
       "reason": "`bunx` pobiera paczkę z sieci — użyj `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"
+    },
+    {
+      "id": "bunx-no-install",
+      "kind": "allow",
+      "pattern": "^\\s*(?:bunx|bun\\s+x)(?=(?:\\s+-\\S+)*\\s+--no-install(?=\\s|$))",
+      "reason": "`--no-install` przed nazwą: tylko pakiet już zainstalowany"
     },
     {
       "id": "dlx-launcher",
       "kind": "deny",
-      "pattern": "^\\s*(?:pnpm|yarn)\\s+dlx(?=\\s|$)",
-      "reason": "`pnpm dlx` / `yarn dlx` zawsze pobiera paczkę — użyj skryptu projektu (`bun run typecheck`) albo `npx --no <bin>`"
+      "pattern": "^\\s*(?:pnpm\\s+dlx|yarn\\s+dlx|pnpx)(?=\\s|$)",
+      "reason": "`pnpm dlx` / `yarn dlx` / `pnpx` zawsze pobiera paczkę — użyj skryptu projektu (`bun run typecheck`) albo `npx --no <bin>`"
     },
     {
       "id": "playwright",

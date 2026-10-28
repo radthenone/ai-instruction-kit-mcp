@@ -635,6 +635,46 @@ SERVER_GUARD: list[tuple[str, str]] = [
     # G4 — uvx pobiera z sieci; wyjątek tylko dla trybu offline.
     ("uvx ruff", "deny"),
     ("UV_OFFLINE=1 uvx ruff", "allow"),
+    # Review #301: wyjątki tylko dla flag PRZED nazwą narzędzia.
+    ("uvx ruff --offline", "deny"),
+    ("uvx --offline ruff", "allow"),
+    ("npx cowsay --no", "deny"),
+    ("bunx cowsay --no-install", "deny"),
+    ("npx --no -y cowsay", "deny"),
+    ("npx -y cowsay", "deny"),
+    ("npx --no --yes cowsay", "deny"),
+    ("npx --no cowsay", "allow"),
+    ("bunx --no-install cowsay", "allow"),
+    # Aliasy launcherów: npm exec/x, bun x, pnpx.
+    ("npm exec cowsay", "deny"),
+    ("npm x cowsay", "deny"),
+    ("bun x cowsay", "deny"),
+    ("pnpx cowsay", "deny"),
+    ("npm exec --no tsc --noEmit", "allow"),
+    ("bun x --no-install tsc", "allow"),
+    ("npm exec --no -y cowsay", "deny"),
+    # Flagi przed `install` (apt) i aliasy remove/install.
+    ("apt-get -y install x", "deny"),
+    ("apt -y install x", "deny"),
+    ("npm uninstall x", "deny"),
+    ("npm un x", "deny"),
+    ("npm rm x", "deny"),
+    ("npm r x", "deny"),
+    ("npm cit", "deny"),
+    ("npm install-ci-test", "deny"),
+    ("bun rm x", "deny"),
+    ("pnpm rm x", "deny"),
+    ("yarn global add x", "deny"),
+    # Goły yarn z flagami instalacji; informacyjne flagi zostają.
+    ("yarn --frozen-lockfile", "deny"),
+    ("yarn --cwd app", "deny"),
+    ("yarn --cwd=app", "deny"),
+    ("yarn --cwd app test", "allow"),
+    ("yarn -v", "allow"),
+    ("yarn --help", "allow"),
+    # `--with-editable` jak `--with`.
+    ("uv run --no-sync --with-editable . x", "deny"),
+    ("uv run --with-editable . python x.py", "deny"),
     # Nadal pozwolone: venv, `uv run --no-sync` bez `--with`, skrypty projektu.
     ("python -m venv --without-pip .venv", "allow"),
     ("uv run --no-sync python -m unittest", "allow"),
@@ -714,6 +754,19 @@ class ServerGuardTest(unittest.TestCase):
         self.assertEqual(decision("uvx ruff", {**VPS, "UV_OFFLINE": "1"}), "allow")
         self.assertEqual(decision("uvx ruff", VPS), "deny")
         self.assertEqual(decision("uv run --with requests python x.py", {**VPS, "UV_OFFLINE": "1"}), "deny")
+
+    @unittest.skipUnless(shutil.which("uvx"), "uvx nie w PATH")
+    def test_uvx_offline_does_not_fetch_with_empty_cache(self) -> None:
+        # Dowód z review #301: `uvx --offline` z pustym cache uv nie pobiera narzędzia.
+        with tempfile.TemporaryDirectory() as root:
+            # Cache i katalog narzędzi muszą być osobne — wspólny katalog blokuje uv (lock).
+            env = {**os.environ, "UV_CACHE_DIR": os.path.join(root, "cache"), "UV_TOOL_DIR": os.path.join(root, "tools")}
+            env.pop("UV_OFFLINE", None)
+            proc = subprocess.run(
+                ["uvx", "--offline", "ruff", "--version"],
+                capture_output=True, text=True, encoding="utf-8", env=env, timeout=120, check=False,
+            )
+            self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_local_and_guard_off_allow_everything(self) -> None:
         off = {"version": 1, "guard": "off", "defaults": [], "wrappers": []}
