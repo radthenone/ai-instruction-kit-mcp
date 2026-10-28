@@ -147,6 +147,10 @@ class HeadlessWrapperTest(unittest.TestCase):
     def argv(self) -> list[str]:
         return (self.root / "argv").read_text(encoding="utf-8").splitlines()
 
+    def headless_log(self) -> str:
+        (log,) = (self.root / ".ai/headless-runs").glob("*/headless.log")
+        return log.read_text(encoding="utf-8")
+
     def assert_tree_killed(self) -> None:
         pid = int((self.root / "child").read_text())
         deadline = time.time() + 3
@@ -188,8 +192,9 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(argv[1], "-p")
         self.assertTrue("\n".join(argv[2:]).startswith("treść zadania"))
         self.assertEqual(argv[-5:], ["--dangerously-skip-permissions", "--model", "flash", "--effort", "medium"])
+        self.assertNotIn("treść zadania", self.headless_log())
 
-    def test_antigravity_without_model_omits_model_flag(self) -> None:
+    def test_antigravity_uses_default_model_when_none_given(self) -> None:
         self.profile("claude,antigravity")
         self.fake("agy")
         result = self.run_wrapper("--host", "claude", "antigravity", "treść zadania")
@@ -205,8 +210,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "antigravity", "-zadanie")
         self.assertEqual(result.returncode, 0, result.stderr)
         argv = self.argv()
-        self.assertEqual(argv[1], "-p")
-        self.assertTrue("\n".join(argv[2:]).startswith("\n-zadanie"))
+        self.assertEqual(argv[1:4], ["-p", "", "-zadanie"])
 
     def test_missing_executor_binary_is_error(self) -> None:
         (self.bin / "claude").unlink()

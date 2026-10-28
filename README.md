@@ -1253,7 +1253,7 @@ dozwolonych wykonawców.
 |-----------|---------|-------|-------|
 | `claude` | `claude -p --permission-mode bypassPermissions` | `--model` | stdin |
 | `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
-| `antigravity` | `agy -p "<treść>" --dangerously-skip-permissions` (agy 1.4.8) | `--model` | argument |
+| `antigravity` | `agy -p "<treść>" --dangerously-skip-permissions --model … --effort medium` (agy 1.4.8) | `--model`, domyślnie `gemini-3.8-flash-medium` | argument |
 
 Wszyscy wykonawcy mają edycje i bash bez pytań. Guardy kita (git-guard, sensitive-files-guard)
 działają u `claude` i `opencode`: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166).

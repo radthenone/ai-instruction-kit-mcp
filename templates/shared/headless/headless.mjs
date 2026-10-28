@@ -298,7 +298,8 @@ async function main() {
   // Prompt nie trafia do logu — numer ticketu tak, żeby run dało się przypisać do issue.
   if (ticket) log(`[headless] ticket #${ticket}\n`)
   const args = executor.args(opts.model, prompt)
-  log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+  const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
+  log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
   const startStash = new Set(lines(git("stash", "list", "--format=%H")))
