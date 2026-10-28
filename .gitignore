@@ -54,6 +54,9 @@ skills-lock.json
 # Prywatne nadpisania: uprawnienia, włączone serwery MCP. Per maszyna, nie per repo.
 .claude/settings.local.json
 
+# Model i effort Antigravity dla /headless — agy nie ma projektowego configu. Per osoba.
+/.agents/agy.json
+
 # --- Codex CLI ---------------------------------------------------------------
 .codex/*
 !.codex/skills/

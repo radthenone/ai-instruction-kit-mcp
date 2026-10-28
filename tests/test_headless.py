@@ -25,6 +25,8 @@ TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep")
 # robią w repo commit / `git stash` jak wykonawca w trakcie pracy (#183).
 FAKE = """#!/bin/sh
 printf '%s\\n' "$(basename "$0")" "$@" > "$HEADLESS_TEST_DIR/argv"
+basename "$0" >> "$HEADLESS_TEST_DIR/calls"
+case " $FAKE_LIMIT_FOR " in *" $(basename "$0") "*) echo "Error: rate limit reached"; exit 1;; esac
 if [ "$(basename "$0")" = claude ]; then cat > "$HEADLESS_TEST_DIR/stdin"; fi
 sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
@@ -194,6 +196,114 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(argv[-5:], ["--dangerously-skip-permissions", "--model", "flash", "--effort", "medium"])
         self.assertNotIn("treść zadania", self.headless_log())
 
+    def test_default_timeout_is_60_minutes(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("(timeout 60 min)", self.headless_log())
+
+    def test_opencode_host_calls_gemini_with_model_timeout_and_heartbeat(self) -> None:
+        self.profile("opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper(
+            "--host", "opencode", "gemini", "--model", "gemini-3.8-flash-high",
+            "--timeout", "90", "--heartbeat", "5", "x",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(self.argv()[0]).name, "agy")
+        self.assertEqual(
+            self.argv()[-5:],
+            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-high", "--effort", "medium"],
+        )
+        self.assertIn("opencode → antigravity", self.headless_log())
+        self.assertIn("(timeout 90 min)", self.headless_log())
+
+    def test_antigravity_host_calls_opencode_with_model_and_timeout(self) -> None:
+        self.profile("opencode,antigravity")
+        result = self.run_wrapper(
+            "--host", "antigravity", "opencode", "--model", "openrouter/qwen", "--timeout", "90", "x",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[1:6], ["run", "--standalone", "--auto", "--model", "openrouter/qwen"])
+        self.assertIn("antigravity → opencode", self.headless_log())
+        self.assertIn("(timeout 90 min)", self.headless_log())
+
+    def test_claude_host_calls_gemini_with_timeout(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "gemini", "--timeout", "45", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("claude → antigravity", self.headless_log())
+        self.assertIn("(timeout 45 min)", self.headless_log())
+
+    def test_antigravity_host_cannot_call_gemini_itself(self) -> None:
+        self.profile("opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "antigravity", "gemini", "x")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("nie wywołuje sam siebie", result.stderr)
+
+    def calls(self) -> list[str]:
+        return (self.root / "calls").read_text(encoding="utf-8").splitlines()
+
+    def test_opencode_limit_hands_same_prompt_to_gemini(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "opencode", "echo witaj", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), ["opencode2", "agy"])
+        self.assertTrue(self.argv()[2].startswith("echo witaj"))
+        self.assertIn("opencode → antigravity", self.headless_log())
+
+    def test_missing_opencode_hands_prompt_to_gemini(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        (self.bin / "opencode2").unlink()
+        (self.bin / "opencode").unlink()
+        result = self.run_wrapper("--host", "claude", "opencode", "echo witaj")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), ["agy"])
+        self.assertIn("opencode → antigravity", self.headless_log())
+
+    def test_limit_on_opencode_and_gemini_leaves_task_to_host(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2 agy")
+        self.assertEqual(result.returncode, 75)
+        self.assertEqual(self.calls(), ["opencode2", "agy"])
+        self.assertIn("PAUSE=rate-limit", result.stdout)
+
+    def test_gemini_limit_hands_same_prompt_to_opencode(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "gemini", "echo witaj", FAKE_LIMIT_FOR="agy")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), ["agy", "opencode2"])
+        self.assertIn("antigravity → opencode", self.headless_log())
+
+    def test_fallback_skips_executor_outside_profile(self) -> None:
+        self.profile("claude,opencode")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 75)
+        self.assertEqual(self.calls(), ["opencode2"])
+
+    def test_model_flag_is_not_passed_to_fallback_executor(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--model", "openrouter/qwen", "x", FAKE_LIMIT_FOR="opencode2",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[-4:], ["--model", "gemini-3.8-flash-medium", "--effort", "medium"])
+
+    def test_gemini_is_alias_for_antigravity(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "gemini", "treść zadania")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), ["agy"])
+        self.assertEqual(self.argv()[1], "-p")
+
     def test_antigravity_uses_default_model_when_none_given(self) -> None:
         self.profile("claude,antigravity")
         self.fake("agy")
@@ -203,6 +313,24 @@ class HeadlessWrapperTest(unittest.TestCase):
             self.argv()[-5:],
             ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium", "--effort", "medium"],
         )
+
+    def test_antigravity_reads_model_and_effort_from_project_config(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        (self.root / ".agents").mkdir()
+        (self.root / ".agents/agy.json").write_text('{"model": "gemini-x", "effort": "high"}', encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "gemini", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[-4:], ["--model", "gemini-x", "--effort", "high"])
+
+    def test_model_flag_beats_antigravity_project_config(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        (self.root / ".agents").mkdir()
+        (self.root / ".agents/agy.json").write_text('{"model": "gemini-x"}', encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "gemini", "--model", "gemini-y", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[-4:], ["--model", "gemini-y", "--effort", "medium"])
 
     def test_antigravity_prompt_starting_with_dash_is_not_read_as_flag(self) -> None:
         self.profile("claude,antigravity")

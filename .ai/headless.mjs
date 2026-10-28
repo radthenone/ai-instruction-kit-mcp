@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
 const FLAGS = ["--model", "--timeout", "--heartbeat"]
-const DEFAULT_TIMEOUT_MIN = 30
+const DEFAULT_TIMEOUT_MIN = 60
 const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
 // Pauza limitu dostawcy wykonawcy (nie błąd): kod wyjścia 75 (EX_TEMPFAIL).
@@ -112,13 +112,31 @@ const EXECUTORS = {
     // `--dangerously-skip-permissions` (agy 1.4.8) auto-approve narzędzi; deny z hooków guardów
     // `.agents/hooks.json` przebija tę flagę (sprawdzone: git-guard blokuje `git reset --hard`).
     bins: ["agy"],
-    args: (model, prompt) => [
-      "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
-      "--dangerously-skip-permissions",
-      "--model", model || "gemini-3.8-flash-medium", "--effort", "medium",
-    ],
+    // agy nie ma projektowego configu z modelem — `.agents/agy.json` (gitignored) czyta wrapper.
+    args: (model, prompt) => {
+      const cfg = agyConfig()
+      return [
+        "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
+        "--dangerously-skip-permissions",
+        "--model", model || cfg.model || "gemini-3.8-flash-medium", "--effort", cfg.effort || "medium",
+      ]
+    },
     stdin: false,
   },
+}
+
+const EXECUTOR_ALIASES = { gemini: "antigravity" }
+// Zastępcy przy limicie, w tej kolejności, po wywołanym wykonawcy; po ostatnim przejmuje host.
+const FALLBACK_ORDER = ["opencode", "antigravity"]
+
+function agyConfig() {
+  const path = join(".agents", "agy.json")
+  if (!existsSync(path)) return {}
+  try {
+    return JSON.parse(readFileSync(path, "utf8"))
+  } catch (err) {
+    fail(`${path}: niepoprawny JSON (${err.message})`)
+  }
 }
 
 function fail(message) {
@@ -249,6 +267,7 @@ const lines = (text) => (text ? text.split("\n") : [])
 
 async function main() {
   const opts = parse(process.argv.slice(2))
+  opts.executor = EXECUTOR_ALIASES[opts.executor] || opts.executor
   // Nazwa binarki (`opencode2`) działa jak nazwa wykonawcy.
   if (!EXECUTORS[opts.executor]) {
     opts.executor = Object.keys(EXECUTORS).find((k) => EXECUTORS[k].bins.includes(opts.executor)) || opts.executor
@@ -269,16 +288,10 @@ async function main() {
   if (!prompt && !process.stdin.isTTY) prompt = readFileSync(0, "utf8")
   prompt = prompt.trim()
   if (!prompt) fail("pusta treść zadania — podaj ją w cudzysłowie albo na stdin")
-  const executor = EXECUTORS[opts.executor]
-  const found = executor.bins.map(which).find(Boolean)
-  const bin = (process.platform === "win32" && /\.(cmd|bat)$/i.test(found || "") && resolveShim(found)) || found
-  // `.cmd`/`.bat` (shim npm na Windows) idzie przez cmd.exe, który rozbija wieloliniowy
-  // argument i interpretuje `& | >` — treść w argumencie byłaby niebezpieczna.
-  const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin || "")
-  if (needsShell && !executor.stdin) {
-    fail(`${bin} to skrypt cmd — treść w argumencie nie przejdzie bezpiecznie. Dodaj do PATH binarkę .exe ${opts.executor}`)
-  }
-  if (!bin) fail(`nie znaleziono ${executor.bins.join(" ani ")} w PATH. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
+  // Limit albo brak binarki → ta sama treść 1:1 do pozostałych tanich wykonawców; potem host.
+  const chain = [opts.executor, ...FALLBACK_ORDER.filter((e) => e !== opts.executor && allowed.includes(e))]
+    .map(resolveBin)
+  if (!chain.some((c) => !c.why)) fail(`${chain[0].why}. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
 
   // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
   const runsDir = resolve(".ai", "headless-runs")
@@ -297,9 +310,55 @@ async function main() {
   process.stdout.write(`[headless] log: ${logPath}\n`)
   // Prompt nie trafia do logu — numer ticketu tak, żeby run dało się przypisać do issue.
   if (ticket) log(`[headless] ticket #${ticket}\n`)
-  const args = executor.args(opts.model, prompt)
+
+  // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
+  // z uprawnieniami na edycje i bash.
+  const current = { child: null, report: () => "" }
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => {
+      if (current.child) killTree(current.child)
+      log(current.report())
+      process.exit(128 + constants.signals[signal])
+    })
+  }
+
+  let code = null
+  for (const [i, { name, executor, bin, needsShell, why }] of chain.entries()) {
+    const next = chain.slice(i + 1).find((c) => !c.why)?.name
+    if (why) {
+      log(`[headless] ${why}${next ? ` — przekazuję zadanie: ${name} → ${next}` : ""}\n`)
+      if (!next) break
+      continue
+    }
+    // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
+    code = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current })
+    if (code !== PAUSE_CODE || !next) break
+    log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
+  }
+  log(`[headless] kod wyjścia: ${code}\n`)
+  // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
+  process.stdout.write("", () => process.exit(code))
+}
+
+function resolveBin(name) {
+  const executor = EXECUTORS[name]
+  const found = executor.bins.map(which).find(Boolean)
+  const bin = (process.platform === "win32" && /\.(cmd|bat)$/i.test(found || "") && resolveShim(found)) || found
+  // `.cmd`/`.bat` (shim npm na Windows) idzie przez cmd.exe, który rozbija wieloliniowy
+  // argument i interpretuje `& | >` — treść w argumencie byłaby niebezpieczna.
+  const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin || "")
+  const why = !bin
+    ? `nie znaleziono ${executor.bins.join(" ani ")} w PATH`
+    : needsShell && !executor.stdin
+      ? `${bin} to skrypt cmd — treść w argumencie nie przejdzie bezpiecznie. Dodaj do PATH binarkę .exe ${name}`
+      : ""
+  return { name, executor, bin, needsShell, why }
+}
+
+async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current }) {
+  const args = executor.args(model, prompt)
   const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
-  log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+  log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
   const startStash = new Set(lines(git("stash", "list", "--format=%H")))
@@ -341,6 +400,8 @@ async function main() {
   const fullTail = () => [...tail, ...[...partial.values()].filter((l) => l.trim())]
   const lastLine = () => (fullTail().at(-1) || "").trim()
   const minutes = (ms) => Math.round(ms / 6000) / 10
+  current.child = child
+  current.report = () => finalReport({ startHead, startStash, tail: fullTail() })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
   const heartbeat = setInterval(() => {
@@ -359,16 +420,6 @@ async function main() {
     // Wykonawca, który skończy przed odczytem treści, daje EPIPE — nie może wywrócić wrappera.
     child.stdin.on("error", () => {})
     child.stdin.end(prompt)
-  }
-
-  // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
-  // z uprawnieniami na edycje i bash.
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-    process.on(signal, () => {
-      killTree(child)
-      log(finalReport({ startHead, startStash, tail: fullTail() }))
-      process.exit(128 + constants.signals[signal])
-    })
   }
 
   const poll = process.platform === "win32" ? setInterval(() => snapshotDescendants(child.pid), 5000) : undefined
@@ -398,7 +449,8 @@ async function main() {
   // Po ubiciu drzewa potoki się zamykają — dociągamy resztę wyjścia (maks. 3 s).
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
-  if (timedOut) log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${opts.executor} zabite\n`)
+  current.child = null
+  if (timedOut) log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
@@ -409,9 +461,7 @@ async function main() {
     code = 124
   }
   log(finalReport({ startHead, startStash, tail: fullTail(), pause }))
-  log(`[headless] kod wyjścia: ${code}\n`)
-  // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
-  process.stdout.write("", () => process.exit(code))
+  return code
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
