@@ -1310,7 +1310,7 @@ agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wyko
 | Warstwa | Skąd model |
 |---------|------------|
 | Agent `/headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
-| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167; `.agents/agy.json` dla agy) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy |
+| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167; `.agents/agy.json` dla agy) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy. W linked worktree config z głównego checkoutu idzie jako `OPENCODE_CONFIG`, a raport mówi `CONFIG=main-checkout`/`CONFIG=missing` (#300) |
 | Agenci kitu wołani w sesji wykonawcy | `models.<wykonawca>.<tier>` w Profilu, bez mapowania — model sesji wykonawcy |
 
 **Sprzątanie procesów.** Wrapper uruchamia wykonawcę we własnej grupie procesów (Unix)

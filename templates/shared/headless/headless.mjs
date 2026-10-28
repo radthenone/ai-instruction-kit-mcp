@@ -100,6 +100,10 @@ const EXECUTORS = {
     // `--standalone`: prywatny serwer jako proces potomny, nie usługa w tle — inaczej
     // ubicie drzewa nie sięga LSP i MCP wykonawcy.
     bins: ["opencode2", "opencode"],
+    // Projektowy config jest w `.gitignore`, więc linked worktree go nie ma. Wtedy
+    // wskazujemy plik z głównego checkoutu natywnie (`OPENCODE_CONFIG`), a wrapper czyta
+    // z niego `model` (#300). Sam plik w worktree ma pierwszeństwo i nie wymaga fallbacku.
+    config: { file: "opencode.json", env: "OPENCODE_CONFIG" },
     // Treść od `-` (np. lista markdown) parser opencode wziąłby za flagę — nowa linia na
     // początku tego nie zmienia dla modelu.
     args: (model, prompt) => [
@@ -151,6 +155,44 @@ function agyConfig() {
     return JSON.parse(readFileSync(path, "utf8"))
   } catch (err) {
     fail(`${path}: niepoprawny JSON (${err.message})`)
+  }
+}
+
+// Katalog głównego checkoutu, gdy cwd to linked worktree (`--git-dir` ≠ `--git-common-dir`);
+// null poza worktree. Worktree ma własny `.git/worktrees/<id>`, wspólny jest `<główny>/.git`.
+function mainCheckout() {
+  const gitDir = git("rev-parse", "--git-dir")
+  const commonDir = git("rev-parse", "--git-common-dir")
+  if (!gitDir || !commonDir) return null
+  const cwd = process.cwd()
+  try {
+    if (norm(resolve(cwd, gitDir)) === norm(resolve(cwd, commonDir))) return null
+    return dirname(norm(resolve(cwd, commonDir)))
+  } catch {
+    return null
+  }
+}
+
+// Config wykonawcy, którego w worktree nie ma: bierzemy plik z głównego checkoutu.
+// Wykonawcy bez mechanizmu env dostają tylko ostrzeżenie — bez fallbacku (#300).
+function configFor(executor) {
+  const main = mainCheckout()
+  if (!main) return null
+  if (!executor.config) return { line: "CONFIG=missing — executor default model" }
+  // Jawnie wskazany config (env) wygrywa — nie nadpisujemy decyzji użytkownika.
+  if (process.env[executor.config.env]) return null
+  if (existsSync(join(process.cwd(), executor.config.file))) return null
+  const path = join(main, executor.config.file)
+  if (!existsSync(path)) return { line: "CONFIG=missing — executor default model" }
+  return { env: executor.config.env, path, model: configModel(path), line: `CONFIG=main-checkout ${path}` }
+}
+
+// `model` z projektowego configu (JSON). Niepoprawny plik nie wywraca runu — tylko brak modelu.
+function configModel(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")).model || ""
+  } catch {
+    return ""
   }
 }
 
@@ -376,7 +418,9 @@ function resolveBin(name) {
 }
 
 async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last }) {
-  const args = executor.args(model, prompt)
+  // Fallback configu tylko w linked worktree; poza nim null i zachowanie bez zmian.
+  const config = configFor(executor)
+  const args = executor.args(model || config?.model || "", prompt)
   const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
   log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
@@ -391,6 +435,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     shell: needsShell,
     stdio: [executor.stdin ? "pipe" : "ignore", "pipe", "pipe"],
     windowsHide: true,
+    // Natywny mechanizm wskazania configu (opencode: `OPENCODE_CONFIG`), gdy worktree go nie ma.
+    env: config?.env ? { ...process.env, [config.env]: config.path } : process.env,
   })
   const closed = new Promise((done) => child.on("close", done))
   // Ostatnie linie wykonawcy do heartbeatu i raportu; `partial` = linia bez `\n` jeszcze,
@@ -421,7 +467,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const lastLine = () => (fullTail().at(-1) || "").trim()
   const minutes = (ms) => Math.round(ms / 6000) / 10
   current.child = child
-  current.report = () => finalReport({ startHead, startStash, tail: fullTail() })
+  current.report = () => finalReport({ startHead, startStash, tail: fullTail(), config: config?.line })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
   const heartbeat = setInterval(() => {
@@ -485,15 +531,17 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     code = 124
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null }))
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line }))
   return code
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail, pause }) {
+function finalReport({ startHead, startStash, tail, pause, config }) {
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
+  // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
+  if (config) out.push(`## ${config}`)
   const status = git("status", "--short")
   if (status !== null) out.push("## git status --short", status || "(czysto)")
   if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")
