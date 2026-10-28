@@ -1115,13 +1115,21 @@ class TestHeadlessAgent(_BootstrapTestCase):
             self.assertFalse((workspace / ".claude/agents/headless.md").exists())
             self.assertFalse((workspace / ".codex/skills/headless").exists())
 
+    def test_installed_with_antigravity_as_executor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._install(workspace, "claude,antigravity")
+            self.assertTrue((workspace / ".ai/headless.mjs").is_file())
+            self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
+
     def test_removed_when_clients_drop_below_two(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             workspace.mkdir()
             self._install(workspace, "claude,opencode,antigravity")
             self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
-            self._install(workspace, "claude,antigravity")
+            self._install(workspace, "claude,codex")
             self.assertFalse((workspace / ".agents/skills/headless").exists())
             self.assertFalse((workspace / ".ai/headless.mjs").exists())
             self.assertFalse((workspace / ".claude/agents/headless.md").exists())

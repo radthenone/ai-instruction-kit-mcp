@@ -107,6 +107,18 @@ const EXECUTORS = {
     ],
     stdin: false,
   },
+  antigravity: {
+    // `-p` bierze następny argument jako prompt, więc prompt idzie zaraz po nim.
+    // `--dangerously-skip-permissions` (agy 1.4.8) auto-approve narzędzi; deny z hooków guardów
+    // `.agents/hooks.json` przebija tę flagę (sprawdzone: git-guard blokuje `git reset --hard`).
+    bins: ["agy"],
+    args: (model, prompt) => [
+      "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
+      "--dangerously-skip-permissions",
+      "--model", model || "gemini-3.8-flash-medium", "--effort", "medium",
+    ],
+    stdin: false,
+  },
 }
 
 function fail(message) {
@@ -286,7 +298,8 @@ async function main() {
   // Prompt nie trafia do logu — numer ticketu tak, żeby run dało się przypisać do issue.
   if (ticket) log(`[headless] ticket #${ticket}\n`)
   const args = executor.args(opts.model, prompt)
-  log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${args.slice(0, -1).join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+  const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
+  log(`[headless] ${opts.host} → ${opts.executor}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
   const startStash = new Set(lines(git("stash", "list", "--format=%H")))

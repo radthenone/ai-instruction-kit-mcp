@@ -21,9 +21,10 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 ```
 
 - `<wykonawca>` — klient z `clients:` w `.ai/project.profile.yaml`, inny niż host, z trybem
-  headless (dziś: `claude`, `opencode`).
+  headless (dziś: `claude`, `opencode`, `antigravity`).
 - `--model` — model sesji wykonawcy; bez flagi decyduje jego projektowy config (np. `model`
-  w `opencode.json`), potem jego domyślny model.
+  w `opencode.json`), potem jego domyślny model. `antigravity` bez flagi: `gemini-3.8-flash-medium`
+  (wrapper zawsze podaje też `--effort medium`; config agy nie decyduje).
 - `--timeout` — minuty, domyślnie 30.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
