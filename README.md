@@ -1253,9 +1253,12 @@ dozwolonych wykonawców.
 |-----------|---------|-------|-------|
 | `claude` | `claude -p --permission-mode bypassPermissions` | `--model` | stdin |
 | `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
+| `antigravity` | `agy -p "<treść>" --dangerously-skip-permissions --model … --effort medium` (agy 1.4.8) | `--model`, domyślnie `gemini-3.8-flash-medium` | argument |
 
-Obaj wykonawcy mają edycje i bash bez pytań, a guardy kita (git-guard, sensitive-files-guard)
-działają dalej: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166). Nowy wykonawca
+Wszyscy wykonawcy mają edycje i bash bez pytań. Guardy kita (git-guard, sensitive-files-guard)
+działają u `claude` i `opencode`: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166).
+U `antigravity` hooki `.agents/hooks.json` działają mimo `--dangerously-skip-permissions`
+(deny git-guard sprawdzone na agy 1.4.8). Nowy wykonawca
 = wiersz w `EXECUTORS` w `templates/shared/headless/headless.mjs` i w `HEADLESS_EXECUTORS`
 w `scripts/bootstrap-project.sh`.
 
@@ -1267,9 +1270,9 @@ bez tego guardy leżą na dysku, ale nie działają.
 VS Code (Copilot) ma guardy kitowe przez `.github/hooks/kit-guards.json`
 (`node .github/hooks/invoke-hook.js <guard>.mjs --to copilot`, #200) — nie jest wykonawcą
 ani hostem headless w instalacji kita, ale jego agent mode egzekwuje tę samą politykę.
-Cursor (`cursor-agent -p`) i Antigravity (`agy -p`) mają tryb headless, ale nie są
-wykonawcami kita (patrz `EXECUTORS` w `headless.mjs`) — mogą natomiast być **hostami**
-(macierz niżej). Antigravity ma guardy kitowe przez `.agents/hooks.json`
+Cursor (`cursor-agent -p`) ma tryb headless, ale nie jest wykonawcą kita (patrz `EXECUTORS`
+w `headless.mjs`) — może natomiast być **hostem** (macierz niżej). Antigravity jest wykonawcą
+(`agy -p`), ma guardy kitowe przez `.agents/hooks.json`
 (`node hooks/invoke-hook.js <guard>.mjs --to antigravity`, #201). Kiro i Kilo — bez trybu
 headless w instalacji kita.
 
@@ -1284,7 +1287,7 @@ kita i wpisem w `EXECUTORS`):
 | Cursor, VS Code, Kiro, Kilo, Antigravity | tak | tak |
 
 **Instalacja.** Agent `/headless` trafia do każdego klienta z `--clients`, gdy lista zawiera
-co najmniej dwóch wykonawców (dziś: `claude` i `opencode`; `all` też). Bootstrap wpisuje w plik
+co najmniej dwóch wykonawców (dziś: `claude`, `opencode` i `antigravity`; `all` też). Bootstrap wpisuje w plik
 agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wykonawców
 = agent i wrapper znikają przy reload.
 
