@@ -40,6 +40,7 @@ from guides.bugbot_md import (
 )
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
+from guides.worktree import check_worktree_drift, parse_worktree_section
 
 RULE_FILES: tuple[str, ...] = (
     "BUGBOT.md",
@@ -1154,5 +1155,33 @@ def run_doctor(
                 )
 
     findings.extend(_package_infos(workspace, overlay_text, overlay_paths))
+
+    profile_path = workspace / ".ai" / "project.profile.yaml"
+    if profile_path.is_file():
+        profile_content = _read(profile_path)
+        has_worktree = any(line.strip() == "worktree:" for line in profile_content.splitlines())
+        parsed_wt = parse_worktree_section(profile_content)
+        for warning in parsed_wt.get("warnings", []):
+            findings.append(
+                Finding(
+                    "warning",
+                    ".ai/project.profile.yaml",
+                    None,
+                    warning,
+                    "invalid-worktree-config",
+                )
+            )
+        if has_worktree or (workspace / ".ai" / "worktree.json").is_file():
+            drift_msgs = check_worktree_drift(workspace, profile_path)
+            for msg in drift_msgs:
+                findings.append(
+                    Finding(
+                        "warning",
+                        ".ai/worktree.json",
+                        None,
+                        msg,
+                        "stale-worktree-config",
+                    )
+                )
 
     return DoctorReport(tuple(dict.fromkeys(findings)))

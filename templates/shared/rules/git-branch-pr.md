@@ -62,8 +62,10 @@ Tytuły issue/PR/branch: **zawsze EN**. Body / commity / docstringi: język MCP 
 Użyj gdy: drugi temat równolegle, brudny główny checkout, Cloud/best-of-n, chcesz izolacji jak u „kolegi”.
 
 1. Najpierw **`/git-start`** (albo już masz branch `feat/N-…`) — konwencja nazwy z kita.  
-2. Potem skill worktree — izoluj **ten** branch (nie twórz drugiej, konkurencyjnej nazwy).  
+2. Potem worktree: **zawsze** przez `node .ai/worktree.mjs add [<ścieżka>] <branch>` (albo `remove <ścieżka>` po zakończeniu) — nie gołym `git worktree add`. Superpowers `using-git-worktrees` używa tej komendy jako kroku tworzenia. Skrypt przenosi pliki z `.gitignore` i konfiguruje zależności (w tym overlay venv).  
+   Jeśli worktree powstało poza skryptem (natywny Claude, `EnterWorktree`, Superpowers), od razu po utworzeniu wykonaj: `node .ai/worktree.mjs sync [<ścieżka>]`.  
 3. Koduj w worktree.
+4. Po merge PR (albo przy porzuceniu) usuń worktree: `node .ai/worktree.mjs remove <ścieżka>`.
 
 **Nie** wymagaj worktree na każdym drobnym PR.
 

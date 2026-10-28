@@ -715,10 +715,21 @@ headless_enabled() {
   [[ "$n" -ge 2 && "$SKIP_AGENTS" -eq 0 ]]
 }
 
+
+install_worktree() {
+  mkdir -p "$TARGET/.ai"
+  cp "$KIT_ROOT/templates/shared/worktree/worktree.mjs" "$TARGET/.ai/worktree.mjs"
+  chmod +x "$TARGET/.ai/worktree.mjs" 2>/dev/null || true
+  PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_worktree.py" \
+    "$WORKSPACE_PATH" "$TARGET/.ai/project.profile.yaml" || echo "  ! worktree.json nie wyrenderowany" >&2
+}
+
 install_headless() {
   local c rel
   if [[ "$HEADLESS" != "1" ]]; then
     kit_rm .ai/headless.mjs
+  kit_rm .ai/worktree.mjs
+  kit_rm .ai/worktree.json
     return 0
   fi
   cp "$KIT_ROOT/templates/shared/headless/headless.mjs" "$TARGET/.ai/headless.mjs"
@@ -1392,6 +1403,8 @@ cat > "$TARGET/.ai/.kit-bootstrap.json" <<JSON
 }
 JSON
 echo "  + .ai/.kit-bootstrap.json (stamp dla check_kit_status)"
+
+install_worktree
 
 warn_tracked_machine_files
 

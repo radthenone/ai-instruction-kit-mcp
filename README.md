@@ -1064,6 +1064,39 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/teacher-agent`                     | `templates/shared/agents/teacher-agent.md`       |
 | `/review-security`                   | `templates/shared/agents/review-security.md`      |
 
+### Git worktree (.ai/worktree.mjs)
+
+Zarządzanie worktree przez jedną metodę kita (`node .ai/worktree.mjs …`): przenosi pliki z `.gitignore` (w tym konfiguracje MCP i `.env`) oraz zależności bez doinstalowywania czegokolwiek na VPS.
+
+#### Konfiguracja (`.ai/project.profile.yaml`)
+
+Opcjonalna sekcja w profilu projektu:
+
+```yaml
+worktree:
+  copy: [ ... ]      # pliki/katalogi kopiowane z głównego checkoutu (bez nadpisywania istniejących)
+  link: [ ... ]      # symlink do głównego checkoutu (np. frontend/node_modules); bez domyślnych wpisów
+  setup: [ ... ]     # komendy uruchamiane w worktree po copy/link; domyślnie pusta
+  venv: auto         # auto | overlay | none (domyślnie auto)
+```
+
+Gdy brak sekcji `copy`, skrypt kopiuje istniejące wpisy `MACHINE_FILES` (pliki MCP i stampy kita) + `.env` + `.claude/settings.local.json`.
+Polecenia w `setup:` przed uruchomieniem są weryfikowane przez `server-guard.mjs` (na VPS niebezpieczne komendy, np. instalacja paczek, są pomijane).
+
+#### Overlay venv i ograniczenia
+
+Dla Pythona tryb `venv: auto` (oraz `overlay`) tworzy lekki overlay venv bazujący na głównym `.venv`:
+- `python -m venv --without-pip` interpreterem z głównego venv (identyczna wersja),
+- plik `_kit_worktree.pth` w `site-packages` przekierowuje pakiety instalowane w trybie editable (`-e`) z prefiksem głównego repozytorium na ścieżkę worktree, a następnie dopisuje `site-packages` głównego venv,
+- **Ograniczenia**: metadane paczek i entry pointy pochodzą z głównego venv; overlay venv nie posiada wygenerowanych console scripts w `bin/` (testy i komendy uruchamiaj przez `python -m …` lub `uv run --no-sync python -m …`); editable instalowane przez import hook (`import __editable___..._finder`) nie są przekierowywane (ostrzeżenie w logu).
+
+#### Zasady zależności i uprawnień
+
+- **Linkowane zależności są tylko do odczytu**: `node_modules` czy współdzielony `site-packages` nie powinny być modyfikowane z poziomu worktree (postinstall, ensurepip czy instalacja paczek zmieniają środowisko główne).
+- **Pliki konfiguracyjne MCP**: kopiowane pliki wskazują ścieżkę `--workspace` głównego checkoutu (jest to zamierzone i bezpieczne).
+- **Server guard w worktree**: działa w worktree tylko wtedy, gdy projekt commituje pliki hooków kita (np. `.cursor/hooks/`, `.claude/hooks/`). Doctor weryfikuje ich obecność w repozytorium.
+
+
 ### `/teacher-*` — tryb nauki (przed kodem, nie po)
 
 `/review-*` sprawdza **gotowy diff** i zwraca tabelę findingów. `/teacher-*` działa **zanim** napiszesz kod: bierze Twoją koncepcję (albo bieżący diff, gdy nie podasz argumentu), tłumaczy o co w problemie naprawdę chodzi, pokazuje max 3 opcje z kosztami, wskazuje **jedną** rekomendację i zostawia Ci zadanie do zrobienia samodzielnie.
