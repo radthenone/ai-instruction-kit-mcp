@@ -53,29 +53,48 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     # Paczki — instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI.
     {"id": "uv-sync", "kind": "deny", "pattern": r"^\s*uv\s+(sync|add|remove|lock)(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
-    {"id": "uv-pip-install", "kind": "deny", "pattern": r"^\s*uv\s+pip\s+install(?=\s|$)",
+    {"id": "uv-pip-install", "kind": "deny", "pattern": r"^\s*uv\s+pip\s+(?:install|sync)(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
-    {"id": "pip-install", "kind": "deny", "pattern": r"^\s*pip3?\s+install(?=\s|$)",
+    {"id": "uv-tool-install", "kind": "deny", "pattern": r"^\s*uv\s+tool\s+install(?=\s|$)",
+     "reason": "`uv tool install` pobiera paczkę z sieci — narzędzia instaluj na PC albo w CI"},
+    {"id": "pip-install", "kind": "deny", "pattern": r"^\s*pip(?:3(?:\.\d+)?)?\s+install(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"},
-    {"id": "uv-run", "kind": "deny", "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--no-sync)",
+    {"id": "uv-run", "kind": "deny",
+     "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements)?(?=[\s=]|$))",
      "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"},
-    {"id": "uv-run-no-sync", "kind": "allow", "pattern": r"^\s*uv\s+run(?=\s|$).*?--no-sync",
+    {"id": "uv-run-no-sync", "kind": "allow",
+     "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--with(?:-requirements)?(?=[\s=]|$)).*?--no-sync",
      "reason": "uruchomienie bez synchronizacji"},
-    {"id": "uvx", "kind": "allow", "pattern": r"^\s*uvx(?=\s|$)",
-     "reason": "jednorazowe narzędzia bez instalacji do projektu"},
-    {"id": "bun-pkg", "kind": "deny", "pattern": r"^\s*bun\s+(install|add|remove)(?=\s|$)",
+    {"id": "uv-run-with", "kind": "deny",
+     "pattern": r"^\s*uv\s+run(?=\s|$).*--with(?:-requirements)?(?=[\s=]|$)",
+     "reason": "`uv run --with` pobiera paczkę z sieci, także z `--no-sync` — zależności instaluj na PC albo w CI"},
+    {"id": "uvx", "kind": "deny", "pattern": r"^\s*uvx(?=\s|$)(?!.*--offline(?=\s|$))",
+     "reason": "`uvx` pobiera narzędzie z sieci — użyj `uvx --offline` / `UV_OFFLINE=1` albo `uv run --no-sync python -m …`"},
+    {"id": "bun-pkg", "kind": "deny", "pattern": r"^\s*bun\s+(?:install|add|remove|i|a|update|up|upgrade)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-    {"id": "npm-pkg", "kind": "deny", "pattern": r"^\s*npm\s+(install|i|ci)(?=\s|$)",
+    {"id": "npm-pkg", "kind": "deny",
+     "pattern": r"^\s*npm\s+(?:install|i|ci|add|it|install-test|update|up|upgrade|remove)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-    {"id": "pnpm-pkg", "kind": "deny", "pattern": r"^\s*pnpm\s+(install|i|add)(?=\s|$)",
+    {"id": "pnpm-pkg", "kind": "deny", "pattern": r"^\s*pnpm\s+(?:install|i|add|update|up|upgrade|remove)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-    {"id": "yarn-pkg", "kind": "deny", "pattern": r"^\s*yarn\s+(install|add)(?=\s|$)",
+    {"id": "yarn-pkg", "kind": "deny", "pattern": r"^\s*yarn\s+(?:install|add|update|up|upgrade|remove)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+    {"id": "yarn-bare", "kind": "deny", "pattern": r"^\s*yarn\s*$",
+     "reason": "goły `yarn` instaluje zależności — instalacja tylko na PC albo w CI"},
     # CLI, które same instalują paczki (init/add) — poza skryptami projektu.
     {"id": "shadcn", "kind": "deny", "pattern": r"^\s*shadcn(?:@\S+)?\s+(?:init|add)(?=\s|$)",
      "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
     {"id": "expo-install", "kind": "deny", "pattern": r"^\s*expo(?:@\S+)?\s+install(?=\s|$)",
      "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
+    # Inne ekosystemy — ta sama zasada: nic nie instalujemy na serwerze.
+    {"id": "cargo-install", "kind": "deny", "pattern": r"^\s*cargo\s+install(?=\s|$)",
+     "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
+    {"id": "go-install", "kind": "deny", "pattern": r"^\s*go\s+install(?=\s|$)",
+     "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
+    {"id": "apt-install", "kind": "deny", "pattern": r"^\s*apt(?:-get)?\s+install(?=\s|$)",
+     "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
+    {"id": "corepack-enable", "kind": "deny", "pattern": r"^\s*corepack\s+enable(?=\s|$)",
+     "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
     # Buildy produkcyjne — tylko w CI.
     {"id": "next-build", "kind": "deny", "pattern": r"^\s*next\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
@@ -85,10 +104,27 @@ DEFAULTS: tuple[dict[str, str], ...] = (
      "reason": "build produkcyjny tylko w CI"},
     {"id": "vite-build", "kind": "deny", "pattern": r"^\s*vite\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI"},
+    {"id": "nuxt-build", "kind": "deny", "pattern": r"^\s*nuxt\s+build(?=\s|$)",
+     "reason": "build produkcyjny tylko w CI"},
+    {"id": "astro-build", "kind": "deny", "pattern": r"^\s*astro\s+build(?=\s|$)",
+     "reason": "build produkcyjny tylko w CI"},
+    {"id": "tsup", "kind": "deny", "pattern": r"^\s*tsup(?=\s|$)",
+     "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
+    {"id": "webpack", "kind": "deny", "pattern": r"^\s*webpack(?=\s|$)",
+     "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
+    {"id": "cargo-build", "kind": "deny", "pattern": r"^\s*cargo\s+build(?=\s|$)",
+     "reason": "build produkcyjny tylko w CI — na VPS `cargo check`"},
     {"id": "turbo-build", "kind": "deny", "pattern": r"^\s*turbo(?:\s+run)?(?:\s+[^-\s]\S*)*?\s+build(?=\s|$)",
      "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`"},
     {"id": "turbo-lint", "kind": "allow", "pattern": r"^\s*turbo\s+run(?:\s+(?:lint|typecheck))+(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s*$",
      "reason": "lekkie bramki na VPS"},
+    # Launchery JS, które domyślnie pobierają paczkę z sieci.
+    {"id": "npx-launcher", "kind": "deny", "pattern": r"^\s*npx(?=\s|$)(?!.*\s--no(?=\s|$))",
+     "reason": "`npx` pobiera paczkę z sieci — użyj `npx --no <bin>`, `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
+    {"id": "bunx-launcher", "kind": "deny", "pattern": r"^\s*bunx(?=\s|$)(?!.*\s--no-install(?=\s|$))",
+     "reason": "`bunx` pobiera paczkę z sieci — użyj `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
+    {"id": "dlx-launcher", "kind": "deny", "pattern": r"^\s*(?:pnpm|yarn)\s+dlx(?=\s|$)",
+     "reason": "`pnpm dlx` / `yarn dlx` zawsze pobiera paczkę — użyj skryptu projektu (`bun run typecheck`) albo `npx --no <bin>`"},
     # Przeglądarki / e2e — setki MB na instancję, tylko w CI.
     {"id": "playwright", "kind": "deny", "pattern": r"^\s*(npx\s+|bunx\s+|yarn\s+dlx\s+|pnpm\s+dlx\s+)?playwright(?=\s|$)",
      "reason": "przeglądarka to setki MB na instancję — e2e tylko w CI"},
@@ -97,7 +133,8 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "maestro", "kind": "deny", "pattern": r"^\s*maestro(?=\s|$)",
      "reason": "testy mobilne tylko w CI"},
     # Mnożenie procesów na słabym CPU.
-    {"id": "pytest-xdist", "kind": "deny", "pattern": r"^\s*pytest(?=\s|$).*\s(?:-n|--numprocesses)(?=[\s=\d]|$)",
+    {"id": "pytest-xdist", "kind": "deny",
+     "pattern": r"^\s*pytest(?=\s|$).*\s(?:-n(?:=?[a-zA-Z0-9]+)?|--numprocesses(?:=\S+)?)(?=\s|$)",
      "reason": "xdist mnoży procesy na słabym CPU — użyj `pytest` bez `-n`"},
 )
 
@@ -361,9 +398,11 @@ def command_forms(segment: str, depth: int = 0) -> tuple[list[str], dict[str, st
         sub = toks[i:i + 1]
         if sub in (["run"], ["run-script"]):
             toks = [head, sub[0], *toks[_skip_flags(toks, i + 1, _JS_PM_ARG):]]
-        else:
+            forms = [" ".join(toks)]
+        elif i < len(toks):
+            # Same flagi (`yarn --version`) to nie uruchomienie skryptu — zostaw oryginał.
             toks = [head, *toks[i:]]
-        forms = [" ".join(toks)]
+            forms = [" ".join(toks)]
         if len(toks) > 1 and toks[1] in ("dlx", "exec", "x"):
             rest = toks[_skip_flags(toks, 2, _NPX_ARG):]
     elif _PYTHON.fullmatch(head) and len(toks) > 2 and toks[1] == "-m":
@@ -434,12 +473,14 @@ def check_command(
     command: str,
     rules: list[dict[str, str]],
     no_sync: bool = False,
+    offline: bool = False,
 ) -> tuple[bool, dict[str, str] | None, str]:
     """Czy komenda denied? Zwraca `(denied, reguła, segment)` — allow wygrywa z deny.
 
     `uv-run` (także wrapper z `uv run` w środku) odpada przy `UV_NO_SYNC=1` z env
     albo z przypisania w linii. Gdy pasuje kilka odmów, inna reguła wygrywa z `uv-run`
-    — `UV_NO_SYNC` nie może przepuścić `docker` z tego samego wrappera.
+    — `UV_NO_SYNC` nie może przepuścić `docker` z tego samego wrappera. Analogicznie
+    `UV_OFFLINE=1` (env albo przypisanie) zdejmuje deny `uvx`.
     """
     fallback: tuple[bool, dict[str, str] | None, str] = (False, None, "")
     for segment in split_segments(command):
@@ -448,10 +489,13 @@ def check_command(
         except _TooDeep:
             return True, dict(_TOO_DEEP), segment.strip()
         segment_no_sync = no_sync or assigns.get("UV_NO_SYNC") == "1"
+        segment_offline = offline or assigns.get("UV_OFFLINE") == "1"
         for form in forms:
             deny_hit = allow_hit = None
             for rule in rules:
                 if segment_no_sync and rule_origin(rule) == "uv-run":
+                    continue
+                if segment_offline and rule_origin(rule) == "uvx":
                     continue
                 try:
                     matched = re.search(rule["pattern"], form) is not None

@@ -51,27 +51,42 @@ const EMBEDDED_DEFAULTS = [
   {"id": "docker-compose-config", "kind": "deny", "pattern": "^\\s*docker\\s+compose\\s+config(?=\\s|$)", "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
   {"id": "docker-compose-ps", "kind": "allow", "pattern": "^\\s*(?:docker|podman)(?:\\s+|-)compose\\s+ps(?=\\s|$)", "reason": "odczyt stanu kontenerów"},
   {"id": "uv-sync", "kind": "deny", "pattern": "^\\s*uv\\s+(sync|add|remove|lock)(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
-  {"id": "uv-pip-install", "kind": "deny", "pattern": "^\\s*uv\\s+pip\\s+install(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
-  {"id": "pip-install", "kind": "deny", "pattern": "^\\s*pip3?\\s+install(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"},
-  {"id": "uv-run", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)", "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"},
-  {"id": "uv-run-no-sync", "kind": "allow", "pattern": "^\\s*uv\\s+run(?=\\s|$).*?--no-sync", "reason": "uruchomienie bez synchronizacji"},
-  {"id": "uvx", "kind": "allow", "pattern": "^\\s*uvx(?=\\s|$)", "reason": "jednorazowe narzędzia bez instalacji do projektu"},
-  {"id": "bun-pkg", "kind": "deny", "pattern": "^\\s*bun\\s+(install|add|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-  {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(install|i|ci)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-  {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(install|i|add)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-  {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(install|add)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "uv-pip-install", "kind": "deny", "pattern": "^\\s*uv\\s+pip\\s+(?:install|sync)(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
+  {"id": "uv-tool-install", "kind": "deny", "pattern": "^\\s*uv\\s+tool\\s+install(?=\\s|$)", "reason": "`uv tool install` pobiera paczkę z sieci — narzędzia instaluj na PC albo w CI"},
+  {"id": "pip-install", "kind": "deny", "pattern": "^\\s*pip(?:3(?:\\.\\d+)?)?\\s+install(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"},
+  {"id": "uv-run", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements)?(?=[\\s=]|$))", "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"},
+  {"id": "uv-run-no-sync", "kind": "allow", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements)?(?=[\\s=]|$)).*?--no-sync", "reason": "uruchomienie bez synchronizacji"},
+  {"id": "uv-run-with", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$).*--with(?:-requirements)?(?=[\\s=]|$)", "reason": "`uv run --with` pobiera paczkę z sieci, także z `--no-sync` — zależności instaluj na PC albo w CI"},
+  {"id": "uvx", "kind": "deny", "pattern": "^\\s*uvx(?=\\s|$)(?!.*--offline(?=\\s|$))", "reason": "`uvx` pobiera narzędzie z sieci — użyj `uvx --offline` / `UV_OFFLINE=1` albo `uv run --no-sync python -m …`"},
+  {"id": "bun-pkg", "kind": "deny", "pattern": "^\\s*bun\\s+(?:install|add|remove|i|a|update|up|upgrade)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(?:install|i|ci|add|it|install-test|update|up|upgrade|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(?:install|add|update|up|upgrade|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "yarn-bare", "kind": "deny", "pattern": "^\\s*yarn\\s*$", "reason": "goły `yarn` instaluje zależności — instalacja tylko na PC albo w CI"},
   {"id": "shadcn", "kind": "deny", "pattern": "^\\s*shadcn(?:@\\S+)?\\s+(?:init|add)(?=\\s|$)", "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
   {"id": "expo-install", "kind": "deny", "pattern": "^\\s*expo(?:@\\S+)?\\s+install(?=\\s|$)", "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
+  {"id": "cargo-install", "kind": "deny", "pattern": "^\\s*cargo\\s+install(?=\\s|$)", "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "go-install", "kind": "deny", "pattern": "^\\s*go\\s+install(?=\\s|$)", "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "apt-install", "kind": "deny", "pattern": "^\\s*apt(?:-get)?\\s+install(?=\\s|$)", "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "corepack-enable", "kind": "deny", "pattern": "^\\s*corepack\\s+enable(?=\\s|$)", "reason": "instalacja na serwerze — zależności zmieniają się na PC albo w CI"},
   {"id": "next-build", "kind": "deny", "pattern": "^\\s*next\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
   {"id": "expo-build", "kind": "deny", "pattern": "^\\s*expo(?:@\\S+)?\\s+(prebuild|export)(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
   {"id": "eas-build", "kind": "deny", "pattern": "^\\s*eas\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
   {"id": "vite-build", "kind": "deny", "pattern": "^\\s*vite\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
+  {"id": "nuxt-build", "kind": "deny", "pattern": "^\\s*nuxt\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
+  {"id": "astro-build", "kind": "deny", "pattern": "^\\s*astro\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI"},
+  {"id": "tsup", "kind": "deny", "pattern": "^\\s*tsup(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
+  {"id": "webpack", "kind": "deny", "pattern": "^\\s*webpack(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `tsc --noEmit`"},
+  {"id": "cargo-build", "kind": "deny", "pattern": "^\\s*cargo\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `cargo check`"},
   {"id": "turbo-build", "kind": "deny", "pattern": "^\\s*turbo(?:\\s+run)?(?:\\s+[^-\\s]\\S*)*?\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`"},
   {"id": "turbo-lint", "kind": "allow", "pattern": "^\\s*turbo\\s+run(?:\\s+(?:lint|typecheck))+(?:\\s+-\\S+(?:\\s+[^-\\s]\\S*)?)*\\s*$", "reason": "lekkie bramki na VPS"},
+  {"id": "npx-launcher", "kind": "deny", "pattern": "^\\s*npx(?=\\s|$)(?!.*\\s--no(?=\\s|$))", "reason": "`npx` pobiera paczkę z sieci — użyj `npx --no <bin>`, `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
+  {"id": "bunx-launcher", "kind": "deny", "pattern": "^\\s*bunx(?=\\s|$)(?!.*\\s--no-install(?=\\s|$))", "reason": "`bunx` pobiera paczkę z sieci — użyj `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
+  {"id": "dlx-launcher", "kind": "deny", "pattern": "^\\s*(?:pnpm|yarn)\\s+dlx(?=\\s|$)", "reason": "`pnpm dlx` / `yarn dlx` zawsze pobiera paczkę — użyj skryptu projektu (`bun run typecheck`) albo `npx --no <bin>`"},
   {"id": "playwright", "kind": "deny", "pattern": "^\\s*(npx\\s+|bunx\\s+|yarn\\s+dlx\\s+|pnpm\\s+dlx\\s+)?playwright(?=\\s|$)", "reason": "przeglądarka to setki MB na instancję — e2e tylko w CI"},
   {"id": "cypress", "kind": "deny", "pattern": "^\\s*(npx\\s+|bunx\\s+)?cypress(?=\\s|$)", "reason": "przeglądarka to setki MB na instancję — e2e tylko w CI"},
   {"id": "maestro", "kind": "deny", "pattern": "^\\s*maestro(?=\\s|$)", "reason": "testy mobilne tylko w CI"},
-  {"id": "pytest-xdist", "kind": "deny", "pattern": "^\\s*pytest(?=\\s|$).*\\s(?:-n|--numprocesses)(?=[\\s=\\d]|$)", "reason": "xdist mnoży procesy na słabym CPU — użyj `pytest` bez `-n`"},
+  {"id": "pytest-xdist", "kind": "deny", "pattern": "^\\s*pytest(?=\\s|$).*\\s(?:-n(?:=?[a-zA-Z0-9]+)?|--numprocesses(?:=\\S+)?)(?=\\s|$)", "reason": "xdist mnoży procesy na słabym CPU — użyj `pytest` bez `-n`"},
 ];
 
 // `mcp__plugin_playwright_…`/`mcp__playwright__…` (Claude) i `mcp_playwright_…` (VS Code).
@@ -429,10 +444,14 @@ function commandForms(segment, depth = 0) {
   } else if (["bun", "npm", "pnpm", "yarn"].includes(head)) {
     const i = skipFlags(toks, 1, JS_PM_ARG);
     const sub = toks[i];
-    toks = sub === "run" || sub === "run-script"
-      ? [head, sub, ...toks.slice(skipFlags(toks, i + 1, JS_PM_ARG))]
-      : [head, ...toks.slice(i)];
-    forms = [toks.join(" ")];
+    if (sub === "run" || sub === "run-script") {
+      toks = [head, sub, ...toks.slice(skipFlags(toks, i + 1, JS_PM_ARG))];
+      forms = [toks.join(" ")];
+    } else if (i < toks.length) {
+      // Same flagi (`yarn --version`) to nie uruchomienie skryptu — zostaw oryginał.
+      toks = [head, ...toks.slice(i)];
+      forms = [toks.join(" ")];
+    }
     if (["dlx", "exec", "x"].includes(toks[1])) rest = toks.slice(skipFlags(toks, 2, NPX_ARG));
   } else if (PYTHON.test(head) && toks.length > 2 && toks[1] === "-m") {
     rest = toks.slice(2);
@@ -501,6 +520,7 @@ const ruleOrigin = (rule) => rule.rule || rule.id;
 
 function checkCommand(cmd) {
   const envNoSync = String(process.env.UV_NO_SYNC || "") === "1";
+  const envOffline = String(process.env.UV_OFFLINE || "") === "1";
   let fallback = null;
   for (const segment of splitSegments(cmd)) {
     let forms, assigns;
@@ -511,11 +531,13 @@ function checkCommand(cmd) {
       throw e;
     }
     const noSync = envNoSync || assigns.UV_NO_SYNC === "1";
+    const offline = envOffline || assigns.UV_OFFLINE === "1";
     for (const form of forms) {
       let denyHit = null;
       let allowHit = null;
       for (const rule of rules) {
         if (noSync && ruleOrigin(rule) === "uv-run") continue;
+        if (offline && ruleOrigin(rule) === "uvx") continue;
         let matched = false;
         try {
           matched = new RegExp(rule.pattern).test(form);

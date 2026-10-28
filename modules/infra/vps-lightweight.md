@@ -51,8 +51,11 @@ np. `/kit-project-edit "w VPS lekkie to…"`. Overlay ma pierwszeństwo przed bu
 
 Tekst powyżej to domyślne zachowanie agenta. Twardą blokadę egzekwuje
 **server-guard** (`templates/shared/guards/server-guard.mjs`, szczegóły: README
-„Server guard (VPS)" i ADR 0009): na VPS odrzuca kontenery, instalację paczek,
-buildy produkcyjne, przeglądarki/e2e i `pytest -xdist` — także schowane w tasku,
+„Server guard (VPS)" i ADR 0009): na VPS odrzuca kontenery, instalację paczek
+w każdym ekosystemie (uv, pip, npm/bun/pnpm/yarn, cargo, go, apt, corepack),
+pobieranie przez launchery (`npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `uvx`),
+buildy produkcyjne (także `nuxt`, `astro`, `tsup`, `webpack`, `cargo build`),
+przeglądarki/e2e i `pytest -xdist` — także schowane w tasku,
 skrypcie `package.json`, `turbo run` albo za `sudo`. Wprowadzony po incydencie
 z 2026-10-15 (restart serwera po `uv run` bez `--no-sync`), kiedy okazało się,
 że sama reguła tekstowa nie wystarcza dla subagentów.
