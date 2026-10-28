@@ -23,10 +23,16 @@ TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep")
 # Udaje CLI wykonawcy: zapisuje argv i stdin, zostawia „LSP” w tle i kończy się kodem
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
 # robią w repo commit / `git stash` jak wykonawca w trakcie pracy (#183).
+# `-p /quota` (agy) odpowiada FAKE_QUOTA z kodem FAKE_QUOTA_CODE; FAKE_LIMIT_FOR / FAKE_FAIL_FOR —
+# podane binarki kończą się kodem 1 z tekstem limitu / zwykłego błędu (#293).
 FAKE = """#!/bin/sh
+if [ "$1" = -p ] && [ "$2" = /quota ]; then
+  echo "$(basename "$0") /quota" >> "$HEADLESS_TEST_DIR/calls"; printf '%b' "$FAKE_QUOTA"; exit "${FAKE_QUOTA_CODE:-0}"
+fi
 printf '%s\\n' "$(basename "$0")" "$@" > "$HEADLESS_TEST_DIR/argv"
 basename "$0" >> "$HEADLESS_TEST_DIR/calls"
 case " $FAKE_LIMIT_FOR " in *" $(basename "$0") "*) echo "Error: rate limit reached"; exit 1;; esac
+case " $FAKE_FAIL_FOR " in *" $(basename "$0") "*) echo "Error: request failed"; exit 1;; esac
 if [ "$(basename "$0")" = claude ]; then cat > "$HEADLESS_TEST_DIR/stdin"; fi
 sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
@@ -193,7 +199,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         argv = self.argv()
         self.assertEqual(argv[1], "-p")
         self.assertTrue("\n".join(argv[2:]).startswith("treść zadania"))
-        self.assertEqual(argv[-5:], ["--dangerously-skip-permissions", "--model", "flash", "--effort", "medium"])
+        self.assertEqual(argv[-3:], ["--dangerously-skip-permissions", "--model", "flash"])
         self.assertNotIn("treść zadania", self.headless_log())
 
     def test_default_timeout_is_60_minutes(self) -> None:
@@ -211,8 +217,8 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(Path(self.argv()[0]).name, "agy")
         self.assertEqual(
-            self.argv()[-5:],
-            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-high", "--effort", "medium"],
+            self.argv()[-3:],
+            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-high"],
         )
         self.assertIn("opencode → antigravity", self.headless_log())
         self.assertIn("(timeout 90 min)", self.headless_log())
@@ -318,7 +324,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             "--host", "claude", "opencode", "--model", "openrouter/qwen", "x", FAKE_LIMIT_FOR="opencode2",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.argv()[-4:], ["--model", "gemini-3.8-flash-medium", "--effort", "medium"])
+        self.assertEqual(self.argv()[-3:], ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium"])
 
     def test_gemini_is_alias_for_antigravity(self) -> None:
         self.profile("claude,antigravity")
@@ -328,14 +334,71 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.calls(), ["agy"])
         self.assertEqual(self.argv()[1], "-p")
 
+    # Wyjście `agy -p /quota` (escape'y dla `printf %b` w FAKE): dwa wyczerpane limity Gemini.
+    QUOTA_EMPTY = (
+        "Gemini Models\\tFive Hour Limit Remaining\\t0%\\t2099-01-01T12:00:00Z\\n"
+        "Gemini Models\\tWeekly Limit Remaining\\t0%\\t2099-01-01T10:00:00Z\\n"
+        "Claude and GPT models\\tFive Hour Limit Remaining\\t100%\\t2099-01-01T09:00:00Z\\n"
+    )
+
+    def test_agy_failure_with_exhausted_quota_is_rate_limit_pause(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "gemini", "x", FAKE_FAIL_FOR="agy", FAKE_QUOTA=self.QUOTA_EMPTY)
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertIn("PAUSE=rate-limit reset=2099-01-01T10:00:00.000Z", result.stdout)
+        self.assertEqual(self.calls(), ["agy", "agy /quota"])
+
+    def test_opencode_limit_then_agy_quota_exhausted_is_pause(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x",
+            FAKE_LIMIT_FOR="opencode2", FAKE_FAIL_FOR="agy", FAKE_QUOTA=self.QUOTA_EMPTY,
+        )
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertIn("PAUSE=rate-limit", result.stdout)
+
+    def test_gemini_quota_exhausted_hands_task_to_opencode(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "gemini", "x", FAKE_FAIL_FOR="agy", FAKE_QUOTA=self.QUOTA_EMPTY)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), ["agy", "agy /quota", "opencode2"])
+
+    def test_agy_failure_with_quota_left_is_plain_error(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        quota = "Gemini Models\\tFive Hour Limit Remaining\\t100%\\t2099-01-01T12:00:00Z\\n"
+        result = self.run_wrapper("--host", "claude", "gemini", "x", FAKE_FAIL_FOR="agy", FAKE_QUOTA=quota)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_agy_failure_with_broken_quota_is_plain_error(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        for quota, code in (("śmieci bez tabulatorów\\n", "0"), ("", "1")):
+            with self.subTest(quota=quota, code=code):
+                result = self.run_wrapper(
+                    "--host", "claude", "gemini", "x", FAKE_FAIL_FOR="agy", FAKE_QUOTA=quota, FAKE_QUOTA_CODE=code,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_resource_exhausted_text_is_rate_limit_pause(self) -> None:
+        self.profile("claude,opencode")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT="Error: RESOURCE_EXHAUSTED", FAKE_CODE="1")
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertIn("PAUSE=rate-limit", result.stdout)
+
     def test_antigravity_uses_default_model_when_none_given(self) -> None:
         self.profile("claude,antigravity")
         self.fake("agy")
         result = self.run_wrapper("--host", "claude", "antigravity", "treść zadania")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            self.argv()[-5:],
-            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium", "--effort", "medium"],
+            self.argv()[-3:],
+            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium"],
         )
 
     def test_antigravity_reads_model_and_effort_from_project_config(self) -> None:
@@ -354,7 +417,16 @@ class HeadlessWrapperTest(unittest.TestCase):
         (self.root / ".agents/agy.json").write_text('{"model": "gemini-x"}', encoding="utf-8")
         result = self.run_wrapper("--host", "claude", "gemini", "--model", "gemini-y", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.argv()[-4:], ["--model", "gemini-y", "--effort", "medium"])
+        self.assertEqual(self.argv()[-3:], ["--dangerously-skip-permissions", "--model", "gemini-y"])
+
+    def test_effort_from_antigravity_config_is_kept_with_model_flag(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        (self.root / ".agents").mkdir()
+        (self.root / ".agents/agy.json").write_text('{"effort": "high"}', encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "gemini", "--model", "gemini-3.8-flash", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[-4:], ["--model", "gemini-3.8-flash", "--effort", "high"])
 
     def test_antigravity_prompt_starting_with_dash_is_not_read_as_flag(self) -> None:
         self.profile("claude,antigravity")
