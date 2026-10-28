@@ -287,6 +287,30 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 75)
         self.assertEqual(self.calls(), ["opencode2"])
 
+    def test_bad_agy_config_fails_before_any_executor_runs(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        (self.root / ".agents").mkdir()
+        (self.root / ".agents/agy.json").write_text("{zepsuty", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("agy.json", result.stderr)
+        self.assertFalse((self.root / "calls").exists())
+
+    def test_handed_off_limit_is_not_reported_as_pause(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("PAUSE=", result.stdout)
+
+    def test_limit_then_missing_fallback_binary_is_pause_and_logged(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 75)
+        self.assertEqual(self.calls(), ["opencode2"])
+        self.assertIn("nie znaleziono agy", self.headless_log())
+
     def test_model_flag_is_not_passed_to_fallback_executor(self) -> None:
         self.profile("claude,opencode,antigravity")
         self.fake("agy")

@@ -40,7 +40,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
   projektowego configu, więc wrapper czyta `.agents/agy.json` (gitignored, edytujesz sam),
   np. `{"model": "gemini-3.8-flash-high", "effort": "medium"}`; bez pliku
   `gemini-3.8-flash-medium` i `--effort medium`.
-- `--timeout` — minuty, domyślnie 60.
+- `--timeout` — minuty, domyślnie 60; liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
 

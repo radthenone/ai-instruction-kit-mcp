@@ -267,7 +267,7 @@ const lines = (text) => (text ? text.split("\n") : [])
 
 async function main() {
   const opts = parse(process.argv.slice(2))
-  opts.executor = EXECUTOR_ALIASES[opts.executor] || opts.executor
+  if (Object.hasOwn(EXECUTOR_ALIASES, opts.executor)) opts.executor = EXECUTOR_ALIASES[opts.executor]
   // Nazwa binarki (`opencode2`) działa jak nazwa wykonawcy.
   if (!EXECUTORS[opts.executor]) {
     opts.executor = Object.keys(EXECUTORS).find((k) => EXECUTORS[k].bins.includes(opts.executor)) || opts.executor
@@ -292,6 +292,8 @@ async function main() {
   const chain = [opts.executor, ...FALLBACK_ORDER.filter((e) => e !== opts.executor && allowed.includes(e))]
     .map(resolveBin)
   if (!chain.some((c) => !c.why)) fail(`${chain[0].why}. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ")}`)
+  // Zły `.agents/agy.json` ma wyjść od razu, nie po limicie pierwszego wykonawcy.
+  if (chain.some((c) => c.name === "antigravity" && !c.why)) agyConfig()
 
   // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
   const runsDir = resolve(".ai", "headless-runs")
@@ -331,8 +333,11 @@ async function main() {
       continue
     }
     // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
-    code = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current })
-    if (code !== PAUSE_CODE || !next) break
+    code = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
+    if (code !== PAUSE_CODE || !next) {
+      if (code === PAUSE_CODE) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
+      break
+    }
     log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
   log(`[headless] kod wyjścia: ${code}\n`)
@@ -355,7 +360,7 @@ function resolveBin(name) {
   return { name, executor, bin, needsShell, why }
 }
 
-async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current }) {
+async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last }) {
   const args = executor.args(model, prompt)
   const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
   log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
@@ -460,7 +465,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   } else if (timedOut) {
     code = 124
   }
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause }))
+  // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null }))
   return code
 }
 
