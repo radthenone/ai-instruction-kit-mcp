@@ -109,8 +109,8 @@ const EXECUTORS = {
   },
   antigravity: {
     // `-p` bierze następny argument jako prompt, więc prompt idzie zaraz po nim.
-    // `--dangerously-skip-permissions` (agy 1.4.8) auto-approve narzędzi; że hooki guardów
-    // `.agents/hooks.json` działają mimo tej flagi, niezweryfikowane na 1.4.8.
+    // `--dangerously-skip-permissions` (agy 1.4.8) auto-approve narzędzi; deny z hooków guardów
+    // `.agents/hooks.json` przebija tę flagę (sprawdzone: git-guard blokuje `git reset --hard`).
     bins: ["agy"],
     args: (model, prompt) => [
       "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,

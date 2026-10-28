@@ -1257,8 +1257,8 @@ dozwolonych wykonawców.
 
 Wszyscy wykonawcy mają edycje i bash bez pytań. Guardy kita (git-guard, sensitive-files-guard)
 działają u `claude` i `opencode`: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166).
-U `antigravity` działanie hooków `.agents/hooks.json` przy `--dangerously-skip-permissions`
-nie jest jeszcze zweryfikowane na agy 1.4.8. Nowy wykonawca
+U `antigravity` hooki `.agents/hooks.json` działają mimo `--dangerously-skip-permissions`
+(deny git-guard sprawdzone na agy 1.4.8). Nowy wykonawca
 = wiersz w `EXECUTORS` w `templates/shared/headless/headless.mjs` i w `HEADLESS_EXECUTORS`
 w `scripts/bootstrap-project.sh`.
 
