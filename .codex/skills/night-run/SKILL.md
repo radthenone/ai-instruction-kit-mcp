@@ -69,7 +69,7 @@ halt C) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu
 - **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
   headless (`EXEC`, `FLAGI`, `TREŚĆ`). Argument kończy zamykający cudzysłów treści
   (cudzysłów obowiązkowy); treść i flagi wrappera przekazujesz bez zmian (`--timeout`
-  domyślnie 30 min — większy ticket potrzebuje więcej). Wariant promptu w „Prompt ticketu”.
+  domyślnie 60 min — większy ticket potrzebuje więcej). Wariant promptu w „Prompt ticketu”.
   `EXEC` sprawdzasz raz na starcie nocy, przed pierwszym ticketem:
   - klient bez `/headless` (brak skilla/komendy `headless` albo `.ai/headless.mjs`) →
     fallback: implementacja subagentem jak bez argumentu, w raporcie

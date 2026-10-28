@@ -21,12 +21,27 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 /headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
+Przykłady (host → wywołanie):
+
+```text
+claude:       /headless opencode "..."   albo   /headless gemini "..."
+opencode:     /headless gemini "..."
+antigravity:  /headless opencode "..."
+```
+
+Limit dostawcy albo brak binarki → wrapper sam przekazuje tę samą treść 1:1 drugiemu
+tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta i klientów
+spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
+Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywołania).
+
 - `<wykonawca>` — klient z `clients:` w `.ai/project.profile.yaml`, inny niż host, z trybem
-  headless (dziś: `claude`, `opencode`, `antigravity`).
+  headless (dziś: `claude`, `opencode`, `antigravity`; alias `gemini` = `antigravity`).
 - `--model` — model sesji wykonawcy; bez flagi decyduje jego projektowy config (np. `model`
-  w `opencode.json`), potem jego domyślny model. `antigravity` bez flagi: `gemini-3.8-flash-medium`
-  (wrapper zawsze podaje też `--effort medium`; config agy nie decyduje).
-- `--timeout` — minuty, domyślnie 30.
+  w `opencode.json`), potem jego domyślny model. `gemini`/`antigravity`: agy nie ma
+  projektowego configu, więc wrapper czyta `.agents/agy.json` (gitignored, edytujesz sam),
+  np. `{"model": "gemini-3.8-flash-high", "effort": "medium"}`; bez pliku
+  `gemini-3.8-flash-medium` i `--effort medium`.
+- `--timeout` — minuty, domyślnie 60; liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
 
@@ -55,8 +70,14 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
    `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija — robi to `--timeout`.
 2. Kod wyjścia `2` = błędne wywołanie (np. wykonawca == host, spoza `clients:`, nieznana
    flaga). Pokaż komunikat wrappera użytkownikowi i zakończ.
-   Kod `75` = pauza limitu dostawcy wykonawcy, nie błąd: linia `PAUSE=rate-limit reset=<ISO|brak>`
-   w logu. Wykonawca nie skończył pracy — zgłoś pauzę z godziną resetu (nie „błąd”) i nie ponawiaj sam.
+   Kod `75` = limit u ostatniego wykonawcy łańcucha, nie błąd: linia
+   `PAUSE=rate-limit reset=<ISO|brak>` w logu; wcześniejszych zastępców wrapper już próbował.
+   Zadanie przejmuje host, z **tą samą treścią 1:1** i zasadami ze stopki (test-first, lokalne
+   commity, bez push), od stanu brancha z raportu:
+   - skill w głównym wątku → wykonaj treść sam;
+   - subagent `headless` → nie wykonuj; hand-back `przejęcie: limit <wykonawca>, reset <ISO|brak>`
+     z treścią i raportem — przejmuje główny wątek;
+   - pod `/night-run` → reguła `LIMIT` z `/night-run` (`przejmij` / `czekaj`).
 3. Po zakończeniu (także kod ≠ 0 albo `124` = timeout) przeczytaj z wyjścia raport
    końcowy wrappera (`[headless] raport końcowy`): `git status --short`, commity wykonawcy
    od startu, nowe wpisy stasha i ostatnie linie wykonawcy. Ostrzeżenie o stashu (`UWAGA`)
@@ -67,7 +88,8 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 4. Raport dla użytkownika:
 
    ```markdown
-   ## /headless <wykonawca> — <OK | błąd <kod> | timeout>
+   ## /headless <wykonawca> — <OK | błąd <kod> | timeout | przejęte przez hosta>
+   - Łańcuch: <np. `opencode → antigravity` z linii `[headless] … przekazuję zadanie` albo pomiń>
    - Zmiany: <pliki z git status, jedno zdanie co>
    - Commity wykonawcy: <z raportu końcowego albo „brak”>
    - Stash: <wpisy z ostrzeżenia `UWAGA` albo pomiń linię>
@@ -80,7 +102,7 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 ## Zakazy
 
 - Nie commituj, nie pushuj, nie poprawiaj kodu po wykonawcy (lokalne commity wykonawcy
-  zostają; push i PR po review).
+  zostają; push i PR po review). Wyjątek: przejęcie po kodzie `75` (krok 2).
 - Nie zdejmuj stasha (`git stash pop`) — tylko ostrzeżenie w raporcie.
 - Nie dopisuj nic do treści zadania i nie przekazuj innych flag CLI wykonawcy.
 - Nie wywołuj wykonawcy z pominięciem wrappera.
