@@ -1215,7 +1215,7 @@ interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wyn
 | Flaga | Znaczenie |
 |-------|-----------|
 | `--model <id>` | Model sesji wykonawcy w jego formacie (`haiku`, `anthropic/claude-haiku-5-5`) |
-| `--timeout <min>` | Limit w minutach, domyślnie 30; po nim drzewo procesów jest zabijane (kod `124`) |
+| `--timeout <min>` | Limit w minutach, domyślnie 60; po nim drzewo procesów jest zabijane (kod `124`) |
 | `--heartbeat <min>` | Co ile minut linia stanu `[headless] ♥` w wyjściu i logu, domyślnie 10 |
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
@@ -1253,14 +1253,24 @@ dozwolonych wykonawców.
 |-----------|---------|-------|-------|
 | `claude` | `claude -p --permission-mode bypassPermissions` | `--model` | stdin |
 | `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
-| `antigravity` | `agy -p "<treść>" --dangerously-skip-permissions --model … --effort medium` (agy 1.4.8) | `--model`, domyślnie `gemini-3.8-flash-medium` | argument |
+| `antigravity` (alias `gemini`) | `agy -p "<treść>" --dangerously-skip-permissions --model … --effort …` (agy 1.4.8) | `--model` → `.agents/agy.json` → `gemini-3.8-flash-medium`; effort z `.agents/agy.json`, domyślnie `medium` | argument |
+
+**Fallback przy limicie.** Limit dostawcy albo brak binarki u wykonawcy → wrapper przekazuje
+tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
+w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Limit u ostatniego →
+kod `75` i zadanie przejmuje host (agent `/headless`, krok 2). Z Claude:
+`/headless opencode "…"` → `gemini` → Claude sam; `/headless gemini "…"` → `opencode` → Claude sam.
+
+**`.agents/agy.json`** — agy nie ma projektowego configu z modelem (tylko globalny
+`~/.gemini/antigravity-cli/settings.json`), więc wrapper czyta ten plik (gitignored):
+`{"model": "gemini-3.8-flash-high", "effort": "medium"}`.
 
 Wszyscy wykonawcy mają edycje i bash bez pytań. Guardy kita (git-guard, sensitive-files-guard)
 działają u `claude` i `opencode`: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166).
 U `antigravity` hooki `.agents/hooks.json` działają mimo `--dangerously-skip-permissions`
 (deny git-guard sprawdzone na agy 1.4.8). Nowy wykonawca
 = wiersz w `EXECUTORS` w `templates/shared/headless/headless.mjs` i w `HEADLESS_EXECUTORS`
-w `scripts/bootstrap-project.sh`.
+w `scripts/bootstrap-project.sh`; opcjonalnie alias w `EXECUTOR_ALIASES` i miejsce w `FALLBACK_ORDER`.
 
 Codex ma guardy kitowe przez PreToolUse (`node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js"
 <guard>.mjs --to codex`, #199) — nie jest jeszcze wykonawcą headless (patrz `EXECUTORS` w `headless.mjs`),
@@ -1279,12 +1289,12 @@ headless w instalacji kita.
 **Macierz host × wykonawca** (przy kliencie w `clients:`; wykonawca = klient z guardami
 kita i wpisem w `EXECUTORS`):
 
-| Host \ wykonawca | `claude` | `opencode` |
-|------------------|----------|------------|
-| Claude Code | — (sam siebie) | tak |
-| OpenCode | tak | — (sam siebie) |
-| Codex | tak | tak |
-| Cursor, VS Code, Kiro, Kilo, Antigravity | tak | tak |
+| Host \ wykonawca | `claude` | `opencode` | `gemini` (`antigravity`) |
+|------------------|----------|------------|--------------------------|
+| Claude Code | — (sam siebie) | tak | tak |
+| OpenCode | tak | — (sam siebie) | tak |
+| Antigravity | tak | tak | — (sam siebie) |
+| Codex, Cursor, VS Code, Kiro, Kilo | tak | tak | tak |
 
 **Instalacja.** Agent `/headless` trafia do każdego klienta z `--clients`, gdy lista zawiera
 co najmniej dwóch wykonawców (dziś: `claude`, `opencode` i `antigravity`; `all` też). Bootstrap wpisuje w plik
@@ -1296,7 +1306,7 @@ agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wyko
 | Warstwa | Skąd model |
 |---------|------------|
 | Agent `/headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
-| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy |
+| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167; `.agents/agy.json` dla agy) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy |
 | Agenci kitu wołani w sesji wykonawcy | `models.<wykonawca>.<tier>` w Profilu, bez mapowania — model sesji wykonawcy |
 
 **Sprzątanie procesów.** Wrapper uruchamia wykonawcę we własnej grupie procesów (Unix)
