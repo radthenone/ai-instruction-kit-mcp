@@ -113,12 +113,15 @@ const EXECUTORS = {
     // `.agents/hooks.json` przebija tę flagę (sprawdzone: git-guard blokuje `git reset --hard`).
     bins: ["agy"],
     // agy nie ma projektowego configu z modelem — `.agents/agy.json` (gitignored) czyta wrapper.
+    // Poziom siedzi w sufiksie nazwy (`-medium`); `--effort` niezgodny z sufiksem agy odrzuca,
+    // więc idzie tylko jawny `effort` z configu (przy nazwie bazowej, np. `gemini-3.8-flash`).
     args: (model, prompt) => {
       const cfg = agyConfig()
       return [
         "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
         "--dangerously-skip-permissions",
-        "--model", model || cfg.model || "gemini-3.8-flash-medium", "--effort", cfg.effort || "medium",
+        "--model", model || cfg.model || "gemini-3.8-flash-medium",
+        ...(cfg.effort ? ["--effort", cfg.effort] : []),
       ]
     },
     stdin: false,

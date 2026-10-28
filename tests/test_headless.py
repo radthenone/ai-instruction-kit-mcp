@@ -193,7 +193,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         argv = self.argv()
         self.assertEqual(argv[1], "-p")
         self.assertTrue("\n".join(argv[2:]).startswith("treść zadania"))
-        self.assertEqual(argv[-5:], ["--dangerously-skip-permissions", "--model", "flash", "--effort", "medium"])
+        self.assertEqual(argv[-3:], ["--dangerously-skip-permissions", "--model", "flash"])
         self.assertNotIn("treść zadania", self.headless_log())
 
     def test_default_timeout_is_60_minutes(self) -> None:
@@ -211,8 +211,8 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(Path(self.argv()[0]).name, "agy")
         self.assertEqual(
-            self.argv()[-5:],
-            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-high", "--effort", "medium"],
+            self.argv()[-3:],
+            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-high"],
         )
         self.assertIn("opencode → antigravity", self.headless_log())
         self.assertIn("(timeout 90 min)", self.headless_log())
@@ -318,7 +318,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             "--host", "claude", "opencode", "--model", "openrouter/qwen", "x", FAKE_LIMIT_FOR="opencode2",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.argv()[-4:], ["--model", "gemini-3.8-flash-medium", "--effort", "medium"])
+        self.assertEqual(self.argv()[-3:], ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium"])
 
     def test_gemini_is_alias_for_antigravity(self) -> None:
         self.profile("claude,antigravity")
@@ -334,8 +334,8 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "antigravity", "treść zadania")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            self.argv()[-5:],
-            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium", "--effort", "medium"],
+            self.argv()[-3:],
+            ["--dangerously-skip-permissions", "--model", "gemini-3.8-flash-medium"],
         )
 
     def test_antigravity_reads_model_and_effort_from_project_config(self) -> None:
@@ -354,7 +354,16 @@ class HeadlessWrapperTest(unittest.TestCase):
         (self.root / ".agents/agy.json").write_text('{"model": "gemini-x"}', encoding="utf-8")
         result = self.run_wrapper("--host", "claude", "gemini", "--model", "gemini-y", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.argv()[-4:], ["--model", "gemini-y", "--effort", "medium"])
+        self.assertEqual(self.argv()[-3:], ["--dangerously-skip-permissions", "--model", "gemini-y"])
+
+    def test_effort_from_antigravity_config_is_kept_with_model_flag(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        (self.root / ".agents").mkdir()
+        (self.root / ".agents/agy.json").write_text('{"effort": "high"}', encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "gemini", "--model", "gemini-3.8-flash", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[-4:], ["--model", "gemini-3.8-flash", "--effort", "high"])
 
     def test_antigravity_prompt_starting_with_dash_is_not_read_as_flag(self) -> None:
         self.profile("claude,antigravity")

@@ -1253,7 +1253,7 @@ dozwolonych wykonawców.
 |-----------|---------|-------|-------|
 | `claude` | `claude -p --permission-mode bypassPermissions` | `--model` | stdin |
 | `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
-| `antigravity` (alias `gemini`) | `agy -p "<treść>" --dangerously-skip-permissions --model … --effort …` (agy 1.4.8) | `--model` → `.agents/agy.json` → `gemini-3.8-flash-medium`; effort z `.agents/agy.json`, domyślnie `medium` | argument |
+| `antigravity` (alias `gemini`) | `agy -p "<treść>" --dangerously-skip-permissions --model … [--effort …]` (agy 1.4.8) | `--model` → `.agents/agy.json` → `gemini-3.8-flash-medium`; `--effort` tylko z `.agents/agy.json` | argument |
 
 **Fallback przy limicie.** Limit dostawcy albo brak binarki u wykonawcy → wrapper przekazuje
 tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
@@ -1263,7 +1263,9 @@ kod `75` i zadanie przejmuje host (agent `/headless`, krok 2). Z Claude:
 
 **`.agents/agy.json`** — agy nie ma projektowego configu z modelem (tylko globalny
 `~/.gemini/antigravity-cli/settings.json`), więc wrapper czyta ten plik (gitignored):
-`{"model": "gemini-3.8-flash-high", "effort": "medium"}`.
+`{"model": "gemini-3.8-flash-high"}` albo `{"model": "gemini-3.8-flash", "effort": "high"}`.
+Poziom siedzi w sufiksie nazwy (`agy models`) albo w `effort` przy nazwie bazowej — nie oba:
+agy odrzuca `--effort` niezgodny z sufiksem.
 
 Wszyscy wykonawcy mają edycje i bash bez pytań. Guardy kita (git-guard, sensitive-files-guard)
 działają u `claude` i `opencode`: hooki Claude Code i plugin `kit-guards.js` w OpenCode (#166).

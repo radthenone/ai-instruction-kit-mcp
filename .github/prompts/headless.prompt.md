@@ -37,8 +37,8 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
 - `--model` — model sesji wykonawcy; bez flagi decyduje jego projektowy config (np. `model`
   w `opencode.json`), potem jego domyślny model. `gemini`/`antigravity`: agy nie ma
   projektowego configu, więc wrapper czyta `.agents/agy.json` (gitignored, edytujesz sam),
-  np. `{"model": "gemini-3.8-flash-high", "effort": "medium"}`; bez pliku
-  `gemini-3.8-flash-medium` i `--effort medium`.
+  np. `{"model": "gemini-3.8-flash-high"}` albo `{"model": "gemini-3.8-flash", "effort": "high"}`
+  (poziom w sufiksie nazwy albo w `effort`, nie oba); bez pliku `gemini-3.8-flash-medium`.
 - `--timeout` — minuty, domyślnie 60; liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
