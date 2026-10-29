@@ -24,8 +24,11 @@ function match(text, pattern, fallback) {
   return found && found[1] ? found[1] : fallback;
 }
 
-const language = match(profile, /^language:\s*["']?([A-Za-z-]+)/m, "pl").toLowerCase();
-const base = match(overlay, /^base:\s*(\S+)/m, "");
+// `[ \t]*` zamiast `\s*`: puste `base:` nie może złapać treści następnej linii.
+const rawLanguage = match(profile, /^language:[ \t]*["']?([A-Za-z_-]+)/m, "pl").toLowerCase();
+// Ta sama normalizacja co resolver (`normalize_language`): en/eng/english/en-* → en, reszta → pl.
+const language = ["en", "eng", "english"].includes(rawLanguage.split(/[-_]/)[0]) ? "en" : "pl";
+const base = match(overlay, /^base:[ \t]*(\S+)[ \t]*$/m, "");
 
 const priority =
   "Priorytet: wytyczne instruction-kit (brief w AGENTS.md, .ai/project.md, bundle MCP) " +

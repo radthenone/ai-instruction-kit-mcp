@@ -205,6 +205,31 @@ class LanguageReminderValuesTest(unittest.TestCase):
         self.assertRegex(result.stdout, r"(?<![\w/-])dev(?![\w/-])")
         self.assertIn("Priorytet".lower(), result.stdout.lower())
 
+    def _require_node(self) -> None:
+        if not shutil.which("node"):
+            if is_ci():
+                self.fail("brak node w CI — hook języka musi się wykonać")
+            self.skipTest("brak node w PATH")
+
+    def test_empty_base_does_not_swallow_next_line(self) -> None:
+        """Puste ``base:`` = brak bazy, nie treść następnej linii (np. ``##``)."""
+        self._require_node()
+        result = self._run_hook(
+            "name: t\nlanguage: pl\n", "# Overlay\n\nbase:\n## Komendy\n"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("`##`", result.stdout)
+        self.assertIn("brak `base:`", result.stdout)
+
+    def test_language_tag_matches_resolver(self) -> None:
+        """``en-US`` to angielski, tak jak w ``normalize_language`` resolvera."""
+        self._require_node()
+        result = self._run_hook("name: t\nlanguage: en-US\n", "# Overlay\n\nbase: dev\n")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Project language: `en`", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
