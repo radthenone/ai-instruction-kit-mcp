@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -104,6 +105,16 @@ def build_instructions(resolved: ResolvedProfile) -> str:
 def _set_instructions(text: str) -> None:
     """Podmień instructions po parsowaniu argv (FastMCP 1.x nie ma publicznego settera)."""
     mcp._mcp_server.instructions = text
+
+
+def _apply_profile_instructions() -> None:
+    """Ustaw instructions z Profilu; błąd (Profil, prywatne API ``mcp``) tylko logujemy."""
+    try:
+        _set_instructions(build_instructions(_get_resolved()))
+    except Exception as exc:
+        # Uszkodzony Profil nie może zabić handshake'u; narzędzia zwrócą błąd przy wołaniu.
+        # Log na stderr — stdout to kanał MCP (stdio).
+        print(f"guides: instrukcje z Profilu niedostępne: {exc!r}", file=sys.stderr)
 
 
 @mcp.tool()
@@ -703,11 +714,7 @@ def main() -> None:
         _workspace_root = Path.cwd().resolve()
 
     # Instrukcje z Profilu dopiero teraz — workspace, język i overlay są już z argv.
-    try:
-        _set_instructions(build_instructions(_get_resolved()))
-    except Exception:
-        # Uszkodzony Profil nie może zabić handshake'u; narzędzia zwrócą błąd przy wołaniu.
-        pass
+    _apply_profile_instructions()
 
     _register_bundle_resources()
     mcp.run()

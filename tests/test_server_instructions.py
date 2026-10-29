@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from guides import server
 
@@ -45,6 +48,30 @@ class TestServerInstructions(unittest.TestCase):
         self.assertIn("`orval`", text)
         self.assertIn("get_bundle", text)
         self.assertIn("`claude`", text)
+
+        saved_instructions = server.mcp._mcp_server.instructions
+        try:
+            server._set_instructions(text)
+            options = server.mcp._mcp_server.create_initialization_options()
+        finally:
+            server.mcp._mcp_server.instructions = saved_instructions
+        self.assertEqual(options.instructions, text)
+
+
+    def test_instruction_failure_is_logged_to_stderr(self) -> None:
+        """Błąd prywatnego API ``mcp`` nie ginie po cichu, a stdout (kanał MCP) zostaje czysty."""
+        stderr, stdout = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(server, "_get_resolved"),
+            mock.patch.object(server, "build_instructions", return_value="x"),
+            mock.patch.object(server, "_set_instructions", side_effect=AttributeError("instructions")),
+            contextlib.redirect_stderr(stderr),
+            contextlib.redirect_stdout(stdout),
+        ):
+            server._apply_profile_instructions()
+
+        self.assertIn("AttributeError", stderr.getvalue())
+        self.assertEqual(stdout.getvalue(), "")
 
 
 if __name__ == "__main__":
