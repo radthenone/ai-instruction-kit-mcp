@@ -595,8 +595,28 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("[headless] sygnał SIGTERM", log)
         snapshot = log.split("[headless] sygnał SIGTERM", 1)[1]
         self.assertIn("node", snapshot)
-        self.assertIn("sleep", snapshot)
         self.assertNotIn(" x\n", snapshot)
+
+    def test_signal_exit_code_wins_over_executor_that_handles_sigterm(self) -> None:
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_TRAP": "1"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 143)
+        self.assertTrue((self.root / "term").is_file())
+        self.assertEqual(out.count("[headless] raport końcowy"), 1)
+        self.assertNotIn("[headless] kod wyjścia", out)
 
     def test_executor_gets_sigterm_before_sigkill(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30", FAKE_TRAP="1")

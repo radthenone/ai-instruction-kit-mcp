@@ -329,7 +329,13 @@ function groupAlive(pid) {
 
 // Unix: najpierw SIGTERM, żeby wykonawca zamknął to, co ma poza grupą (serwer opencode
 // ma własną grupę i po samym SIGKILL zostaje osierocony); po KILL_GRACE_MS — SIGKILL.
-async function killTree(child) {
+// Jedno zabijanie na dziecko: timeout, handler sygnału i `finally` czekają na tę samą obietnicę.
+// SIGTERM idzie synchronicznie, jeszcze przed pierwszym `await`.
+function killTree(child) {
+  return (child.killing ??= killTreeOnce(child))
+}
+
+async function killTreeOnce(child) {
   if (!child.pid) return
   if (process.platform === "win32") {
     for (const pid of [child.pid, ...descendants]) {
@@ -431,16 +437,17 @@ async function main() {
 
   // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
   // z uprawnieniami na edycje i bash.
-  const current = { child: null, started: 0, report: () => "" }
-  let stopping = false
+  // `stopping`: po sygnale wyjście należy do handlera — runOnce i pętla zastępców stają.
+  const current = { child: null, started: 0, stopping: false, report: () => "" }
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, async () => {
-      if (stopping) return
-      stopping = true
+      if (current.stopping) return
+      current.stopping = true
+      const killing = current.child ? killTree(current.child) : null
       const after = current.started ? ` po ${((Date.now() - current.started) / 1000).toFixed(1)} s od startu wykonawcy` : ""
       log(`[headless] sygnał ${signal}${after} (wrapper pid ${process.pid}, ppid ${process.ppid})\n`)
       log(processSnapshot(current.child?.pid))
-      if (current.child) await killTree(current.child)
+      await killing
       log(current.report())
       process.exit(128 + constants.signals[signal])
     })
@@ -462,6 +469,7 @@ async function main() {
     }
     log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
+  if (current.stopping) return
   log(`[headless] kod wyjścia: ${code}\n`)
   // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
   process.stdout.write("", () => process.exit(code))
@@ -578,6 +586,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     clearInterval(heartbeat)
     await killTree(child)
   }
+  if (current.stopping) await new Promise(() => {})
   // Po ubiciu drzewa potoki się zamykają — dociągamy resztę wyjścia (maks. 3 s).
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
