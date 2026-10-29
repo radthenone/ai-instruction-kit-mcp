@@ -18,7 +18,7 @@ NODE = shutil.which("node") or "node"
 # Narzędzia, których w izolowanym PATH potrzebuje wrapper i fałszywy wykonawca
 # (`basename`/`cat`/`sleep`/`git` w FAKE, `git` w raporcie wrappera) — bez katalogów
 # systemowych, żeby test „brak wykonawcy" nie znalazł prawdziwego `claude` (#205).
-TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep")
+TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
 
 # Udaje CLI wykonawcy: zapisuje argv i stdin, zostawia „LSP” w tle i kończy się kodem
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
@@ -29,6 +29,8 @@ FAKE = """#!/bin/sh
 if [ "$1" = -p ] && [ "$2" = /quota ]; then
   echo "$(basename "$0") /quota" >> "$HEADLESS_TEST_DIR/calls"; printf '%b' "$FAKE_QUOTA"; exit "${FAKE_QUOTA_CODE:-0}"
 fi
+if [ -n "$FAKE_TRAP" ]; then trap 'echo term > "$HEADLESS_TEST_DIR/term"; exit 0' TERM; fi
+if [ -n "$FAKE_IGNORE_TERM" ]; then trap '' TERM; fi
 printf '%s\\n' "$(basename "$0")" "$@" > "$HEADLESS_TEST_DIR/argv"
 printf '%s' "${OPENCODE_CONFIG-}" > "$HEADLESS_TEST_DIR/opencode-config"
 basename "$0" >> "$HEADLESS_TEST_DIR/calls"
@@ -589,6 +591,45 @@ class HeadlessWrapperTest(unittest.TestCase):
         # Raport końcowy także po SIGTERM, z niedokończoną linią wykonawcy (#183).
         report = out.split("[headless] raport końcowy", 1)[1]
         self.assertIn("bez nowej linii", report)
+        log = self.headless_log()
+        self.assertIn("[headless] sygnał SIGTERM", log)
+        snapshot = log.split("[headless] sygnał SIGTERM", 1)[1]
+        self.assertIn("node", snapshot)
+        self.assertNotIn(" x\n", snapshot)
+
+    def test_signal_exit_code_wins_over_executor_that_handles_sigterm(self) -> None:
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_TRAP": "1"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 143)
+        self.assertTrue((self.root / "term").is_file())
+        self.assertEqual(out.count("[headless] raport końcowy"), 1)
+        self.assertNotIn("[headless] kod wyjścia", out)
+
+    def test_executor_gets_sigterm_before_sigkill(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30", FAKE_TRAP="1")
+        self.assertEqual(result.returncode, 124)
+        self.assertTrue((self.root / "term").is_file(), "wykonawca nie dostał SIGTERM przed SIGKILL")
+        self.assert_tree_killed()
+
+    def test_executor_ignoring_sigterm_is_still_killed(self) -> None:
+        started = time.time()
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30", FAKE_IGNORE_TERM="1")
+        self.assertEqual(result.returncode, 124)
+        self.assertLess(time.time() - started, 15)
+        self.assert_tree_killed()
 
     # --- flagi i reguły -----------------------------------------------------
 

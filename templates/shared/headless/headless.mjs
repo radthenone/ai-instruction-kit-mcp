@@ -316,19 +316,64 @@ function snapshotDescendants(rootPid) {
   })
 }
 
+const KILL_GRACE_MS = 2000
+
+function groupAlive(pid) {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Unix: najpierw SIGTERM, żeby wykonawca zamknął to, co ma poza grupą (serwer opencode
+// ma własną grupę i po samym SIGKILL zostaje osierocony); po KILL_GRACE_MS — SIGKILL.
+// Jedno zabijanie na dziecko: timeout, handler sygnału i `finally` czekają na tę samą obietnicę.
+// SIGTERM idzie synchronicznie, jeszcze przed pierwszym `await`.
 function killTree(child) {
+  return (child.killing ??= killTreeOnce(child))
+}
+
+async function killTreeOnce(child) {
   if (!child.pid) return
   if (process.platform === "win32") {
     for (const pid of [child.pid, ...descendants]) {
       spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore", windowsHide: true })
     }
-  } else {
-    try {
-      process.kill(-child.pid, "SIGKILL")
-    } catch {
-      // Grupa już pusta — nie ma czego sprzątać.
-    }
+    return
   }
+  try {
+    process.kill(-child.pid, "SIGTERM")
+  } catch {
+    return // Grupa już pusta — nie ma czego sprzątać.
+  }
+  const deadline = Date.now() + KILL_GRACE_MS
+  while (groupAlive(child.pid) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100))
+  try {
+    process.kill(-child.pid, "SIGKILL")
+  } catch {
+    // Grupa skończyła się sama po SIGTERM.
+  }
+}
+
+// Node nie zna PID nadawcy sygnału, więc log dostaje migawkę podejrzanych: przodków wrappera
+// i grupę wykonawcy. Tylko `comm`, bez argumentów — w argumentach wykonawcy jest prompt.
+function processSnapshot(childPid) {
+  if (process.platform === "win32") return ""
+  const r = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,lstart=,comm="], { encoding: "utf8", timeout: 3000 })
+  if (r.status !== 0 || !r.stdout) return "(ps niedostępne)\n"
+  const rows = r.stdout.split("\n").filter((l) => l.trim()).map((line) => {
+    const [pid, ppid, pgid, ...rest] = line.trim().split(/\s+/)
+    return { pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), line: [pid, ppid, pgid, ...rest].join(" ") }
+  })
+  const byPid = new Map(rows.map((row) => [row.pid, row]))
+  const picked = []
+  for (let pid = process.pid; byPid.has(pid) && !picked.includes(byPid.get(pid)); pid = byPid.get(pid).ppid) {
+    picked.push(byPid.get(pid))
+  }
+  if (childPid) picked.push(...rows.filter((row) => row.pgid === childPid && !picked.includes(row)))
+  return "PID PPID PGID START COMM\n" + picked.map((row) => row.line).join("\n") + "\n"
 }
 
 // Git w katalogu roboczym; poza repo (albo bez gita) — null, raport pomija pola.
@@ -392,10 +437,17 @@ async function main() {
 
   // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
   // z uprawnieniami na edycje i bash.
-  const current = { child: null, report: () => "" }
+  // `stopping`: po sygnale wyjście należy do handlera — runOnce i pętla zastępców stają.
+  const current = { child: null, started: 0, stopping: false, report: () => "" }
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-    process.on(signal, () => {
-      if (current.child) killTree(current.child)
+    process.on(signal, async () => {
+      if (current.stopping) return
+      current.stopping = true
+      const killing = current.child ? killTree(current.child) : null
+      const after = current.started ? ` po ${((Date.now() - current.started) / 1000).toFixed(1)} s od startu wykonawcy` : ""
+      log(`[headless] sygnał ${signal}${after} (wrapper pid ${process.pid}, ppid ${process.ppid})\n`)
+      log(processSnapshot(current.child?.pid))
+      await killing
       log(current.report())
       process.exit(128 + constants.signals[signal])
     })
@@ -417,6 +469,7 @@ async function main() {
     }
     log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
+  if (current.stopping) return
   log(`[headless] kod wyjścia: ${code}\n`)
   // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
   process.stdout.write("", () => process.exit(code))
@@ -487,6 +540,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const lastLine = () => (fullTail().at(-1) || "").trim()
   const minutes = (ms) => Math.round(ms / 6000) / 10
   current.child = child
+  current.started = started
   current.report = () => finalReport({ startHead, startStash, tail: fullTail(), config: config?.line })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
@@ -530,8 +584,9 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     clearTimeout(timer)
     clearInterval(poll)
     clearInterval(heartbeat)
-    killTree(child)
+    await killTree(child)
   }
+  if (current.stopping) await new Promise(() => {})
   // Po ubiciu drzewa potoki się zamykają — dociągamy resztę wyjścia (maks. 3 s).
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
