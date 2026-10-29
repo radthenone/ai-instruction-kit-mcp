@@ -21,7 +21,7 @@ from _shell import is_ci, resolve_bash
 
 from guides import server
 from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
-from guides.bugbot_md import extract_brief, extract_rules
+from guides.bugbot_md import extract_brief, extract_rules, is_pristine
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
@@ -691,10 +691,12 @@ class TestAgentsProjectBlock(_BootstrapTestCase):
 
             run_bootstrap(target=workspace, kit_root=kit, clients="claude")
 
-            self.assertEqual(
-                (workspace / "AGENTS.md").read_text(encoding="utf-8"),
-                (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8"),
-            )
+            text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+            template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
+            # Brief jest generowany z Profilu, więc plik nie jest bajt w bajt szablonem;
+            # część kitowa i blok projektu muszą się zgadzać (brief normalizuje is_pristine).
+            self.assertTrue(is_pristine(text, template, "agents"))
+            self.assertNotEqual(extract_brief(text), extract_brief(template))
 
     def test_own_lines_move_into_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -405,6 +405,16 @@ def render_project_brief(
     visible_modules = [mid for mid in module_ids if mid != VPS_LIGHTWEIGHT_MODULE]
     modules_line = ", ".join(f"`{mid}`" for mid in visible_modules)
 
+    overlay_body = overlay_content.strip()
+    overlay_header = "# Overlay projektu"
+    if overlay_body.startswith(overlay_header):
+        overlay_body = overlay_body[len(overlay_header) :].strip()
+    overlay_section = (
+        ["", f"### Overlay projektu (`{overlay_rel}`)", "", overlay_body]
+        if overlay_body
+        else ["", f"### Overlay projektu (`{overlay_rel}`)", "", "_Brak overlay — dodaj fakty repo._"]
+    )
+
     prose = BRIEF_LANGUAGE_PROSE.get(language, BRIEF_LANGUAGE_PROSE["pl"])
     return "\n".join(
         [
@@ -422,6 +432,7 @@ def render_project_brief(
             f"- **Komendy:** {commands_line}",
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
+            *overlay_section,
         ]
     )
 
