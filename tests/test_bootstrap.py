@@ -21,7 +21,7 @@ from _shell import is_ci, resolve_bash
 
 from guides import server
 from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
-from guides.bugbot_md import extract_rules
+from guides.bugbot_md import extract_brief, extract_rules
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
@@ -734,6 +734,67 @@ class TestAgentsProjectBlock(_BootstrapTestCase):
             text = agents.read_text(encoding="utf-8")
             self.assertEqual(extract_rules(text, "agents"), rules)
             self.assertNotIn("(stare)", text)
+
+
+class TestAgentsBriefBlock(_BootstrapTestCase):
+    """Bootstrap renderuje brief z Profilu i overlayu do bloku ``kit:brief`` (#307)."""
+
+    def test_bootstrap_renders_profile_brief_with_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / ".ai").mkdir(parents=True)
+            (workspace / ".ai" / "project.profile.yaml").write_text(
+                "name: brief-app\nlanguage: pl\nclients: claude\n"
+                "backend: fastapi\nweb: none\nmobile: none\ncodegen: none\n",
+                encoding="utf-8",
+            )
+            (workspace / ".ai" / "project.md").write_text(
+                "# Overlay\n\nbase: dev\n\n## Komendy\n\n- test: `make test`\n",
+                encoding="utf-8",
+            )
+
+            run_bootstrap(
+                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
+            )
+
+            brief = extract_brief((workspace / "AGENTS.md").read_text(encoding="utf-8"))
+            self.assertIsNotNone(brief)
+            assert brief is not None
+            self.assertIn("`pl`", brief)
+            self.assertIn("`dev`", brief)
+            self.assertIn("backend=`fastapi`", brief)
+            self.assertIn("`none`", brief)
+            self.assertIn("make test", brief)
+            self.assertIn("project.md", brief)
+
+    def test_reload_refreshes_brief_after_profile_change(self) -> None:
+        """Brief nie jest blokiem projektu — reload podmienia go nowymi wartościami."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / ".ai").mkdir(parents=True)
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                "name: brief-app\nlanguage: pl\nclients: claude\n"
+                "backend: none\nweb: none\nmobile: none\ncodegen: none\n",
+                encoding="utf-8",
+            )
+            run_bootstrap(
+                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
+            )
+            profile.write_text(
+                "name: brief-app\nlanguage: pl\nclients: claude\n"
+                "backend: fastapi\nweb: none\nmobile: none\ncodegen: none\n",
+                encoding="utf-8",
+            )
+
+            run_bootstrap(
+                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
+            )
+
+            brief = extract_brief((workspace / "AGENTS.md").read_text(encoding="utf-8"))
+            self.assertIsNotNone(brief)
+            assert brief is not None
+            self.assertIn("backend=`fastapi`", brief)
 
 
 class TestServerTool(_BootstrapTestCase):
