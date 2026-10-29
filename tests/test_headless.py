@@ -206,6 +206,17 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(left[:4], old[-4:])
         self.assertNotIn(left[-1], old)
 
+    def test_prune_keeps_new_run_when_older_names_sort_later(self) -> None:
+        runs = self.root / ".ai/headless-runs"
+        future = [f"2999-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in future:
+            (runs / name).mkdir(parents=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        left = {entry.name for entry in runs.iterdir() if entry.is_dir()}
+        self.assertEqual(len(left), 5)
+        self.assertEqual(len(left - set(future)), 1)
+
     def test_antigravity_runs_headless_print_with_prompt_argument(self) -> None:
         self.profile("claude,antigravity")
         self.fake("agy")

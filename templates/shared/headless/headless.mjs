@@ -248,12 +248,19 @@ const KEEP_RUNS = 5
 
 // Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
 // ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
-function pruneRuns(runsDir) {
+// Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
+function pruneRuns(runsDir, current) {
   const runs = readdirSync(runsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && entry.name !== current)
     .map((entry) => entry.name)
     .sort()
-  for (const name of runs.slice(0, -KEEP_RUNS)) rmSync(join(runsDir, name), { recursive: true, force: true })
+  for (const name of runs.slice(0, -(KEEP_RUNS - 1))) {
+    try {
+      rmSync(join(runsDir, name), { recursive: true, force: true })
+    } catch {
+      // Sprzątanie best-effort: zablokowany katalog nie może zatrzymać zadania.
+    }
+  }
 }
 
 function parse(argv) {
@@ -369,7 +376,7 @@ async function main() {
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runsDir, ".gitignore"), "*\n")
-  pruneRuns(runsDir)
+  pruneRuns(runsDir, basename(runDir))
   const logPath = join(runDir, "headless.log")
   const ticket = ticketNumber()
   prompt += footer(runDir, ticket)
