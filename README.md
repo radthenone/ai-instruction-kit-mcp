@@ -1265,7 +1265,7 @@ W logu runu linia `[headless] ticket #N`.
 Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
-do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie);
+do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie; przy starcie kasuje runy poza 5 najnowszymi);
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
