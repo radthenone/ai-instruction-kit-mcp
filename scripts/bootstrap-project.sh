@@ -871,6 +871,16 @@ install_agenty_md_once() {
   fi
 }
 
+# Exit 0, gdy AGENTS.md to nietknięty render szablonu kita (brief dowolny) — wolno go usunąć.
+agents_pristine() {
+  SRC="$KIT_ROOT/templates/AGENTS.md" \
+    DEST="$TARGET/AGENTS.md" \
+    BLOCK="agents" \
+    KIT_ROOT="$KIT_ROOT" \
+    CHECK_ONLY=1 \
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py" >/dev/null
+}
+
 # Brief projektu (#307): jedno źródło z resolverem — czyta Profil i overlay, a wynik
 # trafia do bloku `kit:brief` w AGENTS.md (Claude widzi go przez import `@AGENTS.md`
 # w CLAUDE.md). Ścieżkę workspace'u podajemy przez KIT_WORKSPACE w dry-runie.
@@ -1278,7 +1288,9 @@ remove_kit() {
     prune_client "$id"
   done
   # Pliki tworzone raz: tylko gdy identyczne z szablonem — zmienione należą do użytkownika.
-  if [[ -f "$TARGET/AGENTS.md" ]] && cmp -s "$TARGET/AGENTS.md" "$KIT_ROOT/templates/AGENTS.md"; then
+  # AGENTS.md niesie brief z Profilu (#307), więc nie `cmp`: nietknięty = render szablonu
+  # z dowolną treścią bloku `kit:brief` (ta sama reguła co BUGBOT.md).
+  if [[ -f "$TARGET/AGENTS.md" ]] && agents_pristine; then
     kit_rm AGENTS.md
   fi
   if bugbot_pristine "$TARGET/BUGBOT.md"; then
