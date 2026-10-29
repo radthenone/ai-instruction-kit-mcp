@@ -136,6 +136,7 @@ class Workspace:
 
 
 _WORKSPACES: dict[str, Workspace] = {}
+_BRIEF: dict[str, bool] = {}
 _TMP: tempfile.TemporaryDirectory[str] | None = None
 _CONFIG_HOME: tempfile.TemporaryDirectory[str] | None = None
 _ENV_PATCHER: Any = None
@@ -326,6 +327,7 @@ def setUpModule() -> None:
         for case in MATRIX:
             workspace = _bootstrap(case, Path(_TMP.name))
             _WORKSPACES[case.name] = Workspace(case, workspace, _read_tools(workspace))
+            _BRIEF[case.name] = _has_brief(_WORKSPACES[case.name])
     except Exception:
         _stop_fixture()
         raise
@@ -348,6 +350,8 @@ def _stop_fixture() -> None:
     if _TMP is not None:
         _TMP.cleanup()
         _TMP = None
+    _WORKSPACES.clear()
+    _BRIEF.clear()
 
 
 def _run_hook(script: Path, workspace: Path, payload: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -377,20 +381,21 @@ def _brief_lines(workspace: Path) -> list[str]:
     ]
 
 
-def _brief_available() -> bool:
-    """Czy kit renderuje brief z wartościami Profilu (zależy od #307)."""
-    for item in _WORKSPACES.values():
-        brief = "\n".join(_brief_lines(item.root))
-        if not brief:
-            continue
-        signals = [
-            item.case.sentinel in brief,
-            item.case.backend != "none" and item.case.backend in brief,
-            item.case.effective_codegen != "none" and item.case.effective_codegen in brief,
-        ]
-        if any(signals):
-            return True
-    return False
+def _has_brief(item: Workspace) -> bool:
+    """Czy AGENTS.md tego workspace'u niesie brief z wartościami Profilu (zależy od #307)."""
+    brief = "\n".join(_brief_lines(item.root))
+    return bool(brief) and (
+        item.case.sentinel in brief
+        or (item.case.backend != "none" and item.case.backend in brief)
+        or (item.case.effective_codegen != "none" and item.case.effective_codegen in brief)
+    )
+
+
+def _brief_available(item: Workspace | None = None) -> bool:
+    """Brief w danym workspace (``item``) albo w którymkolwiek — liczone raz w ``setUpModule``."""
+    if item is not None:
+        return _BRIEF.get(item.case.name, False)
+    return any(_BRIEF.values())
 
 
 class TestGeneratedClientConfigs(unittest.TestCase):
@@ -528,7 +533,7 @@ class TestChannelConsistency(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn("jęz", result.stdout.lower())
 
-                if _brief_available():
+                if _brief_available(item):
                     brief = "\n".join(_brief_lines(item.root))
                     self.assertRegex(brief, rf"(?<![a-z]){case.language}(?![a-z])")
 
@@ -540,7 +545,7 @@ class TestChannelConsistency(unittest.TestCase):
                 profile = yaml.safe_load((item.root / ".ai" / "project.profile.yaml").read_text(encoding="utf-8"))
                 self.assertEqual(profile["codegen"], case.codegen)
                 self.assertIn(f"# Codegen: `{case.effective_codegen}`", item.tools["codegen"])
-                if _brief_available():
+                if _brief_available(item):
                     self.assertIn(case.effective_codegen, "\n".join(_brief_lines(item.root)))
 
     def test_clients_are_consistent(self) -> None:
@@ -604,9 +609,9 @@ class TestInstructionChannels(unittest.TestCase):
 class TestBriefDelivery(unittest.TestCase):
     """Brief projektu w AGENTS.md — aktywuje się po wdrożeniu #307."""
 
-    def _require_brief(self) -> None:
-        """Pomiń z numerem issue, dopóki brief nie jest renderowany."""
-        if not _brief_available():
+    def _require_brief(self, item: Workspace | None = None) -> None:
+        """Pomiń z numerem issue, dopóki brief nie jest renderowany (całość albo dany workspace)."""
+        if not _brief_available(item):
             self.skipTest(BRIEF_ISSUE)
 
     def test_agents_md_carries_profile_values(self) -> None:
@@ -615,6 +620,7 @@ class TestBriefDelivery(unittest.TestCase):
         for item in _WORKSPACES.values():
             case = item.case
             with self.subTest(case=case.name):
+                self._require_brief(item)
                 brief = "\n".join(_brief_lines(item.root))
                 self.assertRegex(brief, rf"(?<![a-z]){case.language}(?![a-z])")
                 for tier in ("backend", "web", "mobile"):
@@ -644,13 +650,14 @@ class TestBriefDelivery(unittest.TestCase):
             if item.case.language == "en":
                 continue
             with self.subTest(case=item.case.name):
+                self._require_brief(item)
                 result = _run_hook(
                     item.root / ".claude" / "hooks" / "language-reminder.mjs", item.root, {}
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 output = result.stdout
                 self.assertRegex(output, r"(?<![a-z])pl(?![a-z])|polsk")
-                self.assertIn(item.case.overlay_base, output)
+                self.assertRegex(output, rf"(?<![\w/-]){re.escape(item.case.overlay_base)}(?![\w/-])")
 
 
 class TestContextHooks(unittest.TestCase):
@@ -676,9 +683,14 @@ class TestContextHooks(unittest.TestCase):
                         self.assertEqual(exists, expected, rel)
 
                 # Klienci bez hooków kontekstu nie dostają obcych plików.
-                for client in set(KNOWN_CLIENTS) - set(_CONTEXT_HOOKS):
-                    stray = sorted(item.root.glob(f".{client}/**/*reminder*.mjs"))
-                    self.assertEqual(stray, [], client)
+                # Katalogi klientów są różne (.agents/, .kilocode/, .kiro/, .opencode/…) — szukaj w całym drzewie.
+                known = {rel for hooks in _CONTEXT_HOOKS.values() for rel in hooks}
+                stray = sorted(
+                    rel
+                    for path in item.root.rglob("*reminder*.mjs")
+                    if (rel := path.relative_to(item.root).as_posix()) not in known
+                )
+                self.assertEqual(stray, [])
 
     def test_every_installed_context_hook_runs(self) -> None:
         """Każdy zainstalowany hook kończy się exit 0 dla wejścia klienta."""
