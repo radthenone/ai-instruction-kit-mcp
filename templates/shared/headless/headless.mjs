@@ -21,7 +21,7 @@
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
 import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -244,6 +244,18 @@ function profileClients() {
   return list.includes("all") ? KNOWN_CLIENTS : list.map((c) => (c === "copilot" ? "vscode" : c))
 }
 
+const KEEP_RUNS = 5
+
+// Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
+// ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
+function pruneRuns(runsDir) {
+  const runs = readdirSync(runsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+  for (const name of runs.slice(0, -KEEP_RUNS)) rmSync(join(runsDir, name), { recursive: true, force: true })
+}
+
 function parse(argv) {
   const opts = { host: "", executor: "", model: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
   // Wartość flagi nie może być kolejną flagą — `--model --timeout 5` to błąd, nie model.
@@ -357,6 +369,7 @@ async function main() {
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runsDir, ".gitignore"), "*\n")
+  pruneRuns(runsDir)
   const logPath = join(runDir, "headless.log")
   const ticket = ticketNumber()
   prompt += footer(runDir, ticket)
