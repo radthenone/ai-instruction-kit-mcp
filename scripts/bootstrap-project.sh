@@ -854,6 +854,8 @@ prune_shared_skills() {
 # AGENTS.md tym samym modelem co BUGBOT.md (#269): część kita z szablonu przy każdym
 # reloadzie, treść projektu w bloku `<!-- project:agents -->`; plik sprzed bloku migrowany
 # po historii `templates/AGENTS.md`, a niepewna migracja to jedna linia z trybem C.
+# Blok `kit:brief` (#307) dostaje brief wyrenderowany z Profilu i overlayu — ten sam,
+# który serwer MCP wkłada w swoje instructions.
 install_agenty_md_once() {
   local existed=0
   [[ -f "$TARGET/AGENTS.md" ]] && existed=1
@@ -862,11 +864,31 @@ install_agenty_md_once() {
     LABEL="AGENTS.md" \
     BLOCK="agents" \
     KIT_ROOT="$KIT_ROOT" \
+    BRIEF="${BRIEF_FILE:-}" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
   if [[ "$existed" -eq 0 ]]; then
     echo "  + AGENTS.md"
   fi
 }
+
+# Exit 0, gdy AGENTS.md to nietknięty render szablonu kita (brief dowolny) — wolno go usunąć.
+agents_pristine() {
+  SRC="$KIT_ROOT/templates/AGENTS.md" \
+    DEST="$TARGET/AGENTS.md" \
+    BLOCK="agents" \
+    KIT_ROOT="$KIT_ROOT" \
+    CHECK_ONLY=1 \
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py" >/dev/null
+}
+
+# Brief projektu (#307): jedno źródło z resolverem — czyta Profil i overlay, a wynik
+# trafia do bloku `kit:brief` w AGENTS.md (Claude widzi go przez import `@AGENTS.md`
+# w CLAUDE.md). Ścieżkę workspace'u podajemy przez KIT_WORKSPACE w dry-runie.
+render_project_brief() {
+  WORKSPACE="$WORKSPACE_PATH" LANGUAGE="$LANGUAGE" \
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/project_brief.py"
+}
+
 
 # Kontrakt skilli Matta (#241): brakujące `docs/agents/*` z ziaren setupu Matta,
 # blok `## Agent skills` w AGENTS.md i `CODING_STANDARDS.md` (indeks źródeł standardów).
@@ -1266,7 +1288,9 @@ remove_kit() {
     prune_client "$id"
   done
   # Pliki tworzone raz: tylko gdy identyczne z szablonem — zmienione należą do użytkownika.
-  if [[ -f "$TARGET/AGENTS.md" ]] && cmp -s "$TARGET/AGENTS.md" "$KIT_ROOT/templates/AGENTS.md"; then
+  # AGENTS.md niesie brief z Profilu (#307), więc nie `cmp`: nietknięty = render szablonu
+  # z dowolną treścią bloku `kit:brief` (ta sama reguła co BUGBOT.md).
+  if [[ -f "$TARGET/AGENTS.md" ]] && agents_pristine; then
     kit_rm AGENTS.md
   fi
   if bugbot_pristine "$TARGET/BUGBOT.md"; then
@@ -1317,13 +1341,16 @@ PROFILE_TIERS="$(profile_tiers)"
 HEADLESS=0
 if headless_enabled; then HEADLESS=1; fi
 STAGED_AGENTS="$(mktemp -d)"
-trap 'rm -rf "$STAGED_AGENTS"' EXIT
+BRIEF_FILE="$(mktemp)"
+trap 'rm -rf "$STAGED_AGENTS" "$BRIEF_FILE"' EXIT
 SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
 # Python na Windowsie kończy linie `\r\n` — `\r` przykleja się do nazwy i `rm -f` chybia.
 SKIPPED_AGENTS="${SKIPPED_AGENTS//$'\r'/}"
 SHARED_AGENTS="$STAGED_AGENTS"
 echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, client → *-frontend, review-ui)"
 
+# Brief to dodatek: błąd renderowania (uszkodzony Profil, manifest) nie zatrzymuje instalacji.
+render_project_brief > "$BRIEF_FILE" || { echo "  ! brief nie wyrenderowany" >&2; : > "$BRIEF_FILE"; }
 install_agenty_md_once
 install_bugbot_md_once
 prune_tier_agents

@@ -8,6 +8,7 @@ regułę, a hook przypomnienia Claude istnieje tylko przy `language` ≠ en.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -164,6 +165,70 @@ class RenderTest(unittest.TestCase):
             self.assertFalse((target / ".claude" / "hooks" / HOOK_COMMAND).exists())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class LanguageReminderValuesTest(unittest.TestCase):
+    """Hook przypomnienia mówi konkretny język i bazę z Profilu (#307)."""
+
+    def _run_hook(self, profile: str, overlay: str) -> subprocess.CompletedProcess[str]:
+        tmp = Path(tempfile.mkdtemp(prefix="kit-language-hook-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / ".ai").mkdir(parents=True)
+        (tmp / ".ai" / "project.profile.yaml").write_text(profile, encoding="utf-8")
+        (tmp / ".ai" / "project.md").write_text(overlay, encoding="utf-8")
+        return subprocess.run(
+            ["node", str(TEMPLATES / "claude" / HOOK_COMMAND)],
+            input="{}",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=tmp,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(tmp)},
+            timeout=30,
+            check=False,
+        )
+
+    def test_hook_names_language_and_base_from_profile(self) -> None:
+        if not shutil.which("node"):
+            if is_ci():
+                self.fail("brak node w CI — hook języka musi się wykonać")
+            self.skipTest("brak node w PATH")
+
+        result = self._run_hook(
+            "name: t\nlanguage: pl\nbackend: fastapi\nweb: none\nmobile: none\n",
+            "# Overlay\n\nbase: dev\n",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r"(?<![a-z])pl(?![a-z])|polsk")
+        self.assertRegex(result.stdout, r"(?<![\w/-])dev(?![\w/-])")
+        self.assertIn("Priorytet".lower(), result.stdout.lower())
+
+    def _require_node(self) -> None:
+        if not shutil.which("node"):
+            if is_ci():
+                self.fail("brak node w CI — hook języka musi się wykonać")
+            self.skipTest("brak node w PATH")
+
+    def test_empty_base_does_not_swallow_next_line(self) -> None:
+        """Puste ``base:`` = brak bazy, nie treść następnej linii (np. ``##``)."""
+        self._require_node()
+        result = self._run_hook(
+            "name: t\nlanguage: pl\n", "# Overlay\n\nbase:\n## Komendy\n"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("`##`", result.stdout)
+        self.assertIn("brak `base:`", result.stdout)
+
+    def test_language_tag_matches_resolver(self) -> None:
+        """``en-US`` to angielski, tak jak w ``normalize_language`` resolvera."""
+        self._require_node()
+        result = self._run_hook("name: t\nlanguage: en-US\n", "# Overlay\n\nbase: dev\n")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Project language: `en`", result.stdout)
 
 
 if __name__ == "__main__":

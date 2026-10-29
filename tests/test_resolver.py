@@ -452,5 +452,46 @@ class TestLanguageAndCodegen(unittest.TestCase):
             self.assertIn("Extra overlay", resolved.overlay_content)
 
 
+class TestProjectBrief(unittest.TestCase):
+    """Brief projektu: wartości z Profilu i overlayu, gotowe dla pliku i MCP (#307)."""
+
+    def test_brief_carries_profile_overlay_and_priority(self) -> None:
+        """Język, baza, Tiery, codegen, klienci, overlay, komendy, bundle i moduły."""
+        tmp, workspace = _workspace(
+            "name: brief-test\nlanguage: pl\nclients: all\n"
+            "backend: fastapi\nweb: react\nmobile: none\ncodegen: orval\n"
+        )
+        try:
+            (workspace / ".ai" / "project.md").write_text(
+                "# Overlay\n\nbase: dev\n\n## Komendy\n\n- test: `make test`\n",
+                encoding="utf-8",
+            )
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        brief = resolved.project_brief
+        self.assertRegex(brief, r"(?i)priorytet")
+        self.assertRegex(brief, r"(?i)(kit|wytyczne)")
+        self.assertIn("`pl`", brief)
+        self.assertIn("po polsku", brief)
+        self.assertIn("Baza brancha", brief)
+        self.assertIn("`dev`", brief)
+        self.assertIn("backend=`fastapi`", brief)
+        self.assertIn("web=`react`", brief)
+        self.assertIn("mobile=`none`", brief)
+        self.assertIn("`orval`", brief)
+        self.assertIn("`all`", brief)
+        self.assertIn("`claude`", brief)
+        self.assertIn("project.md", brief)
+        self.assertIn("make test", brief)
+        for bundle in ("backend", "frontend", "architecture", "full"):
+            self.assertIn(f"`{bundle}`", brief)
+        for module_id in ("core:repo-first", "core:language-pl"):
+            self.assertIn(f"`{module_id}`", brief)
+        # Moduł hosta nie może rozjeżdżać briefu między maszynami.
+        self.assertNotIn("infra:vps-lightweight", brief)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -111,5 +111,55 @@ class TestAgentsSync(unittest.TestCase):
         self.assertTrue(is_pristine(render(template, "", block="agents"), template, "agents"))
 
 
+WITH_BRIEF = """# AGENTS.md
+
+## Brief projektu
+
+<!-- kit:brief -->
+_Brief nie jest jeszcze wyrenderowany._
+<!-- /kit:brief -->
+
+## Reguły projektu
+
+<!-- project:agents -->
+<!-- Wpisz tu reguły własne projektu. -->
+<!-- /project:agents -->
+"""
+
+
+class TestAgentsBrief(unittest.TestCase):
+    """Blok ``kit:brief`` jest generowany z Profilu i odświeżany przy reloadzie (#307)."""
+
+    def test_render_embeds_generated_brief(self) -> None:
+        text = render(WITH_BRIEF, "", block="agents", brief="> **Priorytet:** kit")
+
+        self.assertIn("<!-- kit:brief -->\n> **Priorytet:** kit\n<!-- /kit:brief -->", text)
+
+    def test_brief_is_kit_content_not_project_rule(self) -> None:
+        """Brief nie trafia do bloku projektu przy migracji ani przy porównaniu."""
+        rendered = render(WITH_BRIEF, "", block="agents", brief="> **Priorytet:** kit")
+
+        self.assertEqual(extract_rules(rendered, "agents"), extract_rules(WITH_BRIEF, "agents"))
+        self.assertTrue(is_pristine(rendered, WITH_BRIEF, "agents"))
+
+    def test_sync_replaces_stale_brief(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "AGENTS.md"
+            source = Path(tmp) / "template.md"
+            dest.write_text(
+                render(WITH_BRIEF, "", block="agents", brief="stary brief"),
+                encoding="utf-8",
+                newline="\n",
+            )
+            source.write_text(WITH_BRIEF, encoding="utf-8", newline="\n")
+
+            result = sync_file(dest, source, block="agents", brief="nowy brief")
+
+            text = dest.read_text(encoding="utf-8")
+            self.assertEqual(result.action, "refreshed")
+            self.assertIn("nowy brief", text)
+            self.assertNotIn("stary brief", text)
+
+
 if __name__ == "__main__":
     unittest.main()

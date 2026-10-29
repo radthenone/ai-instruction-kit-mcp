@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 import yaml
 
+from guides.clients import expand_clients, format_clients_arg, parse_clients
 from guides.manifest import BundleRule, Manifest, Mappings, load_manifest
 from guides.host_profile import VPS_LIGHTWEIGHT_MODULE, detect_host_profile
 
@@ -266,6 +268,175 @@ class ResolvedBundle:
     missing_modules: tuple[str, ...]
 
 
+_BASE_LINE = re.compile(r"(?m)^base:[ \t]*(\S+)[ \t]*$")
+_COMMANDS_HEADING = re.compile(r"(?m)^##[ \t]+Komendy[ \t]*$")
+_HEADING = re.compile(r"(?m)^##[ \t]+")
+
+BRIEF_LANGUAGE_PROSE = {
+    "pl": (
+        "odpowiedzi, docstringi, body issue/PR, komentarze i commity **po polsku**; "
+        "tytuły issue/PR i slugi branchy zawsze EN; identyfikatory w kodzie "
+        "(też nazwy testów) EN"
+    ),
+    "en": (
+        "agent replies, public docstrings, issue/PR bodies, review comments and commit "
+        "messages **in English**; issue/PR titles and branch slugs always EN; code "
+        "identifiers (including test names) EN"
+    ),
+}
+
+
+def overlay_base(overlay_text: str) -> str | None:
+    """
+    Baza brancha z linii ``base: <gałąź>`` w overlayu projektu.
+
+    Args:
+        overlay_text: Treść ``.ai/project.md`` (także z nagłówkiem ``# Overlay projektu``).
+
+    Returns:
+        str | None: Nazwa gałęzi albo ``None``, gdy overlay jej nie wymusza.
+    """
+    match = _BASE_LINE.search(overlay_text)
+    return match.group(1).strip() if match else None
+
+
+def overlay_commands(overlay_text: str, limit: int = 4) -> list[str]:
+    """
+    Komendy wpisane w sekcji ``## Komendy`` overlayu (pierwsze ``limit``).
+
+    Args:
+        overlay_text: Treść ``.ai/project.md``.
+        limit: Maksymalna liczba wpisów.
+
+    Returns:
+        list[str]: Linie bez wiodącego myślnika (np. ``test: `make test```).
+    """
+    match = _COMMANDS_HEADING.search(overlay_text)
+    if match is None:
+        return []
+    rest = overlay_text[match.end() :]
+    end = _HEADING.search(rest)
+    section = rest[: end.start()] if end else rest
+    commands: list[str] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("- ", "* ")):
+            commands.append(stripped[2:].strip())
+    return commands[:limit]
+
+
+def _brief_clients(raw: object) -> tuple[str, tuple[str, ...]]:
+    """Surowe ``clients:`` z Profilu → (wartość flagi, rozwinięta lista)."""
+    value = "all" if raw is None else str(raw)
+    try:
+        parsed = parse_clients(value)
+    except ValueError:
+        return value, ()
+    return format_clients_arg(parsed), tuple(expand_clients(parsed))
+
+
+def render_project_brief(
+    *,
+    name: str,
+    language: str,
+    codegen: str,
+    tiers: Mapping[str, str],
+    clients: object,
+    profile_path: Path,
+    workspace_root: Path,
+    overlay_content: str,
+    bundle_names: Sequence[str],
+    module_ids: Sequence[str],
+) -> str:
+    """
+    Zrenderuj brief projektu z Profilu i overlayu — jedno źródło dla pliku i MCP.
+
+    Brief jest krótki i deterministyczny: nie zawiera modułu hosta
+    (``infra:vps-lightweight``), żeby ten sam plik nie „starzał się” między maszynami.
+    Otwiera go reguła priorytetu: wytyczne kita przed domyślnymi zachowaniami
+    skilli i pluginów.
+
+    Args:
+        name: Nazwa projektu z Profilu.
+        language: Znormalizowany język prozy (``pl`` / ``en``).
+        codegen: Efektywny codegen (``orval`` / ``none`` / ``graphql``).
+        tiers: Tier → Stack albo ``none``.
+        clients: Wartość ``clients:`` z Profilu.
+        profile_path: Ścieżka Profilu (do wyświetlenia względem workspace'u).
+        workspace_root: Root repo aplikacji.
+        overlay_content: Treść overlayu (także z nagłówkiem kita).
+        bundle_names: Nazwy bundle'i z manifestu.
+        module_ids: Włączone moduły (bez modułu hosta).
+
+    Returns:
+        str: Treść bloku briefu (bez znaczników ``kit:brief``).
+    """
+    try:
+        profile_rel = profile_path.relative_to(workspace_root).as_posix()
+    except ValueError:
+        profile_rel = profile_path.as_posix()
+    overlay_rel = ".ai/project.md"
+
+    clients_flag, client_ids = _brief_clients(clients)
+    clients_line = f"`{clients_flag}`"
+    if client_ids:
+        clients_line += " → " + ", ".join(f"`{client}`" for client in client_ids)
+
+    base = overlay_base(overlay_content)
+    if base:
+        base_line = f"`{base}` (z `{overlay_rel}`)"
+    else:
+        base_line = (
+            f"`dev`, jeśli `origin/dev` istnieje i nie jest w tyle za default; "
+            f"inaczej default (brak `base:` w `{overlay_rel}`)"
+        )
+
+    commands = overlay_commands(overlay_content)
+    commands_line = "; ".join(commands) if commands else (
+        f"brak sekcji `## Komendy` w `{overlay_rel}` — użyj `task --list`, jeśli jest Taskfile"
+    )
+
+    has_pair = tiers.get("backend", TIER_NONE) != TIER_NONE and (
+        tiers.get("web", TIER_NONE) != TIER_NONE
+        or tiers.get("mobile", TIER_NONE) != TIER_NONE
+    )
+    pair = "tak" if has_pair else "nie"
+
+    visible_modules = [mid for mid in module_ids if mid != VPS_LIGHTWEIGHT_MODULE]
+    modules_line = ", ".join(f"`{mid}`" for mid in visible_modules)
+
+    overlay_body = overlay_content.strip()
+    overlay_header = "# Overlay projektu"
+    if overlay_body.startswith(overlay_header):
+        overlay_body = overlay_body[len(overlay_header) :].strip()
+    overlay_section = (
+        ["", f"### Overlay projektu (`{overlay_rel}`)", "", overlay_body]
+        if overlay_body
+        else ["", f"### Overlay projektu (`{overlay_rel}`)", "", "_Brak overlay — dodaj fakty repo._"]
+    )
+
+    prose = BRIEF_LANGUAGE_PROSE.get(language, BRIEF_LANGUAGE_PROSE["pl"])
+    return "\n".join(
+        [
+            "> **Priorytet:** wytyczne instruction-kit (ten brief, `.ai/project.md` i bundle MCP)",
+            "> stoją wyżej niż domyślne zachowania skilli i pluginów; przy konflikcie wygrywa kit.",
+            "",
+            f"- **Język:** `{language}` — {prose}.",
+            f"- **Baza brancha:** {base_line}.",
+            f"- **Profil:** `{name}` — `{profile_rel}`",
+            f"- **Tiery:** backend=`{tiers.get('backend', TIER_NONE)}` "
+            f"web=`{tiers.get('web', TIER_NONE)}` mobile=`{tiers.get('mobile', TIER_NONE)}`",
+            f"- **Codegen:** `{codegen}` (efektywny; para backend + klient: {pair})",
+            f"- **Klienci:** {clients_line}",
+            f"- **Overlay:** `{overlay_rel}` — pierwszeństwo przed bundlami.",
+            f"- **Komendy:** {commands_line}",
+            f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
+            f"- **Moduły ({len(visible_modules)}):** {modules_line}",
+            *overlay_section,
+        ]
+    )
+
+
 @dataclass(frozen=True)
 class ResolvedProfile:
     """Wynik rozwiązania profilu projektu."""
@@ -282,6 +453,7 @@ class ResolvedProfile:
     bundles: dict[str, ResolvedBundle]
     overlay_content: str
     index_markdown: str
+    project_brief: str
     language_module_id: str
     unrecognised_decisions: tuple[tuple[str, str], ...]
     deprecated_aliases: tuple[tuple[str, str], ...]
@@ -947,6 +1119,19 @@ def resolve_profile(
     unknown_decisions = unrecognised_decisions(profile_data, manifest.mappings)
     deprecated_aliases = used_aliases(profile_data, manifest.mappings)
     lang_module = manifest.mappings.languages.module_for(language)
+    project_name = str(profile_data.get("name", resolved_workspace.name))
+    project_brief = render_project_brief(
+        name=project_name,
+        language=language,
+        codegen=codegen,
+        tiers=tiers,
+        clients=profile_data.get("clients"),
+        profile_path=profile_path,
+        workspace_root=resolved_workspace,
+        overlay_content=overlay_content,
+        bundle_names=list(bundles),
+        module_ids=enabled_modules,
+    )
 
     index_lines = []
     if notice:
@@ -1007,6 +1192,7 @@ def resolve_profile(
         bundles=bundles,
         overlay_content=overlay_content,
         index_markdown="\n".join(index_lines),
+        project_brief=project_brief,
         language_module_id=lang_module,
         unrecognised_decisions=unknown_decisions,
         deprecated_aliases=deprecated_aliases,
