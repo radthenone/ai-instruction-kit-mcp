@@ -272,6 +272,9 @@ Język odpowiedzi, statusy i hand-back: z MCP `get_language` (Profil), niezależ
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
    `gh issue develop <N> --name <typ>/<N>-<slug> --base <BASE> --checkout`.
+   Gdy używasz worktree: zakładasz przez `node .ai/worktree.mjs add [<ścieżka>] <branch>` (zgodnie z regułą git-branch-pr).
+   Po merge ticketu usuwasz je przez `node .ai/worktree.mjs remove <ścieżka>`.
+   Przy ostrzeżeniu `deps differ from main checkout` oznacz ticket jako „weryfikacja w CI” i nie ufaj lokalnym testom.
 2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
    reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada

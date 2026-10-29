@@ -1,0 +1,19 @@
+{
+  "copy": [
+    ".mcp.json",
+    ".cursor/mcp.json",
+    ".vscode/mcp.json",
+    ".codex/config.toml",
+    ".kiro/settings/mcp.json",
+    ".kilocode/mcp.json",
+    ".agents/mcp_config.json",
+    "opencode.json",
+    ".ai/.kit-bootstrap.json",
+    ".ai/.kit-doctor.json",
+    ".env",
+    ".claude/settings.local.json"
+  ],
+  "link": [],
+  "setup": [],
+  "venv": "auto"
+}
