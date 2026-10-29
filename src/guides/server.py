@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -30,24 +31,24 @@ from guides.manifest import load_manifest
 from guides.questions import render_catalog
 from guides.resolver import (
     MIGRATION_NOTICE,
+    ResolvedProfile,
     normalize_language,
     resolve_workspace_profile,
 )
 
-mcp = FastMCP(
-    "project-guides",
-    instructions=(
-        "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
-        "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
-        "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
-        "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
-        "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
-        "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
-        "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace, "
-        "a brakujące etykiety GitHuba zakłada ensure_labels — "
-        "jedyne narzędzia zapisujące, domyślnie dry_run=True."
-    ),
+_STATIC_INSTRUCTIONS = (
+    "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
+    "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
+    "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
+    "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
+    "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
+    "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
+    "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace, "
+    "a brakujące etykiety GitHuba zakłada ensure_labels — "
+    "jedyne narzędzia zapisujące, domyślnie dry_run=True."
 )
+
+mcp = FastMCP("project-guides", instructions=_STATIC_INSTRUCTIONS)
 
 _kit_root: Path | None = None
 _workspace_root: Path | None = None
@@ -67,6 +68,53 @@ def _get_resolved():
         language_override=_language_override,
         notice=MIGRATION_NOTICE if _legacy_config else "",
     )
+
+
+def build_instructions(resolved: ResolvedProfile) -> str:
+    """
+    Instrukcje serwera MCP z wartościami Profilu (#307).
+
+    Brief jest ten sam, który bootstrap wpisuje do ``AGENTS.md`` — agent nie musi
+    wołać ``get_language`` / ``get_index``, żeby poznać język, bazę, Tiery i codegen.
+
+    Args:
+        resolved: Rozwiązany profil workspace'u.
+
+    Returns:
+        str: Brief projektu + krótka mapa narzędzi MCP.
+    """
+    return "\n".join(
+        [
+            f"# project-guides — {resolved.name}",
+            "",
+            resolved.project_brief.strip(),
+            "",
+            "## Narzędzia",
+            "",
+            "- `get_bundle(name)` — pełna treść bundle'a (backend, frontend, architecture, …).",
+            "- `get_overlay()` — unikalne fakty tego repo; pierwszeństwo przed bundlami.",
+            "- `get_language()` / `get_codegen()` / `get_clients()` — polityka i metadane z Profilu.",
+            "- `get_index()` / `list_modules()` / `get_module(id)` — rejestr i pojedyncze moduły.",
+            "- `bootstrap_workspace()` / `reload_workspace()` — instalacja plików kita, domyślnie dry-run.",
+            "",
+            _STATIC_INSTRUCTIONS,
+        ]
+    )
+
+
+def _set_instructions(text: str) -> None:
+    """Podmień instructions po parsowaniu argv (FastMCP 1.x nie ma publicznego settera)."""
+    mcp._mcp_server.instructions = text
+
+
+def _apply_profile_instructions() -> None:
+    """Ustaw instructions z Profilu; błąd (Profil, prywatne API ``mcp``) tylko logujemy."""
+    try:
+        _set_instructions(build_instructions(_get_resolved()))
+    except Exception as exc:
+        # Uszkodzony Profil nie może zabić handshake'u; narzędzia zwrócą błąd przy wołaniu.
+        # Log na stderr — stdout to kanał MCP (stdio).
+        print(f"guides: instrukcje z Profilu niedostępne: {exc!r}", file=sys.stderr)
 
 
 @mcp.tool()
@@ -664,6 +712,9 @@ def main() -> None:
 
     if _workspace_root is None:
         _workspace_root = Path.cwd().resolve()
+
+    # Instrukcje z Profilu dopiero teraz — workspace, język i overlay są już z argv.
+    _apply_profile_instructions()
 
     _register_bundle_resources()
     mcp.run()

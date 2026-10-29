@@ -1142,6 +1142,40 @@ class TestNeverBlocks(unittest.TestCase):
             self.assertEqual(_report(workspace).infos, ())
 
 
+class TestStaleProjectBrief(unittest.TestCase):
+    """Brief w AGENTS.md musi odpowiadać Profilowi i overlayowi (#307)."""
+
+    def _agents_with_brief(self, brief: str) -> str:
+        template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
+        return render_bugbot(template, "", block="agents", brief=brief)
+
+    def test_current_brief_has_no_finding(self) -> None:
+        from guides.resolver import resolve_workspace_profile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / ".ai" / "project.md", "# Overlay\n\nbase: dev\n")
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+            _write(workspace / "AGENTS.md", self._agents_with_brief(resolved.project_brief))
+
+            report = run_doctor(workspace, KIT_ROOT, clients="claude")
+
+        self.assertNotIn("stale-project-brief", {finding.kind for finding in report.findings})
+
+    def test_outdated_brief_warns_with_reload_fix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            _write(workspace / ".ai" / "project.md", "# Overlay\n\nbase: dev\n")
+            _write(workspace / "AGENTS.md", self._agents_with_brief("> stary brief"))
+
+            report = run_doctor(workspace, KIT_ROOT, clients="claude")
+
+        findings = [f for f in report.findings if f.kind == "stale-project-brief"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].file, "AGENTS.md")
+        self.assertIn("reload", findings[0].message)
+
+
 class TestReport(unittest.TestCase):
     def test_clean_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

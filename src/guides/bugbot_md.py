@@ -45,6 +45,13 @@ TIER_SETS: tuple[frozenset[str], ...] = (
 # Sekcje kita spoza szablonu, które sync odkłada na bok (blok → nagłówek sekcji).
 ASIDE_SECTIONS = {"agents": re.compile(r"(?m)^## Agent skills[ \t]*$")}
 
+# Blok briefu projektu (#307): generowany z Profilu i overlayu przy każdym reloadzie.
+# Nie jest blokiem projektu — użytkownik go nie edytuje, a `is_pristine` normalizuje
+# jego treść tak samo jak treść szablonu.
+BRIEF_OPEN = "<!-- kit:brief -->"
+BRIEF_CLOSE = "<!-- /kit:brief -->"
+_BRIEF_RE = re.compile(re.escape(BRIEF_OPEN) + r"(.*?)" + re.escape(BRIEF_CLOSE), re.DOTALL)
+
 
 def _markers(block: str) -> tuple[str, str]:
     """Znaczniki bloku projektu, np. ``project:rules`` albo ``project:agents``."""
@@ -120,6 +127,29 @@ def extract_rules(text: str, block: str = "rules") -> str | None:
     """
     match = _block_re(block).search(text)
     return match.group(1) if match else None
+
+
+def extract_brief(text: str) -> str | None:
+    """
+    Wyciągnij treść generowanego bloku ``kit:brief`` z ``AGENTS.md`` (#307).
+
+    Args:
+        text: Treść ``AGENTS.md``.
+
+    Returns:
+        str | None: Treść między ``<!-- kit:brief -->`` a ``<!-- /kit:brief -->``
+            albo ``None``, gdy plik nie ma bloku.
+    """
+    match = _BRIEF_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _with_brief(text: str, brief: str | None) -> str:
+    """Podmień treść bloku ``kit:brief`` (``None`` albo brak bloku = bez zmian)."""
+    if brief is None or BRIEF_OPEN not in text or BRIEF_CLOSE not in text:
+        return text
+    replacement = f"{BRIEF_OPEN}\n{brief.strip()}\n{BRIEF_CLOSE}"
+    return _BRIEF_RE.sub(lambda _: replacement, text, count=1)
 
 
 def overlay_path_entries(text: str) -> list[tuple[int, str, str]]:
@@ -223,6 +253,7 @@ def render(
     rules: str | None = None,
     paths: Mapping[str, str] | None = None,
     block: str = "rules",
+    brief: str | None = None,
 ) -> str:
     """
     Wyrenderuj szablon: wybrane sekcje Tierów + blok reguł projektu.
@@ -233,6 +264,8 @@ def render(
         rules: Treść bloku ``project:rules``; ``None`` zostawia instrukcję z szablonu.
         paths: Klucze ``## Ścieżki`` overlayu dla ``{{path:…}}`` (#266).
         block: Nazwa bloku projektu.
+        brief: Treść generowanego bloku ``kit:brief`` (``AGENTS.md``, #307);
+            ``None`` zostawia domyślną treść szablonu.
 
     Returns:
         str: Gotowa treść pliku (LF).
@@ -256,7 +289,7 @@ def render(
     text = re.sub(r"\n{3,}", "\n\n", text)
     if default_rules is not None:
         text = text.replace(_SENTINEL, block_rules or "")
-    return text
+    return _with_brief(text, brief)
 
 
 def _render_pattern(template: str, tiers: frozenset[str], block: str) -> re.Pattern[str]:
@@ -294,6 +327,9 @@ def is_pristine(text: str, template: str, block: str = "rules") -> bool:
         normalized = _block_re(block).sub(
             lambda _: opener + default_rules + closer, text, count=1
         )
+    default_brief = extract_brief(template)
+    if default_brief is not None and extract_brief(normalized) is not None:
+        normalized = _with_brief(normalized, default_brief)
     return any(
         _render_pattern(template, tiers, block).fullmatch(normalized) for tiers in TIER_SETS
     )
@@ -321,6 +357,7 @@ def migrate(
     history: Sequence[str],
     paths: Mapping[str, str] | None = None,
     block: str = "rules",
+    brief: str | None = None,
 ) -> Migration:
     """
     Zmigruj plik bez bloku: dopisane linie → ``project:rules``, reszta z szablonu.
@@ -368,10 +405,10 @@ def migrate(
         )
 
     if not added:
-        return Migration(render(template, tiers, paths=paths, block=block), moved=[])
+        return Migration(render(template, tiers, paths=paths, block=block, brief=brief), moved=[])
 
     rules = "\n" + "\n".join(added) + "\n"
-    return Migration(render(template, tiers, rules, paths, block), moved=added)
+    return Migration(render(template, tiers, rules, paths, block, brief), moved=added)
 
 
 def needs_migration(text: str, template: str, block: str = "rules") -> bool:
@@ -472,6 +509,7 @@ def sync_file(
     label: str = "BUGBOT.md",
     paths: Mapping[str, str] | None = None,
     block: str = "rules",
+    brief: str | None = None,
 ) -> SyncResult:
     """
     Doprowadź plik ``BUGBOT.md`` / ``AGENTS.md`` do stanu zgodnego z szablonem i blokiem.
@@ -484,13 +522,14 @@ def sync_file(
         label: Ścieżka pliku w komunikatach reloadu (np. ``.cursor/BUGBOT.md``).
         paths: Klucze ``## Ścieżki`` overlayu dla ``{{path:…}}`` (#266).
         block: Nazwa bloku projektu (``rules`` / ``agents``).
+        brief: Treść bloku ``kit:brief`` (#307); ``None`` zostawia domyślną szablonu.
 
     Returns:
         SyncResult: Akcja, komunikat dla reloadu i lista przeniesionych linii.
     """
     template = source.read_text(encoding="utf-8")
     if not dest.is_file():
-        _write(dest, render(template, tiers, paths=paths, block=block))
+        _write(dest, render(template, tiers, paths=paths, block=block, brief=brief))
         return SyncResult("created")
 
     # Surowe bajty: read_text tłumaczy CRLF po cichu, a plik ma skończyć z LF.
@@ -515,11 +554,11 @@ def sync_file(
         return SyncResult("unchanged")
 
     if rules is not None:
-        return refresh(render(template, tiers, rules, paths, block))
+        return refresh(render(template, tiers, rules, paths, block, brief))
     if is_pristine(text, template, block):
-        return refresh(render(template, tiers, paths=paths, block=block))
+        return refresh(render(template, tiers, paths=paths, block=block, brief=brief))
 
-    migration = migrate(text, template, tiers, history, paths, block)
+    migration = migrate(text, template, tiers, history, paths, block, brief)
     if migration.text is None:
         return SyncResult(
             "uncertain",
@@ -602,6 +641,12 @@ def main() -> int:
         if overlay is not None and overlay.is_file()
         else {}
     )
+    brief_path = Path(os.environ["BRIEF"]) if os.environ.get("BRIEF") else None
+    brief = (
+        brief_path.read_text(encoding="utf-8")
+        if brief_path is not None and brief_path.is_file() and brief_path.stat().st_size
+        else None
+    )
 
     if os.environ.get("CHECK_ONLY"):
         if not dest.is_file():
@@ -623,7 +668,14 @@ def main() -> int:
     ):
         history = read_template_history(kit_root, rel_path)
     result = sync_file(
-        dest, source, tiers, history, os.environ.get("LABEL") or dest.name, paths, block
+        dest,
+        source,
+        tiers,
+        history,
+        os.environ.get("LABEL") or dest.name,
+        paths,
+        block,
+        brief,
     )
     if result.message:
         print(result.message)

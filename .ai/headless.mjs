@@ -21,7 +21,7 @@
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
 import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -71,7 +71,7 @@ const footer = (runDir, ticket) => `
 Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Ticket #${ticket}: przeczytaj \`gh issue view ${ticket} --comments\` — to specyfikacja zadania.` : ""}
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
-- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`git worktree add --detach ${join(runDir, "base")} <ref>\`, na końcu \`git worktree remove ${join(runDir, "base")}\`.
+- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add ${join(runDir, 'base')} --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove ${join(runDir, 'base')}\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
 - Lokalnie tylko testy dotknięte zmianą i szybkie bramki; pełny zestaw zrobi CI.
@@ -100,6 +100,10 @@ const EXECUTORS = {
     // `--standalone`: prywatny serwer jako proces potomny, nie usługa w tle — inaczej
     // ubicie drzewa nie sięga LSP i MCP wykonawcy.
     bins: ["opencode2", "opencode"],
+    // Projektowy config jest w `.gitignore`, więc linked worktree go nie ma. Wtedy
+    // wskazujemy plik z głównego checkoutu natywnie (`OPENCODE_CONFIG`), a wrapper czyta
+    // z niego `model` (#300). Sam plik w worktree ma pierwszeństwo i nie wymaga fallbacku.
+    config: { file: "opencode.json", env: "OPENCODE_CONFIG" },
     // Treść od `-` (np. lista markdown) parser opencode wziąłby za flagę — nowa linia na
     // początku tego nie zmienia dla modelu.
     args: (model, prompt) => [
@@ -154,6 +158,44 @@ function agyConfig() {
   }
 }
 
+// Katalog głównego checkoutu, gdy cwd to linked worktree (`--git-dir` ≠ `--git-common-dir`);
+// null poza worktree. Worktree ma własny `.git/worktrees/<id>`, wspólny jest `<główny>/.git`.
+function mainCheckout() {
+  const gitDir = git("rev-parse", "--git-dir")
+  const commonDir = git("rev-parse", "--git-common-dir")
+  if (!gitDir || !commonDir) return null
+  const cwd = process.cwd()
+  try {
+    if (norm(resolve(cwd, gitDir)) === norm(resolve(cwd, commonDir))) return null
+    return dirname(norm(resolve(cwd, commonDir)))
+  } catch {
+    return null
+  }
+}
+
+// Config wykonawcy, którego w worktree nie ma: bierzemy plik z głównego checkoutu.
+// Wykonawcy bez mechanizmu env dostają tylko ostrzeżenie — bez fallbacku (#300).
+function configFor(executor) {
+  const main = mainCheckout()
+  if (!main) return null
+  if (!executor.config) return { line: "CONFIG=missing — executor default model" }
+  // Jawnie wskazany config (env) wygrywa — nie nadpisujemy decyzji użytkownika.
+  if (process.env[executor.config.env]) return null
+  if (existsSync(join(process.cwd(), executor.config.file))) return null
+  const path = join(main, executor.config.file)
+  if (!existsSync(path)) return { line: "CONFIG=missing — executor default model" }
+  return { env: executor.config.env, path, model: configModel(path), line: `CONFIG=main-checkout ${path}` }
+}
+
+// `model` z projektowego configu (JSON). Niepoprawny plik nie wywraca runu — tylko brak modelu.
+function configModel(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")).model || ""
+  } catch {
+    return ""
+  }
+}
+
 function fail(message) {
   process.stderr.write(`[headless] ${message}\n`)
   process.exit(2)
@@ -200,6 +242,25 @@ function profileClients() {
   const raw = match ? `${match[1]},${match[2].replace(/^[ \t]+-/gm, ",")}` : ""
   const list = raw.split(/[,\n]/).map((c) => c.replace(/[[\]'"\s]/g, "").toLowerCase()).filter(Boolean)
   return list.includes("all") ? KNOWN_CLIENTS : list.map((c) => (c === "copilot" ? "vscode" : c))
+}
+
+const KEEP_RUNS = 5
+
+// Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
+// ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
+// Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
+function pruneRuns(runsDir, current) {
+  const runs = readdirSync(runsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== current)
+    .map((entry) => entry.name)
+    .sort()
+  for (const name of runs.slice(0, -(KEEP_RUNS - 1))) {
+    try {
+      rmSync(join(runsDir, name), { recursive: true, force: true })
+    } catch {
+      // Sprzątanie best-effort: zablokowany katalog nie może zatrzymać zadania.
+    }
+  }
 }
 
 function parse(argv) {
@@ -255,19 +316,64 @@ function snapshotDescendants(rootPid) {
   })
 }
 
+const KILL_GRACE_MS = 2000
+
+function groupAlive(pid) {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Unix: najpierw SIGTERM, żeby wykonawca zamknął to, co ma poza grupą (serwer opencode
+// ma własną grupę i po samym SIGKILL zostaje osierocony); po KILL_GRACE_MS — SIGKILL.
+// Jedno zabijanie na dziecko: timeout, handler sygnału i `finally` czekają na tę samą obietnicę.
+// SIGTERM idzie synchronicznie, jeszcze przed pierwszym `await`.
 function killTree(child) {
+  return (child.killing ??= killTreeOnce(child))
+}
+
+async function killTreeOnce(child) {
   if (!child.pid) return
   if (process.platform === "win32") {
     for (const pid of [child.pid, ...descendants]) {
       spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore", windowsHide: true })
     }
-  } else {
-    try {
-      process.kill(-child.pid, "SIGKILL")
-    } catch {
-      // Grupa już pusta — nie ma czego sprzątać.
-    }
+    return
   }
+  try {
+    process.kill(-child.pid, "SIGTERM")
+  } catch {
+    return // Grupa już pusta — nie ma czego sprzątać.
+  }
+  const deadline = Date.now() + KILL_GRACE_MS
+  while (groupAlive(child.pid) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100))
+  try {
+    process.kill(-child.pid, "SIGKILL")
+  } catch {
+    // Grupa skończyła się sama po SIGTERM.
+  }
+}
+
+// Node nie zna PID nadawcy sygnału, więc log dostaje migawkę podejrzanych: przodków wrappera
+// i grupę wykonawcy. Tylko `comm`, bez argumentów — w argumentach wykonawcy jest prompt.
+function processSnapshot(childPid) {
+  if (process.platform === "win32") return ""
+  const r = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,lstart=,comm="], { encoding: "utf8", timeout: 3000 })
+  if (r.status !== 0 || !r.stdout) return "(ps niedostępne)\n"
+  const rows = r.stdout.split("\n").filter((l) => l.trim()).map((line) => {
+    const [pid, ppid, pgid, ...rest] = line.trim().split(/\s+/)
+    return { pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), line: [pid, ppid, pgid, ...rest].join(" ") }
+  })
+  const byPid = new Map(rows.map((row) => [row.pid, row]))
+  const picked = []
+  for (let pid = process.pid; byPid.has(pid) && !picked.includes(byPid.get(pid)); pid = byPid.get(pid).ppid) {
+    picked.push(byPid.get(pid))
+  }
+  if (childPid) picked.push(...rows.filter((row) => row.pgid === childPid && !picked.includes(row)))
+  return "PID PPID PGID START COMM\n" + picked.map((row) => row.line).join("\n") + "\n"
 }
 
 // Git w katalogu roboczym; poza repo (albo bez gita) — null, raport pomija pola.
@@ -315,6 +421,7 @@ async function main() {
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runsDir, ".gitignore"), "*\n")
+  pruneRuns(runsDir, basename(runDir))
   const logPath = join(runDir, "headless.log")
   const ticket = ticketNumber()
   prompt += footer(runDir, ticket)
@@ -330,10 +437,17 @@ async function main() {
 
   // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
   // z uprawnieniami na edycje i bash.
-  const current = { child: null, report: () => "" }
+  // `stopping`: po sygnale wyjście należy do handlera — runOnce i pętla zastępców stają.
+  const current = { child: null, started: 0, stopping: false, report: () => "" }
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-    process.on(signal, () => {
-      if (current.child) killTree(current.child)
+    process.on(signal, async () => {
+      if (current.stopping) return
+      current.stopping = true
+      const killing = current.child ? killTree(current.child) : null
+      const after = current.started ? ` po ${((Date.now() - current.started) / 1000).toFixed(1)} s od startu wykonawcy` : ""
+      log(`[headless] sygnał ${signal}${after} (wrapper pid ${process.pid}, ppid ${process.ppid})\n`)
+      log(processSnapshot(current.child?.pid))
+      await killing
       log(current.report())
       process.exit(128 + constants.signals[signal])
     })
@@ -355,6 +469,7 @@ async function main() {
     }
     log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
+  if (current.stopping) return
   log(`[headless] kod wyjścia: ${code}\n`)
   // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
   process.stdout.write("", () => process.exit(code))
@@ -376,7 +491,9 @@ function resolveBin(name) {
 }
 
 async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last }) {
-  const args = executor.args(model, prompt)
+  // Fallback configu tylko w linked worktree; poza nim null i zachowanie bez zmian.
+  const config = configFor(executor)
+  const args = executor.args(model || config?.model || "", prompt)
   const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
   log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
@@ -391,6 +508,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     shell: needsShell,
     stdio: [executor.stdin ? "pipe" : "ignore", "pipe", "pipe"],
     windowsHide: true,
+    // Natywny mechanizm wskazania configu (opencode: `OPENCODE_CONFIG`), gdy worktree go nie ma.
+    env: config?.env ? { ...process.env, [config.env]: config.path } : process.env,
   })
   const closed = new Promise((done) => child.on("close", done))
   // Ostatnie linie wykonawcy do heartbeatu i raportu; `partial` = linia bez `\n` jeszcze,
@@ -421,7 +540,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const lastLine = () => (fullTail().at(-1) || "").trim()
   const minutes = (ms) => Math.round(ms / 6000) / 10
   current.child = child
-  current.report = () => finalReport({ startHead, startStash, tail: fullTail() })
+  current.started = started
+  current.report = () => finalReport({ startHead, startStash, tail: fullTail(), config: config?.line })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
   const heartbeat = setInterval(() => {
@@ -464,8 +584,9 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     clearTimeout(timer)
     clearInterval(poll)
     clearInterval(heartbeat)
-    killTree(child)
+    await killTree(child)
   }
+  if (current.stopping) await new Promise(() => {})
   // Po ubiciu drzewa potoki się zamykają — dociągamy resztę wyjścia (maks. 3 s).
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
@@ -485,15 +606,17 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     code = 124
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null }))
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line }))
   return code
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail, pause }) {
+function finalReport({ startHead, startStash, tail, pause, config }) {
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
+  // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
+  if (config) out.push(`## ${config}`)
   const status = git("status", "--short")
   if (status !== null) out.push("## git status --short", status || "(czysto)")
   if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")

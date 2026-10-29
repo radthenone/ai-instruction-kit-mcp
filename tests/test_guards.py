@@ -467,7 +467,8 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("bun install", "deny"),
     ("npm ci", "deny"),
     ("uv run --no-sync ruff", "allow"),
-    ("uvx ruff check", "allow"),
+    ("uvx ruff check", "deny"),
+    ("uvx --offline ruff", "allow"),
     ("next build", "deny"),
     ("turbo run build", "deny"),
     ("turbo run typecheck", "allow"),
@@ -590,9 +591,109 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("npx shadcn@latest add button", "deny"),
     ("npx expo install expo-camera", "deny"),
     ("expo install expo-camera", "deny"),
+    # Luki instalacji/update (#301): uv, pip z wersją w nazwie, aliasy i update JS.
+    ("uv pip sync r.txt", "deny"),
+    ("uv pip install -r r.txt", "deny"),
+    ("uv tool install ruff", "deny"),
+    ("uv run --with requests python x.py", "deny"),
+    ("uv run --no-sync --with requests python x.py", "deny"),
+    ("uv run --no-sync --with-requirements r.txt python x.py", "deny"),
+    ("pip3.12 install x", "deny"),
+    ("bun i", "deny"),
+    ("bun a x", "deny"),
+    ("bun update", "deny"),
+    ("npm add x", "deny"),
+    ("npm it", "deny"),
+    ("npm up", "deny"),
+    ("pnpm remove x", "deny"),
+    ("yarn", "deny"),
+    ("yarn upgrade", "deny"),
+    ("pytest -nauto", "deny"),
+    ("pytest tests/ -n4", "deny"),
+    ("pytest --numprocesses=4", "deny"),
+    # G1 — inne ekosystemy instalujące na serwerze.
+    ("cargo install x", "deny"),
+    ("go install x", "deny"),
+    ("apt install x", "deny"),
+    ("sudo apt install x", "deny"),
+    ("apt-get install x", "deny"),
+    ("corepack enable", "deny"),
+    # G2 — buildy produkcyjne innych narzędzi.
+    ("nuxt build", "deny"),
+    ("astro build", "deny"),
+    ("tsup", "deny"),
+    ("webpack", "deny"),
+    ("cargo build", "deny"),
+    ("cargo check", "allow"),
+    # G3 — launchery JS pobierające paczkę, poza jawną flagą „nie instaluj”.
+    ("npx cowsay", "deny"),
+    ("bunx cowsay", "deny"),
+    ("pnpm dlx x", "deny"),
+    ("yarn dlx x", "deny"),
+    ("npx --no tsc --noEmit", "allow"),
+    ("bunx --no-install tsc", "allow"),
+    # G4 — uvx pobiera z sieci; wyjątek tylko dla trybu offline.
+    ("uvx ruff", "deny"),
+    ("UV_OFFLINE=1 uvx ruff", "allow"),
+    # Review #301: wyjątki tylko dla flag PRZED nazwą narzędzia.
+    ("uvx ruff --offline", "deny"),
+    ("uvx --offline ruff", "allow"),
+    ("npx cowsay --no", "deny"),
+    ("bunx cowsay --no-install", "deny"),
+    ("npx --no -y cowsay", "deny"),
+    ("npx -y cowsay", "deny"),
+    ("npx --no --yes cowsay", "deny"),
+    ("npx --no cowsay", "allow"),
+    ("bunx --no-install cowsay", "allow"),
+    # Aliasy launcherów: npm exec/x, bun x, pnpx.
+    ("npm exec cowsay", "deny"),
+    ("npm x cowsay", "deny"),
+    ("bun x cowsay", "deny"),
+    ("pnpx cowsay", "deny"),
+    ("npm exec --no tsc --noEmit", "allow"),
+    ("bun x --no-install tsc", "allow"),
+    ("npm exec --no -y cowsay", "deny"),
+    # Flagi przed `install` (apt) i aliasy remove/install.
+    ("apt-get -y install x", "deny"),
+    ("apt -y install x", "deny"),
+    ("npm uninstall x", "deny"),
+    ("npm un x", "deny"),
+    ("npm rm x", "deny"),
+    ("npm r x", "deny"),
+    ("npm cit", "deny"),
+    ("npm install-ci-test", "deny"),
+    ("bun rm x", "deny"),
+    ("pnpm rm x", "deny"),
+    ("yarn global add x", "deny"),
+    # Goły yarn z flagami instalacji; informacyjne flagi zostają.
+    ("yarn --frozen-lockfile", "deny"),
+    ("yarn --cwd app", "deny"),
+    ("yarn --cwd=app", "deny"),
+    ("yarn --cwd app test", "allow"),
+    ("yarn -v", "allow"),
+    ("yarn --help", "allow"),
+    # `--with-editable` jak `--with`.
+    ("uv run --no-sync --with-editable . x", "deny"),
+    ("uv run --with-editable . python x.py", "deny"),
+    # Nadal pozwolone: venv, `uv run --no-sync` bez `--with`, skrypty projektu.
+    ("python -m venv --without-pip .venv", "allow"),
+    ("uv run --no-sync python -m unittest", "allow"),
+    ("bun run test", "allow"),
+    ("npm run lint", "allow"),
+    # Blisko deny, ale nie deny — czytanie i skrypty projektowe zostają.
+    ("uv pip list", "allow"),
+    ("pip3 list", "allow"),
+    ("bun run install", "allow"),
+    ("npm run ci", "allow"),
+    ("yarn --version", "allow"),
+    ("pytest -q", "allow"),
+    ("go build ./...", "allow"),
+    ("astro dev", "allow"),
+    ("apt list --installed", "allow"),
+    ("corepack use pnpm@9", "allow"),
 ]
 
-VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": ""}
+VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": "", "UV_OFFLINE": ""}
 
 
 def run_server_guard(payload: dict, env: dict[str, str], config: dict | None = None) -> dict:
@@ -647,6 +748,25 @@ class ServerGuardTest(unittest.TestCase):
     def test_uv_no_sync_env_allows_uv_run(self) -> None:
         self.assertEqual(decision("uv run ruff", {**VPS, "UV_NO_SYNC": "1"}), "allow")
         self.assertEqual(decision("uv sync", {**VPS, "UV_NO_SYNC": "1"}), "deny")
+
+    def test_uv_offline_env_allows_uvx(self) -> None:
+        # `uvx` pobiera z sieci; `UV_OFFLINE=1` zostawia tylko cache uv (#301).
+        self.assertEqual(decision("uvx ruff", {**VPS, "UV_OFFLINE": "1"}), "allow")
+        self.assertEqual(decision("uvx ruff", VPS), "deny")
+        self.assertEqual(decision("uv run --with requests python x.py", {**VPS, "UV_OFFLINE": "1"}), "deny")
+
+    @unittest.skipUnless(shutil.which("uvx"), "uvx nie w PATH")
+    def test_uvx_offline_does_not_fetch_with_empty_cache(self) -> None:
+        # Dowód z review #301: `uvx --offline` z pustym cache uv nie pobiera narzędzia.
+        with tempfile.TemporaryDirectory() as root:
+            # Cache i katalog narzędzi muszą być osobne — wspólny katalog blokuje uv (lock).
+            env = {**os.environ, "UV_CACHE_DIR": os.path.join(root, "cache"), "UV_TOOL_DIR": os.path.join(root, "tools")}
+            env.pop("UV_OFFLINE", None)
+            proc = subprocess.run(
+                ["uvx", "--offline", "ruff", "--version"],
+                capture_output=True, text=True, encoding="utf-8", env=env, timeout=120, check=False,
+            )
+            self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_local_and_guard_off_allow_everything(self) -> None:
         off = {"version": 1, "guard": "off", "defaults": [], "wrappers": []}
@@ -758,6 +878,33 @@ class ServerGuardWrappersTest(unittest.TestCase):
     def _write(self, root: Path, rel: str, text: str) -> None:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8")
+
+    def test_install_gaps_inside_wrappers(self) -> None:
+        """Nowe deny (#301) rozwijają się też przez `task` / skrypt `package.json`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "Taskfile.yml", """version: '3'
+tasks:
+  deps:
+    cmds:
+      - uv pip sync r.txt
+  tools:
+    cmds:
+      - cargo install x
+  offline:
+    cmds:
+      - uvx --offline ruff check .
+""")
+            self._write(root, "package.json", json.dumps({"scripts": {
+                "fetch": "npm add x", "tool": "npx cowsay", "ok": "npx --no tsc --noEmit"}}))
+            config = self._render(root)
+
+        for command in ("task deps", "task tools", "bun run fetch", "bun run tool", "npm run tool"):
+            with self.subTest(command=command):
+                self.assertEqual(decision(command, VPS, config), "deny")
+        for command in ("task offline", "bun run ok", "npm run ok"):
+            with self.subTest(command=command):
+                self.assertEqual(decision(command, VPS, config), "allow")
 
     def test_package_json_in_dot_dirs_ignored(self) -> None:
         from guides.server_guard import collect_package_scripts

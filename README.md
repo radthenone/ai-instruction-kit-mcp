@@ -306,6 +306,7 @@ Klasy zgłoszeń (pole `kind`):
 | `stale-path` | ostrzeżenie | ścieżka w regule albo klucz `## Ścieżki` wskazuje coś, czego nie ma (z `suggestion`, gdy w drzewie jest dokładnie jeden kandydat) |
 | `negated-path-exists` | ostrzeżenie | overlay pisze, że ścieżki nie ma („brak `x/`”, „nie istnieje”), a ona istnieje |
 | `stale-kit-content` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` ma linie ze starej wersji szablonu kita — do odświeżenia |
+| `stale-project-brief` | ostrzeżenie | blok `kit:brief` w `AGENTS.md` nie odpowiada bieżącemu Profilowi i overlayowi — `kit-ai reload` go odświeży |
 | `uncertain-migration` | ostrzeżenie | `AGENTS.md` / `BUGBOT.md` bez bloku projektu, migracji reload nie zastosował sam — `value` niesie propozycję treści bloku; zgłoszenia per linia z szablonowej części pliku są wyciszone |
 | `missing-path-key` | ostrzeżenie | brak klucza w `## Ścieżki`, a reguła szablonu `BUGBOT.md` używa domyślnej ścieżki, której nie ma w repo (`ui` / `api-generated` domyślnie pod `web:`); kilku kandydatów w drzewie → lista w komunikacie zamiast propozycji |
 | `missing-command` | ostrzeżenie | komenda `/nazwa` bez agenta, komendy ani skilla u klientów z `clients:` |
@@ -1064,6 +1065,39 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/teacher-agent`                     | `templates/shared/agents/teacher-agent.md`       |
 | `/review-security`                   | `templates/shared/agents/review-security.md`      |
 
+### Git worktree (.ai/worktree.mjs)
+
+Zarządzanie worktree przez jedną metodę kita (`node .ai/worktree.mjs …`): przenosi pliki z `.gitignore` (w tym konfiguracje MCP i `.env`) oraz zależności bez doinstalowywania czegokolwiek na VPS.
+
+#### Konfiguracja (`.ai/project.profile.yaml`)
+
+Opcjonalna sekcja w profilu projektu:
+
+```yaml
+worktree:
+  copy: [ ... ]      # pliki/katalogi kopiowane z głównego checkoutu (bez nadpisywania istniejących)
+  link: [ ... ]      # symlink do głównego checkoutu (np. frontend/node_modules); bez domyślnych wpisów
+  setup: [ ... ]     # komendy uruchamiane w worktree po copy/link; domyślnie pusta
+  venv: auto         # auto | overlay | none (domyślnie auto)
+```
+
+Gdy brak sekcji `copy`, skrypt kopiuje istniejące wpisy `MACHINE_FILES` (pliki MCP i stampy kita) + `.env` + `.claude/settings.local.json`.
+Polecenia w `setup:` przed uruchomieniem są weryfikowane przez `server-guard.mjs` (na VPS niebezpieczne komendy, np. instalacja paczek, są pomijane).
+
+#### Overlay venv i ograniczenia
+
+Dla Pythona tryb `venv: auto` (oraz `overlay`) tworzy lekki overlay venv bazujący na głównym `.venv`:
+- `python -m venv --without-pip` interpreterem z głównego venv (identyczna wersja),
+- plik `_kit_worktree.pth` w `site-packages` przekierowuje pakiety instalowane w trybie editable (`-e`) z prefiksem głównego repozytorium na ścieżkę worktree, a następnie dopisuje `site-packages` głównego venv,
+- **Ograniczenia**: metadane paczek i entry pointy pochodzą z głównego venv; overlay venv nie posiada wygenerowanych console scripts w `bin/` (testy i komendy uruchamiaj przez `python -m …` lub `uv run --no-sync python -m …`); editable instalowane przez import hook (`import __editable___..._finder`) nie są przekierowywane (ostrzeżenie w logu).
+
+#### Zasady zależności i uprawnień
+
+- **Linkowane zależności są tylko do odczytu**: `node_modules` czy współdzielony `site-packages` nie powinny być modyfikowane z poziomu worktree (postinstall, ensurepip czy instalacja paczek zmieniają środowisko główne).
+- **Pliki konfiguracyjne MCP**: kopiowane pliki wskazują ścieżkę `--workspace` głównego checkoutu (jest to zamierzone i bezpieczne).
+- **Server guard w worktree**: działa w worktree tylko wtedy, gdy projekt commituje pliki hooków kita (np. `.cursor/hooks/`, `.claude/hooks/`). Doctor **nie** sprawdza obecności hooków w repozytorium; przed założeniem worktree zweryfikuj ręcznie, np. `git ls-files .cursor/hooks .claude/hooks`.
+
+
 ### `/teacher-*` — tryb nauki (przed kodem, nie po)
 
 `/review-*` sprawdza **gotowy diff** i zwraca tabelę findingów. `/teacher-*` działa **zanim** napiszesz kod: bierze Twoją koncepcję (albo bieżący diff, gdy nie podasz argumentu), tłumaczy o co w problemie naprawdę chodzi, pokazuje max 3 opcje z kosztami, wskazuje **jedną** rekomendację i zostawia Ci zadanie do zrobienia samodzielnie.
@@ -1232,7 +1266,7 @@ W logu runu linia `[headless] ticket #N`.
 Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
-do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie);
+do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie; przy starcie kasuje runy poza 5 najnowszymi);
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
@@ -1310,7 +1344,7 @@ agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wyko
 | Warstwa | Skąd model |
 |---------|------------|
 | Agent `/headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
-| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167; `.agents/agy.json` dla agy) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy |
+| Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167; `.agents/agy.json` dla agy) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy. W linked worktree config z głównego checkoutu idzie jako `OPENCODE_CONFIG`, a raport mówi `CONFIG=main-checkout`/`CONFIG=missing` (#300) |
 | Agenci kitu wołani w sesji wykonawcy | `models.<wykonawca>.<tier>` w Profilu, bez mapowania — model sesji wykonawcy |
 
 **Sprzątanie procesów.** Wrapper uruchamia wykonawcę we własnej grupie procesów (Unix)
@@ -1336,7 +1370,7 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 |-------|--------|------------|
 | `git-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | **deny**: `git reset --hard`, `git clean -f`, force push i zwykły push na `main`/`master`/`dev` (`--force` / `-f` / `--force-with-lease` / plus-refspec), `git branch -D`, `git checkout .` / `checkout --`, rekursywne `rm` na szerokiej ścieżce (`~`, `/`, `..`, katalogi domowe), mutacja / `sed -i` / redirect do `~/.ssh`, `/etc`, `C:\Windows`, `Program Files`, `~/.claude/settings*.json`. Reszta **allow** — także `git stash`, `git restore`, `find -delete`, `rm -rf` w repo |
 | `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity (tylko narzędzia plikowe — bez Basha) | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** oczywisty odczyt sekretu przez Bash — komenda czytająca (`cat`, `head`, `tail`, `less`, `more`, `bat`, `grep`, `rg`, `sed`, `awk`, `xxd`, `base64`, `strings`, `source`/`.`, `rtk read`, `rtk grep`) z argumentem będącym ścieżką sekretu; segmenty po `;`/`&`/`&&`/`||`/`|`, prefiksy `sudo`/`env`/`rtk` (z opcjami, `rtk proxy`, `VAR=1`; i powłoka z `-c`), podstawienia `$(...)`; pierwszy argument `grep`/`rg`/`sed`/`awk` to wzorzec, a cel przekierowania (`> .env`) to zapis — przechodzą; Bash pilnują wszyscy poza Antigravity; **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `bun.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
-| `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek (`uv sync`, `pip install`, `uv run` bez `--no-sync`, `bun/npm/pnpm/yarn install|add`), buildy (`next`/`vite`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
+| `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek w każdym ekosystemie (`uv`/`pip`/`bun`/`npm`/`pnpm`/`yarn`/`cargo`/`go`/`apt`/`corepack`), pobieranie przez launchery (`npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`uvx`, poza trybem offline), buildy (`next`/`nuxt`/`astro`/`vite`/`webpack`/`tsup`/`cargo`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
@@ -1513,11 +1547,13 @@ nie osobno:
 | Kategoria | Deny | Allow (świadomie) | Powód / alternatywa |
 |---|---|---|---|
 | Kontenery | `docker`, `docker-compose`, `docker compose`, `podman` — każda podkomenda poza allow obok (także `stop`, `rm`, `down`, `kill`, `restart`, `prune`, `compose config`) | `ps`, `images`, `inspect`, `logs` bez `-f`, `version`, `info`, `compose ps` | budowanie i uruchamianie kontenerów tylko w CI; na hoście działają cudze kontenery |
-| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv pip install`, `pip install`, `uv run` bez `--no-sync` (przepuszcza, gdy `UV_NO_SYNC=1` w env), `bun install` / `bun add` / `bun remove`, `npm install` / `npm ci`, `pnpm install` / `pnpm add`, `yarn install` / `yarn add` | `uv run --no-sync …`, `uvx` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv pip install` / `uv pip sync`, `uv tool install`, `pip install` (także `pip3.12`), `uv run` bez `--no-sync`, `uv run --with` / `--with-requirements` (także z `--no-sync`), `bun install` / `add` / `remove` / `i` / `a` / `update`, `npm install` / `ci` / `add` / `it` / `update` / `up`, `pnpm install` / `add` / `remove` / `update`, `yarn install` / `add` / `remove` / `upgrade`, goły `yarn` | `uv run --no-sync …`, `uvx --offline …` / `UV_OFFLINE=1` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| Inne ekosystemy | `cargo install`, `go install`, `apt install` / `apt-get install` (także po `sudo`), `corepack enable` | `cargo check` | instalacja na serwerze — zależności zmieniają się na PC albo w CI |
 | CLI instalujące paczki | `shadcn init` / `shadcn add` (także przez `bunx` / `npx` / `pnpm dlx`), `expo install` | — | CLI samo dopisuje zależności; instalacja tylko na PC albo w CI |
-| Buildy | `next build`, `expo prebuild`, `expo export`, `eas build --local`, `vite build`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
+| Buildy | `next build`, `nuxt build`, `astro build`, `vite build`, `tsup`, `webpack`, `cargo build`, `expo prebuild`, `expo export`, `eas build --local`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
+| Launchery JS | `npx`, `bunx`, `pnpm dlx`, `yarn dlx` — domyślnie pobierają paczkę | `npx --no <bin>`, `bunx --no-install <bin>` (uruchamiają tylko to, co już jest w `node_modules/.bin`) | pobieranie z sieci na VPS; `pnpm dlx` / `yarn dlx` nie mają trybu bez pobierania — użyj skryptu projektu |
 | Przeglądarki / e2e | `playwright`, `cypress`, `maestro`, narzędzia Playwright MCP | — | przeglądarka to setki MB na instancję; e2e tylko w CI |
-| Mnożenie procesów | `pytest -n` / `--numprocesses` | `pytest` bez xdist | xdist mnoży procesy na słabym CPU |
+| Mnożenie procesów | `pytest -n` / `--numprocesses` (także `-n4`, `-nauto`, `--numprocesses=4`) | `pytest` bez xdist | xdist mnoży procesy na słabym CPU |
 
 Obejścia też łapie: każdy segment po `&&`, `||`, `;`, `|`, `&` sprawdzany osobno
 (także wnętrze `bash -c` / `bash -lc` / `sh -c`, `$( … )` i backticków), a przed
@@ -1531,7 +1567,8 @@ to dane, nie komendy (`git commit -m "…; docker …"` i body PR przez heredoc
 przechodzą). Backticki i `$( … )` w pojedynczych apostrofach też są danymi — bash
 ich tam nie wykonuje (``--body 'Blokuje `docker compose up`'`` przechodzi); w podwójnych
 cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` nie łapie
-`taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env. Poza VPS guard dla narzędzi
+`taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env; tak samo `UV_OFFLINE=1` zdejmuje
+deny `uvx`. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.
 

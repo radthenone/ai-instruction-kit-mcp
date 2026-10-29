@@ -29,7 +29,10 @@ import yaml
 
 from guides.bugbot_md import (
     ASIDE_SECTIONS,
+    BRIEF_CLOSE,
+    BRIEF_OPEN,
     PATH_PLACEHOLDER,
+    extract_brief,
     needs_migration,
     overlay_path_entries,
     path_defaults,
@@ -40,6 +43,7 @@ from guides.bugbot_md import (
 )
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
+from guides.worktree import check_worktree_drift, parse_worktree_section
 
 RULE_FILES: tuple[str, ...] = (
     "BUGBOT.md",
@@ -753,6 +757,49 @@ def _uncertain_migration(
     )
 
 
+def _brief_lines(text: str) -> set[int]:
+    """Numery linii generowanego bloku ``kit:brief`` — to treść kita, nie reguła projektu."""
+    numbers: set[int] = set()
+    inside = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped == BRIEF_OPEN:
+            inside = True
+        if inside:
+            numbers.add(number)
+        if stripped == BRIEF_CLOSE:
+            inside = False
+    return numbers
+
+
+def _stale_brief_finding(workspace: Path, kit_root: Path | None, *, is_kit: bool) -> Finding | None:
+    """Brief w AGENTS.md inny niż render z bieżącego Profilu i overlayu (#307)."""
+    if is_kit or kit_root is None:
+        return None
+    agents = workspace / "AGENTS.md"
+    if not agents.is_file():
+        return None
+    current = extract_brief(_read(agents))
+    if current is None:
+        return None
+    try:
+        from guides.resolver import resolve_workspace_profile
+
+        expected = resolve_workspace_profile(workspace, kit_root=kit_root).project_brief
+    except Exception:
+        # Doctor nigdy nie blokuje reloadu — brak manifestu/profilu to nie ten finding.
+        return None
+    if current.strip() == expected.strip():
+        return None
+    return Finding(
+        "warning",
+        "AGENTS.md",
+        None,
+        "brief projektu nieaktualny względem Profilu/overlayu — uruchom `kit-ai reload`",
+        "stale-project-brief",
+    )
+
+
 def _aside_lines(rel: str, text: str) -> set[int]:
     """Numery linii sekcji kita spoza szablonu (``## Agent skills`` w ``AGENTS.md``)."""
     heading = ASIDE_SECTIONS.get(PROJECT_BLOCKS.get(rel, ""))
@@ -1098,6 +1145,10 @@ def run_doctor(
             continue
         text = _read(path)
         skip_lines = _kit_template_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
+        if rel == "AGENTS.md":
+            # Brief jest generowany z Profilu — jego ``origin/dev`` czy ścieżki z overlayu
+            # nie są regułami projektu, które doctor ma naprawiać (#307).
+            skip_lines |= _brief_lines(text)
         uncertain = _uncertain_migration(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         stale: set[int] = set()
         if uncertain is not None:
@@ -1144,6 +1195,10 @@ def run_doctor(
         )
         findings.extend(_command_findings(rel, text, available, clients_label, skip_lines))
 
+    stale_brief = _stale_brief_finding(workspace, kit_root, is_kit=is_kit)
+    if stale_brief is not None:
+        findings.append(stale_brief)
+
     if is_kit:
         templates = workspace / AGENT_TEMPLATES
         if templates.is_dir():
@@ -1154,5 +1209,33 @@ def run_doctor(
                 )
 
     findings.extend(_package_infos(workspace, overlay_text, overlay_paths))
+
+    profile_path = workspace / ".ai" / "project.profile.yaml"
+    if profile_path.is_file():
+        profile_content = _read(profile_path)
+        has_worktree = any(line.strip() == "worktree:" for line in profile_content.splitlines())
+        parsed_wt = parse_worktree_section(profile_content)
+        for warning in parsed_wt.get("warnings", []):
+            findings.append(
+                Finding(
+                    "warning",
+                    ".ai/project.profile.yaml",
+                    None,
+                    warning,
+                    "invalid-worktree-config",
+                )
+            )
+        if has_worktree or (workspace / ".ai" / "worktree.json").is_file():
+            drift_msgs = check_worktree_drift(workspace, profile_path)
+            for msg in drift_msgs:
+                findings.append(
+                    Finding(
+                        "warning",
+                        ".ai/worktree.json",
+                        None,
+                        msg,
+                        "stale-worktree-config",
+                    )
+                )
 
     return DoctorReport(tuple(dict.fromkeys(findings)))

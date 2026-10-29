@@ -18,7 +18,7 @@ NODE = shutil.which("node") or "node"
 # Narzędzia, których w izolowanym PATH potrzebuje wrapper i fałszywy wykonawca
 # (`basename`/`cat`/`sleep`/`git` w FAKE, `git` w raporcie wrappera) — bez katalogów
 # systemowych, żeby test „brak wykonawcy" nie znalazł prawdziwego `claude` (#205).
-TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep")
+TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
 
 # Udaje CLI wykonawcy: zapisuje argv i stdin, zostawia „LSP” w tle i kończy się kodem
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
@@ -29,7 +29,10 @@ FAKE = """#!/bin/sh
 if [ "$1" = -p ] && [ "$2" = /quota ]; then
   echo "$(basename "$0") /quota" >> "$HEADLESS_TEST_DIR/calls"; printf '%b' "$FAKE_QUOTA"; exit "${FAKE_QUOTA_CODE:-0}"
 fi
+if [ -n "$FAKE_TRAP" ]; then trap 'echo term > "$HEADLESS_TEST_DIR/term"; exit 0' TERM; fi
+if [ -n "$FAKE_IGNORE_TERM" ]; then trap '' TERM; fi
 printf '%s\\n' "$(basename "$0")" "$@" > "$HEADLESS_TEST_DIR/argv"
+printf '%s' "${OPENCODE_CONFIG-}" > "$HEADLESS_TEST_DIR/opencode-config"
 basename "$0" >> "$HEADLESS_TEST_DIR/calls"
 case " $FAKE_LIMIT_FOR " in *" $(basename "$0") "*) echo "Error: rate limit reached"; exit 1;; esac
 case " $FAKE_FAIL_FOR " in *" $(basename "$0") "*) echo "Error: request failed"; exit 1;; esac
@@ -134,10 +137,12 @@ class HeadlessWrapperTest(unittest.TestCase):
         path.write_text(FAKE, encoding="utf-8")
         path.chmod(0o755)
 
-    def run_wrapper(self, *args: str, stdin: str = "", **env: str) -> subprocess.CompletedProcess:
+    def run_wrapper(
+        self, *args: str, stdin: str = "", cwd: Path | str | None = None, **env: str
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
             [NODE, str(WRAPPER), *args],
-            cwd=self.root,
+            cwd=Path(cwd) if cwd else self.root,
             input=stdin,
             capture_output=True,
             text=True,
@@ -155,8 +160,8 @@ class HeadlessWrapperTest(unittest.TestCase):
     def argv(self) -> list[str]:
         return (self.root / "argv").read_text(encoding="utf-8").splitlines()
 
-    def headless_log(self) -> str:
-        (log,) = (self.root / ".ai/headless-runs").glob("*/headless.log")
+    def headless_log(self, cwd: Path | str | None = None) -> str:
+        (log,) = Path(cwd or self.root).joinpath(".ai/headless-runs").glob("*/headless.log")
         return log.read_text(encoding="utf-8")
 
     def assert_tree_killed(self) -> None:
@@ -190,6 +195,29 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "opencode", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.argv()[0], "opencode")
+
+    def test_new_run_prunes_all_but_five_newest_runs(self) -> None:
+        runs = self.root / ".ai/headless-runs"
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (runs / name).mkdir(parents=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        left = sorted(entry.name for entry in runs.iterdir() if entry.is_dir())
+        self.assertEqual(len(left), 5)
+        self.assertEqual(left[:4], old[-4:])
+        self.assertNotIn(left[-1], old)
+
+    def test_prune_keeps_new_run_when_older_names_sort_later(self) -> None:
+        runs = self.root / ".ai/headless-runs"
+        future = [f"2999-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in future:
+            (runs / name).mkdir(parents=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        left = {entry.name for entry in runs.iterdir() if entry.is_dir()}
+        self.assertEqual(len(left), 5)
+        self.assertEqual(len(left - set(future)), 1)
 
     def test_antigravity_runs_headless_print_with_prompt_argument(self) -> None:
         self.profile("claude,antigravity")
@@ -563,6 +591,45 @@ class HeadlessWrapperTest(unittest.TestCase):
         # Raport końcowy także po SIGTERM, z niedokończoną linią wykonawcy (#183).
         report = out.split("[headless] raport końcowy", 1)[1]
         self.assertIn("bez nowej linii", report)
+        log = self.headless_log()
+        self.assertIn("[headless] sygnał SIGTERM", log)
+        snapshot = log.split("[headless] sygnał SIGTERM", 1)[1]
+        self.assertIn("node", snapshot)
+        self.assertNotIn(" x\n", snapshot)
+
+    def test_signal_exit_code_wins_over_executor_that_handles_sigterm(self) -> None:
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_TRAP": "1"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 143)
+        self.assertTrue((self.root / "term").is_file())
+        self.assertEqual(out.count("[headless] raport końcowy"), 1)
+        self.assertNotIn("[headless] kod wyjścia", out)
+
+    def test_executor_gets_sigterm_before_sigkill(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30", FAKE_TRAP="1")
+        self.assertEqual(result.returncode, 124)
+        self.assertTrue((self.root / "term").is_file(), "wykonawca nie dostał SIGTERM przed SIGKILL")
+        self.assert_tree_killed()
+
+    def test_executor_ignoring_sigterm_is_still_killed(self) -> None:
+        started = time.time()
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30", FAKE_IGNORE_TERM="1")
+        self.assertEqual(result.returncode, 124)
+        self.assertLess(time.time() - started, 15)
+        self.assert_tree_killed()
 
     # --- flagi i reguły -----------------------------------------------------
 
@@ -648,6 +715,24 @@ class HeadlessWrapperTest(unittest.TestCase):
         if stash:
             (self.root / "tracked.txt").write_text("b\n", encoding="utf-8")
             git("stash", "push", "-qm", "stary wpis")
+
+    def worktree(self) -> Path:
+        """Główny checkout z commitem i linked worktree obok (bez `opencode.json`)."""
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, env={**os.environ, **self.GIT_ENV})
+
+        (self.root / ".gitignore").write_text("opencode.json\n", encoding="utf-8")
+        git("init", "-q")
+        git("add", ".ai", ".gitignore")
+        git("commit", "-qm", "start")
+        path = Path(tempfile.mkdtemp(prefix="headless-worktree-"))
+        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
+        git("worktree", "add", "-q", str(path), "-b", "worktree")
+        return path
+
+    def executor_config(self) -> str:
+        """`OPENCODE_CONFIG`, które dostał fałszywy wykonawca (pusty = brak)."""
+        return (self.root / "opencode-config").read_text(encoding="utf-8")
 
     def log_path(self, result: subprocess.CompletedProcess) -> Path:
         first = result.stdout.splitlines()[0]
@@ -743,6 +828,60 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("Ticket #", prompt)
         self.assertNotIn("ticket #", log)
         self.assertIn("test-first", prompt)
+
+    # --- config wykonawcy w linked worktree (#300) ---------------------------
+
+    def test_worktree_uses_main_checkout_config_and_sets_executor_env(self) -> None:
+        main_config = self.root / "opencode.json"
+        main_config.write_text('{"model": "openrouter/qwen"}', encoding="utf-8")
+        wt = self.worktree()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.executor_config(), str(main_config))
+        self.assertIn(f"CONFIG=main-checkout {main_config}", self.headless_log(wt))
+
+    def test_worktree_reads_model_from_main_checkout_config(self) -> None:
+        (self.root / "opencode.json").write_text('{"model": "openrouter/qwen"}', encoding="utf-8")
+        wt = self.worktree()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[4:6], ["--model", "openrouter/qwen"])
+
+    def test_model_flag_beats_main_checkout_config(self) -> None:
+        (self.root / "opencode.json").write_text('{"model": "openrouter/qwen"}', encoding="utf-8")
+        wt = self.worktree()
+        result = self.run_wrapper("--host", "claude", "opencode", "--model", "explicit/x", "x", cwd=wt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.argv()[4:6], ["--model", "explicit/x"])
+
+    def test_worktree_without_config_everywhere_reports_missing(self) -> None:
+        wt = self.worktree()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CONFIG=missing — executor default model", self.headless_log(wt))
+        self.assertEqual(self.executor_config(), "")
+
+    def test_worktree_with_own_config_gets_no_fallback_line(self) -> None:
+        wt = self.worktree()
+        (wt / "opencode.json").write_text('{"model": "local/x"}', encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("CONFIG=", self.headless_log(wt))
+        self.assertEqual(self.executor_config(), "")
+        self.assertNotIn("--model", self.argv())
+
+    def test_main_checkout_without_config_has_no_config_line(self) -> None:
+        self.git_repo()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("CONFIG=", self.headless_log())
+
+    def test_worktree_executor_without_config_mechanism_gets_warning_only(self) -> None:
+        self.profile("claude,opencode")
+        wt = self.worktree()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", cwd=wt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CONFIG=missing — executor default model", self.headless_log(wt))
 
     def test_bad_heartbeat_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--heartbeat", "0", "x")
