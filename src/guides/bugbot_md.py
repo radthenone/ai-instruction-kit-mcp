@@ -644,7 +644,7 @@ def main() -> int:
     brief_path = Path(os.environ["BRIEF"]) if os.environ.get("BRIEF") else None
     brief = (
         brief_path.read_text(encoding="utf-8")
-        if brief_path is not None and brief_path.is_file()
+        if brief_path is not None and brief_path.is_file() and brief_path.stat().st_size
         else None
     )
 

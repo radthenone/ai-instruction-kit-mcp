@@ -1337,7 +1337,8 @@ SKIPPED_AGENTS="${SKIPPED_AGENTS//$'\r'/}"
 SHARED_AGENTS="$STAGED_AGENTS"
 echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, client → *-frontend, review-ui)"
 
-render_project_brief > "$BRIEF_FILE"
+# Brief to dodatek: błąd renderowania (uszkodzony Profil, manifest) nie zatrzymuje instalacji.
+render_project_brief > "$BRIEF_FILE" || { echo "  ! brief nie wyrenderowany" >&2; : > "$BRIEF_FILE"; }
 install_agenty_md_once
 install_bugbot_md_once
 prune_tier_agents

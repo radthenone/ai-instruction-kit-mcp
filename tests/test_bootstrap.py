@@ -741,6 +741,24 @@ class TestAgentsProjectBlock(_BootstrapTestCase):
 class TestAgentsBriefBlock(_BootstrapTestCase):
     """Bootstrap renderuje brief z Profilu i overlayu do bloku ``kit:brief`` (#307)."""
 
+    def test_broken_profile_still_installs_agents_md(self) -> None:
+        """Błąd renderowania briefu nie zatrzymuje bootstrapu — AGENTS.md z domyślnym blokiem."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / ".ai").mkdir(parents=True)
+            (workspace / ".ai" / "project.profile.yaml").write_text(
+                "name: broken\nlanguage: pl\nclients: claude\nbackend: [oops\n",
+                encoding="utf-8",
+            )
+
+            run_bootstrap(
+                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
+            )
+
+            text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+            template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertEqual(extract_brief(text), extract_brief(template))
+
     def test_bootstrap_renders_profile_brief_with_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
