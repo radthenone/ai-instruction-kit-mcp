@@ -298,6 +298,26 @@ async def _ping_language(argv: list[str], workspace: Path) -> str:
             raise
 
 
+async def _init_instructions(argv: list[str], workspace: Path) -> str:
+    """Instrukcje serwera z handshake'u — to, co klient ma w kontekście od pierwszej tury."""
+    params = StdioServerParameters(
+        command=argv[0],
+        args=argv[1:],
+        env=_server_env(workspace),
+        cwd=str(workspace),
+    )
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+        try:
+            async with stdio_client(params, errlog=errlog) as (read, write):
+                async with ClientSession(read, write) as session:
+                    result = await session.initialize()
+                    return result.instructions or ""
+        except BaseException:
+            errlog.seek(0)
+            sys.stderr.write(errlog.read())
+            raise
+
+
 def _is_ci() -> bool:
     """Czy działamy na CI (ten sam kontrakt co ``tests/_shell.py``)."""
     return os.environ.get("CI", "").strip().lower() not in ("", "0", "false")
@@ -481,6 +501,23 @@ class TestMcpToolsReflectProfile(unittest.TestCase):
                 )
                 self.assertIn(f"- Workspace: `{item.root}`", text)
                 self.assertIn(f"- Kit root: `{KIT_ROOT}`", text)
+
+    def test_server_instructions_carry_profile_brief(self) -> None:
+        """Handshake niesie brief z Profilu — bez wołania get_language/get_index."""
+        if not shutil.which("uv"):
+            if _is_ci():
+                self.fail("brak uv w CI — instrukcje serwera muszą wystartować")
+            self.skipTest("brak uv w PATH")
+        item = _WORKSPACES["pl-graphql"]
+        text = asyncio.run(
+            asyncio.wait_for(
+                _init_instructions(_client_argv(item.root, "claude"), item.root), 180
+            )
+        )
+        self.assertIn("`pl`", text)
+        self.assertIn("backend=`django`", text)
+        self.assertIn("`graphql`", text)
+        self.assertIn("`dev`", text)
 
     def test_overlay_comes_from_workspace(self) -> None:
         """Overlay MCP to dokładnie `.ai/project.md` tego workspace'u."""
