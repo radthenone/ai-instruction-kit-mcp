@@ -148,12 +148,8 @@ def resolve_worktree_config(
             venv_val = str(raw_worktree["venv"])
 
     if copy_list is None:
-        # Domyślna lista: istniejące wpisy MACHINE_FILES + .env + .claude/settings.local.json
-        copy_candidates = [*MACHINE_FILES, *EXTRA_COPY_FILES]
-        copy_list = []
-        for rel in copy_candidates:
-            if (workspace_root / rel).exists():
-                copy_list.append(rel)
+        # Bez filtra istnienia: wynik nie zależy od tego, które pliki są w repo (deterministyczny JSON).
+        copy_list = [*MACHINE_FILES, *EXTRA_COPY_FILES]
 
     return {
         "copy": copy_list,
@@ -178,7 +174,7 @@ def render_worktree_config(workspace_root: Path, profile_path: Path | None = Non
     out_dir = workspace_root / ".ai"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / "worktree.json"
-    out_file.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    out_file.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8", newline="\n")
     return out_file
 
 

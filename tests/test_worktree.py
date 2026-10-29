@@ -71,7 +71,6 @@ worktree:
             workspace = Path(tmp)
             (workspace / ".env").write_text("FOO=bar", encoding="utf-8")
             (workspace / "opencode.json").write_text("{}", encoding="utf-8")
-            # .mcp.json does not exist in workspace, so it shouldn't be in copy list
 
             resolved = resolve_worktree_config({}, workspace_root=workspace)
             self.assertEqual(resolved["venv"], DEFAULT_VENV)
@@ -79,7 +78,7 @@ worktree:
             self.assertEqual(resolved["setup"], [])
             self.assertIn(".env", resolved["copy"])
             self.assertIn("opencode.json", resolved["copy"])
-            self.assertNotIn(".mcp.json", resolved["copy"])
+            self.assertIn(".mcp.json", resolved["copy"])
 
     def test_doctor_validates_worktree_and_drift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
