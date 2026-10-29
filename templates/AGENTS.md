@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## Brief projektu
+
+<!-- kit:brief -->
+_Brief nie jest jeszcze wyrenderowany — uruchom `kit-ai reload`._
+<!-- /kit:brief -->
+
 ## Warstwy AI (nie mieszaj)
 
 | Warstwa | Co | Gdzie | Po co |
