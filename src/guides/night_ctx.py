@@ -28,6 +28,7 @@ DEFAULT_GATES = ("ruff check", "pytest <pliki dotknięte ticketem>")
 CI_TRIGGERS = ("pull_request", "pull_request_target", "push")
 _CI_EXCLUDE = re.compile(r"\b(deploy|publish|release|secret)\b", re.IGNORECASE)
 _GATE_LIMIT = 4
+_GATE_TICK = re.compile(r"`([^`]+)`")
 
 
 def marker(host: str) -> str:
@@ -138,15 +139,29 @@ def ci_gates(workspace: Path) -> list[str]:
     return gates[:_GATE_LIMIT]
 
 
+def overlay_gates(overlay_text: str) -> list[str]:
+    """Komendy z sekcji ``## Komendy`` overlayu — same komendy z backticków."""
+    gates: list[str] = []
+    for entry in overlay_commands(overlay_text, limit=_GATE_LIMIT):
+        gates.extend(_GATE_TICK.findall(entry) or [entry])
+    return gates
+
+
 def quick_gates(workspace: Path, overlay_text: str) -> tuple[list[str], str]:
-    """Bramki szybkie i ich źródło: overlay → CI → jawne założenie."""
-    commands = overlay_commands(overlay_text, limit=_GATE_LIMIT)
-    if commands:
-        return commands, "overlay"
-    commands = ci_gates(workspace)
-    if commands:
-        return commands, "CI"
-    return list(DEFAULT_GATES), "założenie (brak overlayu i CI)"
+    """Bramki szybkie (overlay + CI, bez duplikatów) i ich źródło.
+
+    Brak obu źródeł → jawne założenie, żeby nagłówek nie udawał danych z repo.
+    """
+    overlay = overlay_gates(overlay_text)
+    ci = ci_gates(workspace)
+    gates: list[str] = []
+    for gate in (*overlay, *ci):
+        if gate not in gates:
+            gates.append(gate)
+    sources = [name for name, items in (("overlay", overlay), ("CI", ci)) if items]
+    if not gates:
+        return list(DEFAULT_GATES), "założenie (brak overlayu i CI)"
+    return gates[:_GATE_LIMIT], " + ".join(sources)
 
 
 def _profile(workspace: Path) -> dict[str, object]:

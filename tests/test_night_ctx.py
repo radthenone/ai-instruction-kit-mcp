@@ -155,8 +155,27 @@ class NightCtxTest(unittest.TestCase):
         _write_overlay(self.repo, commands=("Szybko: `make test-fast`",))
         _write_profile(self.repo)
         out = self._ctx()
-        self.assertIn("`make test-fast`", out)
+        self.assertIn("Bramki szybkie: `make test-fast`", out)
         self.assertIn("overlay", out)
+
+    def test_quick_gates_merge_overlay_and_ci(self) -> None:
+        _init_repo(self.repo)
+        _write_overlay(self.repo, commands=("Szybko: `make test-fast`",))
+        _write_profile(self.repo)
+        workflows = self.repo / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            "name: CI\non: [pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - run: make test-fast\n"
+            "      - run: uv run python -m unittest discover -s tests\n",
+            encoding="utf-8",
+        )
+        out = self._ctx()
+        gates = next(ln for ln in out.splitlines() if ln.startswith("- Bramki szybkie:"))
+        self.assertIn("`make test-fast`", gates)
+        self.assertIn("`uv run python -m unittest discover -s tests`", gates)
+        self.assertEqual(gates.count("`make test-fast`"), 1, gates)
+        self.assertIn("overlay + CI", gates)
 
     def test_quick_gates_from_ci_without_overlay_commands(self) -> None:
         _init_repo(self.repo)
