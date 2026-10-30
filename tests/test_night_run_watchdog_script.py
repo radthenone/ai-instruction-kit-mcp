@@ -161,6 +161,25 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertNotIn("anomalia", result.stdout)
         self.assertIn("halt:", self.ctx.read_text(encoding="utf-8"))
 
+    def test_unusable_kit_ai_host_halts_night(self) -> None:
+        """Stare/zepsute ``kit-ai`` (kod ≠ 0 albo wynik spoza vps/local) kończy noc haltem."""
+        stubs = {
+            "old_cli": "echo \"kit-ai: error: invalid choice: 'host'\" >&2\nexit 2\n",
+            "garbage": "echo unknown\n",
+        }
+        for name, body in stubs.items():
+            with self.subTest(name):
+                self._write_ctx(MARKER)
+                self._shim.write_text(f"#!/usr/bin/env bash\n{body}", encoding="utf-8")
+                result = self._run("0", "110")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("halt:", result.stdout)
+                self.assertIn("kit-ai host", result.stdout)
+                self.assertNotIn("anomalia", result.stdout)
+                ctx = self.ctx.read_text(encoding="utf-8")
+                self.assertIn("halt:", ctx)
+                self.assertIn("krok: koniec", ctx)
+
     def test_matching_marker_keeps_normal_behavior(self) -> None:
         self._write_ctx(MARKER.replace("host=local", "host=vps"), state="krok: koniec")
         env = self._env()
