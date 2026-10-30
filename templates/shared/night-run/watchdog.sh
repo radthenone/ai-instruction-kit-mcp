@@ -21,6 +21,38 @@ START=$(date +%s)
 
 state_value() { sed -n "s/^$1//p" "$CTX" | tail -n1; }
 
+# Nagłówek CTX z generatora `kit-ai night-ctx` (#314). Brak znacznika albo rozjazd Host
+# kończy noc jak halt przypadku C, zanim watchdog zacznie pilnować postępu.
+MARKER_RE='<!--[[:space:]]*kit-ai night-ctx v[0-9]+ host=(vps|local)[[:space:]]*-->'
+
+current_host() {
+  local value
+  value=$(kit-ai host 2>/dev/null | head -n1)
+  case $value in
+    vps|local) printf '%s\n' "$value" ;;
+    *) return 1 ;;
+  esac
+}
+
+halt() {
+  printf 'halt: %s\n' "$1" >> "$CTX"
+  printf 'krok: koniec\n' >> "$CTX"
+  echo "halt: $1"
+  exit 0
+}
+
+check_header() {
+  local marker ctx_host host
+  marker=$(grep -E -m1 "$MARKER_RE" "$CTX" 2>/dev/null)
+  [[ -n $marker ]] || halt "nagłówek CTX bez znacznika generatora (kit-ai night-ctx)"
+  host=$(current_host) || halt "nie mogę ustalić bieżącego Host (kit-ai host) — nagłówek CTX niezweryfikowany"
+  [[ $marker =~ host=(vps|local) ]]
+  ctx_host=${BASH_REMATCH[1]}
+  [[ $ctx_host == "$host" ]] || halt "Host w CTX ($ctx_host) ≠ kit-ai host ($host)"
+}
+
+check_header
+
 timestamp() { date -d "@$1" '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || date -r "$1" '+%Y-%m-%dT%H:%M:%S'; }
 
 file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }

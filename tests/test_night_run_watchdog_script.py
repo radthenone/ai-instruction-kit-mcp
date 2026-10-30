@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -23,6 +24,7 @@ from _shell import is_ci, posix_path, resolve_bash
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = KIT_ROOT / "templates" / "shared" / "night-run" / "watchdog.sh"
 AGENT_ID = "abc123"
+MARKER = "<!-- kit-ai night-ctx v1 host=local -->"
 LIMIT_LINE = (
     '{"type":"assistant","message":{"model":"<synthetic>","role":"assistant","content":[]},'
     '"error":"rate_limit","isApiErrorMessage":true}\n'
@@ -64,14 +66,36 @@ class TestWatchdogScript(unittest.TestCase):
         self.transcript.parent.mkdir(parents=True)
         self.transcript.write_text('{"type":"user","text":"start"}\n', encoding="utf-8")
         self.ctx = self.dir / "context.md"
-        self.ctx.write_text(f"# CTX\n\n## Stan\nkrok: ticket\nsubagent: {AGENT_ID}\n", encoding="utf-8")
+        self._write_ctx(MARKER)
+        self.bin = root / "bin"
+        self.bin.mkdir()
+        self._shim = self.bin / "kit-ai"
+        self._shim.write_text(
+            f'#!/usr/bin/env bash\nexec "{posix_path(Path(sys.executable))}" -m guides.cli "$@"\n',
+            encoding="utf-8",
+        )
+        self._shim.chmod(0o755)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
+    def _write_ctx(self, marker: str | None, *, state: str = "krok: ticket\nsubagent: " + AGENT_ID) -> None:
+        header = f"{marker}\n\n" if marker else ""
+        self.ctx.write_text(f"# CTX\n{header}## Stan\n{state}\n", encoding="utf-8")
+
     def _env(self, tick: str = "1", recheck: str = "1") -> dict[str, str]:
         env = dict(os.environ)
-        env.update(WATCHDOG_TICK_SEC=tick, WATCHDOG_RECHECK_SEC=recheck, HOME=str(self.home))
+        env.update(
+            WATCHDOG_TICK_SEC=tick,
+            WATCHDOG_RECHECK_SEC=recheck,
+            HOME=str(self.home),
+            PATH=f"{self.bin}{os.pathsep}{env.get('PATH', '')}",
+            PYTHONPATH=os.pathsep.join(
+                filter(None, (str(KIT_ROOT / "src"), env.get("PYTHONPATH", "")))
+            ),
+            KIT_HOST_PROFILE="local",
+            GUIDES_HOST_PROFILE="",
+        )
         return env
 
     def _start(self, *args: str, tick: str = "1", recheck: str = "1") -> subprocess.Popen:
@@ -111,10 +135,46 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertIn("życie", result.stdout)
 
     def test_krok_koniec_exits_0(self) -> None:
-        self.ctx.write_text("# CTX\n\n## Stan\nkrok: koniec\n", encoding="utf-8")
+        self._write_ctx(MARKER, state="krok: koniec")
         result = self._run("60", "110")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("koniec", result.stdout)
+
+    def test_missing_marker_halts_night(self) -> None:
+        self._write_ctx(None)
+        result = self._run("0", "110")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("halt:", result.stdout)
+        self.assertIn("znacznik", result.stdout)
+        self.assertNotIn("anomalia", result.stdout)
+        ctx = self.ctx.read_text(encoding="utf-8")
+        self.assertIn("halt:", ctx)
+        self.assertIn("krok: koniec", ctx)
+
+    def test_marker_host_mismatch_halts_night(self) -> None:
+        self._write_ctx(MARKER.replace("host=local", "host=vps"))
+        result = self._run("0", "110")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("halt:", result.stdout)
+        self.assertIn("vps", result.stdout)
+        self.assertIn("local", result.stdout)
+        self.assertNotIn("anomalia", result.stdout)
+        self.assertIn("halt:", self.ctx.read_text(encoding="utf-8"))
+
+    def test_matching_marker_keeps_normal_behavior(self) -> None:
+        self._write_ctx(MARKER.replace("host=local", "host=vps"), state="krok: koniec")
+        env = self._env()
+        env["KIT_HOST_PROFILE"] = "vps"
+        result = subprocess.run(
+            [self.bash, posix_path(SCRIPT), posix_path(self.ctx), "60", "110"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("koniec nocy", result.stdout)
+        self.assertNotIn("halt:", result.stdout)
 
     def test_limit_in_transcript_writes_pause_and_exits_after_recheck(self) -> None:
         proc = self._start("60", "110", recheck="1")
@@ -195,10 +255,10 @@ class TestWatchdogScript(unittest.TestCase):
 
     def test_open_pause_on_start_waits_then_exits_0(self) -> None:
         future = int(time.time()) + 2
-        self.ctx.write_text(
-            "# CTX\n\n## Stan\nkrok: ticket\n"
-            f"pauza limitu od 2026-10-25T10:00:00; wznowienie 2026-10-25T10:05:00 (epoch {future})\n",
-            encoding="utf-8",
+        self._write_ctx(
+            MARKER,
+            state="krok: ticket\n"
+            f"pauza limitu od 2026-10-25T10:00:00; wznowienie 2026-10-25T10:05:00 (epoch {future})",
         )
         result = self._run("0", "110")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -206,10 +266,10 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertNotIn("anomalia", result.stdout)
 
     def test_overdue_open_pause_is_closed_and_loop_runs(self) -> None:
-        self.ctx.write_text(
-            "# CTX\n\n## Stan\nkrok: ticket\n"
-            "pauza limitu od 2026-10-25T10:00:00; wznowienie 2026-10-25T10:05:00 (epoch 1)\n",
-            encoding="utf-8",
+        self._write_ctx(
+            MARKER,
+            state="krok: ticket\n"
+            "pauza limitu od 2026-10-25T10:00:00; wznowienie 2026-10-25T10:05:00 (epoch 1)",
         )
         result = self._run("0", "110")
         # Przeterminowana pauza nie kończy od razu (bez pętli byłby exit 0 w kółko): idzie do anomalii.
@@ -220,10 +280,10 @@ class TestWatchdogScript(unittest.TestCase):
 
     def test_open_pause_longer_than_life_exits_with_renew_message(self) -> None:
         future = int(time.time()) + 3600
-        self.ctx.write_text(
-            "# CTX\n\n## Stan\nkrok: ticket\n"
-            f"pauza limitu od 2026-10-25T10:00:00; wznowienie 2026-10-25T11:00:00 (epoch {future})\n",
-            encoding="utf-8",
+        self._write_ctx(
+            MARKER,
+            state="krok: ticket\n"
+            f"pauza limitu od 2026-10-25T10:00:00; wznowienie 2026-10-25T11:00:00 (epoch {future})",
         )
         result = self._run("60", "0")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
