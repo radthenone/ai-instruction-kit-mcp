@@ -95,6 +95,21 @@ class TestLabelSet(unittest.TestCase):
         self.assertEqual(state, set(triage_names(KIT_ROOT).values()))
         self.assertEqual(set(STATE_LABELS), set(triage_names(KIT_ROOT)))
 
+    def test_triage_labels_doc_describes_needs_local(self) -> None:
+        """Dokumentacja etykiet opisuje `needs-local`, warunek wykonania i sposób zdjęcia."""
+        doc = (KIT_ROOT / "docs" / "agents" / "triage-labels.md").read_text(encoding="utf-8")
+        self.assertIn("needs-local", doc)
+        self.assertIn("ready-for-agent", doc)
+        self.assertNotIn("| `needs-local`", doc)
+        self.assertTrue(
+            "warunek wykonania" in doc.lower() or "execution condition" in doc.lower(),
+            "brak wzmianki, że to warunek wykonania / execution condition",
+        )
+        self.assertTrue(
+            "zdjąć" in doc.lower() or "remove" in doc.lower(),
+            "brak opisu zdjęcia etykiety przez użytkownika",
+        )
+
     def test_every_type_has_category_row(self) -> None:
         names = {label.name for label in read_label_set(KIT_ROOT)}
         self.assertEqual({n for n in names if n.startswith("type: ")}, set(CATEGORY))
