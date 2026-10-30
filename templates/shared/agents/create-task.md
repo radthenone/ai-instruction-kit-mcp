@@ -122,6 +122,7 @@ Tytul      Add CSV export to orders list
 Etykiety   type: feature, enhancement     [istnieja w repo]
            scope: backend, scope: frontend:web
            ready-for-agent                [z bloku Gotowosc]
+           needs-local                    [opcjonalnie: warunek wykonania]
 Assignee   @me                            [brak przy --no-assign]
 Rodzic     brak                           [#88 przy --parent]
 ──────────────────────── TRESC ────────────────────────────────
@@ -252,6 +253,12 @@ gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by
   -F issue_id=$(gh api repos/<owner>/<repo>/issues/<blocker> --jq .id)
 ```
 
+**Podział na część weryfikowalną i niesprawdzalną (`needs-local`):**
+Gdy ticket ma część weryfikowalną (na VPS + CI) i część niesprawdzalną (np. testy na urządzeniu, ręczna weryfikacja UI, sprzęt) — **nie ma etykiety „częściowej”**. Dzielisz zadanie na dwa issue z relacją `blocked_by`:
+1. Główne (bez `needs-local`) — obejmuje część weryfikowalną.
+2. Dziecko z `needs-local` — obejmuje część niesprawdzalną, podpięte jako sub-issue i zablokowane (`blocked_by`) przez główne.
+Karta pokazuje proponowany podział, a użytkownik go akceptuje lub zmienia.
+
 Karta jest jedna na issue, z własnym blokiem Gotowość, i akceptujesz je **pojedynczo**. Zbiorcze „tak" na trzy karty naraz
 znaczy, że przeczytana została jedna.
 
@@ -280,6 +287,12 @@ osi nie zgadujesz — pomijasz ją i dajesz jedną linijkę „brak etykiety X �
 - **stan** — dokładnie jeden, z bloku Gotowość w FAZIE 3 (uzupełnia `/triage`, nie zastępuje).
   Nazwy: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik; inaczej
   `needs-info`, `ready-for-agent`, `ready-for-human`.
+- **warunek wykonania (`needs-local`)** — proponujesz na karcie, gdy ticket wymaga:
+  - nowej zależności lub zmiany lockfile,
+  - testów na urządzeniu / telefonie,
+  - ręcznej weryfikacji UI,
+  - sprzętu albo czegokolwiek, czego CI repo nie uruchamia.
+  Etykieta trafia na issue tylko po akceptacji karty, jak pozostałe. Nie jest etykietą stanu triage — issue może mieć jednocześnie `ready-for-agent` i `needs-local`.
 <!-- clients: claude -->
 - **design** — sesja designu w Claude Code (Claude Design; przebieg w
   `docs/agents/design-handoff.md`):
