@@ -318,7 +318,7 @@ Kroki:
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
    przy `Host: vps` brak CI = brak merge: kroki 7–8 pomijasz, PR otwarty, hand-back needs-human
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
-   hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 2
+   hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 3
    próby); nadal czerwone → needs-human.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
@@ -386,7 +386,7 @@ szybkich, krok 6 promptu), nigdy push.
 
 **needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 2 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
+po 3 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 
 **halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,

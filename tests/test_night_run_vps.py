@@ -73,6 +73,14 @@ class TestNightRunTemplate(unittest.TestCase):
         for line in lines:
             self.assertIn("Host: vps", line)
 
+    def test_ci_retry_limit_is_three(self) -> None:
+        """Pętla poprawek po czerwonym CI w night-run ma limit 3 prób (zamiast 2)."""
+        normalized = " ".join(self.text.split())
+        self.assertIn("ponawiasz `/git-end` (maks. 3 próby)", normalized)
+        self.assertIn("CI czerwone po 3 próbach naprawy", normalized)
+        self.assertNotIn("ponawiasz `/git-end` (maks. 2 próby)", normalized)
+        self.assertNotIn("CI czerwone po 2 próbach naprawy", normalized)
+
     def test_reload_refreshed_client_copies(self) -> None:
         # Parytet bajt w bajt sprawdza test_generated_artifacts; tu tylko, że kopie są po #195.
         for rel in COPIES:
