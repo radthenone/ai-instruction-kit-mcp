@@ -95,6 +95,18 @@ class TestLabelSet(unittest.TestCase):
         self.assertEqual(state, set(triage_names(KIT_ROOT).values()))
         self.assertEqual(set(STATE_LABELS), set(triage_names(KIT_ROOT)))
 
+    def test_create_task_mentions_needs_local_criteria_and_split(self) -> None:
+        """Procedura create-task wymienia kryteria propozycji `needs-local` i podział z blocked_by."""
+        text = (AGENTS / "create-task.md").read_text(encoding="utf-8")
+        self.assertIn("needs-local", text)
+        self.assertIn("blocked_by", text)
+        for keyword in ("lockfile", "urządzeni", "ręczn", "sprzęt"):
+            self.assertTrue(keyword in text.lower(), f"brak słowa kluczowego {keyword} w create-task.md")
+        self.assertTrue(
+            "podział" in text.lower() or "dziel" in text.lower(),
+            "brak opisu podziału na dwa issue w create-task.md",
+        )
+
     def test_triage_labels_doc_describes_needs_local(self) -> None:
         """Dokumentacja etykiet opisuje `needs-local`, warunek wykonania i sposób zdjęcia."""
         doc = (KIT_ROOT / "docs" / "agents" / "triage-labels.md").read_text(encoding="utf-8")
