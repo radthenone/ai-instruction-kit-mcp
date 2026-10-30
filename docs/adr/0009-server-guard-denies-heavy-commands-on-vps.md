@@ -75,6 +75,11 @@ integracyjnego.
 
 ## Konsekwencje
 
+- Jedno źródło profilu także dla agentów (#314): `kit-ai host` wypisuje wynik
+  `detect_host_profile()` (z tym samym `KIT_HOST_PROFILE` / `GUIDES_HOST_PROFILE`),
+  a `kit-ai night-ctx` składa z niego nagłówek CTX nocy ze znacznikiem generatora.
+  Watchdog `/night-run` odrzuca nagłówek bez znacznika albo z `host=` różnym od
+  bieżącego `kit-ai host` — nikt już nie wnioskuje Host z treści bundle'a.
 - `vps-lightweight.md`: sekcja „Bez hooka blokującego" zastąpiona odwołaniem
   do server-guarda i tego ADR-a.
 - Lokalne pluginy guardów w projektach stają się zbędne: podbij wersję kita,

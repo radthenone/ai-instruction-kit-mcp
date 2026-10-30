@@ -13,6 +13,9 @@ słaby VPS (heurystyka zasobów + wirtualizacja, bez nazw hostów) albo gdy
   albo brak desktopu: brak `DISPLAY` / `WAYLAND_DISPLAY` / `XDG_CURRENT_DESKTOP`).
 - Bez hardkodowanych hostname'ów. CI (`CI=true`, GitHub Actions, GitLab CI, …)
   zawsze dostaje profil `local` — pełna weryfikacja należy do CI.
+- Jedno źródło dla agentów: `kit-ai host` wypisuje `vps` / `local` z tej samej
+  heurystyki i tego samego nadpisania (`detect_host_profile()`). Nie wnioskuj
+  profilu z treści bundle'a — nagłówek CTX nocy składa `kit-ai night-ctx`.
 
 ## Zakazane na VPS (kategorie, bez względu na stack)
 
@@ -71,6 +74,9 @@ Profilu. Nową wersję guarda wdrażasz w projekcie przez aktualizację klona ki
 
 ## Night-run na VPS (dotyczy /night-run)
 
+- Nagłówek CTX składa `kit-ai night-ctx` (BASE, `Host:` z `kit-ai host`, bramki szybkie,
+  język, linia-znacznik generatora). Nie ustalasz `Host` z bundle'a; watchdog kończy noc,
+  gdy znacznika brak albo `host=` się nie zgadza.
 - CTX, `## Stan` i logi pracy w tle w `~/.cache/night-run-<repo>-<data>/`, nigdy
   w `/tmp` (restart kontenera kasuje `/tmp`). Commit po każdym zielonym kroku —
   restart nie gubi pracy.
