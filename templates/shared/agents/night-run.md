@@ -163,9 +163,12 @@ raz na noc, poniżej ~150 linii, sekcje. Wszędzie (prompt ticketu, `CronCreate`
 pełna ścieżka z `$HOME` zamiast `~`. `~/.cache` przeżywa restart hosta, `/tmp` nie —
 nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 
-- **Nagłówek:** BASE, `Host: vps | local` (ustalany raz: bundle z MCP `get_bundle`
-  zawiera `infra:vps-lightweight` → `vps`, inaczej `local`), bramki szybkie, „pełny zestaw
-  testów: tylko CI”.
+- **Nagłówek:** uruchom raz na noc w repo `kit-ai night-ctx` i wklej wynik **bez zmian** na
+  początek CTX (BASE, `Host:`, bramki szybkie, język, linia-znacznik generatora
+  `<!-- kit-ai night-ctx v1 host=… -->`). `Host:` pochodzi z `kit-ai host`
+  (`detect_host_profile()`), nie z treści bundla — **nie wnioskujesz go z `get_bundle`**.
+  Wartości oznaczone „założenie” przenieś do NIGHT-RUN REPORT. Znacznika nie usuwaj ani nie
+  edytuj: watchdog kończy noc, gdy go brak albo `host=` nie zgadza się z `kit-ai host`.
 - **Mapa aplikacji:** katalog → co w nim jest, 1 linia.
 - **Konwencje:** same reguły z AGENTS.md, BUGBOT.md, `.ai/project.md`.
 - **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay; brak → „brak danych”.
@@ -192,6 +195,8 @@ więc nie jest mechanizmem oczekiwania.
   w transkrypcie subagenta z `subagent: <id>`. Kończy się, czyli budzi orkiestratora
   powiadomieniem o zakończeniu, tylko gdy:
   - exit 1 `anomalia` — brak postępu > 60 min (subagent failed/bez hand-backu też → tik);
+  - exit 0 `halt` — nagłówek CTX bez znacznika generatora albo `host=` ≠ `kit-ai host`
+    (sprawdzane przy każdym starcie i odnowieniu) → halt C z powodem z linii `halt:`;
   - exit 0 `życie` — minęło 110 min → odnów (niżej);
   - exit 0 `koniec nocy` — w `## Stan` jest `krok: koniec`;
   - exit 0 `wznowienie po pauzie limitu` — wykrył komunikat limitu (429 / „session limit”)
@@ -384,7 +389,8 @@ z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; 
 po 2 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 
-**halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów.
+**halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,
+nagłówek CTX bez znacznika `kit-ai night-ctx` albo `host=` ≠ `kit-ai host` (zgłasza watchdog).
 U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypadek D, nie C.
 
 **Limity:** pauzy limitu bez limitu liczby, chyba że cel ustawia `pauzy: N` (po N-tej → halt C); 2 wznowienia na ticket (inne przyczyny) → needs-human.
@@ -440,10 +446,12 @@ Stan kodu: branch <nazwa> wypchnięty / porzucony
 
 ## Tick watchdoga i crona (tylko Claude Code)
 
-Gdy watchdog skończy się (anomalia, życie, wznowienie po pauzie) albo cron wywoła tik,
+Gdy watchdog skończy się (anomalia, życie, wznowienie po pauzie, halt) albo cron wywoła tik,
 robisz tik. To jedyny moment, w którym orkiestrator budzi się bez pracy do wykonania.
 Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents`):
 
+- watchdog `halt` (nagłówek CTX nie z generatora / rozjazd Host) → przypadek C z powodem
+  z linii `halt:`; nie odnawiasz watchdoga;
 - watchdog `życie` albo tik crona, a subagent działa → odnów watchdoga
   (`TaskStop` + start z `timeout: 7200000` + `watchdog:` w `## Stan`); cron bez zmian: jedna linia „ok”, koniec tiku;
 - wznowienie po pauzie → zamknij pauzę w `## Stan`, potem jak w przypadku D i odpala watchdoga;
@@ -501,7 +509,7 @@ w rozmowie (warunek sprawdza transkrypt).
 ```markdown
 ## NIGHT-RUN REPORT
 Baza: <BASE> — <powód>
-Host: <vps | local> (z nagłówka CTX)
+Host: <vps | local> (z `kit-ai host`; nagłówek CTX)
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 Wykonawca: <EXEC / subagent / subagent (brak /headless)> · Review: <skille z argumentów / domyślne>
