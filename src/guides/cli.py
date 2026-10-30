@@ -36,6 +36,7 @@ from guides.clients import (
     profile_clients_arg,
 )
 from guides.doctor import run_doctor
+from guides.host_profile import get_host_profile
 from guides.kit_status import STAMP_REL_PATH, _git, check_kit_updates, direct_url_info
 from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
@@ -633,6 +634,11 @@ def main(argv: list[str] | None = None) -> int:
     status = sub.add_parser("status", help="Czy kit zmienił się od ostatniego Bootstrapu")
     status.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
 
+    sub.add_parser(
+        "host",
+        help="Profil bieżącego hosta: vps | local (wynik detect_host_profile())",
+    )
+
     doctor = sub.add_parser(
         "doctor", help="Czy reguły projektu wskazują istniejące ścieżki i komendy"
     )
@@ -643,6 +649,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    if args.command == "host":
+        print(get_host_profile())
+        return 0
     kit_root = find_kit_root()
     workspace = to_path(args.path).resolve()
 
