@@ -148,6 +148,9 @@ nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie
   przełączonym stanem): `design: layout` bez `docs/design/<N>.md` na bazie
   (`git cat-file -e origin/$BASE:docs/design/<N>.md` pada) → `skipped: design spec missing`;
   `design: tokens` → `skipped: design: tokens`.
+- Warunek wykonania `needs-local` (także z listy ręcznej i przy `ready-for-agent`):
+  - na hoście `vps` (`Host: vps` z nagłówka CTX / `kit-ai host`) → pomijasz, w raporcie `skipped: needs-local`;
+  - na hoście `local` (`Host: local`) → bierzesz normalnie (bez pomijania).
 
 ### 5. Kolejność
 
@@ -317,7 +320,7 @@ Kroki:
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
    przy `Host: vps` brak CI = brak merge: kroki 7–8 pomijasz, PR otwarty, hand-back needs-human
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
-   hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 2
+   hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 3
    próby); nadal czerwone → needs-human.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
@@ -332,8 +335,11 @@ Reguły:
   nie obchodzisz jej (ta sama komenda spod taska wpisana wprost, `bash -c`, własny skrypt,
   inny interpreter), nie liczysz jej do prób naprawy. Wolno użyć alternatywy wskazanej
   w powodzie deny (np. `uv run --no-sync`, `UV_NO_SYNC=1`, `git stash`). Deny
-  `server-guard:` → komenda trafia do raportu jako „tylko CI”; deny `git-guard:` → zapis
-  w raporcie, a gdy bez tej komendy nie da się skończyć — needs-human.
+  `server-guard:` → komenda trafia do raportu jako „tylko CI”; gdy bez tej komendy nie da
+  się ukończyć ticketu (alternatywa nie wystarcza) — kończysz jako needs-human z etykietą
+  `needs-local` zamiast `ready-for-human` (komentarz wskazuje zablokowaną komendę i co zrobiono,
+  branch wypchnięty, PR otwarty bez merge). Deny `git-guard:` → zapis w raporcie, a gdy bez tej
+  komendy nie da się skończyć — needs-human.
 - Praca w tle (CI, dłuższy `pytest`): od razu w tle (w Claude `run_in_background`), jeden
   wzorzec, bez pipe (`| tee` gubi exit code): `<cmd> > <log> 2>&1; echo "EXIT=$?" >> <log>`.
   `<log>` w katalogu <CTX> (`<katalog CTX>/<nazwa>.log`), nigdy w `/tmp` — po restarcie hosta
@@ -347,6 +353,11 @@ Reguły:
   wrappera (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`), i powtarzasz
   go do skutku. To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
   i na powiadomienia nie reaguje narzędziami.
+- Odkrycie części niesprawdzalnej w trakcie pracy: gdy ticket ma część weryfikowalną
+  (VPS + CI) i część niesprawdzalną (testy na telefonie, ręczne UI, sprzęt) — robisz część
+  weryfikowalną, zakładasz dziecko `needs-local` podpięte jako sub-issue i zablokowane
+  (`blocked_by`) przez bieżące issue, z opisem co zostaje i dlaczego, i kontynuujesz łańcuch
+  dla części głównej.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
@@ -385,7 +396,8 @@ szybkich, krok 6 promptu), nigdy push.
 
 **needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 2 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
+po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) → etykieta
+`needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 
 **halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,
@@ -416,9 +428,14 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
 
 Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
-`gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
-(`needs-info` zamiast `ready-for-human`, gdy stoi na brakujących danych od zgłaszającego,
-nie na decyzji). Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
+- blokujący deny `server-guard:` → nadaj `needs-local` zamiast `ready-for-human` (nie zdejmuj
+  `ready-for-agent`, `needs-local` to warunek wykonania):
+  `gh issue edit <N> --add-label needs-local`
+- brakujące dane od zgłaszającego → `needs-info` zamiast `ready-for-human`:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`
+- pozostałe przypadki needs-human:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
+Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
 
 ### Decyzja odwracalna — nie blokuj
 
@@ -525,7 +542,7 @@ Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja g�
 | #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
 | #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
-| #J | skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
+| #J | skipped: needs-local / skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako

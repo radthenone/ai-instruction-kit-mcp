@@ -86,6 +86,27 @@ class TestNightRunTemplate(unittest.TestCase):
         normalized = " ".join(self.text.split())
         self.assertRegex(normalized, r"`?needs-local`?\s+zamiast\s+`?ready-for-human`?")
 
+    def test_queue_skips_needs_local_on_vps_only(self) -> None:
+        """Kolejka night-run na VPS pomija tickety needs-local, na local bierze normalnie."""
+        normalized = " ".join(self.text.split())
+        self.assertIn("needs-local", normalized)
+        self.assertIn("skipped: needs-local", normalized)
+        self.assertIn("Host: vps", self.text)
+        self.assertIn("Host: local", self.text)
+        self.assertRegex(normalized, r"vps.*skipped: needs-local")
+        self.assertRegex(normalized, r"local.*(?:bez pomijania|normalnie)")
+
+    def test_all_rendered_client_copies_contain_needs_local_rule(self) -> None:
+        """Wyrenderowana procedura night-run u wszystkich klientów z clients: zawiera regułę needs-local."""
+        for rel in COPIES:
+            with self.subTest(copy=rel):
+                copy = (KIT_ROOT / rel).read_text(encoding="utf-8")
+                normalized = " ".join(copy.split())
+                self.assertIn("needs-local", normalized)
+                self.assertIn("skipped: needs-local", normalized)
+                self.assertRegex(normalized, r"vps.*skipped: needs-local")
+                self.assertRegex(normalized, r"local.*(?:bez pomijania|normalnie)")
+
     def test_reload_refreshed_client_copies(self) -> None:
         # Parytet bajt w bajt sprawdza test_generated_artifacts; tu tylko, że kopie są po #195.
         for rel in COPIES:

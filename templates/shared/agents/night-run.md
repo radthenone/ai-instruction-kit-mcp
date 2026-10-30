@@ -149,6 +149,9 @@ nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie
   przełączonym stanem): `design: layout` bez `docs/design/<N>.md` na bazie
   (`git cat-file -e origin/$BASE:docs/design/<N>.md` pada) → `skipped: design spec missing`;
   `design: tokens` → `skipped: design: tokens`.
+- Warunek wykonania `needs-local` (także z listy ręcznej i przy `ready-for-agent`):
+  - na hoście `vps` (`Host: vps` z nagłówka CTX / `kit-ai host`) → pomijasz, w raporcie `skipped: needs-local`;
+  - na hoście `local` (`Host: local`) → bierzesz normalnie (bez pomijania).
 
 ### 5. Kolejność
 
@@ -351,6 +354,11 @@ Reguły:
   wrappera (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`), i powtarzasz
   go do skutku. To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
   i na powiadomienia nie reaguje narzędziami.
+- Odkrycie części niesprawdzalnej w trakcie pracy: gdy ticket ma część weryfikowalną
+  (VPS + CI) i część niesprawdzalną (testy na telefonie, ręczne UI, sprzęt) — robisz część
+  weryfikowalną, zakładasz dziecko `needs-local` podpięte jako sub-issue i zablokowane
+  (`blocked_by`) przez bieżące issue, z opisem co zostaje i dlaczego, i kontynuujesz łańcuch
+  dla części głównej.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
@@ -535,7 +543,7 @@ Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja g�
 | #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
 | #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
-| #J | skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
+| #J | skipped: needs-local / skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako
