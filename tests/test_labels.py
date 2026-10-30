@@ -167,6 +167,14 @@ class TestEnsureLabels(unittest.TestCase):
         self.assertTrue(all("--force" not in c for c in gh.calls))
         self.assertIn(f"created: {len(created)}", report)
 
+    def test_needs_local_is_always_provisioned(self) -> None:
+        """`needs-local` (warunek wykonania, nie stan triage) wchodzi nawet przy Tierach none."""
+        ws = _workspace(self.root)
+        gh = FakeGh([])
+        report = ensure_labels(ws, KIT_ROOT, dry_run=True, run=gh)
+        self.assertIn("+ needs-local", report)
+        self.assertEqual(gh.created(), [])
+
     def test_tier_none_skips_scope(self) -> None:
         ws = _workspace(self.root, web="react")
         gh = FakeGh([])
