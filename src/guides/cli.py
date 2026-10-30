@@ -40,6 +40,7 @@ from guides.host_profile import get_host_profile
 from guides.kit_status import STAMP_REL_PATH, _git, check_kit_updates, direct_url_info
 from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
+from guides.night_ctx import render_night_ctx
 from guides.resolver import PROFILE_REL_PATH, normalize_language
 
 DEFAULT_GIT_SOURCE = "git+https://github.com/radthenone/ai-instruction-kit-mcp.git"
@@ -639,6 +640,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Profil bieżącego hosta: vps | local (wynik detect_host_profile())",
     )
 
+    night_ctx = sub.add_parser(
+        "night-ctx", help="Nagłówek kontekstu nocy (BASE, Host, bramki, język, znacznik)"
+    )
+    night_ctx.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+
     doctor = sub.add_parser(
         "doctor", help="Czy reguły projektu wskazują istniejące ścieżki i komendy"
     )
@@ -675,6 +681,8 @@ def main(argv: list[str] | None = None) -> int:
             print(_plan_report(result) if isinstance(result, BootstrapPlan) else result)
         elif args.command == "labels":
             print(ensure_labels(workspace, kit_root, dry_run=not args.apply))
+        elif args.command == "night-ctx":
+            print(render_night_ctx(workspace))
         elif args.command == "doctor":
             print(doctor_report(workspace, kit_root, as_json=args.json, verbose=args.verbose))
         else:
