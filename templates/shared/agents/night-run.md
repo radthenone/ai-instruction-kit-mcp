@@ -333,8 +333,11 @@ Reguły:
   nie obchodzisz jej (ta sama komenda spod taska wpisana wprost, `bash -c`, własny skrypt,
   inny interpreter), nie liczysz jej do prób naprawy. Wolno użyć alternatywy wskazanej
   w powodzie deny (np. `uv run --no-sync`, `UV_NO_SYNC=1`, `git stash`). Deny
-  `server-guard:` → komenda trafia do raportu jako „tylko CI”; deny `git-guard:` → zapis
-  w raporcie, a gdy bez tej komendy nie da się skończyć — needs-human.
+  `server-guard:` → komenda trafia do raportu jako „tylko CI”; gdy bez tej komendy nie da
+  się ukończyć ticketu (alternatywa nie wystarcza) — kończysz jako needs-human z etykietą
+  `needs-local` zamiast `ready-for-human` (komentarz wskazuje zablokowaną komendę i co zrobiono,
+  branch wypchnięty, PR otwarty bez merge). Deny `git-guard:` → zapis w raporcie, a gdy bez tej
+  komendy nie da się skończyć — needs-human.
 - Praca w tle (CI, dłuższy `pytest`): od razu w tle (w Claude `run_in_background`), jeden
   wzorzec, bez pipe (`| tee` gubi exit code): `<cmd> > <log> 2>&1; echo "EXIT=$?" >> <log>`.
   `<log>` w katalogu <CTX> (`<katalog CTX>/<nazwa>.log`), nigdy w `/tmp` — po restarcie hosta
@@ -386,7 +389,8 @@ szybkich, krok 6 promptu), nigdy push.
 
 **needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 3 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
+po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) → etykieta
+`needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 
 **halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,
@@ -417,9 +421,14 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
 
 Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
-`gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
-(`needs-info` zamiast `ready-for-human`, gdy stoi na brakujących danych od zgłaszającego,
-nie na decyzji). Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
+- blokujący deny `server-guard:` → nadaj `needs-local` zamiast `ready-for-human` (nie zdejmuj
+  `ready-for-agent`, `needs-local` to warunek wykonania):
+  `gh issue edit <N> --add-label needs-local`
+- brakujące dane od zgłaszającego → `needs-info` zamiast `ready-for-human`:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`
+- pozostałe przypadki needs-human:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
+Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
 
 ### Decyzja odwracalna — nie blokuj
 

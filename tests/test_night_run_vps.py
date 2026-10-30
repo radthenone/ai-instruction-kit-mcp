@@ -81,6 +81,11 @@ class TestNightRunTemplate(unittest.TestCase):
         self.assertNotIn("ponawiasz `/git-end` (maks. 2 próby)", normalized)
         self.assertNotIn("CI czerwone po 2 próbach naprawy", normalized)
 
+    def test_blocking_server_guard_deny_routes_to_needs_local(self) -> None:
+        """Blokujący deny server-guard: kończy się needs-human z etykietą needs-local zamiast ready-for-human."""
+        normalized = " ".join(self.text.split())
+        self.assertRegex(normalized, r"`?needs-local`?\s+zamiast\s+`?ready-for-human`?")
+
     def test_reload_refreshed_client_copies(self) -> None:
         # Parytet bajt w bajt sprawdza test_generated_artifacts; tu tylko, że kopie są po #195.
         for rel in COPIES:
