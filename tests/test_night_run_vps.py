@@ -49,7 +49,16 @@ class TestNightRunTemplate(unittest.TestCase):
         self.assertIn("Host: <vps | local>", self.text)
 
     def test_ctx_header_decides_host(self) -> None:
-        self.assertIn("**Nagłówek:** BASE, `Host: vps | local`", self.text)
+        self.assertIn("`Host:` pochodzi z `kit-ai host`", self.text)
+
+    def test_ctx_header_comes_from_generator(self) -> None:
+        self.assertIn("kit-ai night-ctx", self.text)
+        self.assertNotIn("infra:vps-lightweight` → `vps", self.text)
+        self.assertNotIn("bundle z MCP `get_bundle`", self.text)
+
+    def test_watchdog_halt_on_header_mismatch(self) -> None:
+        self.assertIn("halt", self.text)
+        self.assertIn("znacznik", self.text)
 
     def test_vps_without_ci_skips_merge(self) -> None:
         self.assertIn("kroki 7–8 pomijasz", self.text)
