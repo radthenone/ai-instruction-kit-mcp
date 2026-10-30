@@ -134,6 +134,14 @@ class NightCtxTest(unittest.TestCase):
         self.assertIn("BASE: `dev`", out)
         self.assertIn("dev aktywny", out)
 
+    def test_dev_equal_to_default_is_base(self) -> None:
+        _init_repo(self.repo, dev="same")
+        _write_overlay(self.repo)
+        _write_profile(self.repo)
+        out = self._ctx()
+        self.assertIn("BASE: `dev`", out)
+        self.assertIn("dev aktywny", out)
+
     def test_dev_behind_default_falls_back_to_default(self) -> None:
         _init_repo(self.repo, dev="behind")
         _write_overlay(self.repo)

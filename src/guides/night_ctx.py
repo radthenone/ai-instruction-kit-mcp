@@ -63,12 +63,21 @@ def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
     return _git(repo, "merge-base", "--is-ancestor", ancestor, descendant) is not None
 
 
+def _is_strict_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
+    """Czy ``ancestor`` jest ścisłym przodkiem ``descendant`` (nie tym samym commitem)."""
+    if not _is_ancestor(repo, ancestor, descendant):
+        return False
+    left = _git(repo, "rev-parse", "--verify", "--quiet", ancestor)
+    right = _git(repo, "rev-parse", "--verify", "--quiet", descendant)
+    return bool(left and right and left != right)
+
+
 def base_branch(workspace: Path, overlay_text: str) -> tuple[str, str]:
     """BASE i powód — ta sama reguła co w ``/git-start`` i ``/night-run``.
 
     Returns:
         tuple: ``(gałąź, powód)`` — ``base: z project.md``, ``dev aktywny``,
-            ``dev w tyle``, ``brak dev`` albo ``dev zrównany``.
+            ``dev w tyle`` albo ``brak dev``.
     """
     forced = overlay_base(overlay_text)
     if forced:
@@ -82,9 +91,7 @@ def base_branch(workspace: Path, overlay_text: str) -> tuple[str, str]:
     default_sha = _git(workspace, "rev-parse", "--verify", "--quiet", f"origin/{default}")
     if not default_sha:
         return "dev", "dev aktywny"
-    if dev == default_sha:
-        return default, "dev zrównany"
-    if _is_ancestor(workspace, "origin/dev", f"origin/{default}"):
+    if _is_strict_ancestor(workspace, "origin/dev", f"origin/{default}"):
         return default, "dev w tyle"
     return "dev", "dev aktywny"
 
