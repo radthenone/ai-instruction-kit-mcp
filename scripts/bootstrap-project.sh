@@ -1024,6 +1024,7 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$SETTINGS_TEMPLATE"
   [[ "$SETTINGS_TEMPLATE" == "$KIT_ROOT/templates/claude/settings.json" ]] || rm -f "$SETTINGS_TEMPLATE"
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" sync-local   "$TARGET/.claude/settings.local.json"
   # Claude Code czyta CLAUDE.md, nie AGENTS.md: import, żeby reguła języka była w kontekście.
   if [[ ! -f "$TARGET/CLAUDE.md" ]]; then
     printf '@AGENTS.md\n' > "$TARGET/CLAUDE.md"

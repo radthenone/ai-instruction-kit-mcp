@@ -3,8 +3,9 @@
 Scal / usuń wpisy guardraili kita w `.claude/settings.json` projektu.
 
 Użycie:
-    claude_settings.py install TARGET_SETTINGS TEMPLATE_SETTINGS
-    claude_settings.py prune   TARGET_SETTINGS
+    claude_settings.py install    TARGET_SETTINGS TEMPLATE_SETTINGS
+    claude_settings.py prune      TARGET_SETTINGS
+    claude_settings.py sync-local TARGET_LOCAL_SETTINGS [HOST_PROFILE]
 
 `.claude/settings.json` należy do użytkownika — trzyma jego `permissions`, `env`,
 własne hooki. Kit dokłada tam wyłącznie swoje wpisy hooków (PreToolUse, PostToolUse,
@@ -18,6 +19,9 @@ Claude Code sam zaproponował instalację przy otwarciu repo, oraz `env.MCP_TIME
 zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP — a także
 `env.PONYTAIL_SUBAGENT_MATCHER` zawężający plugin ponytail do agentów kodu. Wpis, który użytkownik już ma
 (np. `false` w `enabledPlugins` lub własny matcher), zostaje; prune zabiera tylko wpisy równe kitowym.
+
+`sync-local` obsługuje `.claude/settings.local.json`: na hoście VPS dodaje `PONYTAIL_DEFAULT_MODE=off`,
+a na local czyści ten wpis, zachowując ustawienia użytkownika.
 """
 
 from __future__ import annotations
@@ -189,7 +193,7 @@ def is_kit_entry(entry: dict) -> bool:
 
 def load(path: Path) -> dict:
     """
-    Wczytaj istniejący `settings.json` albo zwróć pusty obiekt.
+    Wczytaj istniejący plik ustawień albo zwróć pusty obiekt.
 
     Args:
         path: Ścieżka do pliku ustawień.
@@ -257,12 +261,54 @@ def write(path: Path, settings: dict) -> None:
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
+def sync_local_settings(target: Path, host_profile: str | None = None) -> None:
+    """
+    Zsynchronizuj `.claude/settings.local.json` zależnie od profilu hosta (vps / local).
+
+    Na VPS: dopisuje PONYTAIL_DEFAULT_MODE=off do env (jeśli użytkownik sam go nie ustawił).
+    Na local: usuwa PONYTAIL_DEFAULT_MODE=off (wpis dodany przez kit), zachowując własne wpisy użytkownika.
+
+    Args:
+        target: Ścieżka do .claude/settings.local.json.
+        host_profile: 'vps' | 'local' albo None (autodetekcja).
+    """
+    if host_profile is None:
+        kit_root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(kit_root / "src"))
+        try:
+            from guides.host_profile import detect_host_profile
+
+            host_profile = detect_host_profile()
+        except ImportError:
+            host_profile = "local"
+
+    settings = load(target)
+    if host_profile == "vps":
+        env = settings.setdefault("env", {})
+        if "PONYTAIL_DEFAULT_MODE" not in env:
+            env["PONYTAIL_DEFAULT_MODE"] = "off"
+        write(target, settings)
+    else:
+        if "env" in settings and isinstance(settings["env"], dict):
+            if settings["env"].get("PONYTAIL_DEFAULT_MODE") == "off":
+                del settings["env"]["PONYTAIL_DEFAULT_MODE"]
+                if not settings["env"]:
+                    del settings["env"]
+        write(target, settings)
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 3:
         print(__doc__, file=sys.stderr)
         return 2
 
     mode, target = argv[1], Path(argv[2])
+
+    if mode == "sync-local":
+        host_profile = argv[3] if len(argv) > 3 else None
+        sync_local_settings(target, host_profile)
+        return 0
+
     settings = strip_kit_entries(load(target))
 
     if mode == "prune":
