@@ -2,6 +2,7 @@
 name: review-security
 description: Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /review-security.
 readonly: true
+classification: procedure
 model: sonnet
 ---
 

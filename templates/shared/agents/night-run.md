@@ -27,7 +27,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
 <!-- clients: claude -->
   - **Claude Code:** agent o nazwie komendy jest w `.claude/agents/<nazwa>.md` → **Agent**
     tego typu bez parametru `model` (model bierze się z frontmattera); brak agenta →
-    **Skill**. Subagent uruchamia kolejne komendy-agentów (do 3 poziomów,
+    **Skill**. Subagent ticketu uruchamiasz typem `night-run-ticket` (nie `general-purpose`). Subagent uruchamia kolejne komendy-agentów (do 3 poziomów,
     `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), więc `/git-*` zostają wewnątrz subagenta
     ticketu, a orkiestrator nie dostaje z nich tur. Sam `/night-run` działa w głównej
     sesji (w Claude uruchamiany Skillem, nie Agentem): potrzebuje `CronCreate` i watchdoga.
@@ -230,7 +230,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 
 ## Łańcuch na ticket — dokładnie ten
 
-1. **Subagent ticketu** (świeży, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
+1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
    dosłownie. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy

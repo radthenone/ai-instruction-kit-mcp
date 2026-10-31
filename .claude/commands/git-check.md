@@ -1,5 +1,6 @@
 ---
 description: Sync GitHub issue title/body to actual file diffs. Use when /git-check, issue stale vs branch work. Wywołuj jako /git-check.
+classification: procedure
 argument-hint: [args]
 ---
 

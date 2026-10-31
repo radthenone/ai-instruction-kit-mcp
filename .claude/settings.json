@@ -3,7 +3,8 @@
     "MCP_TIMEOUT": "90000",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-5-5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5-5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5",
+    "PONYTAIL_SUBAGENT_MATCHER": "^(?!(?:cleanup|create-skill|create-task|git-check|git-commit|git-end|git-start|headless|kit-project-begin|kit-project-edit|night-run|review-architecture|review-backend|review-bugbot|review-edge|review-frontend|review-security|review-tests|review-ui|teacher-agent|teacher-architecture|teacher-backend|teacher-frontend)$).*"
   },
   "enabledPlugins": {
     "superpowers@superpowers-marketplace": false
