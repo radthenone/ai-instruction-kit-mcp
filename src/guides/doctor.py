@@ -1161,7 +1161,7 @@ def _check_ponytail(
             env = data.get("env") if isinstance(data, dict) else None
             user_matcher = env.get("PONYTAIL_SUBAGENT_MATCHER") if isinstance(env, dict) else None
             if isinstance(user_matcher, str) and user_matcher:
-                procedures = procedure_agents(kit_root / AGENT_TEMPLATES) if kit_root else []
+                procedures: list[str] = procedure_agents(kit_root / AGENT_TEMPLATES) if kit_root else []
                 try:
                     re_m = re.compile(user_matcher, re.IGNORECASE)
                     leaked = [p for p in procedures if re_m.search(p)]
