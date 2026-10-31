@@ -15,8 +15,9 @@ sprzątała wpisy z Workspace'ów bootstrapowanych przed Guards v2.
 
 Poza hookami kit dokłada marketplace i plugin Superpowers (`KIT_PLUGIN_SETTINGS`), żeby
 Claude Code sam zaproponował instalację przy otwarciu repo, oraz `env.MCP_TIMEOUT` — przy
-zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP. Wpis, który użytkownik już ma
-(np. `false` w `enabledPlugins`), zostaje; prune zabiera tylko wpisy równe kitowym.
+zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP — a także
+`env.PONYTAIL_SUBAGENT_MATCHER` zawężający plugin ponytail do agentów kodu. Wpis, który użytkownik już ma
+(np. `false` w `enabledPlugins` lub własny matcher), zostaje; prune zabiera tylko wpisy równe kitowym.
 """
 
 from __future__ import annotations
@@ -96,29 +97,47 @@ def build_ponytail_matcher(agents_dir: Path | None = None) -> str:
     return f"^(?!(?:{joined})$).*"
 
 
+def get_kit_plugin_settings(agents_dir: Path | None = None) -> dict[str, dict]:
+    """
+    Zwróć słownik ustawień wstrzykiwanych przez kita (pluginy, env).
+
+    Args:
+        agents_dir: Opcjonalna ścieżka do szablonów agentów.
+
+    Returns:
+        dict[str, dict]: Mapa klucz -> ustawienia kita.
+    """
+    return {
+        "extraKnownMarketplaces": {
+            "superpowers-marketplace": {
+                "source": {"source": "github", "repo": "obra/superpowers-marketplace"}
+            }
+        },
+        "enabledPlugins": {"superpowers@superpowers-marketplace": True},
+        "env": {
+            "MCP_TIMEOUT": "90000",
+            "PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher(agents_dir),
+        },
+    }
+
+
 # Klucze ustawień Claude Code dokładane obok hooków — nazwa → wartość kita.
-KIT_PLUGIN_SETTINGS: dict[str, dict] = {
-    "extraKnownMarketplaces": {
-        "superpowers-marketplace": {
-            "source": {"source": "github", "repo": "obra/superpowers-marketplace"}
-        }
-    },
-    "enabledPlugins": {"superpowers@superpowers-marketplace": True},
-    "env": {"MCP_TIMEOUT": "90000"},
-}
+KIT_PLUGIN_SETTINGS: dict[str, dict] = get_kit_plugin_settings()
 
 
-def strip_kit_plugins(settings: dict) -> dict:
+def strip_kit_plugins(settings: dict, agents_dir: Path | None = None) -> dict:
     """
     Usuń wpisy marketplace/pluginów kita, o ile użytkownik ich nie zmienił.
 
     Args:
         settings: Ustawienia do oczyszczenia (modyfikowane w miejscu).
+        agents_dir: Opcjonalny katalog szablonów agentów.
 
     Returns:
         dict: Te same ustawienia; pusty blok po usunięciu znika.
     """
-    for key, entries in KIT_PLUGIN_SETTINGS.items():
+    plugin_settings = get_kit_plugin_settings(agents_dir)
+    for key, entries in plugin_settings.items():
         block = settings.get(key)
         if not isinstance(block, dict):
             continue
@@ -130,17 +149,19 @@ def strip_kit_plugins(settings: dict) -> dict:
     return settings
 
 
-def merge_kit_plugins(settings: dict) -> dict:
+def merge_kit_plugins(settings: dict, agents_dir: Path | None = None) -> dict:
     """
     Dołóż wpisy marketplace/pluginów kita bez nadpisywania wartości użytkownika.
 
     Args:
         settings: Ustawienia (modyfikowane w miejscu).
+        agents_dir: Opcjonalny katalog szablonów agentów.
 
     Returns:
         dict: Te same ustawienia z wpisami kita.
     """
-    for key, entries in KIT_PLUGIN_SETTINGS.items():
+    plugin_settings = get_kit_plugin_settings(agents_dir)
+    for key, entries in plugin_settings.items():
         block = settings.get(key)
         if not isinstance(block, dict):
             block = settings[key] = {}
