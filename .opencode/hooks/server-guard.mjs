@@ -14,7 +14,8 @@
  *   4. W pozostałych przypadkach → allow.
  *
  * Polityka zna tylko allow/deny (ADR 0006). Dopasowanie po tokenach od początku
- * segmentu — `allow` wygrywa z `deny`. Szczegóły tabeli: README „Server guard (VPS)”.
+ * segmentu — `server.allow` > `server.deny` > allow kita > deny kita. Szczegóły tabeli:
+ * README „Server guard (VPS)”.
  *
  * Domyślna lista deny jest WBUDOWANA (fallback bez JSON-a) i RENDEROWANA do
  * `server-guard.json` przez `kit-ai reload` (lista kita + rozwinięte wrappery

@@ -507,7 +507,8 @@ def check_command(
     no_sync: bool = False,
     offline: bool = False,
 ) -> tuple[bool, dict[str, str] | None, str]:
-    """Czy komenda denied? Zwraca `(denied, reguła, segment)` — allow wygrywa z deny.
+    """Czy komenda denied? Zwraca `(denied, reguła, segment)` — `server.allow` > `server.deny`
+    > allow kita > deny kita.
 
     `uv-run` (także wrapper z `uv run` w środku) odpada przy `UV_NO_SYNC=1` z env
     albo z przypisania w linii. Gdy pasuje kilka odmów, inna reguła wygrywa z `uv-run`
