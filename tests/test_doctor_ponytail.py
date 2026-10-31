@@ -60,6 +60,17 @@ class DoctorPonytailTest(unittest.TestCase):
         kinds = [f.kind for f in report.warnings]
         self.assertIn("ponytail-matcher-unsupported", kinds)
 
+    def test_no_warning_when_install_path_has_empty_hooks_dir(self) -> None:
+        """Pusty katalog hooków w installPath to brak dowodu, nie fałszywe ostrzeżenie."""
+        plugin_dir = self.claude_home / "plugins" / "cache" / "ponytail" / "4.10.0"
+        (plugin_dir / "hooks").mkdir(parents=True)
+        (self.claude_home / "plugins" / "installed_plugins.json").write_text(
+            json.dumps({"version": 2, "plugins": {"ponytail@ponytail": [{"installPath": str(plugin_dir)}]}}),
+            encoding="utf-8",
+        )
+        report = run_doctor(self.workspace, kit_root=ROOT, clients="claude", claude_home=self.claude_home)
+        self.assertNotIn("ponytail-matcher-unsupported", [f.kind for f in report.warnings])
+
     def test_no_warning_when_ponytail_installed_with_subagent_matcher_in_hooks(self) -> None:
         """Gdy ponytail jest zainstalowany i jego hooki mają PONYTAIL_SUBAGENT_MATCHER, brak ostrzeżenia."""
         plugin_dir = self.claude_home / "plugins" / "cache" / "ponytail" / "4.10.0"
