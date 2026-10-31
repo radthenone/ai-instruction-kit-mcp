@@ -14,7 +14,7 @@ SessionStart) i tylko je zabiera przy prune. Rozpoznaje je po ścieżce komendy
 Markery starych Guardów (`gate-*`, `invoke-hook.js`) zostają, żeby reinstalacja
 sprzątała wpisy z Workspace'ów bootstrapowanych przed Guards v2.
 
-Poza hookami kit dokłada marketplace i plugin Superpowers (`KIT_PLUGIN_SETTINGS`), żeby
+Poza hookami kit dokłada marketplace i plugin Superpowers (`get_kit_plugin_settings`), żeby
 Claude Code sam zaproponował instalację przy otwarciu repo, oraz `env.MCP_TIMEOUT` — przy
 zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP — a także
 `env.PONYTAIL_SUBAGENT_MATCHER` zawężający plugin ponytail do agentów kodu. Wpis, który użytkownik już ma
@@ -27,9 +27,13 @@ a na local czyści ten wpis, zachowując ustawienia użytkownika.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
+
+KIT_ROOT = Path(__file__).resolve().parents[1]
+AGENTS_DIR = KIT_ROOT / "templates" / "shared" / "agents"
+sys.path.insert(0, str(KIT_ROOT / "src"))
+from guides.agent_classes import KIT_MATCHER_RE, ponytail_matcher  # noqa: E402
 
 # Wpis należy do kita, jeśli jego komenda odwołuje się do któregoś z tych plików.
 GUARD_MARKERS: tuple[str, ...] = (
@@ -49,56 +53,17 @@ GUARD_MARKERS: tuple[str, ...] = (
 )
 
 
-def get_procedure_agent_names(agents_dir: Path | None = None) -> list[str]:
-    """
-    Zwróć posortowaną listę nazw agentów kita sklasyfikowanych jako procedura.
-
-    Args:
-        agents_dir: Katalog szablonów agentów (domyślnie templates/shared/agents).
-
-    Returns:
-        list[str]: Posortowane nazwy agentów procedur.
-    """
-    if agents_dir is None:
-        agents_dir = Path(__file__).resolve().parents[1] / "templates" / "shared" / "agents"
-    procedures: list[str] = []
-    if not agents_dir.is_dir():
-        return procedures
-    for src in sorted(agents_dir.glob("*.md")):
-        lines = src.read_text(encoding="utf-8").splitlines()
-        if not lines or lines[0].strip() != "---":
-            continue
-        try:
-            end = lines.index("---", 1)
-        except ValueError:
-            continue
-        classification = None
-        for line in lines[1:end]:
-            if line.startswith("classification:"):
-                classification = line.partition(":")[2].strip().lower()
-                break
-        if classification in ("procedure", "procedura") or (
-            classification is None and src.stem not in ("subagent-backend", "subagent-frontend")
-        ):
-            procedures.append(src.stem)
-    return sorted(procedures)
+MATCHER_KEY = "PONYTAIL_SUBAGENT_MATCHER"
 
 
 def build_ponytail_matcher(agents_dir: Path | None = None) -> str:
-    """
-    Wygeneruj regex dla PONYTAIL_SUBAGENT_MATCHER wykluczający wszystkich agentów procedur kita.
+    """Matcher kita dla `PONYTAIL_SUBAGENT_MATCHER` (domyślnie z szablonów agentów kita)."""
+    return ponytail_matcher(agents_dir or AGENTS_DIR)
 
-    Args:
-        agents_dir: Katalog szablonów agentów (domyślnie templates/shared/agents).
 
-    Returns:
-        str: Wzorzec regex dopasowujący wszystko poza agentami procedur.
-    """
-    procedures = get_procedure_agent_names(agents_dir)
-    if not procedures:
-        return ".*"
-    joined = "|".join(procedures)
-    return f"^(?!(?:{joined})$).*"
+def is_kit_matcher(value: object) -> bool:
+    """Czy wartość matchera ma postać wyrenderowaną przez kit (także ze starej listy agentów)?"""
+    return isinstance(value, str) and KIT_MATCHER_RE.fullmatch(value) is not None
 
 
 def get_kit_plugin_settings(agents_dir: Path | None = None) -> dict[str, dict]:
@@ -123,10 +88,6 @@ def get_kit_plugin_settings(agents_dir: Path | None = None) -> dict[str, dict]:
             "PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher(agents_dir),
         },
     }
-
-
-# Klucze ustawień Claude Code dokładane obok hooków — nazwa → wartość kita.
-KIT_PLUGIN_SETTINGS: dict[str, dict] = get_kit_plugin_settings()
 
 
 def strip_kit_plugins(settings: dict, agents_dir: Path | None = None) -> dict:
@@ -273,8 +234,6 @@ def sync_local_settings(target: Path, host_profile: str | None = None) -> None:
         host_profile: 'vps' | 'local' albo None (autodetekcja).
     """
     if host_profile is None:
-        kit_root = Path(__file__).resolve().parents[1]
-        sys.path.insert(0, str(kit_root / "src"))
         try:
             from guides.host_profile import detect_host_profile
 

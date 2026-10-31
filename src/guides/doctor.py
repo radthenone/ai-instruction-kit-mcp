@@ -41,6 +41,7 @@ from guides.bugbot_md import (
     render_paths,
     resolve_path,
 )
+from guides.agent_classes import procedure_agents
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
 from guides.worktree import check_worktree_drift, parse_worktree_section
@@ -1117,33 +1118,6 @@ def _find_ponytail_hook_files(claude_home: Path) -> list[Path] | None:
     return None
 
 
-def _procedure_agents(kit_root: Path | None) -> list[str]:
-    if not kit_root:
-        return []
-    agents_dir = kit_root / AGENT_TEMPLATES
-    if not agents_dir.is_dir():
-        return []
-    procedures = []
-    for src in sorted(agents_dir.glob("*.md")):
-        lines = src.read_text(encoding="utf-8").splitlines()
-        if not lines or lines[0].strip() != "---":
-            continue
-        try:
-            end = lines.index("---", 1)
-        except ValueError:
-            continue
-        classification = None
-        for line in lines[1:end]:
-            if line.startswith("classification:"):
-                classification = line.partition(":")[2].strip().lower()
-                break
-        if classification in ("procedure", "procedura") or (
-            classification is None and src.stem not in ("subagent-backend", "subagent-frontend")
-        ):
-            procedures.append(src.stem)
-    return procedures
-
-
 def _check_ponytail(
     workspace: Path,
     kit_root: Path | None,
@@ -1181,7 +1155,7 @@ def _check_ponytail(
             data = json.loads(settings_file.read_text(encoding="utf-8"))
             user_matcher = data.get("env", {}).get("PONYTAIL_SUBAGENT_MATCHER")
             if user_matcher:
-                procedures = _procedure_agents(kit_root)
+                procedures = procedure_agents(kit_root / AGENT_TEMPLATES) if kit_root else []
                 try:
                     re_m = re.compile(user_matcher, re.IGNORECASE)
                     leaked = [p for p in procedures if re_m.search(p)]

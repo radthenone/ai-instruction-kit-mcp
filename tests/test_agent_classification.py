@@ -7,14 +7,19 @@ Brak klasyfikacji powoduje błąd testu.
 
 from __future__ import annotations
 
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from guides.agent_classes import agent_classifications, ponytail_matcher  # noqa: E402
+
 SHARED_AGENTS = ROOT / "templates" / "shared" / "agents"
 
 CODE_AGENTS = frozenset({"subagent-backend", "subagent-frontend"})
-VALID_CLASSIFICATIONS = frozenset({"procedure", "code", "procedura", "kod"})
+VALID_CLASSIFICATIONS = frozenset({"procedure", "code"})
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
@@ -70,12 +75,12 @@ class AgentClassificationTest(unittest.TestCase):
 
         for agent in agents:
             classification = get_agent_classification(agent)
-            if classification in ("code", "kod"):
+            if classification in ("code",):
                 code_found.add(agent.stem)
             else:
                 self.assertIn(
                     classification,
-                    ("procedure", "procedura"),
+                    ("procedure",),
                     f"Agent {agent.stem} ma niespodziewaną klasyfikację",
                 )
 
@@ -84,6 +89,23 @@ class AgentClassificationTest(unittest.TestCase):
             CODE_AGENTS,
             "Tylko subagent-backend i subagent-frontend mogą mieć klasyfikację 'code'",
         )
+
+
+class SharedClassificationModuleTest(unittest.TestCase):
+    def test_unknown_or_missing_classification_raises(self) -> None:
+        """Nieznana albo brakująca klasyfikacja to błąd, nie cichy fallback."""
+        for front in ("classification: kod\n", ""):
+            with tempfile.TemporaryDirectory() as tmp:
+                Path(tmp, "x.md").write_text(f"---\nname: x\n{front}---\n", encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    agent_classifications(Path(tmp))
+
+    def test_matcher_with_no_procedure_agents_raises(self) -> None:
+        """Pusta lista procedur nie może dać matchera `.*`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "subagent-backend.md").write_text("---\nclassification: code\n---\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                ponytail_matcher(Path(tmp))
 
 
 if __name__ == "__main__":

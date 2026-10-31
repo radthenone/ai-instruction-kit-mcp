@@ -16,7 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from claude_settings import build_ponytail_matcher, get_procedure_agent_names
+sys.path.insert(0, str(ROOT / "src"))
+from claude_settings import build_ponytail_matcher  # noqa: E402
+from guides.agent_classes import procedure_agents  # noqa: E402
 
 SHARED_AGENTS = ROOT / "templates" / "shared" / "agents"
 
@@ -24,7 +26,7 @@ SHARED_AGENTS = ROOT / "templates" / "shared" / "agents"
 class PonytailMatcherTest(unittest.TestCase):
     def test_matcher_excludes_all_procedure_agents_and_matches_code_and_plugins_in_js(self) -> None:
         matcher = build_ponytail_matcher(SHARED_AGENTS)
-        procedures = get_procedure_agent_names(SHARED_AGENTS)
+        procedures = procedure_agents(SHARED_AGENTS)
 
         self.assertGreater(len(procedures), 10, "Powinno być co najmniej kilkunastu agentów procedur")
 
