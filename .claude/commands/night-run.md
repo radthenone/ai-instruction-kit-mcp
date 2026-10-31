@@ -335,7 +335,9 @@ Reguły:
   nie obchodzisz jej (ta sama komenda spod taska wpisana wprost, `bash -c`, własny skrypt,
   inny interpreter), nie liczysz jej do prób naprawy. Wolno użyć alternatywy wskazanej
   w powodzie deny (np. `uv run --no-sync`, `UV_NO_SYNC=1`, `git stash`). Deny
-  `server-guard:` → komenda trafia do raportu jako „tylko CI”; gdy bez tej komendy nie da
+  `server-guard:` → komenda trafia do raportu jako „tylko CI”; dla nowej zależności
+  użyj formy „tylko lock” z sekcji VPS, a dopiero jej błąd builda kończy jako needs-human
+  z `needs-local`. Gdy bez tej komendy nie da
   się ukończyć ticketu (alternatywa nie wystarcza) — kończysz jako needs-human z etykietą
   `needs-local` zamiast `ready-for-human` (komentarz wskazuje zablokowaną komendę i co zrobiono,
   branch wypchnięty, PR otwarty bez merge). Deny `git-guard:` → zapis w raporcie, a gdy bez tej
@@ -382,6 +384,16 @@ Poziomy: **unit** (bez bazy) · **integration-db** (`django_db`: ORM, endpointy,
 ## VPS (tylko przy `Host: vps` w nagłówku CTX)
 
 - Krok odrzucony przez guard (`server-guard:`) → w CTX „tylko CI”, lokalnie idzie reszta.
+- Nowa zależność: aktualizujesz **tylko lockfile** formą dozwoloną przez guard —
+  `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`,
+  `npm install --package-lock-only --ignore-scripts`,
+  `pnpm install --lockfile-only --ignore-scripts`,
+  `bun install --lockfile-only --ignore-scripts`. Każda inna forma to deny; nie
+  obchodzisz go instalacją. Yarn nie ma trybu lock-only — nowa zależność yarn idzie
+  przez `needs-local`.
+- Gdy aktualizacja samego locka pada, bo paczka wymaga builda (uv „no build”,
+  odpowiednik npm/pnpm/bun) → traktujesz to jak blokujący deny z #315: `needs-local`
+  i komentarz z nazwą paczki i powodem. Nie próbujesz `uv sync` / pełnej instalacji.
 - Brak CI = brak merge (krok 6 promptu); nowe e2e: sekcja „Testy”.
 
 ## Zakazy
@@ -396,7 +408,8 @@ szybkich, krok 6 promptu), nigdy push.
 
 **needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) → etykieta
+po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
+błąd builda przy aktualizacji samego lockfile → etykieta
 `needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 

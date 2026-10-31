@@ -1552,12 +1552,13 @@ nie osobno:
 3. Zacommituj zmienione pliki hooków w projekcie (`.claude/hooks/…`, `.codex/…`
    itd.) — to one jadą na VPS po `git pull`.
 
-**Domyślne deny kita** (każde z powodem i alternatywą; `allow` wygrywa z `deny`):
+**Domyślne deny kita** (każde z powodem i alternatywą; precedencja:
+`server.allow` > `server.deny` > allow kita > deny kita):
 
 | Kategoria | Deny | Allow (świadomie) | Powód / alternatywa |
 |---|---|---|---|
 | Kontenery | `docker`, `docker-compose`, `docker compose`, `podman` — każda podkomenda poza allow obok (także `stop`, `rm`, `down`, `kill`, `restart`, `prune`, `compose config`) | `ps`, `images`, `inspect`, `logs` bez `-f`, `version`, `info`, `compose ps` | budowanie i uruchamianie kontenerów tylko w CI; na hoście działają cudze kontenery |
-| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv pip install` / `uv pip sync`, `uv tool install`, `pip install` (także `pip3.12`), `uv run` bez `--no-sync`, `uv run --with` / `--with-requirements` (także z `--no-sync`), `bun install` / `add` / `remove` / `i` / `a` / `update`, `npm install` / `ci` / `add` / `it` / `update` / `up`, `pnpm install` / `add` / `remove` / `update`, `yarn install` / `add` / `remove` / `upgrade`, goły `yarn` | `uv run --no-sync …`, `uvx --offline …` / `UV_OFFLINE=1` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock` (każda forma bez wymaganych flag niżej), `uv pip install` / `uv pip sync`, `uv tool install`, `pip install` (także `pip3.12`), `uv run` bez `--no-sync`, `uv run --with` / `--with-requirements` (także z `--no-sync`), `bun install` / `add` / `remove` / `i` / `a` / `update`, `npm install` / `ci` / `add` / `it` / `update` / `up`, `pnpm install` / `add` / `remove` / `update`, `yarn install` / `add` / `remove` / `upgrade`, goły `yarn` | `uv run --no-sync …`, `uvx --offline …` / `UV_OFFLINE=1`; **tylko lockfile**: `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`, `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`, `bun install --lockfile-only --ignore-scripts` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
 | Inne ekosystemy | `cargo install`, `go install`, `apt install` / `apt-get install` (także po `sudo`), `corepack enable` | `cargo check` | instalacja na serwerze — zależności zmieniają się na PC albo w CI |
 | CLI instalujące paczki | `shadcn init` / `shadcn add` (także przez `bunx` / `npx` / `pnpm dlx`), `expo install` | — | CLI samo dopisuje zależności; instalacja tylko na PC albo w CI |
 | Buildy | `next build`, `nuxt build`, `astro build`, `vite build`, `tsup`, `webpack`, `cargo build`, `expo prebuild`, `expo export`, `eas build --local`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
@@ -1581,6 +1582,22 @@ cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` 
 deny `uvx`. Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.
+
+**Aktualizacja samego lockfile (#317).** Ticket, który dodaje zależność, może
+na VPS odświeżyć lockfile bez instalacji: `uv lock --no-build`,
+`uv add|remove <pkg> --no-sync --no-build`, `npm install --package-lock-only
+--ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`,
+`bun install --lockfile-only --ignore-scripts`. Każda inna forma zostaje deny,
+a powód wskazuje dozwoloną. `--no-build` w uv nie zatrzymuje budowania samego
+projektu (uv czyta metadane workspace'u, więc ciężki backend maturin /
+scikit-build może coś skompilować) — to wyjątek „bez instalacji zależności”, nie
+„zero kompilacji”. Yarn nie ma wspólnego trybu lock-only dla 1.x i Berry, więc
+zostaje deny. Gdy lock-only pada, bo paczka wymaga builda, ticket dostaje
+`needs-local` i komentarz z nazwą paczki i powodem (jak przy blokującym deny z #315).
+`server.deny` może te formy zablokować z powrotem (skutek uboczny precedencji:
+`server.deny: "uv run"` blokuje też `uv run --no-sync`). Flagi liczą się tylko
+przed `--` i `#`, negacje (`--no-x`, `--x=false`) i flagi w cudzysłowach dają deny.
+`pnpm` przy `--lockfile-only` nadal wykonuje `.pnpmfile.cjs` projektu.
 
 **Wrappery wykonania: `rtk`.** Globalna wtyczka RTK przepisuje komendę, zanim
 zobaczy ją plugin guarda w opencode: `bun install` jedzie jako `rtk bun install`,
@@ -1613,9 +1630,9 @@ bez reloadu działa na starej liście.
 ```yaml
 server:
   guard: auto        # auto (domyślnie) | off
-  deny:              # dodatki projektu, których automat nie wykryje
+  deny:              # dodatki projektu, których automat nie wykryje (wygrywają z allow kita)
     - "bunx eas-cli"
-  allow:             # wyjątki, wygrywają z deny
+  allow:             # wyjątki projektu, wygrywają z deny projektu i z listą kita
     - "task lints:backend:ruff:check"
 ```
 

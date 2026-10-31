@@ -91,7 +91,7 @@ def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
             "",
             "Nie pytaj o nią w wywiadzie — brak sekcji to `guard: auto` i lista kita. Zapisz "
             "ją w `.ai/project.profile.yaml` tylko na życzenie użytkownika: `guard: auto` albo "
-            "`off`, `deny` / `allow` jako listy dosłownych wywołań (`allow` wygrywa). "
+            "`off`, `deny` / `allow` jako listy dosłownych wywołań (allow projektu > deny projektu). "
             "Schemat i propozycje: README „Server guard (VPS)”.",
             "",
             "## Układ katalogów",
