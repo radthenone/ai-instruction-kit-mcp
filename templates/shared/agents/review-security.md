@@ -3,6 +3,7 @@ name: review-security
 description: Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /review-security.
 readonly: true
 model-tier: standard
+classification: procedure
 ---
 
 Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.

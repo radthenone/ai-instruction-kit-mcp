@@ -4,6 +4,7 @@ description: Backend reviewer do pracy w dwóch okienkach razem z subagent-front
 readonly: true
 tier: backend
 model-tier: standard
+classification: code
 ---
 
 ## Reguły wspólne (obowiązkowe)

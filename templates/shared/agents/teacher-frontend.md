@@ -4,6 +4,7 @@ description: Nauczyciel frontendu — Stack z Tierów web/mobile (MCP get_bundle
 readonly: true
 tier: client
 model-tier: standard
+classification: procedure
 ---
 
 ## Tryb nauczyciela (obowiązkowy)

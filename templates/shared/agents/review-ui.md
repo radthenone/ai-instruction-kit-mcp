@@ -4,6 +4,7 @@ description: Reviewer UI/UX. Use when zmiana dotyka ekranów, formularzy, flow u
 readonly: true
 tier: client
 model-tier: standard
+classification: procedure
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
