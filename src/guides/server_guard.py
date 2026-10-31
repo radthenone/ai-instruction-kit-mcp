@@ -11,7 +11,8 @@ Dopasowanie (identyczne w JS i tu):
   - z początku segmentu zdejmowane prefiksy: `sudo` (z flagami), przypisania
     `VAR=…`, `env`, `nice`, `ionice`, `timeout` (z flagami i limitem), `nohup`,
     `time`, `command`, `exec`, `xargs` — pętla aż do stabilizacji,
-  - wzorce kotwiczone na początku segmentu (`^\\s*…(\\s|$)`), `allow` wygrywa z `deny`.
+  - wzorce kotwiczone na początku segmentu (`^\\s*…(\\s|$)`); precedencja:
+    `server.allow` > `server.deny` > allow kita > deny kita.
 """
 
 from __future__ import annotations
@@ -51,8 +52,23 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "docker-compose-ps", "kind": "allow", "pattern": r"^\s*(?:docker|podman)(?:\s+|-)compose\s+ps(?=\s|$)",
      "reason": "odczyt stanu kontenerów"},
     # Paczki — instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI.
-    {"id": "uv-sync", "kind": "deny", "pattern": r"^\s*uv\s+(sync|add|remove|lock)(?=\s|$)",
+    # #317: wyjątek „tylko lockfile” (allow niżej) — rozwiązanie wersji bez instalacji i builda.
+    # Formy lock-only: wymagane flagi przed pierwszym `--` i `#`, bez negacji (`--no-x`,
+    # `--x=false`, uv `--build`/`--sync`), bez `$`, `` ` ``, `\\`, `{` i flag w cudzysłowach.
+    # ponytail: dopasowanie tekstowe, nie parser powłoki — glob (`-[-]`) przy pliku `--` w cwd
+    # przejdzie; pełny shlex/bashlex, gdy to stanie się realnym wektorem.
+    {"id": "uv-sync", "kind": "deny", "pattern": r"^\s*uv\s+sync(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
+    {"id": "uv-add", "kind": "deny", "pattern": r"^\s*uv\s+(?:add|remove)(?=\s|$)",
+     "reason": "`uv add`/`uv remove` instaluje i kompiluje — tylko `uv add|remove <pkg> --no-sync --no-build` zmienia sam lockfile; inaczej zależności zmieniają się na PC albo w CI"},
+    {"id": "uv-lock", "kind": "deny", "pattern": r"^\s*uv\s+lock(?=\s|$)",
+     "reason": "`uv lock` bez `--no-build` buduje projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"},
+    {"id": "uv-add-lock-only", "kind": "allow",
+     "pattern": r"""^\s*uv\s+(?:add|remove)(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--(?:sync|build)(?=[\s=]|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-sync(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-build(?=\s|$))""",
+     "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"},
+    {"id": "uv-lock-only", "kind": "allow",
+     "pattern": r"""^\s*uv\s+lock(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--(?:build)(?=[\s=]|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-build(?=\s|$))""",
+     "reason": "rozwiązanie wersji tylko do lockfile — bez builda"},
     {"id": "uv-pip-install", "kind": "deny", "pattern": r"^\s*uv\s+pip\s+(?:install|sync)(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
     {"id": "uv-tool-install", "kind": "deny", "pattern": r"^\s*uv\s+tool\s+install(?=\s|$)",
@@ -71,14 +87,23 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "uvx", "kind": "deny", "pattern": r"^\s*uvx(?=\s|$)(?!(?:\s+-\S+)*\s+--offline(?=\s|$))",
      "reason": "`uvx` pobiera narzędzie z sieci — użyj `uvx --offline` / `UV_OFFLINE=1` albo `uv run --no-sync python -m …`"},
     {"id": "bun-pkg", "kind": "deny", "pattern": r"^\s*bun\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\s|$)",
-     "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+     "reason": "instalacja paczek na serwerze — tylko `bun install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
+    {"id": "bun-install-lock-only", "kind": "allow",
+     "pattern": r"""^\s*bun\s+install(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?=\s|$))""",
+     "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"},
     {"id": "npm-pkg", "kind": "deny",
      "pattern": r"^\s*npm\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\s|$)",
-     "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+     "reason": "instalacja paczek na serwerze — tylko `npm install --package-lock-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
+    {"id": "npm-install-lock-only", "kind": "allow",
+     "pattern": r"""^\s*npm\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--no-(?:package-lock-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:package-lock-only|ignore-scripts)=(?!true(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--package-lock-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?=\s|$))""",
+     "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"},
     {"id": "pnpm-pkg", "kind": "deny", "pattern": r"^\s*pnpm\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\s|$)",
-     "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+     "reason": "instalacja paczek na serwerze — tylko `pnpm install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
+    {"id": "pnpm-install-lock-only", "kind": "allow",
+     "pattern": r"""^\s*pnpm\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?=\s|$))""",
+     "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"},
     {"id": "yarn-pkg", "kind": "deny", "pattern": r"^\s*yarn\s+(?:global\s+add|install|add|update|up|upgrade|remove)(?=\s|$)",
-     "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+     "reason": "instalacja paczek na serwerze — Yarn nie ma trybu „tylko lockfile” bez skryptów, więc zależności zmieniają się na PC albo w CI"},
     # Goły `yarn` (także z flagami instalacji: `--frozen-lockfile`, `--cwd app`) instaluje; flagi
     # informacyjne (`--version`, `--help`, `-v`, `-h`) zostają.
     {"id": "yarn-bare", "kind": "deny",
@@ -486,7 +511,8 @@ def check_command(
     no_sync: bool = False,
     offline: bool = False,
 ) -> tuple[bool, dict[str, str] | None, str]:
-    """Czy komenda denied? Zwraca `(denied, reguła, segment)` — allow wygrywa z deny.
+    """Czy komenda denied? Zwraca `(denied, reguła, segment)` — `server.allow` > `server.deny`
+    > allow kita > deny kita.
 
     `uv-run` (także wrapper z `uv run` w środku) odpada przy `UV_NO_SYNC=1` z env
     albo z przypisania w linii. Gdy pasuje kilka odmów, inna reguła wygrywa z `uv-run`
@@ -502,7 +528,7 @@ def check_command(
         segment_no_sync = no_sync or assigns.get("UV_NO_SYNC") == "1"
         segment_offline = offline or assigns.get("UV_OFFLINE") == "1"
         for form in forms:
-            deny_hit = allow_hit = None
+            allow_hit = project_allow_hit = project_deny_hit = deny_hit = None
             for rule in rules:
                 if segment_no_sync and rule_origin(rule) == "uv-run":
                     continue
@@ -515,15 +541,23 @@ def check_command(
                 if not matched:
                     continue
                 if rule["kind"] == "allow":
-                    allow_hit = allow_hit or rule
+                    if rule["id"].startswith("project-allow:"):
+                        project_allow_hit = project_allow_hit or rule
+                    else:
+                        allow_hit = allow_hit or rule
+                elif rule["id"].startswith("project-deny:"):
+                    project_deny_hit = project_deny_hit or rule
                 elif deny_hit is None:
                     deny_hit = rule
-            if deny_hit is None or allow_hit is not None:
+            # `server.allow` > `server.deny` > allow kita > deny kita (#317: `server.deny`
+            # musi móc zablokować domyślną formę lock-only).
+            hit = project_allow_hit or project_deny_hit or allow_hit or deny_hit
+            if hit is None or hit["kind"] == "allow":
                 continue
-            if rule_origin(deny_hit) != "uv-run":
-                return True, deny_hit, segment.strip()
+            if rule_origin(hit) != "uv-run":
+                return True, hit, segment.strip()
             if not fallback[0]:
-                fallback = (True, deny_hit, segment.strip())
+                fallback = (True, hit, segment.strip())
     return fallback
 
 

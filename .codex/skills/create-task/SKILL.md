@@ -287,7 +287,10 @@ osi nie zgadujesz — pomijasz ją i dajesz jedną linijkę „brak etykiety X �
   Nazwy: prawa kolumna `docs/agents/triage-labels.md`, jeśli projekt ma ten plik; inaczej
   `needs-info`, `ready-for-agent`, `ready-for-human`.
 - **warunek wykonania (`needs-local`)** — proponujesz na karcie, gdy ticket wymaga:
-  - nowej zależności lub zmiany lockfile,
+  - nowej zależności, której nie da się dodać samą aktualizacją lockfile (na VPS:
+    `uv lock --no-build`, `uv add|remove --no-sync --no-build`,
+    `npm|pnpm|bun install` w trybie lock-only; blokuje dopiero błąd builda paczki),
+    albo innej zmiany lockfile wymagającej instalacji,
   - testów na urządzeniu / telefonie,
   - ręcznej weryfikacji UI,
   - sprzętu albo czegokolwiek, czego CI repo nie uruchamia.
