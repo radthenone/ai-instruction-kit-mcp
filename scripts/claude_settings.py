@@ -19,6 +19,8 @@ Claude Code sam zaproponował instalację przy otwarciu repo, oraz `env.MCP_TIME
 zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP — a także
 `env.PONYTAIL_SUBAGENT_MATCHER` zawężający plugin ponytail do agentów kodu. Wpis, który użytkownik już ma
 (np. `false` w `enabledPlugins` lub własny matcher), zostaje; prune zabiera tylko wpisy równe kitowym.
+Matcher w postaci kita (`^(?!(?:...)$).*`) to wpis kita także ze starej listy agentów: install go
+odświeża, prune zdejmuje.
 
 `sync-local` obsługuje `.claude/settings.local.json`: na hoście VPS dodaje `PONYTAIL_DEFAULT_MODE=off`,
 a na local czyści ten wpis, zachowując ustawienia użytkownika.
@@ -107,7 +109,8 @@ def strip_kit_plugins(settings: dict, agents_dir: Path | None = None) -> dict:
         if not isinstance(block, dict):
             continue
         for name, value in entries.items():
-            if block.get(name) == value:
+            current = block.get(name)
+            if current == value or (name == MATCHER_KEY and is_kit_matcher(current)):
                 del block[name]
         if not block:
             del settings[key]
@@ -131,6 +134,8 @@ def merge_kit_plugins(settings: dict, agents_dir: Path | None = None) -> dict:
         if not isinstance(block, dict):
             block = settings[key] = {}
         for name, value in entries.items():
+            if name == MATCHER_KEY and is_kit_matcher(block.get(name)):
+                block[name] = value  # stara wartość kita → odśwież; ręczna zostaje
             block.setdefault(name, value)
     return settings
 

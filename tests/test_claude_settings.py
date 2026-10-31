@@ -178,6 +178,16 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         run("prune", str(self.target))
         self.assertEqual(self.load(), user)
 
+    def test_install_refreshes_stale_kit_matcher_after_new_procedure_agent(self) -> None:
+        """Matcher kita sprzed dodania agenta procedury odświeża się przy reload, prune go zdejmuje (#316)."""
+        stale = "^(?!(?:git-commit|git-end)$).*"
+        self.target.write_text(json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": stale, "INNA": "2"}}), encoding="utf-8")
+        run("install", str(self.target), str(TEMPLATE))
+        self.assertEqual(self.load()["env"]["PONYTAIL_SUBAGENT_MATCHER"], build_ponytail_matcher())
+        self.target.write_text(json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": stale, "INNA": "2"}}), encoding="utf-8")
+        run("prune", str(self.target))
+        self.assertEqual(self.load(), {"env": {"INNA": "2"}})
+
     def test_unreadable_settings_do_not_abort_install(self) -> None:
         # Uszkodzony JSON nie może wywalić bootstrapu — kit zaczyna od pustego stanu.
         self.target.write_text("{ to nie jest json", encoding="utf-8")
