@@ -16,6 +16,16 @@ from guides.bugbot_md import MAX_MIGRATED_LINES, read_template_history
 from guides.bugbot_md import render as render_bugbot
 from guides.doctor import run_doctor
 
+
+def setUpModule() -> None:
+    """Doctor czyta pluginy z pustego CLAUDE_HOME, nie z prawdziwego ~/.claude (#316)."""
+    tmp = tempfile.TemporaryDirectory()
+    unittest.addModuleCleanup(tmp.cleanup)
+    patcher = mock.patch.dict("os.environ", {"CLAUDE_HOME": tmp.name})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 KIT_ROOT = Path(__file__).resolve().parents[1]
 
 PROFILE = """\

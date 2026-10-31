@@ -4,6 +4,7 @@ description: Reviewer frontendu — Stack z Tierów web/mobile (MCP get_bundle).
 readonly: true
 tier: client
 model-tier: standard
+classification: procedure
 ---
 
 Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.

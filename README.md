@@ -184,6 +184,14 @@ kładzie skille — globalnie widzi tylko `~/.gemini/config/skills/`
 | VS Code (Copilot) | Tylko Copilot CLI: `copilot plugin marketplace add DietrichGebert/ponytail` + `copilot plugin install ponytail@ponytail` |
 | Antigravity | `agy plugin install https://github.com/DietrichGebert/ponytail` |
 
+> **Zawężenie ponytaila w Claude Code:** `kit-ai reload` wpisuje do `.claude/settings.local.json` (poza gitem — lista agentów zależy od wersji kita; worktree kopiuje plik) zmienną `env.PONYTAIL_SUBAGENT_MATCHER`, która wyklucza agentów procedur kita (`git-*`, `review-*`, `night-run*`, `create-*`, `kit-project-*`, `teacher-*`, `headless`, `cleanup`), pozwalając ponytailowi działać tylko w subagentach piszących kod (`subagent-backend`, `subagent-frontend`, subagent przejęcia w `night-run`) oraz zwykłych subagentach wbudowanych (`general-purpose`, `Explore`).
+>
+> - **Dlaczego:** nacisk ponytaila na „najkrótszą drogę” sprzyja omijaniu procedur i źródeł prawdy kita (np. grep zamiast `get_bundle`).
+> - **Inni klienci:** mechanizm dotyczy tylko Claude Code — pozostali klienci kita nie mają filtrowania po typie subagenta.
+> - **Własna konfiguracja / wyłączenie:** wpisz własną wartość `PONYTAIL_SUBAGENT_MATCHER` w `env` w `.claude/settings.local.json` (albo `.claude/settings.json`) — kit nie nadpisze wpisu użytkownika w żadnym z nich; matcher kita, który wcześniej trafił do `settings.json`, reload stamtąd usuwa. `kit-ai doctor` zgłosi ostrzeżenie, gdy obowiązujący matcher (najpierw `settings.local.json`) nie wyklucza procedur kita.
+> - **Sesja główna:** ponytail zostaje włączony — kit nigdzie go nie wyłącza. Brief kita (hook `language-reminder`) mówi, że ponytail i podobne pluginy stylu kodu dotyczą kodu aplikacji, nie procedur kita ani edycji plików kita i konfiguracji projektu (`.ai/`, `AGENTS.md`, Profil, `templates/`, `.claude/`).
+> - **Współdzielony plik trybu:** ponytail trzyma aktywny tryb w jednym pliku na maszynę (`~/.claude/.ponytail-active`), więc różne tryby w równoległych sesjach na jednej maszynie nie są wspierane.
+
 **Context7** ([upstash/context7](https://github.com/upstash/context7)) — docs bibliotek (MCP)
 
 Najprościej `npx ctx7 setup --claude` / `--opencode` (OAuth + klucz API + konfiguracja).

@@ -286,6 +286,9 @@ prune_client() {
   esac
   if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
     "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
+  fi
+  if [[ "$id" == "claude" ]]; then
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune-local "$TARGET/.claude/settings.local.json"
     rmdir "$TARGET/.claude" 2>/dev/null || true
   fi
 }
@@ -671,10 +674,11 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
     if tier and tier not in chosen:
         print(src.stem)
         continue
-    # `model-tier:` czyta tylko model_tiers.py (z template) — klienci go nie znają.
+    # `model-tier:` czyta tylko model_tiers.py, `classification:` guides.agent_classes
+    # (oba z template) — klienci ich nie znają.
     kept = [
         line for i, line in enumerate(lines)
-        if not (0 < i < end and line.startswith(("tier:", "model-tier:")))
+        if not (0 < i < end and line.startswith(("tier:", "model-tier:", "classification:")))
     ]
     text = BLOCK.sub(gate, "".join(kept))
     # Literówka w znaczniku nie może po cichu wypuścić treści bloku do innych klientów.
@@ -1024,6 +1028,8 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$SETTINGS_TEMPLATE"
   [[ "$SETTINGS_TEMPLATE" == "$KIT_ROOT/templates/claude/settings.json" ]] || rm -f "$SETTINGS_TEMPLATE"
+  # Matcher ponytaila poza gitem: lista agentów zależy od wersji kita (#316).
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" sync-local  "$TARGET/.claude/settings.local.json"
   # Claude Code czyta CLAUDE.md, nie AGENTS.md: import, żeby reguła języka była w kontekście.
   if [[ ! -f "$TARGET/CLAUDE.md" ]]; then
     printf '@AGENTS.md\n' > "$TARGET/CLAUDE.md"

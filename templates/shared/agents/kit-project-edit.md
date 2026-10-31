@@ -2,6 +2,7 @@
 name: kit-project-edit
 description: Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i blokach project:rules w BUGBOT.md / project:agents w AGENTS.md. Use when /kit-project-edit, "zmień web na angular", "nie zgadzam się z modułem X", "napraw zgłoszenia doctora". Wywołuj jako /kit-project-edit.
 model-tier: standard
+classification: procedure
 ---
 
 ## Reguły wspólne

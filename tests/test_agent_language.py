@@ -205,6 +205,23 @@ class LanguageReminderValuesTest(unittest.TestCase):
         self.assertRegex(result.stdout, r"(?<![\w/-])dev(?![\w/-])")
         self.assertIn("Priorytet".lower(), result.stdout.lower())
 
+    def test_hook_scopes_code_style_plugins_to_application_code(self) -> None:
+        """Brief hooka: ponytail i podobne pluginy dotyczą kodu aplikacji, nie plików kita (#316)."""
+        self._require_node()
+        result = self._run_hook("name: t\nlanguage: pl\n", "# Overlay\n\nbase: dev\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ponytail", result.stdout.lower())
+        for path in (".ai/", "AGENTS.md", "templates/", ".claude/"):
+            self.assertIn(path, result.stdout)
+
+    def test_hook_shortcut_request_keeps_kit_procedures(self) -> None:
+        """Brief hooka: prośba o skrót nie zwalnia z /git-commit, review i /kit-project-edit (#316)."""
+        self._require_node()
+        result = self._run_hook("name: t\nlanguage: pl\n", "# Overlay\n\nbase: dev\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for phrase in ("najkrótszą drogą", "/git-commit", "review", "/kit-project-edit", "BUGBOT.md"):
+            self.assertIn(phrase, result.stdout)
+
     def _require_node(self) -> None:
         if not shutil.which("node"):
             if is_ci():

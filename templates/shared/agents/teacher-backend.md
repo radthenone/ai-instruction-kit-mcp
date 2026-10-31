@@ -4,6 +4,7 @@ description: Nauczyciel backendu — Stack z Tieru backend (MCP get_bundle). Use
 readonly: true
 tier: backend
 model-tier: standard
+classification: procedure
 ---
 
 ## Tryb nauczyciela (obowiązkowy)

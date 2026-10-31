@@ -16,6 +16,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from claude_settings import build_ponytail_matcher  # noqa: E402
+
 SCRIPT = ROOT / "scripts" / "claude_settings.py"
 TEMPLATE = ROOT / "templates" / "claude" / "settings.json"
 
@@ -83,7 +86,8 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         data = self.load()
 
         self.assertEqual(data["permissions"], USER_SETTINGS["permissions"])
-        # Kit dokłada tylko MCP_TIMEOUT obok zmiennych użytkownika.
+        # Kit dokłada tylko MCP_TIMEOUT obok zmiennych użytkownika (matcher ponytaila
+        # idzie do settings.local.json, poza gitem — #316).
         self.assertEqual(data["env"], {**USER_SETTINGS["env"], "MCP_TIMEOUT": "90000"})
         # Kit doklada swoj SessionStart (rtk-check) obok wpisu uzytkownika, nie zamiast.
         self.assertEqual(data["hooks"]["SessionStart"][0], USER_SETTINGS["hooks"]["SessionStart"][0])
@@ -150,7 +154,33 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         user = {"env": {"MCP_TIMEOUT": "120000", "FOO": "1"}}
         self.target.write_text(json.dumps(user), encoding="utf-8")
         run("install", str(self.target), str(TEMPLATE))
-        self.assertEqual(self.load()["env"], user["env"])
+        self.assertEqual(self.load()["env"]["MCP_TIMEOUT"], "120000")
+        self.assertEqual(self.load()["env"]["FOO"], "1")
+        run("prune", str(self.target))
+        self.assertEqual(self.load(), user)
+
+    def test_install_does_not_write_ponytail_matcher_to_tracked_settings(self) -> None:
+        """Matcher ponytaila nie trafia do `.claude/settings.json` w gicie (#316)."""
+        run("install", str(self.target), str(TEMPLATE))
+        self.assertNotIn("PONYTAIL_SUBAGENT_MATCHER", self.load()["env"])
+
+    def test_install_and_prune_drop_kit_matcher_but_keep_manual_one(self) -> None:
+        """Stara wartość kita w settings.json znika przy reload i prune, ręczna zostaje (#316)."""
+        kit_value = {"env": {"PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher(), "INNA": "2"}}
+        stale = {"env": {"PONYTAIL_SUBAGENT_MATCHER": "^(?!(?:git-commit|git-end)$).*", "INNA": "2"}}
+        for legacy in (kit_value, stale):
+            self.target.write_text(json.dumps(legacy), encoding="utf-8")
+            run("install", str(self.target), str(TEMPLATE))
+            self.assertNotIn("PONYTAIL_SUBAGENT_MATCHER", self.load()["env"])
+            self.assertEqual(self.load()["env"]["INNA"], "2")
+            self.target.write_text(json.dumps(legacy), encoding="utf-8")
+            run("prune", str(self.target))
+            self.assertEqual(self.load(), {"env": {"INNA": "2"}})
+
+        user = {"env": {"PONYTAIL_SUBAGENT_MATCHER": "^custom-agent$", "INNA": "2"}}
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("install", str(self.target), str(TEMPLATE))
+        self.assertEqual(self.load()["env"]["PONYTAIL_SUBAGENT_MATCHER"], "^custom-agent$")
         run("prune", str(self.target))
         self.assertEqual(self.load(), user)
 

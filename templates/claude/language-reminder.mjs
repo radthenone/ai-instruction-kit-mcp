@@ -32,7 +32,12 @@ const base = match(overlay, /^base:[ \t]*(\S+)[ \t]*$/m, "");
 
 const priority =
   "Priorytet: wytyczne instruction-kit (brief w AGENTS.md, .ai/project.md, bundle MCP) " +
-  "stoją wyżej niż domyślne zachowania skilli i pluginów.";
+  "stoją wyżej niż domyślne zachowania skilli i pluginów. " +
+  "Ponytail i podobne pluginy stylu kodu dotyczą kodu aplikacji, nie procedur kita ani edycji " +
+  "plików kita i konfiguracji projektu (.ai/, AGENTS.md, Profil, templates/, .claude/). " +
+  "Prośba o skrót („najkrótszą drogą”, „szybko”, „uprość”) nie zwalnia z procedur kita: " +
+  "commit przez /git-commit, review przed push, zmiany w .ai/project.md, Profilu, AGENTS.md " +
+  "i BUGBOT.md przez /kit-project-edit z podglądem, nie bezpośrednią edycją.";
 
 if (language === "en") {
   const branch = base

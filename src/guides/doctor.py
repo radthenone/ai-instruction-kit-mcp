@@ -41,6 +41,7 @@ from guides.bugbot_md import (
     render_paths,
     resolve_path,
 )
+from guides.agent_classes import MATCHER_KEY, procedure_agents
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
 from guides.worktree import check_worktree_drift, parse_worktree_section
@@ -1082,12 +1083,126 @@ def _package_infos(
     return findings
 
 
+def _find_ponytail_hook_files(claude_home: Path) -> list[Path] | None:
+    """Znajdź pliki hooków zainstalowanego pluginu ponytail w Claude Code."""
+    installed_file = claude_home / "plugins" / "installed_plugins.json"
+    if installed_file.is_file():
+        try:
+            data = json.loads(installed_file.read_text(encoding="utf-8"))
+            plugins = data.get("plugins", {})
+            for key, entries in plugins.items():
+                if key == "ponytail" or key.startswith("ponytail@"):
+                    if isinstance(entries, list):
+                        for entry in entries:
+                            install_path = entry.get("installPath")
+                            if install_path:
+                                hooks_dir = Path(install_path) / "hooks"
+                                if hooks_dir.is_dir():
+                                    return list(hooks_dir.glob("*.*")) or None
+                                if Path(install_path).is_dir():
+                                    return list(Path(install_path).glob("*.*")) or None
+        except (OSError, ValueError):
+            pass
+
+    market_ponytail = claude_home / "plugins" / "marketplaces" / "ponytail"
+    if (market_ponytail / "hooks").is_dir():
+        return list((market_ponytail / "hooks").glob("*.*")) or None
+    cache_ponytail = claude_home / "plugins" / "cache" / "ponytail"
+    if cache_ponytail.is_dir():
+        hooks = list(cache_ponytail.rglob("hooks/*.*"))
+        if hooks:
+            return hooks
+
+    return None
+
+
+def _check_ponytail(
+    workspace: Path,
+    kit_root: Path | None,
+    claude_home: Path,
+    configured_clients: set[str],
+) -> list[Finding]:
+    """
+    Ostrzeżenia o zawężeniu pluginu ponytail w Claude Code (#316).
+
+    Hooki zainstalowanego ponytaila bez `PONYTAIL_SUBAGENT_MATCHER` → zawężenie nie działa.
+    Ręczny matcher (`.claude/settings.local.json`, potem `.claude/settings.json`), który przepuszcza agentów procedur kita albo
+    nie jest poprawnym regexem → ostrzeżenie. Bez ponytaila i bez ręcznego matchera nic.
+    """
+    findings: list[Finding] = []
+    if "claude" not in configured_clients:
+        return findings
+
+    hook_files = _find_ponytail_hook_files(claude_home)
+    if hook_files is not None:
+        has_matcher_ref = False
+        for f in hook_files:
+            try:
+                if "PONYTAIL_SUBAGENT_MATCHER" in f.read_text(encoding="utf-8", errors="replace"):
+                    has_matcher_ref = True
+                    break
+            except OSError:
+                continue
+        if not has_matcher_ref:
+            findings.append(
+                Finding(
+                    severity="warning",
+                    file=".claude/settings.local.json",
+                    line=None,
+                    message="zainstalowany plugin ponytail nie obsługuje PONYTAIL_SUBAGENT_MATCHER w swoich hookach — zawężenie do agentów kodu przestało działać",
+                    kind="ponytail-matcher-unsupported",
+                )
+            )
+
+    # Claude Code: settings.local.json (tu kit trzyma matcher) wygrywa z settings.json.
+    source, user_matcher = None, None
+    for rel in (".claude/settings.local.json", ".claude/settings.json"):
+        try:
+            data = json.loads((workspace / rel).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        env = data.get("env") if isinstance(data, dict) else None
+        if isinstance(env, dict) and MATCHER_KEY in env:
+            source, user_matcher = rel, env[MATCHER_KEY]
+            break
+    if source is not None and isinstance(user_matcher, str) and user_matcher:
+        procedures: list[str] = procedure_agents(kit_root / AGENT_TEMPLATES) if kit_root else []
+        try:
+            re_m: re.Pattern[str] = re.compile(str(user_matcher), re.IGNORECASE)
+        except re.error:
+            findings.append(
+                Finding(
+                    severity="warning",
+                    file=source,
+                    line=None,
+                    message=f"nieprawidłowy regex w PONYTAIL_SUBAGENT_MATCHER: '{user_matcher}'",
+                    kind="ponytail-matcher-invalid-regex",
+                )
+            )
+        else:
+            leaked = [p for p in procedures if re_m.search(p)]
+            if leaked:
+                sample = ", ".join(leaked[:3])
+                findings.append(
+                    Finding(
+                        severity="warning",
+                        file=source,
+                        line=None,
+                        message=f"ręczna wartość PONYTAIL_SUBAGENT_MATCHER nie wyklucza agentów procedur ({sample}) — ponytail trafi do procedur",
+                        kind="ponytail-matcher-leaks-procedures",
+                    )
+                )
+
+    return findings
+
+
 def run_doctor(
     workspace: Path,
     kit_root: Path | None = None,
     *,
     clients: str = "all",
     verbose: bool = False,
+    claude_home: Path | None = None,
 ) -> DoctorReport:
     """
     Sprawdź, czy reguły projektu nie wskazują nieistniejących ścieżek i komend.
@@ -1099,6 +1214,8 @@ def run_doctor(
             wyłącznie kitowe); ``None`` — bez wiedzy o kicie.
         clients: Wartość ``clients:`` z Profilu (``all`` albo lista po przecinku).
         verbose: ``info`` z listą kandydatów, gdy ścieżka pasuje do kilku miejsc (#268).
+        claude_home: Katalog Claude Code z pluginami (domyślnie ``$CLAUDE_HOME`` albo
+            ``~/.claude``) — do sprawdzenia ponytaila (#316).
 
     Returns:
         DoctorReport: Ostrzeżenia i informacje w kolejności plików; pusty raport,
@@ -1108,6 +1225,8 @@ def run_doctor(
     findings: list[Finding] = []
     reported: set[tuple[str, int, str]] = set()
     is_kit = kit_root is not None and kit_root.resolve() == workspace
+    if claude_home is None:
+        claude_home = Path(os.environ["CLAUDE_HOME"]) if "CLAUDE_HOME" in os.environ else Path.home() / ".claude"
 
     try:
         configured = set(expand_clients(parse_clients(clients)))
@@ -1238,4 +1357,12 @@ def run_doctor(
                     )
                 )
 
+    findings.extend(
+        _check_ponytail(
+            workspace=workspace,
+            kit_root=kit_root,
+            claude_home=claude_home,
+            configured_clients=configured,
+        )
+    )
     return DoctorReport(tuple(dict.fromkeys(findings)))
