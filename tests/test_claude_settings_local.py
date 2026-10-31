@@ -1,13 +1,12 @@
-"""Testy obsługi .claude/settings.local.json per profil hosta (#316).
+"""Testy matchera ponytaila w `.claude/settings.local.json` (#316).
 
-Na hoście VPS reload/sync-local dopisuje PONYTAIL_DEFAULT_MODE=off do env.
-Na hoście local wpis dodany przez kit znika, a ręczna wartość użytkownika zostaje.
+`PONYTAIL_SUBAGENT_MATCHER` kit trzyma w `settings.local.json` (poza gitem), nie w
+trackowanym `settings.json`. Ręczna wartość użytkownika zostaje nietknięta, a trybu
+ponytaila (`PONYTAIL_DEFAULT_MODE`) kit nigdzie nie ustawia — także na VPS.
 """
 
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 import os
 import subprocess
@@ -21,12 +20,15 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "claude_settings.py"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
+from claude_settings import build_ponytail_matcher  # noqa: E402
 from guides.bootstrap import run_bootstrap  # noqa: E402
 
+STALE = "^(?!(?:git-commit|git-end)$).*"
 
-def run(*args: str, env: dict[str, str] | None = None) -> None:
-    merged_env = {**os.environ, **(env or {})}
-    subprocess.run([sys.executable, str(SCRIPT), *args], check=True, capture_output=True, env=merged_env)
+
+def run(*args: str) -> None:
+    """Uruchom `claude_settings.py` i podnieś wyjątek, gdy zwróci błąd."""
+    subprocess.run([sys.executable, str(SCRIPT), *args], check=True, capture_output=True)
 
 
 class ClaudeSettingsLocalTest(unittest.TestCase):
@@ -40,104 +42,81 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
             return {}
         return json.loads(self.target.read_text(encoding="utf-8"))
 
-    def test_sync_local_on_vps_adds_ponytail_default_mode_off(self) -> None:
-        """Na VPS kit dopisuje tryb off ze znacznikiem pochodzenia."""
-        run("sync-local", str(self.target), "vps")
-        self.assertEqual(
-            self.load(), {"env": {"PONYTAIL_DEFAULT_MODE": "off", "KIT_MANAGED_PONYTAIL_DEFAULT_MODE": "1"}}
-        )
-
-    def test_sync_local_on_local_keeps_manual_off_without_kit_marker(self) -> None:
-        """Ręczne PONYTAIL_DEFAULT_MODE=off (bez znacznika kita) zostaje na local."""
-        user = {"env": {"PONYTAIL_DEFAULT_MODE": "off"}}
+    def test_sync_local_writes_kit_matcher_and_keeps_other_keys(self) -> None:
+        """sync-local dopisuje matcher kita obok cudzych kluczy pliku lokalnego."""
+        user = {"env": {"OTHER": "1"}, "permissions": {"allow": ["Read"]}}
         self.target.write_text(json.dumps(user), encoding="utf-8")
-        run("sync-local", str(self.target), "local")
+        run("sync-local", str(self.target))
+        data = self.load()
+        self.assertEqual(data["env"], {"OTHER": "1", "PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher()})
+        self.assertEqual(data["permissions"], user["permissions"])
+
+    def test_sync_local_keeps_manual_matcher(self) -> None:
+        """Ręczna wartość matchera użytkownika w settings.local.json zostaje."""
+        user = {"env": {"PONYTAIL_SUBAGENT_MATCHER": "^custom-agent$"}}
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("sync-local", str(self.target))
         self.assertEqual(self.load(), user)
 
-    def test_sync_local_without_host_detection_leaves_file_unchanged(self) -> None:
-        """Brak modułu wykrywania hosta: plik bez zmian, ostrzeżenie na stderr."""
-        import claude_settings
+    def test_sync_local_refreshes_stale_kit_matcher(self) -> None:
+        """Matcher kita ze starej listy agentów odświeża się przy reload."""
+        self.target.write_text(json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": STALE}}), encoding="utf-8")
+        run("sync-local", str(self.target))
+        self.assertEqual(self.load()["env"]["PONYTAIL_SUBAGENT_MATCHER"], build_ponytail_matcher())
 
-        kit = {"env": {"PONYTAIL_DEFAULT_MODE": "off", "KIT_MANAGED_PONYTAIL_DEFAULT_MODE": "1"}}
-        self.target.write_text(json.dumps(kit), encoding="utf-8")
-        stderr = io.StringIO()
-        with mock.patch.dict(sys.modules, {"guides.host_profile": None}), contextlib.redirect_stderr(stderr):
-            claude_settings.sync_local_settings(self.target)
-        self.assertEqual(self.load(), kit)
-        self.assertIn("bez zmian", stderr.getvalue())
+    def test_sync_local_does_not_set_ponytail_default_mode(self) -> None:
+        """Kit nie wyłącza ponytaila: brak PONYTAIL_DEFAULT_MODE, także na VPS."""
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"}):
+            run("sync-local", str(self.target))
+        self.assertNotIn("PONYTAIL_DEFAULT_MODE", self.load()["env"])
 
-    def test_sync_local_on_vps_preserves_user_default_mode(self) -> None:
-        self.target.write_text(json.dumps({"env": {"PONYTAIL_DEFAULT_MODE": "lite", "OTHER": "1"}}), encoding="utf-8")
-        run("sync-local", str(self.target), "vps")
-        data = self.load()
-        self.assertEqual(data["env"]["PONYTAIL_DEFAULT_MODE"], "lite")
-        self.assertEqual(data["env"]["OTHER"], "1")
+    def test_sync_and_prune_local_leave_unreadable_file_untouched(self) -> None:
+        """Nieczytelny prywatny plik użytkownika nie jest nadpisywany ani usuwany."""
+        self.target.write_text("{ zepsuty json", encoding="utf-8")
+        run("sync-local", str(self.target))
+        run("prune-local", str(self.target))
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "{ zepsuty json")
 
-    def test_sync_local_on_local_removes_kit_off_entry_and_file_if_empty(self) -> None:
-        """Na local wpis kita (ze znacznikiem) znika, pusty plik też."""
-        run("sync-local", str(self.target), "vps")
-        run("sync-local", str(self.target), "local")
+    def test_prune_local_removes_only_kit_matcher(self) -> None:
+        """prune-local zdejmuje matcher kita (pusty plik znika), ręczny zostaje."""
+        run("sync-local", str(self.target))
+        run("prune-local", str(self.target))
         self.assertFalse(self.target.exists())
 
-    def test_sync_local_on_local_preserves_user_custom_mode_and_other_keys(self) -> None:
-        user = {"env": {"PONYTAIL_DEFAULT_MODE": "lite", "OTHER": "1"}, "permissions": {"allow": ["Read"]}}
+        user = {"env": {"PONYTAIL_SUBAGENT_MATCHER": "^custom-agent$", "PONYTAIL_DEFAULT_MODE": "off"}}
         self.target.write_text(json.dumps(user), encoding="utf-8")
-        run("sync-local", str(self.target), "local")
+        run("prune-local", str(self.target))
         self.assertEqual(self.load(), user)
 
-    def test_reload_with_kit_host_profile_vps_and_local(self) -> None:
-        """Kryterium akceptacji: przy KIT_HOST_PROFILE=vps reload dodaje wpis, przy local usuwa kitowy."""
+    def test_reload_writes_matcher_to_local_settings_not_tracked_ones(self) -> None:
+        """Reload: matcher w settings.local.json, nie w settings.json; ręczny tryb nietknięty."""
         app_dir = Path(self._tmp.name) / "app"
-        app_dir.mkdir()
-        (app_dir / ".ai").mkdir()
+        (app_dir / ".ai").mkdir(parents=True)
         (app_dir / ".ai" / "project.profile.yaml").write_text(
             "version: '4'\nlanguage: pl\nclients: claude\nstack:\n  backend: none\n  web: none\n  mobile: none\n",
             encoding="utf-8",
         )
+        claude_dir = app_dir / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "settings.json").write_text(
+            json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": STALE, "INNA": "2"}}), encoding="utf-8"
+        )
+        local = claude_dir / "settings.local.json"
+        local.write_text(json.dumps({"env": {"PONYTAIL_DEFAULT_MODE": "lite"}}), encoding="utf-8")
 
-        old_profile = os.environ.get("KIT_HOST_PROFILE")
-        try:
-            # 1. Reload na VPS
-            os.environ["KIT_HOST_PROFILE"] = "vps"
-            run_bootstrap(
-                target=app_dir,
-                kit_root=ROOT,
-                clients="claude",
-                language="pl",
-            )
-            local_settings = app_dir / ".claude" / "settings.local.json"
-            self.assertTrue(local_settings.is_file(), "settings.local.json powinien powstać na VPS")
-            data = json.loads(local_settings.read_text(encoding="utf-8"))
-            self.assertEqual(data.get("env", {}).get("PONYTAIL_DEFAULT_MODE"), "off")
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"}):
+            run_bootstrap(target=app_dir, kit_root=ROOT, clients="claude", language="pl")
 
-            # 2. Reload na local -> wpis 'off' dodany przez kit znika
-            os.environ["KIT_HOST_PROFILE"] = "local"
-            run_bootstrap(
-                target=app_dir,
-                kit_root=ROOT,
-                clients="claude",
-                language="pl",
-            )
-            if local_settings.is_file():
-                data = json.loads(local_settings.read_text(encoding="utf-8"))
-                self.assertNotIn("PONYTAIL_DEFAULT_MODE", data.get("env", {}))
-
-            # 3. Ręczny wpis użytkownika zostaje na local
-            local_settings.parent.mkdir(parents=True, exist_ok=True)
-            local_settings.write_text(json.dumps({"env": {"PONYTAIL_DEFAULT_MODE": "lite"}}), encoding="utf-8")
-            run_bootstrap(
-                target=app_dir,
-                kit_root=ROOT,
-                clients="claude",
-                language="pl",
-            )
-            data = json.loads(local_settings.read_text(encoding="utf-8"))
-            self.assertEqual(data.get("env", {}).get("PONYTAIL_DEFAULT_MODE"), "lite")
-        finally:
-            if old_profile is None:
-                os.environ.pop("KIT_HOST_PROFILE", None)
-            else:
-                os.environ["KIT_HOST_PROFILE"] = old_profile
+        tracked = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
+        self.assertNotIn("PONYTAIL_SUBAGENT_MATCHER", tracked["env"])
+        self.assertEqual(tracked["env"]["INNA"], "2")
+        self.assertEqual(
+            json.loads(local.read_text(encoding="utf-8"))["env"],
+            {"PONYTAIL_DEFAULT_MODE": "lite", "PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher()},
+        )
+        # Plik z matcherem jest poza gitem w projekcie z kitem (sekcja kita w .gitignore).
+        gitignore = (app_dir / ".gitignore").read_text(encoding="utf-8").splitlines()
+        self.assertIn(".claude/settings.local.json", gitignore)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """
 Klasyfikacja agentów kita (`classification: procedure | code`, #316).
 
-Jedno źródło dla `scripts/claude_settings.py` (matcher ponytaila w `.claude/settings.json`)
+Jedno źródło dla `scripts/claude_settings.py` (matcher ponytaila w `.claude/settings.local.json`)
 i `kit-ai doctor`. Agent bez pola albo z nieznaną wartością to błąd — nowy agent kita
 musi dostać klasyfikację w szablonie.
 """
@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 CLASSIFICATIONS = frozenset({"procedure", "code"})
+MATCHER_KEY = "PONYTAIL_SUBAGENT_MATCHER"
 
 # Wzorzec matchera kita: rozpoznaje też wartości wyrenderowane z innej listy agentów.
 KIT_MATCHER_RE = re.compile(r"\^\(\?!\(\?:[a-z0-9|-]+\)\$\)\.\*")

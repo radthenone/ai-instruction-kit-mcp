@@ -86,12 +86,9 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         data = self.load()
 
         self.assertEqual(data["permissions"], USER_SETTINGS["permissions"])
-        # Kit dokłada MCP_TIMEOUT i PONYTAIL_SUBAGENT_MATCHER obok zmiennych użytkownika.
-        matcher = build_ponytail_matcher()
-        self.assertEqual(
-            data["env"],
-            {**USER_SETTINGS["env"], "MCP_TIMEOUT": "90000", "PONYTAIL_SUBAGENT_MATCHER": matcher},
-        )
+        # Kit dokłada tylko MCP_TIMEOUT obok zmiennych użytkownika (matcher ponytaila
+        # idzie do settings.local.json, poza gitem — #316).
+        self.assertEqual(data["env"], {**USER_SETTINGS["env"], "MCP_TIMEOUT": "90000"})
         # Kit doklada swoj SessionStart (rtk-check) obok wpisu uzytkownika, nie zamiast.
         self.assertEqual(data["hooks"]["SessionStart"][0], USER_SETTINGS["hooks"]["SessionStart"][0])
         self.assertTrue(any("rtk-check.mjs" in h["command"] for e in data["hooks"]["SessionStart"] for h in e["hooks"]))
@@ -162,31 +159,30 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         run("prune", str(self.target))
         self.assertEqual(self.load(), user)
 
-    def test_install_sets_ponytail_subagent_matcher(self) -> None:
-        """Kit dodaje PONYTAIL_SUBAGENT_MATCHER i nie nadpisuje ręcznej wartości (#316)."""
+    def test_install_does_not_write_ponytail_matcher_to_tracked_settings(self) -> None:
+        """Matcher ponytaila nie trafia do `.claude/settings.json` w gicie (#316)."""
         run("install", str(self.target), str(TEMPLATE))
-        expected_matcher = build_ponytail_matcher()
-        self.assertEqual(self.load()["env"]["PONYTAIL_SUBAGENT_MATCHER"], expected_matcher)
+        self.assertNotIn("PONYTAIL_SUBAGENT_MATCHER", self.load()["env"])
+
+    def test_install_and_prune_drop_kit_matcher_but_keep_manual_one(self) -> None:
+        """Stara wartość kita w settings.json znika przy reload i prune, ręczna zostaje (#316)."""
+        kit_value = {"env": {"PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher(), "INNA": "2"}}
+        stale = {"env": {"PONYTAIL_SUBAGENT_MATCHER": "^(?!(?:git-commit|git-end)$).*", "INNA": "2"}}
+        for legacy in (kit_value, stale):
+            self.target.write_text(json.dumps(legacy), encoding="utf-8")
+            run("install", str(self.target), str(TEMPLATE))
+            self.assertNotIn("PONYTAIL_SUBAGENT_MATCHER", self.load()["env"])
+            self.assertEqual(self.load()["env"]["INNA"], "2")
+            self.target.write_text(json.dumps(legacy), encoding="utf-8")
+            run("prune", str(self.target))
+            self.assertEqual(self.load(), {"env": {"INNA": "2"}})
 
         user = {"env": {"PONYTAIL_SUBAGENT_MATCHER": "^custom-agent$", "INNA": "2"}}
         self.target.write_text(json.dumps(user), encoding="utf-8")
         run("install", str(self.target), str(TEMPLATE))
-        data = self.load()
-        self.assertEqual(data["env"]["PONYTAIL_SUBAGENT_MATCHER"], "^custom-agent$")
-        self.assertEqual(data["env"]["INNA"], "2")
-        self.assertEqual(data["env"]["MCP_TIMEOUT"], "90000")
+        self.assertEqual(self.load()["env"]["PONYTAIL_SUBAGENT_MATCHER"], "^custom-agent$")
         run("prune", str(self.target))
         self.assertEqual(self.load(), user)
-
-    def test_install_refreshes_stale_kit_matcher_after_new_procedure_agent(self) -> None:
-        """Matcher kita sprzed dodania agenta procedury odświeża się przy reload, prune go zdejmuje (#316)."""
-        stale = "^(?!(?:git-commit|git-end)$).*"
-        self.target.write_text(json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": stale, "INNA": "2"}}), encoding="utf-8")
-        run("install", str(self.target), str(TEMPLATE))
-        self.assertEqual(self.load()["env"]["PONYTAIL_SUBAGENT_MATCHER"], build_ponytail_matcher())
-        self.target.write_text(json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": stale, "INNA": "2"}}), encoding="utf-8")
-        run("prune", str(self.target))
-        self.assertEqual(self.load(), {"env": {"INNA": "2"}})
 
     def test_unreadable_settings_do_not_abort_install(self) -> None:
         # Uszkodzony JSON nie może wywalić bootstrapu — kit zaczyna od pustego stanu.
