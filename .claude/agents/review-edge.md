@@ -2,7 +2,6 @@
 name: review-edge
 description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /review-edge.
 readonly: true
-classification: procedure
 model: opus
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: night-run-ticket
 description: Subagent ticketu dla procedury /night-run — wykonuje pojedyncze issue pod nadzorem orkiestratora.
-classification: procedure
 model: sonnet
 ---
 

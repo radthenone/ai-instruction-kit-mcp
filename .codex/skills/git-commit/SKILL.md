@@ -1,7 +1,6 @@
 ---
 name: git-commit
 description: Stage and create Conventional Commit(s) from local diffs. Use when /git-commit, dirty tree before /git-end. Wywołuj jako /git-commit.
-classification: procedure
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

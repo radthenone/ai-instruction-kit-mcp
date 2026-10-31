@@ -1,6 +1,5 @@
 ---
 description: Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /review-tests.
-classification: procedure
 argument-hint: [args]
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: create-skill
 description: Pomysł na skill → rozstrzygnięcie skill czy agent → ocena na tle repo → karta → issue. Use when /create-skill, "chcę mieć skill na X", nowy SKILL.md, wiedza którą model ma ładować sam. Nie pisze skilla. Wywołuj jako /create-skill.
-classification: procedure
 ---
 
 ## Reguły wspólne

@@ -1,6 +1,5 @@
 ---
 description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /review-edge.
-classification: procedure
 argument-hint: [args]
 ---
 

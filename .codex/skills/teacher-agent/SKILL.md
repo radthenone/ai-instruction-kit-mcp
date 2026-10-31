@@ -2,7 +2,6 @@
 name: teacher-agent
 description: Nauczyciel pracy z agentami — skille, izolacja pracy, delegacja, autonomia (/goal vs /loop), pisanie promptów, grillowanie i review. Use when nie wiesz jakim narzędziem ruszyć zadanie, kiedy odpalić subagenta, kiedy worktree, jak sformułować prompt albo jak spiąć komendy tego kitu w jeden flow. Uczy, nie edytuje. Wywołuj jako /teacher-agent.
 readonly: true
-classification: procedure
 ---
 
 ## Tryb nauczyciela (obowiązkowy)

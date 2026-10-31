@@ -1,7 +1,6 @@
 ---
 name: git-commit
 description: Stage and create Conventional Commit(s) from local diffs. Use when /git-commit, dirty tree before /git-end. Wywołuj jako /git-commit.
-classification: procedure
 model: haiku
 ---
 

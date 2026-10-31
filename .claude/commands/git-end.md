@@ -1,6 +1,5 @@
 ---
 description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /git-end. Wywołuj jako /git-end. (Dawniej /git-pr.)
-classification: procedure
 argument-hint: [args]
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: night-run-ticket
 description: Subagent ticketu dla procedury /night-run — wykonuje pojedyncze issue pod nadzorem orkiestratora.
-classification: procedure
 ---
 
 Język odpowiedzi, statusy i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.

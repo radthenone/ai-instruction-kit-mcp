@@ -671,10 +671,11 @@ for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
     if tier and tier not in chosen:
         print(src.stem)
         continue
-    # `model-tier:` czyta tylko model_tiers.py (z template) — klienci go nie znają.
+    # `model-tier:` czyta tylko model_tiers.py, `classification:` guides.agent_classes
+    # (oba z template) — klienci ich nie znają.
     kept = [
         line for i, line in enumerate(lines)
-        if not (0 < i < end and line.startswith(("tier:", "model-tier:")))
+        if not (0 < i < end and line.startswith(("tier:", "model-tier:", "classification:")))
     ]
     text = BLOCK.sub(gate, "".join(kept))
     # Literówka w znaczniku nie może po cichu wypuścić treści bloku do innych klientów.
