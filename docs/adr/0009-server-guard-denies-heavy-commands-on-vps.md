@@ -70,11 +70,12 @@ jest gwarancją „bez instalacji zależności”. Gdy lock-only i tak padnie na
 paczki (uv „no build”, odpowiednik npm/pnpm/bun), ticket traktuje się jak
 blokujący deny z #315: etykieta `needs-local` i komentarz z nazwą paczki i powodem.
 
-**Yarn zostaje deny.** Yarn Berry ma `--mode=update-lockfile` (bez linkowania),
-ale Yarn Classic go nie zna, a Berry nie ma `--ignore-scripts`; guard nie
-rozpoznaje wersji Yarn w projekcie, więc bezpieczniejsza jest odmowa.
-Bun potwierdza oba tryby w oficjalnej dokumentacji (`--lockfile-only`,
-`--ignore-scripts`), dlatego dostał allow.
+**Yarn zostaje deny.** Yarn Berry ma `--mode=update-lockfile` (bez linkowania,
+[`yarn install`](https://yarnpkg.com/cli/install)), ale Yarn Classic go nie zna,
+a Berry nie ma `--ignore-scripts`; guard nie rozpoznaje wersji Yarn w projekcie,
+więc bezpieczniejsza jest odmowa. Bun potwierdza oba tryby w
+[oficjalnej dokumentacji `bun install`](https://bun.sh/docs/pm/cli/install)
+(`--lockfile-only`, `--ignore-scripts`), dlatego dostał allow.
 
 ## Dlaczego wrappery rozwijane przy reload
 
