@@ -41,7 +41,7 @@ from guides.bugbot_md import (
     render_paths,
     resolve_path,
 )
-from guides.agent_classes import procedure_agents
+from guides.agent_classes import MATCHER_KEY, procedure_agents
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
 from guides.worktree import check_worktree_drift, parse_worktree_section
@@ -1126,7 +1126,7 @@ def _check_ponytail(
     Ostrzeżenia o zawężeniu pluginu ponytail w Claude Code (#316).
 
     Hooki zainstalowanego ponytaila bez `PONYTAIL_SUBAGENT_MATCHER` → zawężenie nie działa.
-    Ręczny matcher w `.claude/settings.json`, który przepuszcza agentów procedur kita albo
+    Ręczny matcher (`.claude/settings.local.json`, potem `.claude/settings.json`), który przepuszcza agentów procedur kita albo
     nie jest poprawnym regexem → ostrzeżenie. Bez ponytaila i bez ręcznego matchera nic.
     """
     findings: list[Finding] = []
@@ -1147,47 +1147,51 @@ def _check_ponytail(
             findings.append(
                 Finding(
                     severity="warning",
-                    file=".claude/settings.json",
+                    file=".claude/settings.local.json",
                     line=None,
                     message="zainstalowany plugin ponytail nie obsługuje PONYTAIL_SUBAGENT_MATCHER w swoich hookach — zawężenie do agentów kodu przestało działać",
                     kind="ponytail-matcher-unsupported",
                 )
             )
 
-    settings_file = workspace / ".claude" / "settings.json"
-    if settings_file.is_file():
+    # Claude Code: settings.local.json (tu kit trzyma matcher) wygrywa z settings.json.
+    source, user_matcher = None, None
+    for rel in (".claude/settings.local.json", ".claude/settings.json"):
         try:
-            data = json.loads(settings_file.read_text(encoding="utf-8"))
-            env = data.get("env") if isinstance(data, dict) else None
-            user_matcher = env.get("PONYTAIL_SUBAGENT_MATCHER") if isinstance(env, dict) else None
-            if isinstance(user_matcher, str) and user_matcher:
-                procedures: list[str] = procedure_agents(kit_root / AGENT_TEMPLATES) if kit_root else []
-                try:
-                    re_m = re.compile(user_matcher, re.IGNORECASE)
-                    leaked = [p for p in procedures if re_m.search(p)]
-                    if leaked:
-                        sample = ", ".join(leaked[:3])
-                        findings.append(
-                            Finding(
-                                severity="warning",
-                                file=".claude/settings.json",
-                                line=None,
-                                message=f"ręczna wartość PONYTAIL_SUBAGENT_MATCHER nie wyklucza agentów procedur ({sample}) — ponytail trafi do procedur",
-                                kind="ponytail-matcher-leaks-procedures",
-                            )
-                        )
-                except re.error:
-                    findings.append(
-                        Finding(
-                            severity="warning",
-                            file=".claude/settings.json",
-                            line=None,
-                            message=f"nieprawidłowy regex w PONYTAIL_SUBAGENT_MATCHER: '{user_matcher}'",
-                            kind="ponytail-matcher-invalid-regex",
-                        )
-                    )
+            data = json.loads((workspace / rel).read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            pass
+            continue
+        env = data.get("env") if isinstance(data, dict) else None
+        if isinstance(env, dict) and MATCHER_KEY in env:
+            source, user_matcher = rel, env[MATCHER_KEY]
+            break
+    if source is not None and isinstance(user_matcher, str) and user_matcher:
+        procedures: list[str] = procedure_agents(kit_root / AGENT_TEMPLATES) if kit_root else []
+        try:
+            re_m: re.Pattern[str] = re.compile(str(user_matcher), re.IGNORECASE)
+        except re.error:
+            findings.append(
+                Finding(
+                    severity="warning",
+                    file=source,
+                    line=None,
+                    message=f"nieprawidłowy regex w PONYTAIL_SUBAGENT_MATCHER: '{user_matcher}'",
+                    kind="ponytail-matcher-invalid-regex",
+                )
+            )
+        else:
+            leaked = [p for p in procedures if re_m.search(p)]
+            if leaked:
+                sample = ", ".join(leaked[:3])
+                findings.append(
+                    Finding(
+                        severity="warning",
+                        file=source,
+                        line=None,
+                        message=f"ręczna wartość PONYTAIL_SUBAGENT_MATCHER nie wyklucza agentów procedur ({sample}) — ponytail trafi do procedur",
+                        kind="ponytail-matcher-leaks-procedures",
+                    )
+                )
 
     return findings
 

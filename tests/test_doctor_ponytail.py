@@ -9,11 +9,13 @@ Kryteria akceptacji:
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 from guides.doctor import run_doctor  # noqa: E402
 
 
@@ -103,6 +105,29 @@ class DoctorPonytailTest(unittest.TestCase):
         report = run_doctor(self.workspace, kit_root=ROOT, clients="claude", claude_home=self.claude_home)
         kinds = [f.kind for f in report.warnings]
         self.assertIn("ponytail-matcher-leaks-procedures", kinds)
+
+
+    def test_warning_reads_manual_matcher_from_local_settings(self) -> None:
+        """Matcher kit trzyma w settings.local.json — tam doctor szuka ręcznej wartości (#316)."""
+        (self.workspace / ".claude" / "settings.local.json").write_text(
+            json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": ".*"}}), encoding="utf-8"
+        )
+        report = run_doctor(self.workspace, kit_root=ROOT, clients="claude", claude_home=self.claude_home)
+        leaks = [f for f in report.warnings if f.kind == "ponytail-matcher-leaks-procedures"]
+        self.assertEqual([f.file for f in leaks], [".claude/settings.local.json"])
+
+    def test_local_matcher_takes_precedence_over_tracked_settings(self) -> None:
+        """Wartość z settings.local.json wygrywa z settings.json, jak w Claude Code."""
+        from claude_settings import build_ponytail_matcher
+
+        (self.workspace / ".claude" / "settings.json").write_text(
+            json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": ".*"}}), encoding="utf-8"
+        )
+        (self.workspace / ".claude" / "settings.local.json").write_text(
+            json.dumps({"env": {"PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher()}}), encoding="utf-8"
+        )
+        report = run_doctor(self.workspace, kit_root=ROOT, clients="claude", claude_home=self.claude_home)
+        self.assertNotIn("ponytail-matcher-leaks-procedures", [f.kind for f in report.warnings])
 
 
 if __name__ == "__main__":
