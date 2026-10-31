@@ -598,6 +598,27 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("uv run --with requests python x.py", "deny"),
     ("uv run --no-sync --with requests python x.py", "deny"),
     ("uv run --no-sync --with-requirements r.txt python x.py", "deny"),
+    # #317 — aktualizacja samego lockfile (bez instalacji i builda) jest dozwolona.
+    ("uv lock --no-build", "allow"),
+    ("uv lock", "deny"),
+    ("uv add httpx --no-sync --no-build", "allow"),
+    ("uv add httpx --no-build --no-sync", "allow"),
+    ("uv add httpx --no-sync", "deny"),
+    ("uv add httpx", "deny"),
+    ("uv remove httpx --no-sync --no-build", "allow"),
+    ("uv remove httpx --no-build", "deny"),
+    ("npm install --package-lock-only --ignore-scripts", "allow"),
+    ("npm install --package-lock-only", "deny"),
+    ("npm install", "deny"),
+    ("pnpm install --lockfile-only --ignore-scripts", "allow"),
+    ("pnpm install --lockfile-only", "deny"),
+    ("pnpm install", "deny"),
+    ("bun install --lockfile-only --ignore-scripts", "allow"),
+    ("bun install --lockfile-only", "deny"),
+    ("bun install", "deny"),
+    # Yarn: Yarn 1 nie ma trybu lock-only, a Berry nie ma `--ignore-scripts`;
+    # guard nie rozpoznaje wersji, więc bezpiecznie zostaje deny.
+    ("yarn install --mode=update-lockfile", "deny"),
     ("pip3.12 install x", "deny"),
     ("bun i", "deny"),
     ("bun a x", "deny"),
@@ -787,6 +808,31 @@ class ServerGuardTest(unittest.TestCase):
         self.assertEqual(decision("bunx eas-cli build", VPS, config), "deny")
         self.assertEqual(decision("task lint", VPS, config), "allow")
         self.assertEqual(decision("docker compose up", VPS, config), "allow")
+
+    def test_lock_only_deny_reason_names_allowed_form(self) -> None:
+        cases = {
+            "uv lock": ["--no-build"],
+            "uv add httpx": ["--no-sync", "--no-build"],
+            "npm install": ["--package-lock-only", "--ignore-scripts"],
+            "pnpm install": ["--lockfile-only", "--ignore-scripts"],
+            "bun install": ["--lockfile-only", "--ignore-scripts"],
+        }
+        for command, flags in cases.items():
+            with self.subTest(command=command):
+                out = run_server_guard({"tool_name": "Bash", "tool_input": {"command": command}}, VPS)
+                reason = out.get("permissionDecisionReason", "")
+                self.assertEqual(out.get("permissionDecision"), "deny", out)
+                for flag in flags:
+                    self.assertIn(flag, reason)
+
+    def test_project_deny_blocks_lock_only_form(self) -> None:
+        from guides.server_guard import parse_server_section, render_config
+
+        server = parse_server_section('server:\n  deny:\n    - "uv lock --no-build"\n')
+        config = render_config(tasks={}, packages={}, server=server)
+        self.assertEqual(decision("uv lock --no-build", VPS, config), "deny")
+        # Inne formy lock-only zostają dozwolone.
+        self.assertEqual(decision("uv add httpx --no-sync --no-build", VPS, config), "allow")
 
     def test_playwright_mcp_tools_denied(self) -> None:
         for tool in ("mcp__plugin_playwright_playwright__browser_navigate", "mcp__playwright__browser_click"):
