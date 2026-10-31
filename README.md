@@ -184,6 +184,14 @@ kładzie skille — globalnie widzi tylko `~/.gemini/config/skills/`
 | VS Code (Copilot) | Tylko Copilot CLI: `copilot plugin marketplace add DietrichGebert/ponytail` + `copilot plugin install ponytail@ponytail` |
 | Antigravity | `agy plugin install https://github.com/DietrichGebert/ponytail` |
 
+> **Zawężenie ponytaila w Claude Code:** kit automatycznie wpisuje do `.claude/settings.json` zmienną `env.PONYTAIL_SUBAGENT_MATCHER`, która wyklucza agentów procedur kita (`git-*`, `review-*`, `night-run*`, `create-*`, `kit-project-*`, `teacher-*`, `headless`, `cleanup`), pozwalając ponytailowi działać tylko w subagentach piszących kod (`subagent-backend`, `subagent-frontend`, subagent przejęcia w `night-run`) oraz zwykłych subagentach wbudowanych (`general-purpose`, `Explore`).
+>
+> - **Dlaczego:** nacisk ponytaila na „najkrótszą drogę” sprzyja omijaniu procedur i źródeł prawdy kita (np. grep zamiast `get_bundle`).
+> - **Inni klienci:** mechanizm dotyczy tylko Claude Code — pozostali klienci kita nie mają filtrowania po typie subagenta.
+> - **Własna konfiguracja / wyłączenie:** wpisz własną wartość `PONYTAIL_SUBAGENT_MATCHER` w sekcji `env` w `.claude/settings.json` — kit nie nadpisze wpisu użytkownika (`kit-ai doctor` zgłosi ostrzeżenie, gdy własny matcher nie wyklucza procedur kita).
+> - **VPS:** na hoście wykrytym jako VPS `kit-ai reload` wpisuje `PONYTAIL_DEFAULT_MODE=off` do `.claude/settings.local.json` (na local wpis kita znika).
+> - **Współdzielony plik trybu:** ponytail trzyma aktywny tryb w jednym pliku na maszynę (`~/.claude/.ponytail-active`), więc różne tryby w równoległych sesjach na jednej maszynie nie są wspierane.
+
 **Context7** ([upstash/context7](https://github.com/upstash/context7)) — docs bibliotek (MCP)
 
 Najprościej `npx ctx7 setup --claude` / `--opencode` (OAuth + klucz API + konfiguracja).

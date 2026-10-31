@@ -1082,12 +1082,142 @@ def _package_infos(
     return findings
 
 
+
+
+def _find_ponytail_hook_files(claude_home: Path) -> list[Path] | None:
+    """Znajdź pliki hooków zainstalowanego pluginu ponytail w Claude Code."""
+    installed_file = claude_home / "plugins" / "installed_plugins.json"
+    if installed_file.is_file():
+        try:
+            data = json.loads(installed_file.read_text(encoding="utf-8"))
+            plugins = data.get("plugins", {})
+            for key, entries in plugins.items():
+                if key == "ponytail" or key.startswith("ponytail@"):
+                    if isinstance(entries, list):
+                        for entry in entries:
+                            install_path = entry.get("installPath")
+                            if install_path:
+                                hooks_dir = Path(install_path) / "hooks"
+                                if hooks_dir.is_dir():
+                                    return list(hooks_dir.glob("*.*"))
+                                if Path(install_path).is_dir():
+                                    return list(Path(install_path).glob("*.*"))
+        except (OSError, ValueError):
+            pass
+
+    market_ponytail = claude_home / "plugins" / "marketplaces" / "ponytail"
+    if (market_ponytail / "hooks").is_dir():
+        return list((market_ponytail / "hooks").glob("*.*"))
+    cache_ponytail = claude_home / "plugins" / "cache" / "ponytail"
+    if cache_ponytail.is_dir():
+        hooks = list(cache_ponytail.rglob("hooks/*.*"))
+        if hooks:
+            return hooks
+
+    return None
+
+
+def _procedure_agents(kit_root: Path | None) -> list[str]:
+    if not kit_root:
+        return []
+    agents_dir = kit_root / AGENT_TEMPLATES
+    if not agents_dir.is_dir():
+        return []
+    procedures = []
+    for src in sorted(agents_dir.glob("*.md")):
+        lines = src.read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].strip() != "---":
+            continue
+        try:
+            end = lines.index("---", 1)
+        except ValueError:
+            continue
+        classification = None
+        for line in lines[1:end]:
+            if line.startswith("classification:"):
+                classification = line.partition(":")[2].strip().lower()
+                break
+        if classification in ("procedure", "procedura") or (
+            classification is None and src.stem not in ("subagent-backend", "subagent-frontend")
+        ):
+            procedures.append(src.stem)
+    return procedures
+
+
+def _check_ponytail(
+    workspace: Path,
+    kit_root: Path | None,
+    claude_home: Path,
+    configured_clients: set[str],
+) -> list[Finding]:
+    findings: list[Finding] = []
+    if "claude" not in configured_clients:
+        return findings
+
+    hook_files = _find_ponytail_hook_files(claude_home)
+    if hook_files is not None:
+        has_matcher_ref = False
+        for f in hook_files:
+            try:
+                if "PONYTAIL_SUBAGENT_MATCHER" in f.read_text(encoding="utf-8", errors="replace"):
+                    has_matcher_ref = True
+                    break
+            except OSError:
+                continue
+        if not has_matcher_ref:
+            findings.append(
+                Finding(
+                    severity="warning",
+                    file=".claude/settings.json",
+                    line=None,
+                    message="zainstalowany plugin ponytail nie obsługuje PONYTAIL_SUBAGENT_MATCHER w swoich hookach — zawężenie do agentów kodu przestało działać",
+                    kind="ponytail-matcher-unsupported",
+                )
+            )
+
+    settings_file = workspace / ".claude" / "settings.json"
+    if settings_file.is_file():
+        try:
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+            user_matcher = data.get("env", {}).get("PONYTAIL_SUBAGENT_MATCHER")
+            if user_matcher:
+                procedures = _procedure_agents(kit_root)
+                try:
+                    re_m = re.compile(user_matcher, re.IGNORECASE)
+                    leaked = [p for p in procedures if re_m.search(p)]
+                    if leaked:
+                        sample = ", ".join(leaked[:3])
+                        findings.append(
+                            Finding(
+                                severity="warning",
+                                file=".claude/settings.json",
+                                line=None,
+                                message=f"ręczna wartość PONYTAIL_SUBAGENT_MATCHER nie wyklucza agentów procedur ({sample}) — ponytail trafi do procedur",
+                                kind="ponytail-matcher-leaks-procedures",
+                            )
+                        )
+                except re.error:
+                    findings.append(
+                        Finding(
+                            severity="warning",
+                            file=".claude/settings.json",
+                            line=None,
+                            message=f"nieprawidłowy regex w PONYTAIL_SUBAGENT_MATCHER: '{user_matcher}'",
+                            kind="ponytail-matcher-invalid-regex",
+                        )
+                    )
+        except (OSError, ValueError):
+            pass
+
+    return findings
+
 def run_doctor(
     workspace: Path,
     kit_root: Path | None = None,
     *,
     clients: str = "all",
     verbose: bool = False,
+    claude_home: Path | None = None,
 ) -> DoctorReport:
     """
     Sprawdź, czy reguły projektu nie wskazują nieistniejących ścieżek i komend.
@@ -1108,6 +1238,9 @@ def run_doctor(
     findings: list[Finding] = []
     reported: set[tuple[str, int, str]] = set()
     is_kit = kit_root is not None and kit_root.resolve() == workspace
+    if claude_home is None:
+        claude_home = Path(os.environ["CLAUDE_HOME"]) if "CLAUDE_HOME" in os.environ else Path.home() / ".claude"
+
 
     try:
         configured = set(expand_clients(parse_clients(clients)))
@@ -1238,4 +1371,12 @@ def run_doctor(
                     )
                 )
 
+    findings.extend(
+        _check_ponytail(
+            workspace=workspace,
+            kit_root=kit_root,
+            claude_home=claude_home,
+            configured_clients=configured,
+        )
+    )
     return DoctorReport(tuple(dict.fromkeys(findings)))
