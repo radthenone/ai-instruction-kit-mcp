@@ -22,6 +22,7 @@ zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwe
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +42,58 @@ GUARD_MARKERS: tuple[str, ...] = (
     "gate-push.sh",
     "gate-destructive.sh",
 )
+
+
+def get_procedure_agent_names(agents_dir: Path | None = None) -> list[str]:
+    """
+    Zwróć posortowaną listę nazw agentów kita sklasyfikowanych jako procedura.
+
+    Args:
+        agents_dir: Katalog szablonów agentów (domyślnie templates/shared/agents).
+
+    Returns:
+        list[str]: Posortowane nazwy agentów procedur.
+    """
+    if agents_dir is None:
+        agents_dir = Path(__file__).resolve().parents[1] / "templates" / "shared" / "agents"
+    procedures: list[str] = []
+    if not agents_dir.is_dir():
+        return procedures
+    for src in sorted(agents_dir.glob("*.md")):
+        lines = src.read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].strip() != "---":
+            continue
+        try:
+            end = lines.index("---", 1)
+        except ValueError:
+            continue
+        classification = None
+        for line in lines[1:end]:
+            if line.startswith("classification:"):
+                classification = line.partition(":")[2].strip().lower()
+                break
+        if classification in ("procedure", "procedura") or (
+            classification is None and src.stem not in ("subagent-backend", "subagent-frontend")
+        ):
+            procedures.append(src.stem)
+    return sorted(procedures)
+
+
+def build_ponytail_matcher(agents_dir: Path | None = None) -> str:
+    """
+    Wygeneruj regex dla PONYTAIL_SUBAGENT_MATCHER wykluczający wszystkich agentów procedur kita.
+
+    Args:
+        agents_dir: Katalog szablonów agentów (domyślnie templates/shared/agents).
+
+    Returns:
+        str: Wzorzec regex dopasowujący wszystko poza agentami procedur.
+    """
+    procedures = get_procedure_agent_names(agents_dir)
+    if not procedures:
+        return ".*"
+    joined = "|".join(procedures)
+    return f"^(?!(?:{joined})$).*"
 
 
 # Klucze ustawień Claude Code dokładane obok hooków — nazwa → wartość kita.
