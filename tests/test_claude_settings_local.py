@@ -6,6 +6,8 @@ Na hoście local wpis dodany przez kit znika, a ręczna wartość użytkownika z
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -13,10 +15,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "claude_settings.py"
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
 from guides.bootstrap import run_bootstrap  # noqa: E402
 
 
@@ -37,8 +41,30 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
         return json.loads(self.target.read_text(encoding="utf-8"))
 
     def test_sync_local_on_vps_adds_ponytail_default_mode_off(self) -> None:
+        """Na VPS kit dopisuje tryb off ze znacznikiem pochodzenia."""
         run("sync-local", str(self.target), "vps")
-        self.assertEqual(self.load(), {"env": {"PONYTAIL_DEFAULT_MODE": "off"}})
+        self.assertEqual(
+            self.load(), {"env": {"PONYTAIL_DEFAULT_MODE": "off", "KIT_MANAGED_PONYTAIL_DEFAULT_MODE": "1"}}
+        )
+
+    def test_sync_local_on_local_keeps_manual_off_without_kit_marker(self) -> None:
+        """Ręczne PONYTAIL_DEFAULT_MODE=off (bez znacznika kita) zostaje na local."""
+        user = {"env": {"PONYTAIL_DEFAULT_MODE": "off"}}
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("sync-local", str(self.target), "local")
+        self.assertEqual(self.load(), user)
+
+    def test_sync_local_without_host_detection_leaves_file_unchanged(self) -> None:
+        """Brak modułu wykrywania hosta: plik bez zmian, ostrzeżenie na stderr."""
+        import claude_settings
+
+        kit = {"env": {"PONYTAIL_DEFAULT_MODE": "off", "KIT_MANAGED_PONYTAIL_DEFAULT_MODE": "1"}}
+        self.target.write_text(json.dumps(kit), encoding="utf-8")
+        stderr = io.StringIO()
+        with mock.patch.dict(sys.modules, {"guides.host_profile": None}), contextlib.redirect_stderr(stderr):
+            claude_settings.sync_local_settings(self.target)
+        self.assertEqual(self.load(), kit)
+        self.assertIn("bez zmian", stderr.getvalue())
 
     def test_sync_local_on_vps_preserves_user_default_mode(self) -> None:
         self.target.write_text(json.dumps({"env": {"PONYTAIL_DEFAULT_MODE": "lite", "OTHER": "1"}}), encoding="utf-8")
@@ -48,7 +74,8 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
         self.assertEqual(data["env"]["OTHER"], "1")
 
     def test_sync_local_on_local_removes_kit_off_entry_and_file_if_empty(self) -> None:
-        self.target.write_text(json.dumps({"env": {"PONYTAIL_DEFAULT_MODE": "off"}}), encoding="utf-8")
+        """Na local wpis kita (ze znacznikiem) znika, pusty plik też."""
+        run("sync-local", str(self.target), "vps")
         run("sync-local", str(self.target), "local")
         self.assertFalse(self.target.exists())
 

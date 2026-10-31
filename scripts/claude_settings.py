@@ -22,8 +22,8 @@ zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwe
 Matcher w postaci kita (`^(?!(?:...)$).*`) to wpis kita także ze starej listy agentów: install go
 odświeża, prune zdejmuje.
 
-`sync-local` obsługuje `.claude/settings.local.json`: na hoście VPS dodaje `PONYTAIL_DEFAULT_MODE=off`,
-a na local czyści ten wpis, zachowując ustawienia użytkownika.
+`sync-local` obsługuje `.claude/settings.local.json`: na hoście VPS dodaje `PONYTAIL_DEFAULT_MODE=off`
+ze znacznikiem `KIT_MANAGED_PONYTAIL_DEFAULT_MODE`, a na local zdejmuje tylko wpis ze znacznikiem.
 """
 
 from __future__ import annotations
@@ -227,12 +227,18 @@ def write(path: Path, settings: dict) -> None:
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
+MODE_KEY = "PONYTAIL_DEFAULT_MODE"
+# Znacznik pochodzenia: obecny = `PONYTAIL_DEFAULT_MODE` wpisał kit, więc kit może go zdjąć.
+MODE_MARKER_KEY = "KIT_MANAGED_PONYTAIL_DEFAULT_MODE"
+
+
 def sync_local_settings(target: Path, host_profile: str | None = None) -> None:
     """
     Zsynchronizuj `.claude/settings.local.json` zależnie od profilu hosta (vps / local).
 
-    Na VPS: dopisuje PONYTAIL_DEFAULT_MODE=off do env (jeśli użytkownik sam go nie ustawił).
-    Na local: usuwa PONYTAIL_DEFAULT_MODE=off (wpis dodany przez kit), zachowując własne wpisy użytkownika.
+    Na VPS: dopisuje `PONYTAIL_DEFAULT_MODE=off` i znacznik kita, gdy użytkownik nie ustawił
+    trybu sam. Na local: zdejmuje tryb tylko razem ze znacznikiem kita — ręczny wpis zostaje.
+    Brak modułu wykrywania hosta: plik bez zmian i ostrzeżenie na stderr.
 
     Args:
         target: Ścieżka do .claude/settings.local.json.
@@ -241,24 +247,26 @@ def sync_local_settings(target: Path, host_profile: str | None = None) -> None:
     if host_profile is None:
         try:
             from guides.host_profile import detect_host_profile
-
-            host_profile = detect_host_profile()
-        except ImportError:
-            host_profile = "local"
+        except ImportError as exc:
+            print(f"claude_settings: nie wykryto hosta ({exc}) — {target} bez zmian", file=sys.stderr)
+            return
+        host_profile = detect_host_profile()
 
     settings = load(target)
+    env = settings.get("env")
+    if not isinstance(env, dict):
+        env = {}
     if host_profile == "vps":
-        env = settings.setdefault("env", {})
-        if "PONYTAIL_DEFAULT_MODE" not in env:
-            env["PONYTAIL_DEFAULT_MODE"] = "off"
-        write(target, settings)
+        if MODE_KEY not in env:
+            env[MODE_KEY] = "off"
+            env[MODE_MARKER_KEY] = "1"
+    elif env.pop(MODE_MARKER_KEY, None) is not None:
+        env.pop(MODE_KEY, None)
+    if env:
+        settings["env"] = env
     else:
-        if "env" in settings and isinstance(settings["env"], dict):
-            if settings["env"].get("PONYTAIL_DEFAULT_MODE") == "off":
-                del settings["env"]["PONYTAIL_DEFAULT_MODE"]
-                if not settings["env"]:
-                    del settings["env"]
-        write(target, settings)
+        settings.pop("env", None)
+    write(target, settings)
 
 
 def main(argv: list[str]) -> int:
