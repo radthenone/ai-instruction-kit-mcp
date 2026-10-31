@@ -43,6 +43,39 @@ Krótka lista = mało fałszywych blokad = agent nie uczy się obchodzić guarda
 Każdy deny niesie powód z alternatywą (linter zamiast builda, `uv run --no-sync`
 zamiast `uv run`, CI zamiast e2e).
 
+## Wyjątek „tylko lockfile” (#317)
+
+Ticket, który dodaje zależność, musi móc zaktualizować lockfile także na VPS.
+Guard nadal blokuje instalację, ale dopuszcza formy, które tylko rozwiązują
+wersje i zapisują lockfile:
+
+| Ekosystem | Allow | Wymagane flagi |
+|---|---|---|
+| uv | `uv lock` | `--no-build` |
+| uv | `uv add` / `uv remove` | `--no-sync` **i** `--no-build` |
+| npm | `npm install` | `--package-lock-only` **i** `--ignore-scripts` |
+| pnpm | `pnpm install` | `--lockfile-only` **i** `--ignore-scripts` |
+| bun | `bun install` | `--lockfile-only` **i** `--ignore-scripts` |
+
+Każda inna forma tych komend zostaje deny, a powód wskazuje dozwoloną formę.
+`server.deny` w Profilu może te formy z powrotem zablokować (precedencja:
+`server.allow` > `server.deny` > allow kita > deny kita), a `server.guard: off`
+dalej wyłącza cały guard.
+
+**Sufit wyjątku.** `--no-build` w uv zatrzymuje budowanie zależności, ale nie
+budowanie samego projektu: uv nadal czyta metadane workspace'u (PEP 517), więc
+projekt z ciężkim backendem (maturin, scikit-build) może przy `uv lock` coś
+skompilować. Dlatego aktualizacja locka nie jest gwarancją „zero kompilacji” —
+jest gwarancją „bez instalacji zależności”. Gdy lock-only i tak padnie na buildzie
+paczki (uv „no build”, odpowiednik npm/pnpm/bun), ticket traktuje się jak
+blokujący deny z #315: etykieta `needs-local` i komentarz z nazwą paczki i powodem.
+
+**Yarn zostaje deny.** Yarn Berry ma `--mode=update-lockfile` (bez linkowania),
+ale Yarn Classic go nie zna, a Berry nie ma `--ignore-scripts`; guard nie
+rozpoznaje wersji Yarn w projekcie, więc bezpieczniejsza jest odmowa.
+Bun potwierdza oba tryby w oficjalnej dokumentacji (`--lockfile-only`,
+`--ignore-scripts`), dlatego dostał allow.
+
 ## Dlaczego wrappery rozwijane przy reload
 
 Guard widzi tylko tekst komendy. `task test:backend` nie zawiera słowa `docker`,
