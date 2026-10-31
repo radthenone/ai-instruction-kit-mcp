@@ -1586,7 +1586,10 @@ scikit-build może coś skompilować) — to wyjątek „bez instalacji zależno
 „zero kompilacji”. Yarn nie ma wspólnego trybu lock-only dla 1.x i Berry, więc
 zostaje deny. Gdy lock-only pada, bo paczka wymaga builda, ticket dostaje
 `needs-local` i komentarz z nazwą paczki i powodem (jak przy blokującym deny z #315).
-`server.deny` może te formy zablokować z powrotem.
+`server.deny` może te formy zablokować z powrotem (skutek uboczny precedencji:
+`server.deny: "uv run"` blokuje też `uv run --no-sync`). Flagi liczą się tylko
+przed `--` i `#`, negacje (`--no-x`, `--x=false`) i flagi w cudzysłowach dają deny.
+`pnpm` przy `--lockfile-only` nadal wykonuje `.pnpmfile.cjs` projektu.
 
 **Wrappery wykonania: `rtk`.** Globalna wtyczka RTK przepisuje komendę, zanim
 zobaczy ją plugin guarda w opencode: `bun install` jedzie jako `rtk bun install`,

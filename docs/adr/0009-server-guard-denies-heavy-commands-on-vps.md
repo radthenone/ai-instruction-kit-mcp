@@ -69,6 +69,15 @@ skompilować. Dlatego aktualizacja locka nie jest gwarancją „zero kompilacji�
 jest gwarancją „bez instalacji zależności”. Gdy lock-only i tak padnie na buildzie
 paczki (uv „no build”, odpowiednik npm/pnpm/bun), ticket traktuje się jak
 blokujący deny z #315: etykieta `needs-local` i komentarz z nazwą paczki i powodem.
+`pnpm install --lockfile-only` nadal wykonuje `.pnpmfile.cjs` projektu (hooki
+`readPackage` / `afterAllResolved`) — `--ignore-scripts` tego nie blokuje; to kod
+z repo, nie z rejestru, ale też część sufitu.
+
+**Dopasowanie formy lock-only.** Wymagane flagi liczą się tylko przed pierwszym
+samodzielnym `--` i przed komentarzem `#`; negacja (`--no-<flaga>`, `--<flaga>=false`,
+uv `--build` / `--sync`) daje deny, podobnie `$`, `` ` ``, `\`, `{` i flagi w
+cudzysłowach (powłoka mogłaby z nich zrobić `--` albo negację). Skutek uboczny
+precedencji: `server.deny: "uv run"` blokuje teraz także `uv run --no-sync`.
 
 **Yarn zostaje deny.** Yarn Berry ma `--mode=update-lockfile` (bez linkowania,
 [`yarn install`](https://yarnpkg.com/cli/install)), ale Yarn Classic go nie zna,
