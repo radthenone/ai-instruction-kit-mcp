@@ -24,6 +24,7 @@ from guides.clients import (
     format_clients_arg,
     parse_clients,
 )
+from guides.host_profile import get_host_profile
 from guides.kit_status import check_kit_updates
 from guides.labels import LabelsError, Runner
 from guides.labels import ensure_labels as ensure_repo_labels
@@ -36,10 +37,34 @@ from guides.resolver import (
     resolve_workspace_profile,
 )
 
+_INSTRUCTIONS_RULES = (
+    "## Klasyfikacja zadań i reguły MCP (#307, #324)\n"
+    "\n"
+    "- **Zadanie kodowe:** tworzenie, edycja lub debug plików w `src/`, `tests/`, `templates/`, `modules/`; "
+    "implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany.\n"
+    "- **Zadanie proceduralne:** każdy slash command z procedury kita (`/git-*`, `/review-*`, `/create-task`, "
+    "`/create-skill`, `/night-run`, `/headless`, `/tdd`, `/kit-project-*`) oraz każda czynność zapisu na GitHub.\n"
+    "- **Wymóg wywołania:** przed pierwszą edycją przy zadaniu kodowym lub proceduralnym wywołaj `get_overlay`, "
+    "a `get_bundle` gdy brief wskazuje moduł. W wątpliwości wywołaj `get_overlay` "
+    "(koszt mały, błędny fix bez overlay kosztuje dużo).\n"
+    "- **Bez wywołań MCP:** pytania o język, bazę lub Tiery (są w briefie), rozmowa, wyjaśnienie, "
+    "odpowiedź tekstowa bez zmiany plików.\n"
+    "- **Docstringi:** format repo (Args/Returns, po polsku).\n"
+    "- **VPS (#317):** na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only "
+    "(`uv lock --no-build`, `npm install --package-lock-only --ignore-scripts`)."
+)
+
 _STATIC_INSTRUCTIONS = (
     "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
-    "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
-    "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
+    "Przed pierwszą edycją przy zadaniu kodowym (tworzenie, edycja lub debug plików w src/, tests/, templates/, modules/; "
+    "implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany) lub proceduralnym "
+    "(każdy slash command kita: /git-*, /review-*, /create-task, /create-skill, /night-run, /headless, /tdd, /kit-project-*, "
+    "oraz każda czynność zapisu na GitHub) wywołaj get_overlay, a get_bundle gdy brief wskazuje moduł; "
+    "w wątpliwości wywołaj get_overlay (koszt mały, błędny fix bez overlay kosztuje dużo). "
+    "Pytania o język, bazę, Tiery i rozmowa bez zmian plików — bez wywołań MCP (#307). "
+    "Docstringi w formacie repo (Args/Returns, po polsku). "
+    "Na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only (#317). "
+    "Overlay projektu zawiera unikalne ścieżki i taski. "
     "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
     "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
     "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
@@ -70,24 +95,28 @@ def _get_resolved():
     )
 
 
-def build_instructions(resolved: ResolvedProfile) -> str:
+def build_instructions(resolved: ResolvedProfile, *, host: str | None = None) -> str:
     """
-    Instrukcje serwera MCP z wartościami Profilu (#307).
+    Instrukcje serwera MCP z wartościami Profilu (#307, #324).
 
     Brief jest ten sam, który bootstrap wpisuje do ``AGENTS.md`` — agent nie musi
     wołać ``get_language`` / ``get_index``, żeby poznać język, bazę, Tiery i codegen.
 
     Args:
         resolved: Rozwiązany profil workspace'u.
+        host: Profil hosta (``vps`` / ``local``); domyślnie z ``get_host_profile()``.
 
     Returns:
-        str: Brief projektu + krótka mapa narzędzi MCP.
+        str: Brief projektu + krótka mapa narzędzi MCP + reguły i klasyfikacja.
     """
+    current_host = get_host_profile() if host is None else host
     return "\n".join(
         [
             f"# project-guides — {resolved.name}",
             "",
             resolved.project_brief.strip(),
+            "",
+            f"- **Host:** `{current_host}`",
             "",
             "## Narzędzia",
             "",
@@ -96,6 +125,8 @@ def build_instructions(resolved: ResolvedProfile) -> str:
             "- `get_language()` / `get_codegen()` / `get_clients()` — polityka i metadane z Profilu.",
             "- `get_index()` / `list_modules()` / `get_module(id)` — rejestr i pojedyncze moduły.",
             "- `bootstrap_workspace()` / `reload_workspace()` — instalacja plików kita, domyślnie dry-run.",
+            "",
+            _INSTRUCTIONS_RULES,
             "",
             _STATIC_INSTRUCTIONS,
         ]
