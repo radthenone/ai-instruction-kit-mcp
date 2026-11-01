@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,190 +27,152 @@ from session_usage import (  # noqa: E402
 )
 
 
+def write_jsonl(path: Path, entries: list[Any]) -> None:
+    """Zapisuje listę wpisów (słowników lub ciągów tekstowych) do pliku JSONL."""
+    with open(path, "w", encoding="utf-8") as f:
+        for entry in entries:
+            if isinstance(entry, str):
+                f.write(entry + "\n")
+            else:
+                f.write(json.dumps(entry) + "\n")
+
+
+def make_message_entry(
+    msg_id: str = "msg_001",
+    input_tokens: int = 100,
+    cache_read: int = 500,
+    cache_creation: int = 50,
+    content: list[dict[str, Any]] | None = None,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    """Tworzy wpis wiadomości asystenta do testów transkryptu sesji."""
+    entry: dict[str, Any] = {
+        "type": "assistant",
+        "message": {
+            "id": msg_id,
+            "role": "assistant",
+            "usage": {
+                "input_tokens": input_tokens,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_creation,
+            },
+            "content": content or [{"type": "text", "text": "Odpowiedź testowa"}],
+        },
+    }
+    if session_id:
+        entry["sessionId"] = session_id
+    return entry
+
+
 class TestSessionUsage(unittest.TestCase):
     """Przypadki testowe dla parsowania i agregacji transkryptów sesji."""
 
     def test_parse_session_deduplicates_messages_and_computes_sums(self) -> None:
-        """Weryfikuje deduplikację po message.id i kalkulację sum oraz średnich.
-
-        Args:
-            Brak.
-
-        Returns:
-            None.
-        """
+        """Weryfikuje deduplikację po message.id i kalkulację sum oraz średnich."""
         lines = [
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_001",
-                    "role": "assistant",
-                    "usage": {
-                        "input_tokens": 100,
-                        "cache_read_input_tokens": 500,
-                        "cache_creation_input_tokens": 50,
-                    },
-                    "content": [{"type": "text", "text": "Pierwsza odpowiedź"}],
-                },
-            },
+            make_message_entry(msg_id="msg_001", input_tokens=100, cache_read=500, cache_creation=50),
             # Zduplikowana linia z tym samym message.id
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_001",
-                    "role": "assistant",
-                    "usage": {
-                        "input_tokens": 100,
-                        "cache_read_input_tokens": 500,
-                        "cache_creation_input_tokens": 50,
-                    },
-                    "content": [{"type": "text", "text": "Pierwsza odpowiedź"}],
-                },
-            },
+            make_message_entry(msg_id="msg_001", input_tokens=100, cache_read=500, cache_creation=50),
             # Druga unikalna wiadomość
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_002",
-                    "role": "assistant",
-                    "usage": {
-                        "input_tokens": 200,
-                        "cache_read_input_tokens": 1000,
-                        "cache_creation_input_tokens": 100,
-                    },
-                    "content": [{"type": "text", "text": "Druga odpowiedź"}],
-                },
-            },
+            make_message_entry(msg_id="msg_002", input_tokens=200, cache_read=1000, cache_creation=100),
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             session_file = Path(tmpdir) / "test_session.jsonl"
-            with open(session_file, "w", encoding="utf-8") as f:
-                for entry in lines:
-                    f.write(json.dumps(entry) + "\n")
+            write_jsonl(session_file, lines)
 
             stats = parse_session_file(session_file)
 
             self.assertEqual(stats.session_id, "test_session")
             self.assertEqual(stats.api_calls, 2)
             self.assertEqual(stats.cache_read_sum, 1500)
-            self.assertAlmostEqual(stats.cache_read_avg, 750.0)
             self.assertAlmostEqual(stats.avg_context, 975.0)
 
     def test_parse_session_counts_tool_calls_with_deduplication(self) -> None:
-        """Weryfikuje zliczanie wywołań Read oraz Bash (grep/find/ls) z deduplikacją.
-
-        Args:
-            Brak.
-
-        Returns:
-            None.
-        """
+        """Weryfikuje zliczanie wywołań Read oraz Bash (grep/find/ls) z deduplikacją."""
         lines = [
-            # Wiadomość z Read i Bash grep
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_101",
-                    "role": "assistant",
-                    "usage": {"input_tokens": 10, "cache_read_input_tokens": 10},
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tool_read_1",
-                            "name": "Read",
-                            "input": {"path": "src/main.py"},
-                        },
-                        {
-                            "type": "tool_use",
-                            "id": "tool_bash_1",
-                            "name": "Bash",
-                            "input": {"command": "grep -rn 'foo' src/"},
-                        },
-                    ],
-                },
-            },
-            # Powtórzona linia z tym samym message i tool_use IDs
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_101",
-                    "role": "assistant",
-                    "usage": {"input_tokens": 10, "cache_read_input_tokens": 10},
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tool_read_1",
-                            "name": "Read",
-                            "input": {"path": "src/main.py"},
-                        },
-                        {
-                            "type": "tool_use",
-                            "id": "tool_bash_1",
-                            "name": "Bash",
-                            "input": {"command": "grep -rn 'foo' src/"},
-                        },
-                    ],
-                },
-            },
-            # Kolejna wiadomość: find, ls oraz git status (inny bash) oraz kolejny Read
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_102",
-                    "role": "assistant",
-                    "usage": {"input_tokens": 20, "cache_read_input_tokens": 20},
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tool_read_2",
-                            "name": "Read",
-                            "input": {"path": "README.md"},
-                        },
-                        {
-                            "type": "tool_use",
-                            "id": "tool_bash_2",
-                            "name": "Bash",
-                            "input": {"command": "find . -name '*.md'"},
-                        },
-                        {
-                            "type": "tool_use",
-                            "id": "tool_bash_3",
-                            "name": "Bash",
-                            "input": {"command": "ls -la docs/"},
-                        },
-                        {
-                            "type": "tool_use",
-                            "id": "tool_bash_4",
-                            "name": "Bash",
-                            "input": {"command": "git status"},
-                        },
-                    ],
-                },
-            },
+            make_message_entry(
+                msg_id="msg_101",
+                input_tokens=10,
+                cache_read=10,
+                content=[
+                    {
+                        "type": "tool_use",
+                        "id": "tool_read_1",
+                        "name": "Read",
+                        "input": {"path": "src/main.py"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_bash_1",
+                        "name": "Bash",
+                        "input": {"command": "grep -rn 'foo' src/"},
+                    },
+                ],
+            ),
+            make_message_entry(
+                msg_id="msg_101",
+                input_tokens=10,
+                cache_read=10,
+                content=[
+                    {
+                        "type": "tool_use",
+                        "id": "tool_read_1",
+                        "name": "Read",
+                        "input": {"path": "src/main.py"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_bash_1",
+                        "name": "Bash",
+                        "input": {"command": "grep -rn 'foo' src/"},
+                    },
+                ],
+            ),
+            make_message_entry(
+                msg_id="msg_102",
+                input_tokens=20,
+                cache_read=20,
+                content=[
+                    {
+                        "type": "tool_use",
+                        "id": "tool_read_2",
+                        "name": "Read",
+                        "input": {"path": "README.md"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_bash_2",
+                        "name": "Bash",
+                        "input": {"command": "find . -name '*.md'"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_bash_3",
+                        "name": "Bash",
+                        "input": {"command": "ls -la docs/"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_bash_4",
+                        "name": "Bash",
+                        "input": {"command": "git status"},
+                    },
+                ],
+            ),
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             session_file = Path(tmpdir) / "tool_session.jsonl"
-            with open(session_file, "w", encoding="utf-8") as f:
-                for entry in lines:
-                    f.write(json.dumps(entry) + "\n")
+            write_jsonl(session_file, lines)
 
             stats = parse_session_file(session_file)
 
             self.assertEqual(stats.read_count, 2)
-            # Bash grep (1) + find (1) + ls (1) = 3 wywołania; git status nie powinien być liczony
             self.assertEqual(stats.bash_grep_find_ls, 3)
 
     def test_find_sessions_locates_jsonl_recursively(self) -> None:
-        """Weryfikuje rekursywne wyszukiwanie plików .jsonl w zadanym katalogu.
-
-        Args:
-            Brak.
-
-        Returns:
-            None.
-        """
+        """Weryfikuje rekursywne wyszukiwanie plików .jsonl w zadanym katalogu."""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             p1 = root / "proj1"
@@ -226,20 +189,11 @@ class TestSessionUsage(unittest.TestCase):
             self.assertEqual(sorted(found_names), ["session1.jsonl", "session2.jsonl"])
 
     def test_format_table_renders_expected_columns(self) -> None:
-        """Weryfikuje formatowanie tabeli tekstowej z podsumowaniem sesji.
-
-        Args:
-            Brak.
-
-        Returns:
-            None.
-        """
+        """Weryfikuje formatowanie tabeli tekstowej z podsumowaniem sesji."""
         stats1 = SessionStats(
             session_id="sess-001",
-            file_path=Path("/tmp/sess-001.jsonl"),
             api_calls=10,
             cache_read_sum=50000,
-            cache_read_avg=5000.0,
             avg_context=12000.5,
             bash_grep_find_ls=4,
             read_count=2,
@@ -255,35 +209,15 @@ class TestSessionUsage(unittest.TestCase):
         self.assertIn("Read", table)
         self.assertIn("sess-001", table)
         self.assertIn("50000", table)
+        self.assertIn("5000.0", table)
 
     def test_main_cli_execution(self) -> None:
-        """Weryfikuje poprawne wykonanie funkcji main przez CLI z argumentem katalogu.
-
-        Args:
-            Brak.
-
-        Returns:
-            None.
-        """
-        lines = [
-            {
-                "type": "assistant",
-                "message": {
-                    "id": "msg_main",
-                    "role": "assistant",
-                    "usage": {
-                        "input_tokens": 50,
-                        "cache_read_input_tokens": 100,
-                        "cache_creation_input_tokens": 0,
-                    },
-                    "content": [],
-                },
-            }
-        ]
+        """Weryfikuje poprawne wykonanie funkcji main przez CLI z argumentem katalogu."""
+        lines = [make_message_entry(msg_id="msg_main", input_tokens=50, cache_read=100, cache_creation=0)]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "cli_test.jsonl"
-            file_path.write_text(json.dumps(lines[0]) + "\n", encoding="utf-8")
+            write_jsonl(file_path, lines)
 
             stdout_capture = io.StringIO()
             with patch("sys.stdout", stdout_capture):

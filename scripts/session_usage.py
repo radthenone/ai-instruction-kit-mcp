@@ -22,10 +22,8 @@ class SessionStats:
     """Statystyki pojedynczej sesji Claude Code."""
 
     session_id: str
-    file_path: Path
     api_calls: int = 0
     cache_read_sum: int = 0
-    cache_read_avg: float = 0.0
     avg_context: float = 0.0
     bash_grep_find_ls: int = 0
     read_count: int = 0
@@ -101,15 +99,12 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
     except OSError:
         pass
 
-    cache_read_avg = (total_cache_read / api_calls) if api_calls > 0 else 0.0
     avg_context = (total_context / api_calls) if api_calls > 0 else 0.0
 
     return SessionStats(
         session_id=session_id,
-        file_path=path,
         api_calls=api_calls,
         cache_read_sum=total_cache_read,
-        cache_read_avg=cache_read_avg,
         avg_context=avg_context,
         bash_grep_find_ls=bash_grep_find_ls,
         read_count=read_count,
@@ -156,12 +151,13 @@ def format_table(stats_list: list[SessionStats]) -> str:
 
     rows: list[list[str]] = []
     for s in stats_list:
+        cache_read_avg = (s.cache_read_sum / s.api_calls) if s.api_calls > 0 else 0.0
         rows.append(
             [
                 s.session_id,
                 str(s.api_calls),
                 str(s.cache_read_sum),
-                f"{s.cache_read_avg:.1f}",
+                f"{cache_read_avg:.1f}",
                 f"{s.avg_context:.1f}",
                 str(s.bash_grep_find_ls),
                 str(s.read_count),
