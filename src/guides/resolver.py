@@ -335,6 +335,24 @@ def _brief_clients(raw: object) -> tuple[str, tuple[str, ...]]:
     return format_clients_arg(parsed), tuple(expand_clients(parsed))
 
 
+CODEGRAPH_START = "<!-- CODEGRAPH_START -->"
+CODEGRAPH_END = "<!-- CODEGRAPH_END -->"
+
+
+def extract_codegraph_section(text: str) -> str:
+    """Wyciągnij treść przewodnika CodeGraph (ze znaczników lub po frontmatterze)."""
+    if CODEGRAPH_START in text and CODEGRAPH_END in text:
+        start = text.index(CODEGRAPH_START) + len(CODEGRAPH_START)
+        end = text.index(CODEGRAPH_END, start)
+        return text[start:end].strip()
+    stripped = text.strip()
+    if stripped.startswith("---"):
+        parts = stripped.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2].strip()
+    return stripped
+
+
 def render_project_brief(
     *,
     name: str,
@@ -347,6 +365,7 @@ def render_project_brief(
     overlay_content: str,
     bundle_names: Sequence[str],
     module_ids: Sequence[str],
+    codegraph_content: str | None = None,
 ) -> str:
     """
     Zrenderuj brief projektu z Profilu i overlayu — jedno źródło dla pliku i MCP.
@@ -415,6 +434,10 @@ def render_project_brief(
         else ["", f"### Overlay projektu (`{overlay_rel}`)", "", "_Brak overlay — dodaj fakty repo._"]
     )
 
+    codegraph_section: list[str] = []
+    if codegraph_content and ("claude" in client_ids or not client_ids):
+        codegraph_section = ["", codegraph_content.strip()]
+
     prose = BRIEF_LANGUAGE_PROSE.get(language, BRIEF_LANGUAGE_PROSE["pl"])
     return "\n".join(
         [
@@ -433,6 +456,7 @@ def render_project_brief(
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
             *overlay_section,
+            *codegraph_section,
         ]
     )
 
@@ -735,7 +759,13 @@ def _routed_module_ids(
     lang_module = mappings.languages.module_for(language)
     core_ids = [
         mid
-        for mid in ("core:repo-first", lang_module, "core:external-knowledge", "core:tooling-rtk")
+        for mid in (
+            "core:repo-first",
+            lang_module,
+            "core:external-knowledge",
+            "core:tooling-rtk",
+            "core:tooling-codegraph",
+        )
         if mid in manifest.modules
     ]
     return _merge_unique(core_ids, selected)
@@ -862,6 +892,7 @@ def _collect_module_ids(
                 mappings.languages.module_for(language),
                 "core:external-knowledge",
                 "core:tooling-rtk",
+                "core:tooling-codegraph",
             ],
             module_ids,
         )
@@ -1120,6 +1151,20 @@ def resolve_profile(
     deprecated_aliases = used_aliases(profile_data, manifest.mappings)
     lang_module = manifest.mappings.languages.module_for(language)
     project_name = str(profile_data.get("name", resolved_workspace.name))
+    codegraph_content: str | None = None
+    if "core:tooling-codegraph" in enabled_modules:
+        mod_info = manifest.modules.get("core:tooling-codegraph")
+        if mod_info and mod_info.path.is_file():
+            codegraph_content = mod_info.path.read_text(encoding="utf-8").strip()
+    if not codegraph_content:
+        for candidate in (
+            resolved_workspace / ".cursor" / "rules" / "codegraph.mdc",
+            manifest.kit_root / ".cursor" / "rules" / "codegraph.mdc",
+        ):
+            if candidate.is_file():
+                codegraph_content = extract_codegraph_section(candidate.read_text(encoding="utf-8"))
+                break
+
     project_brief = render_project_brief(
         name=project_name,
         language=language,
@@ -1131,6 +1176,7 @@ def resolve_profile(
         overlay_content=overlay_content,
         bundle_names=list(bundles),
         module_ids=enabled_modules,
+        codegraph_content=codegraph_content,
     )
 
     index_lines = []
