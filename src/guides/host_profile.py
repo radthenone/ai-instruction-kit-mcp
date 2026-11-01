@@ -155,6 +155,22 @@ def _is_wsl(env: dict[str, str] | os._Environ) -> bool:
     return "microsoft" in version or "wsl" in version
 
 
+def _guard_int(env: dict[str, str] | os._Environ, name: str) -> int | None:
+    """Liczba z env testowego server-guarda (``""`` / śmieci → ``None``)."""
+    raw = env.get(name)
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        return None
+
+
+def _guard_bool(env: dict[str, str] | os._Environ, name: str) -> bool:
+    """Flaga ``GUARD_*`` w konwencji server-guarda (``1`` = prawda)."""
+    return str(env.get(name, "")) == "1"
+
+
 def detect_host_profile(
     *,
     env: dict[str, str] | os._Environ | None = None,
@@ -191,6 +207,21 @@ def detect_host_profile(
     if override is not None:
         return override
 
+    # Te same cochy testowe co server-guard.mjs (parzystość decyzji 1:1).
+    # Jawne argumenty funkcji mają pierwszeństwo — używają ich testy jednostkowe.
+    if platform is None and "GUARD_PLATFORM" in env:
+        platform = str(env["GUARD_PLATFORM"])
+    if cpu_count is None and "GUARD_CPU_COUNT" in env:
+        cpu_count = _guard_int(env, "GUARD_CPU_COUNT")
+    if virt is None and "GUARD_VIRT" in env:
+        virt = str(env["GUARD_VIRT"])
+    if has_desktop is None and "GUARD_HAS_DESKTOP" in env:
+        has_desktop = _guard_bool(env, "GUARD_HAS_DESKTOP")
+    if is_ci is None and "GUARD_IS_CI" in env:
+        is_ci = _guard_bool(env, "GUARD_IS_CI")
+    if is_wsl is None and "GUARD_IS_WSL" in env:
+        is_wsl = _guard_bool(env, "GUARD_IS_WSL")
+
     plat = sys.platform if platform is None else platform
     if not plat.startswith("linux"):
         return LOCAL_PROFILE
@@ -208,7 +239,12 @@ def detect_host_profile(
         return LOCAL_PROFILE
 
     cpu = os.cpu_count() if cpu_count is None else cpu_count
-    if mem_total_bytes is None or swap_total_bytes is None:
+    guard_mem = "GUARD_MEM_BYTES" in env or "GUARD_SWAP_BYTES" in env
+    if guard_mem and mem_total_bytes is None and swap_total_bytes is None:
+        # Jak w server-guardzie: obecność którejkolwiek zmiennej wyłącza /proc/meminfo.
+        mem_total_bytes = _guard_int(env, "GUARD_MEM_BYTES")
+        swap_total_bytes = _guard_int(env, "GUARD_SWAP_BYTES")
+    elif mem_total_bytes is None or swap_total_bytes is None:
         live_mem, live_swap = _read_meminfo()
         if mem_total_bytes is None:
             mem_total_bytes = live_mem

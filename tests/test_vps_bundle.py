@@ -64,6 +64,11 @@ class TestVpsBundle(unittest.TestCase):
         for stack in ("django", "fastapi", "flask", "angular", "react", "expo"):
             self.assertNotIn(stack, lowered)
 
+    def test_vps_module_names_host_source(self) -> None:
+        text = (KIT_ROOT / "modules" / "infra" / "vps-lightweight.md").read_text(encoding="utf-8")
+        self.assertIn("kit-ai host", text)
+        self.assertIn("kit-ai night-ctx", text)
+
 
 if __name__ == "__main__":
     unittest.main()

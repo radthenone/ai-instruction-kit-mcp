@@ -95,6 +95,33 @@ class TestLabelSet(unittest.TestCase):
         self.assertEqual(state, set(triage_names(KIT_ROOT).values()))
         self.assertEqual(set(STATE_LABELS), set(triage_names(KIT_ROOT)))
 
+    def test_create_task_mentions_needs_local_criteria_and_split(self) -> None:
+        """Procedura create-task wymienia kryteria propozycji `needs-local` i podział z blocked_by."""
+        text = (AGENTS / "create-task.md").read_text(encoding="utf-8")
+        self.assertIn("needs-local", text)
+        self.assertIn("blocked_by", text)
+        for keyword in ("lockfile", "urządzeni", "ręczn", "sprzęt"):
+            self.assertTrue(keyword in text.lower(), f"brak słowa kluczowego {keyword} w create-task.md")
+        self.assertTrue(
+            "podział" in text.lower() or "dziel" in text.lower(),
+            "brak opisu podziału na dwa issue w create-task.md",
+        )
+
+    def test_triage_labels_doc_describes_needs_local(self) -> None:
+        """Dokumentacja etykiet opisuje `needs-local`, warunek wykonania i sposób zdjęcia."""
+        doc = (KIT_ROOT / "docs" / "agents" / "triage-labels.md").read_text(encoding="utf-8")
+        self.assertIn("needs-local", doc)
+        self.assertIn("ready-for-agent", doc)
+        self.assertNotIn("| `needs-local`", doc)
+        self.assertTrue(
+            "warunek wykonania" in doc.lower() or "execution condition" in doc.lower(),
+            "brak wzmianki, że to warunek wykonania / execution condition",
+        )
+        self.assertTrue(
+            "zdjąć" in doc.lower() or "remove" in doc.lower(),
+            "brak opisu zdjęcia etykiety przez użytkownika",
+        )
+
     def test_every_type_has_category_row(self) -> None:
         names = {label.name for label in read_label_set(KIT_ROOT)}
         self.assertEqual({n for n in names if n.startswith("type: ")}, set(CATEGORY))
@@ -166,6 +193,14 @@ class TestEnsureLabels(unittest.TestCase):
         self.assertNotIn("type: feature", created)
         self.assertTrue(all("--force" not in c for c in gh.calls))
         self.assertIn(f"created: {len(created)}", report)
+
+    def test_needs_local_is_always_provisioned(self) -> None:
+        """`needs-local` (warunek wykonania, nie stan triage) wchodzi nawet przy Tierach none."""
+        ws = _workspace(self.root)
+        gh = FakeGh([])
+        report = ensure_labels(ws, KIT_ROOT, dry_run=True, run=gh)
+        self.assertIn("+ needs-local", report)
+        self.assertEqual(gh.created(), [])
 
     def test_tier_none_skips_scope(self) -> None:
         ws = _workspace(self.root, web="react")

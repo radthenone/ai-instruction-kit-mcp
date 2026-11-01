@@ -2,6 +2,7 @@
 name: kit-project-edit
 description: Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i blokach project:rules w BUGBOT.md / project:agents w AGENTS.md. Use when /kit-project-edit, "zmień web na angular", "nie zgadzam się z modułem X", "napraw zgłoszenia doctora". Wywołuj jako /kit-project-edit.
 model-tier: standard
+classification: procedure
 ---
 
 ## Reguły wspólne
@@ -49,7 +50,7 @@ Cały wywiad od zera: /kit-project-begin
    | Model przejęcia ticketu nocnego (#257) | Profil: `models.claude.takeover` | `haiku` \| `sonnet` \| `opus` \| `fable` (tylko Claude; brak = model sesji) |
    | Pytanie tak/nie (docker, taskfile, ci-cd, …) | Profil `include:` / `patterns:` | Wpisy z linii `Zapis` pytania |
    | Ścieżka Tieru, inna sekcja | `.ai/project.md` | Tekst użytkownika |
-   | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (wyjątki `allow` wygrywają z deny) |
+   | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (allow projektu > deny projektu > lista kita) |
 
    Wartość spoza dozwolonych → pokaż listę, nie zgaduj. Brak Stacka w katalogu → `none` +
    podpowiedź `/create-task` w repo kita.

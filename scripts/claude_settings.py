@@ -3,8 +3,10 @@
 Scal / usuń wpisy guardraili kita w `.claude/settings.json` projektu.
 
 Użycie:
-    claude_settings.py install TARGET_SETTINGS TEMPLATE_SETTINGS
-    claude_settings.py prune   TARGET_SETTINGS
+    claude_settings.py install     TARGET_SETTINGS TEMPLATE_SETTINGS
+    claude_settings.py prune       TARGET_SETTINGS
+    claude_settings.py sync-local  TARGET_LOCAL_SETTINGS
+    claude_settings.py prune-local TARGET_LOCAL_SETTINGS
 
 `.claude/settings.json` należy do użytkownika — trzyma jego `permissions`, `env`,
 własne hooki. Kit dokłada tam wyłącznie swoje wpisy hooków (PreToolUse, PostToolUse,
@@ -17,6 +19,12 @@ Poza hookami kit dokłada marketplace i plugin Superpowers (`KIT_PLUGIN_SETTINGS
 Claude Code sam zaproponował instalację przy otwarciu repo, oraz `env.MCP_TIMEOUT` — przy
 zimnym cache uvx build guides-mcp trwa dłużej niż domyślne 30 s startu serwera MCP. Wpis, który użytkownik już ma
 (np. `false` w `enabledPlugins`), zostaje; prune zabiera tylko wpisy równe kitowym.
+
+`env.PONYTAIL_SUBAGENT_MATCHER` (zawężenie pluginu ponytail do agentów kodu, #316) kit trzyma
+w `.claude/settings.local.json` — poza gitem, bo lista agentów zależy od wersji kita.
+`sync-local` go dopisuje (wartość w postaci kita `^(?!(?:...)$).*` odświeża, ręczną zostawia),
+`prune-local` zdejmuje tylko postać kita. Matcher kita, który wcześniej trafił do
+`settings.json`, install i prune stamtąd usuwają; ręczna wartość zostaje w obu plikach.
 """
 
 from __future__ import annotations
@@ -24,6 +32,11 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+
+KIT_ROOT = Path(__file__).resolve().parents[1]
+AGENTS_DIR = KIT_ROOT / "templates" / "shared" / "agents"
+sys.path.insert(0, str(KIT_ROOT / "src"))
+from guides.agent_classes import KIT_MATCHER_RE, MATCHER_KEY, ponytail_matcher  # noqa: E402
 
 # Wpis należy do kita, jeśli jego komenda odwołuje się do któregoś z tych plików.
 GUARD_MARKERS: tuple[str, ...] = (
@@ -43,6 +56,17 @@ GUARD_MARKERS: tuple[str, ...] = (
 )
 
 
+
+def build_ponytail_matcher(agents_dir: Path | None = None) -> str:
+    """Matcher kita dla `PONYTAIL_SUBAGENT_MATCHER` (domyślnie z szablonów agentów kita)."""
+    return ponytail_matcher(agents_dir or AGENTS_DIR)
+
+
+def is_kit_matcher(value: object) -> bool:
+    """Czy wartość matchera ma postać wyrenderowaną przez kit (także ze starej listy agentów)?"""
+    return isinstance(value, str) and KIT_MATCHER_RE.fullmatch(value) is not None
+
+
 # Klucze ustawień Claude Code dokładane obok hooków — nazwa → wartość kita.
 KIT_PLUGIN_SETTINGS: dict[str, dict] = {
     "extraKnownMarketplaces": {
@@ -53,6 +77,24 @@ KIT_PLUGIN_SETTINGS: dict[str, dict] = {
     "enabledPlugins": {"superpowers@superpowers-marketplace": True},
     "env": {"MCP_TIMEOUT": "90000"},
 }
+
+
+def drop_kit_matcher(settings: dict) -> dict:
+    """
+    Zdejmij z `env` matcher ponytaila w postaci kita; ręczna wartość zostaje.
+
+    Args:
+        settings: Ustawienia (modyfikowane w miejscu).
+
+    Returns:
+        dict: Te same ustawienia; pusty `env` znika.
+    """
+    env = settings.get("env")
+    if isinstance(env, dict) and is_kit_matcher(env.get(MATCHER_KEY)):
+        del env[MATCHER_KEY]
+        if not env:
+            del settings["env"]
+    return settings
 
 
 def strip_kit_plugins(settings: dict) -> dict:
@@ -74,7 +116,7 @@ def strip_kit_plugins(settings: dict) -> dict:
                 del block[name]
         if not block:
             del settings[key]
-    return settings
+    return drop_kit_matcher(settings)
 
 
 def merge_kit_plugins(settings: dict) -> dict:
@@ -87,6 +129,7 @@ def merge_kit_plugins(settings: dict) -> dict:
     Returns:
         dict: Te same ustawienia z wpisami kita.
     """
+    drop_kit_matcher(settings)  # matcher żyje w settings.local.json (#316)
     for key, entries in KIT_PLUGIN_SETTINGS.items():
         block = settings.get(key)
         if not isinstance(block, dict):
@@ -115,7 +158,7 @@ def is_kit_entry(entry: dict) -> bool:
 
 def load(path: Path) -> dict:
     """
-    Wczytaj istniejący `settings.json` albo zwróć pusty obiekt.
+    Wczytaj istniejący plik ustawień albo zwróć pusty obiekt.
 
     Args:
         path: Ścieżka do pliku ustawień.
@@ -183,12 +226,46 @@ def write(path: Path, settings: dict) -> None:
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
+def sync_local_settings(target: Path) -> None:
+    """
+    Dopisz matcher ponytaila kita do `env` w `.claude/settings.local.json`.
+
+    Wartość w postaci kita (także ze starej listy agentów) odświeża; ręczną zostawia.
+
+    Args:
+        target: Ścieżka do `.claude/settings.local.json`.
+    """
+    settings = load(target)
+    if not settings and target.is_file() and target.read_text(encoding="utf-8", errors="replace").strip() not in ("", "{}"):
+        # Prywatny plik użytkownika (uprawnienia) — nieczytelnego nie nadpisujemy.
+        print(f"claude_settings: {target} nieczytelny — matcher ponytaila pominięty", file=sys.stderr)
+        return
+    env = settings.get("env")
+    if not isinstance(env, dict):
+        env = settings["env"] = {}
+    if MATCHER_KEY not in env or is_kit_matcher(env[MATCHER_KEY]):
+        env[MATCHER_KEY] = build_ponytail_matcher()
+    write(target, settings)
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 3:
         print(__doc__, file=sys.stderr)
         return 2
 
     mode, target = argv[1], Path(argv[2])
+
+    if mode == "sync-local":
+        sync_local_settings(target)
+        return 0
+    if mode == "prune-local":
+        # Zapis tylko po zdjęciu matchera kita — nieczytelny albo cudzy plik zostaje.
+        local = load(target)
+        env = local.get("env")
+        if isinstance(env, dict) and is_kit_matcher(env.get(MATCHER_KEY)):
+            write(target, drop_kit_matcher(local))
+        return 0
+
     settings = strip_kit_entries(load(target))
 
     if mode == "prune":

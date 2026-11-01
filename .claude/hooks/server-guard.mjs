@@ -14,7 +14,8 @@
  *   4. W pozostałych przypadkach → allow.
  *
  * Polityka zna tylko allow/deny (ADR 0006). Dopasowanie po tokenach od początku
- * segmentu — `allow` wygrywa z `deny`. Szczegóły tabeli: README „Server guard (VPS)”.
+ * segmentu — `server.allow` > `server.deny` > allow kita > deny kita. Szczegóły tabeli:
+ * README „Server guard (VPS)”.
  *
  * Domyślna lista deny jest WBUDOWANA (fallback bez JSON-a) i RENDEROWANA do
  * `server-guard.json` przez `kit-ai reload` (lista kita + rozwinięte wrappery
@@ -50,7 +51,11 @@ const EMBEDDED_DEFAULTS = [
   {"id": "docker-logs-follow", "kind": "deny", "pattern": "^\\s*(?:docker|podman)\\s+logs(?=\\s|$).*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--follow)(?=\\s|$)", "reason": "follow logów trzyma proces i strumień — użyj `docker logs` bez `-f`"},
   {"id": "docker-compose-config", "kind": "deny", "pattern": "^\\s*docker\\s+compose\\s+config(?=\\s|$)", "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
   {"id": "docker-compose-ps", "kind": "allow", "pattern": "^\\s*(?:docker|podman)(?:\\s+|-)compose\\s+ps(?=\\s|$)", "reason": "odczyt stanu kontenerów"},
-  {"id": "uv-sync", "kind": "deny", "pattern": "^\\s*uv\\s+(sync|add|remove|lock)(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
+  {"id": "uv-sync", "kind": "deny", "pattern": "^\\s*uv\\s+sync(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
+  {"id": "uv-add", "kind": "deny", "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)", "reason": "`uv add`/`uv remove` instaluje i kompiluje — tylko `uv add|remove <pkg> --no-sync --no-build` zmienia sam lockfile; inaczej zależności zmieniają się na PC albo w CI"},
+  {"id": "uv-lock", "kind": "deny", "pattern": "^\\s*uv\\s+lock(?=\\s|$)", "reason": "`uv lock` bez `--no-build` buduje projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"},
+  {"id": "uv-add-lock-only", "kind": "allow", "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:sync|build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-sync(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))", "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"},
+  {"id": "uv-lock-only", "kind": "allow", "pattern": "^\\s*uv\\s+lock(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))", "reason": "rozwiązanie wersji tylko do lockfile — bez builda"},
   {"id": "uv-pip-install", "kind": "deny", "pattern": "^\\s*uv\\s+pip\\s+(?:install|sync)(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
   {"id": "uv-tool-install", "kind": "deny", "pattern": "^\\s*uv\\s+tool\\s+install(?=\\s|$)", "reason": "`uv tool install` pobiera paczkę z sieci — narzędzia instaluj na PC albo w CI"},
   {"id": "pip-install", "kind": "deny", "pattern": "^\\s*pip(?:3(?:\\.\\d+)?)?\\s+install(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"},
@@ -58,10 +63,13 @@ const EMBEDDED_DEFAULTS = [
   {"id": "uv-run-no-sync", "kind": "allow", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$)).*?--no-sync", "reason": "uruchomienie bez synchronizacji"},
   {"id": "uv-run-with", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$).*--with(?:-requirements|-editable)?(?=[\\s=]|$)", "reason": "`uv run --with` pobiera paczkę z sieci, także z `--no-sync` — zależności instaluj na PC albo w CI"},
   {"id": "uvx", "kind": "deny", "pattern": "^\\s*uvx(?=\\s|$)(?!(?:\\s+-\\S+)*\\s+--offline(?=\\s|$))", "reason": "`uvx` pobiera narzędzie z sieci — użyj `uvx --offline` / `UV_OFFLINE=1` albo `uv run --no-sync python -m …`"},
-  {"id": "bun-pkg", "kind": "deny", "pattern": "^\\s*bun\\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-  {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-  {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
-  {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(?:global\\s+add|install|add|update|up|upgrade|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"},
+  {"id": "bun-pkg", "kind": "deny", "pattern": "^\\s*bun\\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\\s|$)", "reason": "instalacja paczek na serwerze — tylko `bun install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
+  {"id": "bun-install-lock-only", "kind": "allow", "pattern": "^\\s*bun\\s+install(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))", "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"},
+  {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\\s|$)", "reason": "instalacja paczek na serwerze — tylko `npm install --package-lock-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
+  {"id": "npm-install-lock-only", "kind": "allow", "pattern": "^\\s*npm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:package-lock-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:package-lock-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--package-lock-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))", "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"},
+  {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\\s|$)", "reason": "instalacja paczek na serwerze — tylko `pnpm install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
+  {"id": "pnpm-install-lock-only", "kind": "allow", "pattern": "^\\s*pnpm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))", "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"},
+  {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(?:global\\s+add|install|add|update|up|upgrade|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — Yarn nie ma trybu „tylko lockfile” bez skryptów, więc zależności zmieniają się na PC albo w CI"},
   {"id": "yarn-bare", "kind": "deny", "pattern": "^\\s*yarn(?=(?:\\s+(?:--cwd(?:=|\\s+)\\S+|-\\S+))*\\s*$)(?!.*\\s(?:-v|--version|-h|--help)(?=\\s|$))", "reason": "goły `yarn` instaluje zależności — instalacja tylko na PC albo w CI"},
   {"id": "shadcn", "kind": "deny", "pattern": "^\\s*shadcn(?:@\\S+)?\\s+(?:init|add)(?=\\s|$)", "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
   {"id": "expo-install", "kind": "deny", "pattern": "^\\s*expo(?:@\\S+)?\\s+install(?=\\s|$)", "reason": "`expo install` zmienia zależności — instalacja tylko na PC albo w CI"},
@@ -536,7 +544,9 @@ function checkCommand(cmd) {
     const offline = envOffline || assigns.UV_OFFLINE === "1";
     for (const form of forms) {
       let denyHit = null;
+      let projectDenyHit = null;
       let allowHit = null;
+      let projectAllowHit = null;
       for (const rule of rules) {
         if (noSync && ruleOrigin(rule) === "uv-run") continue;
         if (offline && ruleOrigin(rule) === "uvx") continue;
@@ -547,12 +557,21 @@ function checkCommand(cmd) {
           continue;
         }
         if (!matched) continue;
-        if (rule.kind === "allow") allowHit = allowHit || rule;
-        else if (!denyHit) denyHit = rule;
+        if (rule.kind === "allow") {
+          if (String(rule.id).startsWith("project-allow:")) projectAllowHit = projectAllowHit || rule;
+          else allowHit = allowHit || rule;
+        } else if (String(rule.id).startsWith("project-deny:")) {
+          projectDenyHit = projectDenyHit || rule;
+        } else if (!denyHit) {
+          denyHit = rule;
+        }
       }
-      if (!denyHit || allowHit) continue;
-      if (ruleOrigin(denyHit) !== "uv-run") return denyHit;
-      fallback = fallback || denyHit;
+      // `server.allow` > `server.deny` > allow kita > deny kita (#317: `server.deny`
+      // musi móc zablokować domyślną formę lock-only).
+      const hit = projectAllowHit || projectDenyHit || allowHit || denyHit;
+      if (!hit || hit.kind === "allow") continue;
+      if (ruleOrigin(hit) !== "uv-run") return hit;
+      fallback = fallback || hit;
     }
   }
   return fallback;

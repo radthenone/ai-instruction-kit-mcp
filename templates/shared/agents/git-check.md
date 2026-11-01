@@ -2,6 +2,7 @@
 name: git-check
 description: Sync GitHub issue title/body to actual file diffs. Use when /git-check, issue stale vs branch work. Wywołuj jako /git-check.
 model-tier: light
+classification: procedure
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

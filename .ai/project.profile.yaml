@@ -19,7 +19,7 @@ overlays:
 
 agents:
   light: cleanup,git-check,git-commit,git-end,git-start,headless
-  standard: create-skill,create-task,kit-project-begin,kit-project-edit,review-architecture,review-backend,review-bugbot,review-frontend,review-security,review-tests,review-ui,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend
+  standard: create-skill,create-task,kit-project-begin,kit-project-edit,review-architecture,review-backend,review-bugbot,review-frontend,review-security,review-tests,review-ui,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend,night-run-ticket
   heavy: night-run,review-edge
 
 models:

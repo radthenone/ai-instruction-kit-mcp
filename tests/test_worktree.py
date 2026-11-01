@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from guides.doctor import run_doctor
 from guides.worktree import (
@@ -23,6 +24,15 @@ from guides.worktree import (
 )
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def setUpModule() -> None:
+    """Doctor czyta pluginy z pustego CLAUDE_HOME, nie z prawdziwego ~/.claude (#316)."""
+    tmp = tempfile.TemporaryDirectory()
+    unittest.addModuleCleanup(tmp.cleanup)
+    patcher = mock.patch.dict(os.environ, {"CLAUDE_HOME": tmp.name})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
 
 
 class TestWorktreeConfig(unittest.TestCase):

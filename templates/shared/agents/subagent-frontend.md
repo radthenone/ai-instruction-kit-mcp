@@ -4,6 +4,7 @@ description: Frontend reviewer do pracy w dwóch okienkach razem z subagent-back
 readonly: true
 tier: client
 model-tier: standard
+classification: code
 ---
 
 ## Reguły wspólne (obowiązkowe)

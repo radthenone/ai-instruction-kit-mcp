@@ -59,8 +59,32 @@
     {
       "id": "uv-sync",
       "kind": "deny",
-      "pattern": "^\\s*uv\\s+(sync|add|remove|lock)(?=\\s|$)",
+      "pattern": "^\\s*uv\\s+sync(?=\\s|$)",
       "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"
+    },
+    {
+      "id": "uv-add",
+      "kind": "deny",
+      "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)",
+      "reason": "`uv add`/`uv remove` instaluje i kompiluje — tylko `uv add|remove <pkg> --no-sync --no-build` zmienia sam lockfile; inaczej zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "uv-lock",
+      "kind": "deny",
+      "pattern": "^\\s*uv\\s+lock(?=\\s|$)",
+      "reason": "`uv lock` bez `--no-build` buduje projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"
+    },
+    {
+      "id": "uv-add-lock-only",
+      "kind": "allow",
+      "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:sync|build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-sync(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))",
+      "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"
+    },
+    {
+      "id": "uv-lock-only",
+      "kind": "allow",
+      "pattern": "^\\s*uv\\s+lock(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))",
+      "reason": "rozwiązanie wersji tylko do lockfile — bez builda"
     },
     {
       "id": "uv-pip-install",
@@ -108,25 +132,43 @@
       "id": "bun-pkg",
       "kind": "deny",
       "pattern": "^\\s*bun\\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\\s|$)",
-      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+      "reason": "instalacja paczek na serwerze — tylko `bun install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "bun-install-lock-only",
+      "kind": "allow",
+      "pattern": "^\\s*bun\\s+install(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))",
+      "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"
     },
     {
       "id": "npm-pkg",
       "kind": "deny",
       "pattern": "^\\s*npm\\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\\s|$)",
-      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+      "reason": "instalacja paczek na serwerze — tylko `npm install --package-lock-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "npm-install-lock-only",
+      "kind": "allow",
+      "pattern": "^\\s*npm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:package-lock-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:package-lock-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--package-lock-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))",
+      "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"
     },
     {
       "id": "pnpm-pkg",
       "kind": "deny",
       "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\\s|$)",
-      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+      "reason": "instalacja paczek na serwerze — tylko `pnpm install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"
+    },
+    {
+      "id": "pnpm-install-lock-only",
+      "kind": "allow",
+      "pattern": "^\\s*pnpm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))",
+      "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"
     },
     {
       "id": "yarn-pkg",
       "kind": "deny",
       "pattern": "^\\s*yarn\\s+(?:global\\s+add|install|add|update|up|upgrade|remove)(?=\\s|$)",
-      "reason": "instalacja paczek na serwerze — zależności zmieniają się na PC albo w CI"
+      "reason": "instalacja paczek na serwerze — Yarn nie ma trybu „tylko lockfile” bez skryptów, więc zależności zmieniają się na PC albo w CI"
     },
     {
       "id": "yarn-bare",

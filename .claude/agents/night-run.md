@@ -25,7 +25,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
   lub promptu ticketu), by działały na modelu z frontmattera agenta, nie sesji:
   - **Claude Code:** agent o nazwie komendy jest w `.claude/agents/<nazwa>.md` → **Agent**
     tego typu bez parametru `model` (model bierze się z frontmattera); brak agenta →
-    **Skill**. Subagent uruchamia kolejne komendy-agentów (do 3 poziomów,
+    **Skill**. Subagent ticketu uruchamiasz typem `night-run-ticket` (nie `general-purpose`). Subagent uruchamia kolejne komendy-agentów (do 3 poziomów,
     `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), więc `/git-*` zostają wewnątrz subagenta
     ticketu, a orkiestrator nie dostaje z nich tur. Sam `/night-run` działa w głównej
     sesji (w Claude uruchamiany Skillem, nie Agentem): potrzebuje `CronCreate` i watchdoga.
@@ -147,6 +147,9 @@ nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie
   przełączonym stanem): `design: layout` bez `docs/design/<N>.md` na bazie
   (`git cat-file -e origin/$BASE:docs/design/<N>.md` pada) → `skipped: design spec missing`;
   `design: tokens` → `skipped: design: tokens`.
+- Warunek wykonania `needs-local` (także z listy ręcznej i przy `ready-for-agent`):
+  - na hoście `vps` (`Host: vps` z nagłówka CTX / `kit-ai host`) → pomijasz, w raporcie `skipped: needs-local`;
+  - na hoście `local` (`Host: local`) → bierzesz normalnie (bez pomijania).
 
 ### 5. Kolejność
 
@@ -161,9 +164,12 @@ raz na noc, poniżej ~150 linii, sekcje. Wszędzie (prompt ticketu, `CronCreate`
 pełna ścieżka z `$HOME` zamiast `~`. `~/.cache` przeżywa restart hosta, `/tmp` nie —
 nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 
-- **Nagłówek:** BASE, `Host: vps | local` (ustalany raz: bundle z MCP `get_bundle`
-  zawiera `infra:vps-lightweight` → `vps`, inaczej `local`), bramki szybkie, „pełny zestaw
-  testów: tylko CI”.
+- **Nagłówek:** uruchom raz na noc w repo `kit-ai night-ctx` i wklej wynik **bez zmian** na
+  początek CTX (BASE, `Host:`, bramki szybkie, język, linia-znacznik generatora
+  `<!-- kit-ai night-ctx v1 host=… -->`). `Host:` pochodzi z `kit-ai host`
+  (`detect_host_profile()`), nie z treści bundla — **nie wnioskujesz go z `get_bundle`**.
+  Wartości oznaczone „założenie” przenieś do NIGHT-RUN REPORT. Znacznika nie usuwaj ani nie
+  edytuj: watchdog kończy noc, gdy go brak albo `host=` nie zgadza się z `kit-ai host`.
 - **Mapa aplikacji:** katalog → co w nim jest, 1 linia.
 - **Konwencje:** same reguły z AGENTS.md, BUGBOT.md, `.ai/project.md`.
 - **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay; brak → „brak danych”.
@@ -190,6 +196,8 @@ więc nie jest mechanizmem oczekiwania.
   w transkrypcie subagenta z `subagent: <id>`. Kończy się, czyli budzi orkiestratora
   powiadomieniem o zakończeniu, tylko gdy:
   - exit 1 `anomalia` — brak postępu > 60 min (subagent failed/bez hand-backu też → tik);
+  - exit 0 `halt` — nagłówek CTX bez znacznika generatora albo `host=` ≠ `kit-ai host`
+    (sprawdzane przy każdym starcie i odnowieniu) → halt C z powodem z linii `halt:`;
   - exit 0 `życie` — minęło 110 min → odnów (niżej);
   - exit 0 `koniec nocy` — w `## Stan` jest `krok: koniec`;
   - exit 0 `wznowienie po pauzie limitu` — wykrył komunikat limitu (429 / „session limit”)
@@ -219,7 +227,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 
 ## Łańcuch na ticket — dokładnie ten
 
-1. **Subagent ticketu** (świeży, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
+1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
    dosłownie. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
@@ -311,7 +319,7 @@ Kroki:
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
    przy `Host: vps` brak CI = brak merge: kroki 7–8 pomijasz, PR otwarty, hand-back needs-human
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
-   hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 2
+   hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 3
    próby); nadal czerwone → needs-human.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
@@ -326,8 +334,13 @@ Reguły:
   nie obchodzisz jej (ta sama komenda spod taska wpisana wprost, `bash -c`, własny skrypt,
   inny interpreter), nie liczysz jej do prób naprawy. Wolno użyć alternatywy wskazanej
   w powodzie deny (np. `uv run --no-sync`, `UV_NO_SYNC=1`, `git stash`). Deny
-  `server-guard:` → komenda trafia do raportu jako „tylko CI”; deny `git-guard:` → zapis
-  w raporcie, a gdy bez tej komendy nie da się skończyć — needs-human.
+  `server-guard:` → komenda trafia do raportu jako „tylko CI”; dla nowej zależności
+  użyj formy „tylko lock” z sekcji VPS, a dopiero jej błąd builda kończy jako needs-human
+  z `needs-local`. Gdy bez tej komendy nie da
+  się ukończyć ticketu (alternatywa nie wystarcza) — kończysz jako needs-human z etykietą
+  `needs-local` zamiast `ready-for-human` (komentarz wskazuje zablokowaną komendę i co zrobiono,
+  branch wypchnięty, PR otwarty bez merge). Deny `git-guard:` → zapis w raporcie, a gdy bez tej
+  komendy nie da się skończyć — needs-human.
 - Praca w tle (CI, dłuższy `pytest`): od razu w tle (w Claude `run_in_background`), jeden
   wzorzec, bez pipe (`| tee` gubi exit code): `<cmd> > <log> 2>&1; echo "EXIT=$?" >> <log>`.
   `<log>` w katalogu <CTX> (`<katalog CTX>/<nazwa>.log`), nigdy w `/tmp` — po restarcie hosta
@@ -341,6 +354,11 @@ Reguły:
   wrappera (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`), i powtarzasz
   go do skutku. To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
   i na powiadomienia nie reaguje narzędziami.
+- Odkrycie części niesprawdzalnej w trakcie pracy: gdy ticket ma część weryfikowalną
+  (VPS + CI) i część niesprawdzalną (testy na telefonie, ręczne UI, sprzęt) — robisz część
+  weryfikowalną, zakładasz dziecko `needs-local` podpięte jako sub-issue i zablokowane
+  (`blocked_by`) przez bieżące issue, z opisem co zostaje i dlaczego, i kontynuujesz łańcuch
+  dla części głównej.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
@@ -365,6 +383,16 @@ Poziomy: **unit** (bez bazy) · **integration-db** (`django_db`: ORM, endpointy,
 ## VPS (tylko przy `Host: vps` w nagłówku CTX)
 
 - Krok odrzucony przez guard (`server-guard:`) → w CTX „tylko CI”, lokalnie idzie reszta.
+- Nowa zależność: aktualizujesz **tylko lockfile** formą dozwoloną przez guard —
+  `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`,
+  `npm install --package-lock-only --ignore-scripts`,
+  `pnpm install --lockfile-only --ignore-scripts`,
+  `bun install --lockfile-only --ignore-scripts`. Każda inna forma to deny; nie
+  obchodzisz go instalacją. Yarn nie ma trybu lock-only — nowa zależność yarn idzie
+  przez `needs-local`.
+- Gdy aktualizacja samego locka pada, bo paczka wymaga builda (uv „no build”,
+  odpowiednik npm/pnpm/bun) → traktujesz to jak blokujący deny z #315: `needs-local`
+  i komentarz z nazwą paczki i powodem. Nie próbujesz `uv sync` / pełnej instalacji.
 - Brak CI = brak merge (krok 6 promptu); nowe e2e: sekcja „Testy”.
 
 ## Zakazy
@@ -379,10 +407,13 @@ szybkich, krok 6 promptu), nigdy push.
 
 **needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 2 próbach naprawy; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
+po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
+błąd builda przy aktualizacji samego lockfile → etykieta
+`needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
 
-**halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów.
+**halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,
+nagłówek CTX bez znacznika `kit-ai night-ctx` albo `host=` ≠ `kit-ai host` (zgłasza watchdog).
 U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypadek D, nie C.
 
 **Limity:** pauzy limitu bez limitu liczby, chyba że cel ustawia `pauzy: N` (po N-tej → halt C); 2 wznowienia na ticket (inne przyczyny) → needs-human.
@@ -409,9 +440,14 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
 
 Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
-`gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
-(`needs-info` zamiast `ready-for-human`, gdy stoi na brakujących danych od zgłaszającego,
-nie na decyzji). Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
+- blokujący deny `server-guard:` → nadaj `needs-local` zamiast `ready-for-human` (nie zdejmuj
+  `ready-for-agent`, `needs-local` to warunek wykonania):
+  `gh issue edit <N> --add-label needs-local`
+- brakujące dane od zgłaszającego → `needs-info` zamiast `ready-for-human`:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`
+- pozostałe przypadki needs-human:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`
+Merge nie rusza etykiet — zamknięte issue wypada z kolejki.
 
 ### Decyzja odwracalna — nie blokuj
 
@@ -438,10 +474,12 @@ Stan kodu: branch <nazwa> wypchnięty / porzucony
 
 ## Tick watchdoga i crona (tylko Claude Code)
 
-Gdy watchdog skończy się (anomalia, życie, wznowienie po pauzie) albo cron wywoła tik,
+Gdy watchdog skończy się (anomalia, życie, wznowienie po pauzie, halt) albo cron wywoła tik,
 robisz tik. To jedyny moment, w którym orkiestrator budzi się bez pracy do wykonania.
 Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents`):
 
+- watchdog `halt` (nagłówek CTX nie z generatora / rozjazd Host) → przypadek C z powodem
+  z linii `halt:`; nie odnawiasz watchdoga;
 - watchdog `życie` albo tik crona, a subagent działa → odnów watchdoga
   (`TaskStop` + start z `timeout: 7200000` + `watchdog:` w `## Stan`); cron bez zmian: jedna linia „ok”, koniec tiku;
 - wznowienie po pauzie → zamknij pauzę w `## Stan`, potem jak w przypadku D i odpala watchdoga;
@@ -499,7 +537,7 @@ w rozmowie (warunek sprawdza transkrypt).
 ```markdown
 ## NIGHT-RUN REPORT
 Baza: <BASE> — <powód>
-Host: <vps | local> (z nagłówka CTX)
+Host: <vps | local> (z `kit-ai host`; nagłówek CTX)
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 Wykonawca: <EXEC / subagent / subagent (brak /headless)> · Review: <skille z argumentów / domyślne>
@@ -516,7 +554,7 @@ Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja g�
 | #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
 | #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
-| #J | skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
+| #J | skipped: needs-local / skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako

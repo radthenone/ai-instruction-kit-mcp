@@ -4,6 +4,7 @@ description: Reviewer backendu — Stack z Tieru backend (MCP get_bundle). Use w
 readonly: true
 tier: backend
 model-tier: standard
+classification: procedure
 ---
 
 Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.

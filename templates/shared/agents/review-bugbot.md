@@ -3,6 +3,7 @@ name: review-bugbot
 description: Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako /review-bugbot.
 readonly: true
 model-tier: standard
+classification: procedure
 ---
 
 Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.

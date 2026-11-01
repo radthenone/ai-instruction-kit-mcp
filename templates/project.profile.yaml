@@ -22,7 +22,7 @@ codegen: orval
 #   guard: auto        # auto (domyślnie) | off
 #   deny:              # dodatki projektu, których automat nie wykryje
 #     - "bunx eas-cli"
-#   allow:             # wyjątki, wygrywają z deny
+#   allow:             # wyjątki projektu (allow projektu > deny projektu > lista kita)
 #     - "task lints:backend:ruff:check"
 
 # Model per tier agenta (light / standard / heavy) i klient — README „Model tiers”.

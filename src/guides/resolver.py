@@ -335,6 +335,50 @@ def _brief_clients(raw: object) -> tuple[str, tuple[str, ...]]:
     return format_clients_arg(parsed), tuple(expand_clients(parsed))
 
 
+CODEGRAPH_MODULE = "core:tooling-codegraph"
+CODEGRAPH_START = "<!-- CODEGRAPH_START -->"
+CODEGRAPH_END = "<!-- CODEGRAPH_END -->"
+
+
+def extract_codegraph_section(text: str) -> str:
+    """
+    Wyciągnij treść przewodnika CodeGraph z reguły Cursora albo modułu kita.
+
+    Args:
+        text: Treść pliku — reguła ``.mdc`` ze znacznikami
+            ``CODEGRAPH_START`` / ``CODEGRAPH_END`` albo Markdown z frontmatterem.
+
+    Returns:
+        str: Treść między znacznikami; bez znaczników — treść po frontmatterze
+            (albo cały tekst), zawsze bez białych znaków na brzegach.
+    """
+    if CODEGRAPH_START in text and CODEGRAPH_END in text:
+        start = text.index(CODEGRAPH_START) + len(CODEGRAPH_START)
+        end = text.index(CODEGRAPH_END, start)
+        return text[start:end].strip()
+    stripped = text.strip()
+    if stripped.startswith("---"):
+        parts = stripped.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2].strip()
+    return stripped
+
+
+def _demote_headings(text: str) -> str:
+    """
+    Obniż nagłówki Markdown o jeden poziom (``##`` → ``###``).
+
+    Args:
+        text: Treść Markdown wstawiana do briefu.
+
+    Returns:
+        str: Treść z nagłówkami pasującymi do sekcji ``###`` briefu.
+    """
+    return "\n".join(
+        f"#{line}" if line.startswith("#") else line for line in text.splitlines()
+    )
+
+
 def render_project_brief(
     *,
     name: str,
@@ -347,6 +391,7 @@ def render_project_brief(
     overlay_content: str,
     bundle_names: Sequence[str],
     module_ids: Sequence[str],
+    codegraph_content: str | None = None,
 ) -> str:
     """
     Zrenderuj brief projektu z Profilu i overlayu — jedno źródło dla pliku i MCP.
@@ -367,6 +412,9 @@ def render_project_brief(
         overlay_content: Treść overlayu (także z nagłówkiem kita).
         bundle_names: Nazwy bundle'i z manifestu.
         module_ids: Włączone moduły (bez modułu hosta).
+        codegraph_content: Treść modułu ``core:tooling-codegraph`` albo ``None``;
+            trafia do briefu tylko, gdy ``clients:`` obejmuje ``claude``
+            (Cursor ma własną regułę ``.cursor/rules/codegraph.mdc``).
 
     Returns:
         str: Treść bloku briefu (bez znaczników ``kit:brief``).
@@ -415,6 +463,10 @@ def render_project_brief(
         else ["", f"### Overlay projektu (`{overlay_rel}`)", "", "_Brak overlay — dodaj fakty repo._"]
     )
 
+    codegraph_section: list[str] = []
+    if codegraph_content and "claude" in client_ids:
+        codegraph_section = ["", _demote_headings(codegraph_content.strip())]
+
     prose = BRIEF_LANGUAGE_PROSE.get(language, BRIEF_LANGUAGE_PROSE["pl"])
     return "\n".join(
         [
@@ -433,6 +485,7 @@ def render_project_brief(
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
             *overlay_section,
+            *codegraph_section,
         ]
     )
 
@@ -684,6 +737,25 @@ def used_aliases(
     return tuple(found)
 
 
+def _core_module_ids(mappings: Mappings, language: str) -> list[str]:
+    """
+    Stały core profilu — jedno źródło dla routingu bundle'i i listy modułów.
+
+    Args:
+        mappings: Mapowania manifestu (moduł języka).
+        language: Znormalizowany język.
+
+    Returns:
+        list[str]: ID modułów core w ustalonej kolejności.
+    """
+    return [
+        "core:repo-first",
+        mappings.languages.module_for(language),
+        "core:external-knowledge",
+        "core:tooling-rtk",
+    ]
+
+
 def _routed_module_ids(
     rule: BundleRule,
     *,
@@ -732,11 +804,8 @@ def _routed_module_ids(
             continue
         selected.append(module_id)
 
-    lang_module = mappings.languages.module_for(language)
     core_ids = [
-        mid
-        for mid in ("core:repo-first", lang_module, "core:external-knowledge", "core:tooling-rtk")
-        if mid in manifest.modules
+        mid for mid in _core_module_ids(mappings, language) if mid in manifest.modules
     ]
     return _merge_unique(core_ids, selected)
 
@@ -856,15 +925,7 @@ def _collect_module_ids(
 
     # Domyślnie core jeśli profil nie wyłącza
     if profile_data.get("core", True):
-        module_ids = _merge_unique(
-            [
-                "core:repo-first",
-                mappings.languages.module_for(language),
-                "core:external-knowledge",
-                "core:tooling-rtk",
-            ],
-            module_ids,
-        )
+        module_ids = _merge_unique(_core_module_ids(mappings, language), module_ids)
 
     if host_profile is None:
         host_profile = detect_host_profile()
@@ -1120,6 +1181,11 @@ def resolve_profile(
     deprecated_aliases = used_aliases(profile_data, manifest.mappings)
     lang_module = manifest.mappings.languages.module_for(language)
     project_name = str(profile_data.get("name", resolved_workspace.name))
+    codegraph_content: str | None = None
+    codegraph_info = manifest.modules.get(CODEGRAPH_MODULE)
+    if profile_data.get("core", True) and codegraph_info and codegraph_info.path.is_file():
+        codegraph_content = codegraph_info.path.read_text(encoding="utf-8").strip()
+
     project_brief = render_project_brief(
         name=project_name,
         language=language,
@@ -1131,6 +1197,7 @@ def resolve_profile(
         overlay_content=overlay_content,
         bundle_names=list(bundles),
         module_ids=enabled_modules,
+        codegraph_content=codegraph_content,
     )
 
     index_lines = []
