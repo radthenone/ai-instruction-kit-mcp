@@ -59,27 +59,18 @@ class TestKitBrief(unittest.TestCase):
 
         instructions = server.build_instructions(resolved)
 
-        # (1) Klasyfikacja: zadanie kodowe i proceduralne
-        self.assertIn("src/", instructions)
-        self.assertIn("tests/", instructions)
-        self.assertIn("/git-", instructions)
-        self.assertIn("/review-", instructions)
-        self.assertIn("/night-run", instructions)
+        self.assertRegex(instructions, r"Zadanie kodowe:\*\*.*src/.*tests/")
+        self.assertRegex(instructions, r"Zadanie proceduralne:\*\*.*/git-.*/review-.*/night-run")
 
-        # (2) Wymóg get_overlay przed pierwszą edycją oraz warunki bez wywołań MCP
-        self.assertIn("get_overlay", instructions)
-        self.assertRegex(instructions, r"(?i)pierwszą edycją")
-        self.assertIn("get_bundle", instructions)
+        self.assertRegex(instructions, r"pierwszą edycją.*get_overlay")
+        self.assertRegex(instructions, r"`get_bundle` gdy brief wskazuje moduł")
+        self.assertRegex(instructions, r"Bez wywołań MCP:\*\*.*pytania o język")
 
-        # (3) Format docstringów
-        self.assertIn("Args/Returns", instructions)
-        self.assertRegex(instructions, r"(?i)docstring")
+        self.assertRegex(instructions, r"Docstringi:\*\*.*Args/Returns")
 
-        # (4) Host
         expected_host = detect_host_profile()
         self.assertIn(f"- **Host:** `{expected_host}`", instructions)
 
-        # (5) Zakaz instalacji na VPS poza lockfile-only (#317)
         self.assertIn("lockfile-only", instructions)
         self.assertIn("VPS", instructions)
 

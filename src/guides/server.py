@@ -49,22 +49,15 @@ _INSTRUCTIONS_RULES = (
     "(koszt mały, błędny fix bez overlay kosztuje dużo).\n"
     "- **Bez wywołań MCP:** pytania o język, bazę lub Tiery (są w briefie), rozmowa, wyjaśnienie, "
     "odpowiedź tekstowa bez zmiany plików.\n"
-    "- **Docstringi:** format repo (Args/Returns, po polsku).\n"
+    "- **Docstringi:** format repo (Args/Returns), język wg Profilu.\n"
     "- **VPS (#317):** na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only "
     "(`uv lock --no-build`, `npm install --package-lock-only --ignore-scripts`)."
 )
 
 _STATIC_INSTRUCTIONS = (
     "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
-    "Przed pierwszą edycją przy zadaniu kodowym (tworzenie, edycja lub debug plików w src/, tests/, templates/, modules/; "
-    "implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany) lub proceduralnym "
-    "(każdy slash command kita: /git-*, /review-*, /create-task, /create-skill, /night-run, /headless, /tdd, /kit-project-*, "
-    "oraz każda czynność zapisu na GitHub) wywołaj get_overlay, a get_bundle gdy brief wskazuje moduł; "
-    "w wątpliwości wywołaj get_overlay (koszt mały, błędny fix bez overlay kosztuje dużo). "
-    "Pytania o język, bazę, Tiery i rozmowa bez zmian plików — bez wywołań MCP (#307). "
-    "Docstringi w formacie repo (Args/Returns, po polsku). "
-    "Na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only (#317). "
-    "Overlay projektu zawiera unikalne ścieżki i taski. "
+    "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
+    "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
     "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
     "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
     "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
@@ -95,7 +88,7 @@ def _get_resolved():
     )
 
 
-def build_instructions(resolved: ResolvedProfile, *, host: str | None = None) -> str:
+def build_instructions(resolved: ResolvedProfile) -> str:
     """
     Instrukcje serwera MCP z wartościami Profilu (#307, #324).
 
@@ -104,12 +97,11 @@ def build_instructions(resolved: ResolvedProfile, *, host: str | None = None) ->
 
     Args:
         resolved: Rozwiązany profil workspace'u.
-        host: Profil hosta (``vps`` / ``local``); domyślnie z ``get_host_profile()``.
 
     Returns:
         str: Brief projektu + krótka mapa narzędzi MCP + reguły i klasyfikacja.
     """
-    current_host = get_host_profile() if host is None else host
+    current_host = get_host_profile()
     return "\n".join(
         [
             f"# project-guides — {resolved.name}",
