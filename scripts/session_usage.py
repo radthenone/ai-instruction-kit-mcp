@@ -6,12 +6,15 @@ według message.id oraz wylicza statystyki zużycia tokenów i narzędzi.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 BASH_EXPLORATION_PATTERN = re.compile(r"\b(grep|find|ls)\b")
+DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 
 @dataclass
@@ -111,3 +114,120 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
         bash_grep_find_ls=bash_grep_find_ls,
         read_count=read_count,
     )
+
+
+def find_sessions(directory: Path | str) -> list[Path]:
+    """Wyszukuje pliki sesji .jsonl w podanej lokalizacji.
+
+    Args:
+        directory: Katalog lub plik do przeszukania.
+
+    Returns:
+        list[Path]: Posortowana lista odnalezionych ścieżek do plików .jsonl.
+    """
+    path = Path(directory).expanduser().resolve()
+    if not path.exists():
+        return []
+
+    if path.is_file():
+        return [path] if path.suffix == ".jsonl" else []
+
+    return sorted(path.rglob("*.jsonl"))
+
+
+def format_table(stats_list: list[SessionStats]) -> str:
+    """Formatuje listę statystyk sesji w czytelną tabelę tekstową.
+
+    Args:
+        stats_list: Lista obiektów statystyk sesji.
+
+    Returns:
+        str: Tekstowa reprezentacja tabeli.
+    """
+    headers = [
+        "Session",
+        "API Calls",
+        "Cache Read Sum",
+        "Cache Read Avg",
+        "Avg Context",
+        "grep/find/ls (Bash)",
+        "Read",
+    ]
+
+    rows: list[list[str]] = []
+    for s in stats_list:
+        rows.append(
+            [
+                s.session_id,
+                str(s.api_calls),
+                str(s.cache_read_sum),
+                f"{s.cache_read_avg:.1f}",
+                f"{s.avg_context:.1f}",
+                str(s.bash_grep_find_ls),
+                str(s.read_count),
+            ]
+        )
+
+    # Obliczanie szerokości kolumn
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for idx, cell in enumerate(row):
+            col_widths[idx] = max(col_widths[idx], len(cell))
+
+    def format_row(row_items: list[str]) -> str:
+        # Pierwsza kolumna wyrównana do lewej, kolumny numeryczne do prawej
+        formatted_cells: list[str] = []
+        for i, val in enumerate(row_items):
+            if i == 0:
+                formatted_cells.append(val.ljust(col_widths[i]))
+            else:
+                formatted_cells.append(val.rjust(col_widths[i]))
+        return " | ".join(formatted_cells)
+
+    separator = "-+-".join("-" * w for w in col_widths)
+
+    lines = [
+        format_row(headers),
+        separator,
+    ]
+    for row in rows:
+        lines.append(format_row(row))
+
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Punkt wejścia CLI dla skryptu analizy zużycia sesji.
+
+    Args:
+        argv: Lista argumentów wiersza poleceń (opcjonalnie).
+
+    Returns:
+        int: Kod zakończenia procesu (0 w przypadku sukcesu).
+    """
+    parser = argparse.ArgumentParser(
+        description="Analiza transkryptów sesji Claude Code pod kątem cache_read i wywołań narzędzi."
+    )
+    parser.add_argument(
+        "directory",
+        nargs="?",
+        default=str(DEFAULT_PROJECTS_DIR),
+        help=f"Katalog z projektami sesji Claude Code (domyślnie: {DEFAULT_PROJECTS_DIR})",
+    )
+
+    args = parser.parse_args(argv)
+    target_path = Path(args.directory).expanduser()
+
+    session_files = find_sessions(target_path)
+    if not session_files:
+        print(f"Nie znaleziono plików sesji (.jsonl) w: {target_path}")
+        return 0
+
+    stats_list = [parse_session_file(f) for f in session_files]
+    table = format_table(stats_list)
+    print(table)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

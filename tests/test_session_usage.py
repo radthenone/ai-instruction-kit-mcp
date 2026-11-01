@@ -6,16 +6,24 @@ oraz wywołań narzędzi Read i Bash (grep/find/ls).
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT_ROOT / "scripts"))
 
-from session_usage import SessionStats, parse_session_file  # noqa: E402
+from session_usage import (  # noqa: E402
+    SessionStats,
+    find_sessions,
+    format_table,
+    main,
+    parse_session_file,
+)
 
 
 class TestSessionUsage(unittest.TestCase):
@@ -192,6 +200,99 @@ class TestSessionUsage(unittest.TestCase):
             self.assertEqual(stats.read_count, 2)
             # Bash grep (1) + find (1) + ls (1) = 3 wywołania; git status nie powinien być liczony
             self.assertEqual(stats.bash_grep_find_ls, 3)
+
+    def test_find_sessions_locates_jsonl_recursively(self) -> None:
+        """Weryfikuje rekursywne wyszukiwanie plików .jsonl w zadanym katalogu.
+
+        Args:
+            Brak.
+
+        Returns:
+            None.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            p1 = root / "proj1"
+            p2 = root / "proj2" / "sub"
+            p1.mkdir(parents=True)
+            p2.mkdir(parents=True)
+
+            (p1 / "session1.jsonl").write_text("{}", encoding="utf-8")
+            (p2 / "session2.jsonl").write_text("{}", encoding="utf-8")
+            (p1 / "notes.txt").write_text("hello", encoding="utf-8")
+
+            found = find_sessions(root)
+            found_names = [p.name for p in found]
+            self.assertEqual(sorted(found_names), ["session1.jsonl", "session2.jsonl"])
+
+    def test_format_table_renders_expected_columns(self) -> None:
+        """Weryfikuje formatowanie tabeli tekstowej z podsumowaniem sesji.
+
+        Args:
+            Brak.
+
+        Returns:
+            None.
+        """
+        stats1 = SessionStats(
+            session_id="sess-001",
+            file_path=Path("/tmp/sess-001.jsonl"),
+            api_calls=10,
+            cache_read_sum=50000,
+            cache_read_avg=5000.0,
+            avg_context=12000.5,
+            bash_grep_find_ls=4,
+            read_count=2,
+        )
+        table = format_table([stats1])
+
+        self.assertIn("Session", table)
+        self.assertIn("API Calls", table)
+        self.assertIn("Cache Read Sum", table)
+        self.assertIn("Cache Read Avg", table)
+        self.assertIn("Avg Context", table)
+        self.assertIn("grep/find/ls", table)
+        self.assertIn("Read", table)
+        self.assertIn("sess-001", table)
+        self.assertIn("50000", table)
+
+    def test_main_cli_execution(self) -> None:
+        """Weryfikuje poprawne wykonanie funkcji main przez CLI z argumentem katalogu.
+
+        Args:
+            Brak.
+
+        Returns:
+            None.
+        """
+        lines = [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_main",
+                    "role": "assistant",
+                    "usage": {
+                        "input_tokens": 50,
+                        "cache_read_input_tokens": 100,
+                        "cache_creation_input_tokens": 0,
+                    },
+                    "content": [],
+                },
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "cli_test.jsonl"
+            file_path.write_text(json.dumps(lines[0]) + "\n", encoding="utf-8")
+
+            stdout_capture = io.StringIO()
+            with patch("sys.stdout", stdout_capture):
+                exit_code = main([tmpdir])
+
+            output = stdout_capture.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("cli_test", output)
+            self.assertIn("API Calls", output)
 
 
 if __name__ == "__main__":
