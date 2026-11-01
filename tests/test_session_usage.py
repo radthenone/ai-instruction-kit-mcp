@@ -171,6 +171,34 @@ class TestSessionUsage(unittest.TestCase):
             self.assertEqual(stats.read_count, 2)
             self.assertEqual(stats.bash_grep_find_ls, 3)
 
+    def test_tool_use_without_id_is_not_deduplicated(self) -> None:
+        """Weryfikuje, że wywołania narzędzi bez identyfikatora id nie podlegają deduplikacji."""
+        lines = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Read", "input": {"path": "a.txt"}},
+                    ],
+                },
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Read", "input": {"path": "b.txt"}},
+                    ],
+                },
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_file = Path(tmpdir) / "no_id_tools.jsonl"
+            write_jsonl(session_file, lines)
+
+            stats = parse_session_file(session_file)
+            self.assertEqual(stats.read_count, 2)
+
     def test_find_sessions_locates_jsonl_recursively(self) -> None:
         """Weryfikuje rekursywne wyszukiwanie plików .jsonl w zadanym katalogu."""
         with tempfile.TemporaryDirectory() as tmpdir:

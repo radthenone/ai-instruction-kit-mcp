@@ -82,12 +82,13 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
 
                     content = message.get("content")
                     if isinstance(content, list):
-                        for idx, item in enumerate(content):
+                        for item in content:
                             if isinstance(item, dict) and item.get("type") == "tool_use":
-                                tool_id = item.get("id") or f"{msg_id}_{idx}"
-                                if tool_id in seen_tool_ids:
-                                    continue
-                                seen_tool_ids.add(tool_id)
+                                tool_id = item.get("id")
+                                if tool_id:
+                                    if tool_id in seen_tool_ids:
+                                        continue
+                                    seen_tool_ids.add(tool_id)
 
                                 tool_name = item.get("name")
                                 if tool_name == "Read":
