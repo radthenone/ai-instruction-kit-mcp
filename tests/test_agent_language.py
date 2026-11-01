@@ -222,6 +222,32 @@ class LanguageReminderValuesTest(unittest.TestCase):
         for phrase in ("najkrótszą drogą", "/git-commit", "review", "/kit-project-edit", "BUGBOT.md"):
             self.assertIn(phrase, result.stdout)
 
+    def test_hook_pl_forces_profile_language_over_input_and_style_plugins(self) -> None:
+        """Przypomnienie pl: nadrzędność języka profilu nad wiadomością usera i pluginami (#346)."""
+        self._require_node()
+        result = self._run_hook("name: t\nlanguage: pl\n", "# Overlay\n\nbase: dev\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+
+        # Klauzula 1: niezależność od języka wiadomości (w tym halo/ok, EN/RU)
+        self.assertIn("niezależnie od języka wiadomości", output)
+        for sample in ("halo", "ok", "EN/RU"):
+            self.assertIn(sample, output)
+
+        # Klauzula 2: nadrzędność nad pluginami stylu (caveman / preserve user's language)
+        self.assertIn("pluginów stylu", output)
+        self.assertIn("caveman", output)
+        self.assertIn("preserve user's language", output)
+        self.assertIn("stoi wyżej", output)
+
+        # Kolejność: reguła języka stoi przed akapitem Priorytet
+        priority_idx = output.find("Priorytet:")
+        self.assertGreater(priority_idx, 0, "Brak sekcji Priorytet w wyjściu")
+        lang_rule_idx = output.find("niezależnie od języka wiadomości")
+        style_rule_idx = output.find("caveman")
+        self.assertLess(lang_rule_idx, priority_idx)
+        self.assertLess(style_rule_idx, priority_idx)
+
     def _require_node(self) -> None:
         if not shutil.which("node"):
             if is_ci():
