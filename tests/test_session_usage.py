@@ -199,6 +199,74 @@ class TestSessionUsage(unittest.TestCase):
             stats = parse_session_file(session_file)
             self.assertEqual(stats.read_count, 2)
 
+    def test_bash_exploration_matches_only_command_at_segment_start(self) -> None:
+        """Weryfikuje, że grep/find/ls są dopasowywane tylko na początku segmentu komendy."""
+        ignored_lines = [
+            make_message_entry(
+                msg_id="msg_ignored",
+                content=[
+                    {
+                        "type": "tool_use",
+                        "id": "tool_ignore_1",
+                        "name": "Bash",
+                        "input": {"command": "git log --grep=x"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_ignore_2",
+                        "name": "Bash",
+                        "input": {"command": "cat ls.txt"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_ignore_3",
+                        "name": "Bash",
+                        "input": {"command": "cd docs/ls-tool"},
+                    },
+                ],
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_file = Path(tmpdir) / "ignored_bash.jsonl"
+            write_jsonl(session_file, ignored_lines)
+
+            stats = parse_session_file(session_file)
+            self.assertEqual(stats.bash_grep_find_ls, 0)
+
+        matched_lines = [
+            make_message_entry(
+                msg_id="msg_matched",
+                content=[
+                    {
+                        "type": "tool_use",
+                        "id": "tool_match_1",
+                        "name": "Bash",
+                        "input": {"command": "cd src && ls"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_match_2",
+                        "name": "Bash",
+                        "input": {"command": "echo foo | grep bar"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tool_match_3",
+                        "name": "Bash",
+                        "input": {"command": "echo 1; find ."},
+                    },
+                ],
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_file = Path(tmpdir) / "matched_bash.jsonl"
+            write_jsonl(session_file, matched_lines)
+
+            stats = parse_session_file(session_file)
+            self.assertEqual(stats.bash_grep_find_ls, 3)
+
     def test_find_sessions_locates_jsonl_recursively(self) -> None:
         """Weryfikuje rekursywne wyszukiwanie plików .jsonl w zadanym katalogu."""
         with tempfile.TemporaryDirectory() as tmpdir:

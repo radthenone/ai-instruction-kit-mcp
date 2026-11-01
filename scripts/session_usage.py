@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-BASH_EXPLORATION_PATTERN = re.compile(r"\b(grep|find|ls)\b")
+BASH_EXPLORATION_PATTERN = re.compile(r"(?:^|[;&|])\s*(?:grep|find|ls)(?![\w-])")
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 
