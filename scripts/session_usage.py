@@ -57,7 +57,10 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
                     continue
                 try:
                     data = json.loads(line)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+                if not isinstance(data, dict):
                     continue
 
                 if "sessionId" in data and isinstance(data["sessionId"], str) and data["sessionId"]:
@@ -94,10 +97,13 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
                                 if tool_name == "Read":
                                     read_count += 1
                                 elif tool_name == "Bash":
-                                    command = str(item.get("input", {}).get("command", ""))
+                                    raw_input = item.get("input")
+                                    command = ""
+                                    if isinstance(raw_input, dict):
+                                        command = str(raw_input.get("command") or "")
                                     if BASH_EXPLORATION_PATTERN.search(command):
                                         bash_grep_find_ls += 1
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         pass
 
     avg_context = (total_context / api_calls) if api_calls > 0 else 0.0

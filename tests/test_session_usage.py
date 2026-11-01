@@ -325,5 +325,85 @@ class TestSessionUsage(unittest.TestCase):
             self.assertIn("API Calls", output)
 
 
+    def test_edge_case_empty_or_nonexistent_directory(self) -> None:
+        """Weryfikuje, że dla pustego lub nieistniejącego katalogu main zwraca 0 z komunikatem."""
+        stdout_capture = io.StringIO()
+        with patch("sys.stdout", stdout_capture):
+            exit_code = main(["/path/does_not_exist_xyz123"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Nie znaleziono plików sesji (.jsonl) w:", stdout_capture.getvalue())
+
+        with tempfile.TemporaryDirectory() as empty_dir:
+            stdout_capture = io.StringIO()
+            with patch("sys.stdout", stdout_capture):
+                exit_code = main([empty_dir])
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Nie znaleziono plików sesji (.jsonl) w:", stdout_capture.getvalue())
+
+    def test_edge_case_corrupted_json_and_non_dict_and_unicode_error(self) -> None:
+        """Weryfikuje, że uszkodzone linie, linie nie-dict i błędy dekodowania są pomijane."""
+        valid_entry = make_message_entry(msg_id="msg_valid", input_tokens=10, cache_read=20)
+        lines = [
+            "{uszkodzony json",
+            "12345",
+            "\"tekst bez obiektu\"",
+            "",
+            valid_entry,
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_file = Path(tmpdir) / "corrupted.jsonl"
+            write_jsonl(session_file, lines)
+
+            stats = parse_session_file(session_file)
+            self.assertEqual(stats.api_calls, 1)
+            self.assertEqual(stats.cache_read_sum, 20)
+
+            # Plik z błędnym kodowaniem UTF-8
+            binary_file = Path(tmpdir) / "invalid_utf8.jsonl"
+            binary_file.write_bytes(b"\xff\xfe\xfd\x80\x81")
+
+            stats_bin = parse_session_file(binary_file)
+            self.assertEqual(stats_bin.api_calls, 0)
+
+    def test_edge_case_input_non_dict(self) -> None:
+        """Weryfikuje, że input niebędący słownikiem (np. None lub string) nie wywołuje błędu."""
+        lines = [
+            make_message_entry(
+                msg_id="msg_null_input",
+                content=[
+                    {
+                        "type": "tool_use",
+                        "id": "t1",
+                        "name": "Bash",
+                        "input": None,
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "t2",
+                        "name": "Bash",
+                        "input": "string_instead_of_dict",
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "t3",
+                        "name": "Read",
+                        "input": None,
+                    },
+                ],
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_file = Path(tmpdir) / "null_input.jsonl"
+            write_jsonl(session_file, lines)
+
+            stats = parse_session_file(session_file)
+            self.assertEqual(stats.bash_grep_find_ls, 0)
+            self.assertEqual(stats.read_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
