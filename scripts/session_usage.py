@@ -7,8 +7,11 @@ według message.id oraz wylicza statystyki zużycia tokenów i narzędzi.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+BASH_EXPLORATION_PATTERN = re.compile(r"\b(grep|find|ls)\b")
 
 
 @dataclass
@@ -38,9 +41,12 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
     session_id = path.stem
 
     seen_message_ids: set[str] = set()
+    seen_tool_ids: set[str] = set()
     api_calls = 0
     total_cache_read = 0
     total_context = 0
+    bash_grep_find_ls = 0
+    read_count = 0
 
     try:
         with open(path, encoding="utf-8") as f:
@@ -72,6 +78,23 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
 
                             total_cache_read += cache_read
                             total_context += input_tokens + cache_read + cache_creation
+
+                    content = message.get("content")
+                    if isinstance(content, list):
+                        for idx, item in enumerate(content):
+                            if isinstance(item, dict) and item.get("type") == "tool_use":
+                                tool_id = item.get("id") or f"{msg_id}_{idx}"
+                                if tool_id in seen_tool_ids:
+                                    continue
+                                seen_tool_ids.add(tool_id)
+
+                                tool_name = item.get("name")
+                                if tool_name == "Read":
+                                    read_count += 1
+                                elif tool_name == "Bash":
+                                    command = str(item.get("input", {}).get("command", ""))
+                                    if BASH_EXPLORATION_PATTERN.search(command):
+                                        bash_grep_find_ls += 1
     except OSError:
         pass
 
@@ -85,6 +108,6 @@ def parse_session_file(file_path: Path | str) -> SessionStats:
         cache_read_sum=total_cache_read,
         cache_read_avg=cache_read_avg,
         avg_context=avg_context,
-        bash_grep_find_ls=0,
-        read_count=0,
+        bash_grep_find_ls=bash_grep_find_ls,
+        read_count=read_count,
     )

@@ -88,6 +88,111 @@ class TestSessionUsage(unittest.TestCase):
             self.assertAlmostEqual(stats.cache_read_avg, 750.0)
             self.assertAlmostEqual(stats.avg_context, 975.0)
 
+    def test_parse_session_counts_tool_calls_with_deduplication(self) -> None:
+        """Weryfikuje zliczanie wywołań Read oraz Bash (grep/find/ls) z deduplikacją.
+
+        Args:
+            Brak.
+
+        Returns:
+            None.
+        """
+        lines = [
+            # Wiadomość z Read i Bash grep
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_101",
+                    "role": "assistant",
+                    "usage": {"input_tokens": 10, "cache_read_input_tokens": 10},
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool_read_1",
+                            "name": "Read",
+                            "input": {"path": "src/main.py"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "tool_bash_1",
+                            "name": "Bash",
+                            "input": {"command": "grep -rn 'foo' src/"},
+                        },
+                    ],
+                },
+            },
+            # Powtórzona linia z tym samym message i tool_use IDs
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_101",
+                    "role": "assistant",
+                    "usage": {"input_tokens": 10, "cache_read_input_tokens": 10},
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool_read_1",
+                            "name": "Read",
+                            "input": {"path": "src/main.py"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "tool_bash_1",
+                            "name": "Bash",
+                            "input": {"command": "grep -rn 'foo' src/"},
+                        },
+                    ],
+                },
+            },
+            # Kolejna wiadomość: find, ls oraz git status (inny bash) oraz kolejny Read
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_102",
+                    "role": "assistant",
+                    "usage": {"input_tokens": 20, "cache_read_input_tokens": 20},
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool_read_2",
+                            "name": "Read",
+                            "input": {"path": "README.md"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "tool_bash_2",
+                            "name": "Bash",
+                            "input": {"command": "find . -name '*.md'"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "tool_bash_3",
+                            "name": "Bash",
+                            "input": {"command": "ls -la docs/"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "tool_bash_4",
+                            "name": "Bash",
+                            "input": {"command": "git status"},
+                        },
+                    ],
+                },
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_file = Path(tmpdir) / "tool_session.jsonl"
+            with open(session_file, "w", encoding="utf-8") as f:
+                for entry in lines:
+                    f.write(json.dumps(entry) + "\n")
+
+            stats = parse_session_file(session_file)
+
+            self.assertEqual(stats.read_count, 2)
+            # Bash grep (1) + find (1) + ls (1) = 3 wywołania; git status nie powinien być liczony
+            self.assertEqual(stats.bash_grep_find_ls, 3)
+
 
 if __name__ == "__main__":
     unittest.main()
