@@ -237,7 +237,7 @@ class LanguageReminderValuesTest(unittest.TestCase):
         # Klauzula 2: nadrzędność nad pluginami stylu (caveman / preserve user's language)
         self.assertIn("pluginów stylu", output)
         self.assertIn("caveman", output)
-        self.assertIn("preserve user's language", output)
+        self.assertIn("Preserve user's dominant language", output)
         self.assertIn("stoi wyżej", output)
 
         # Kolejność: reguła języka stoi przed akapitem Priorytet
