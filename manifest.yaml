@@ -50,6 +50,11 @@ modules:
     title: Shell proxy — RTK (jeśli dostępny)
     tags: [core]
 
+  core:tooling-codegraph:
+    path: modules/core/tooling-codegraph.md
+    title: CodeGraph — indeks AST i eksploracja kodu
+    tags: [core]
+
   # ─── Architecture ───────────────────────────────────
   arch:monorepo-layout:
     path: modules/architecture/monorepo-layout.md

@@ -10,6 +10,7 @@ from pathlib import Path
 from guides.manifest import load_manifest
 from guides.resolver import (
     MIGRATION_NOTICE,
+    extract_codegraph_section,
     normalize_auth_variant,
     normalize_language,
     profile_tiers,
@@ -491,6 +492,73 @@ class TestProjectBrief(unittest.TestCase):
             self.assertIn(f"`{module_id}`", brief)
         # Moduł hosta nie może rozjeżdżać briefu między maszynami.
         self.assertNotIn("infra:vps-lightweight", brief)
+        self.assertIn("### CodeGraph", brief)
+        self.assertIn("codegraph_context", brief)
+
+    def test_brief_for_claude_carries_codegraph_section(self) -> None:
+        """Brief klienta Claude zawiera sekcję codegraph z instrukcją codegraph_context (#322)."""
+        tmp, workspace = _workspace(
+            "name: claude-brief-test\nlanguage: pl\nclients: claude\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        brief = resolved.project_brief
+        self.assertIn("\n### CodeGraph\n", brief)
+        self.assertNotIn("\n## CodeGraph", brief)
+        self.assertIn("\n#### Rules of thumb\n", brief)
+        self.assertIn("codegraph_context", brief)
+        self.assertIn("codegraph_explore", brief)
+
+    def test_brief_for_cursor_only_does_not_duplicate_codegraph_section(self) -> None:
+        """Brief wyłącznie dla Cursora nie powiela sekcji codegraph, bo ma .cursor/rules (#322)."""
+        tmp, workspace = _workspace(
+            "name: cursor-brief-test\nlanguage: pl\nclients: cursor\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        brief = resolved.project_brief
+        self.assertNotIn("CodeGraph", brief)
+        self.assertNotIn("codegraph_context", brief)
+
+    def test_brief_without_core_modules_omits_codegraph_section(self) -> None:
+        """Wyłączony core (``core: false``) wyłącza też sekcję codegraph (#322)."""
+        tmp, workspace = _workspace(
+            "name: no-core-test\nlanguage: pl\nclients: claude\ncore: false\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        self.assertNotIn("CodeGraph", resolved.project_brief)
+
+    def test_brief_with_unparsable_clients_omits_codegraph_section(self) -> None:
+        """Nieparsowalne ``clients:`` nie dostaje sekcji codegraph (#322)."""
+        tmp, workspace = _workspace(
+            "name: bad-clients-test\nlanguage: pl\nclients: not-a-client\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        self.assertNotIn("CodeGraph", resolved.project_brief)
+
+    def test_codegraph_module_matches_cursor_rule(self) -> None:
+        """Moduł kita i reguła Cursora to jedno źródło prawdy (#322)."""
+        cursor_rule_path = KIT_ROOT / ".cursor" / "rules" / "codegraph.mdc"
+        module_path = KIT_ROOT / "modules" / "core" / "tooling-codegraph.md"
+        self.assertTrue(cursor_rule_path.is_file(), f"Brak reguły Cursora: {cursor_rule_path}")
+        self.assertTrue(module_path.is_file(), f"Brak modułu kita: {module_path}")
+        expected = extract_codegraph_section(cursor_rule_path.read_text(encoding="utf-8"))
+        actual = module_path.read_text(encoding="utf-8").strip()
+        self.assertEqual(actual, expected)
 
 
 if __name__ == "__main__":
