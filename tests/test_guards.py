@@ -57,6 +57,10 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git checkout -- src/a.py", "deny"),
     ("git checkout -b feat/y", "allow"),
     ("git checkout feat/x", "allow"),
+    # Reguła checkout patrzy tylko na segment z `git checkout`, nie na całą komendę.
+    ("git checkout -q -b chore/x && kit-ai reload .", "allow"),
+    ("git status && git checkout -- .", "deny"),
+    ("git checkout -- .", "deny"),
     ("git stash", "allow"),
     ("git restore src/a.py", "allow"),
     ("git commit --no-verify -m x", "allow"),
