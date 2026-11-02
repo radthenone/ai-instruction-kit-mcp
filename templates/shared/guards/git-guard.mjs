@@ -242,7 +242,11 @@ if (hasCode(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwraca
 if (hasCode(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
 // Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
 if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(code)) deny("git branch -D — użyj -d (tylko zmergowane)");
-const checkoutDiscards = (seg) => new RegExp(`(^|[ ])git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`, "i").test(seg);
+// Globalne opcje gita (`-C dir`, `--no-pager`, `-c k=v`) przed `checkout` nie omijają
+// reguły. Argument opcji zaczynający się od `-` traktujemy jak kolejną opcję — bez tej
+// granicy łańcuch samych flag dawał wykładniczy backtracking.
+const checkoutDiscards = (seg) =>
+  new RegExp(`(^|[ ])git( +-[^ ]+( +("[^"]*"|[^-][^ ]*))?)* +checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`, "i").test(seg);
 if (segments.some(checkoutDiscards)) {
   deny("git checkout . / checkout -- <ścieżka> — kasuje niezacommitowane zmiany; użyj git stash");
 }
