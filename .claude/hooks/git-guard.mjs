@@ -68,8 +68,9 @@ const SHELL_WORD = /(^|[\s;&|(])(bash|sh|zsh|dash|ksh|ssh|eval)(\s|$)/;
 // ścieżka. Skrypty `bash -c '…'` / `eval '…'` są wykonywane — dokładamy je do `code`.
 const commandNoHeredoc = stripHeredocs(command);
 const executed = [commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes);
-const code = collapse([...executed, ...executed.flatMap(backtickBodies)].join(" ; "));
+const code = collapse(executed.map(expandBackticks).join(" ; "));
 const cmd = collapse(commandNoHeredoc);
+const cmdBackticks = collapse(expandBackticks(commandNoHeredoc));
 const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
@@ -154,11 +155,12 @@ function shellScripts(text) {
   return [...text.matchAll(re)].map((m) => m[1] ?? m[2]);
 }
 
-// Treść podpowłok w backtickach (#349) — bash ją wykonuje, więc dokładamy ją do `code`
-// jako osobne komendy. Backticka nie robimy separatorem: rozciąłby zewnętrzną komendę
-// (`git push \`true\` origin main` przestałby być pushem na main).
-function backtickBodies(text) {
-  return [...text.matchAll(/`([^`]*)`/g)].map((m) => m[1]);
+// Podstawienie backticków (#349): bash zastępuje `…` jego treścią, więc rozpakowujemy
+// je w miejscu (`git push \`true\` origin main` czyta się jak `git push true origin main`).
+// Apostrofów nie ruszamy — w nich bash nie podstawia. Backticka nie robimy separatorem,
+// bo rozciąłby zewnętrzną komendę.
+function expandBackticks(text) {
+  return text.replace(/'[^']*'|`([^`]*)`/g, (m, body) => (body === undefined ? m : body));
 }
 
 // Zamień treść pojedynczych apostrofów (także `$'…'`) na spację — bash nie wykonuje
@@ -246,7 +248,8 @@ for (const seg of segments) {
 // --- git: nieodwracalne ---------------------------------------------------------
 
 const hasCode = (re) => new RegExp(re, "i").test(code);
-if (hasCode(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
+// Token z podstawienia (`true`) może stać między `reset` a `--hard`.
+if (hasCode(`${B}git[ ]+reset([ ]+[^ ]+)*[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
 if (hasCode(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
 // Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
 if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(code)) deny("git branch -D — użyj -d (tylko zmergowane)");
@@ -257,15 +260,17 @@ if (segments.some(checkoutDiscards)) {
 
 // --- rm rekursywne na szerokiej ścieżce -------------------------------------------
 
-function broadPath() {
+function broadPath(text) {
+  const test = (re) => new RegExp(re, "i").test(text);
   return (
-    has("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
-    has("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
-    has("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
-    has("[ ]/[ ]*$")
+    test("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
+    test("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
+    test("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
+    test("[ ]/[ ]*$")
   );
 }
-if (has(`${B}rm[ ]+-[a-zA-Z]*r`) && broadPath()) {
+const RM_RECURSIVE = `${B}rm[ ]+-[a-zA-Z]*r`;
+if ([cmd, cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(text) && broadPath(text))) {
   deny("rekursywne kasowanie na szerokiej ścieżce (katalog domowy, dysk, ..)");
 }
 
