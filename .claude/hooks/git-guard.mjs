@@ -242,7 +242,8 @@ if (hasCode(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwraca
 if (hasCode(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
 // Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
 if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(code)) deny("git branch -D — użyj -d (tylko zmergowane)");
-if (hasCode(`${B}git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`)) {
+const checkoutDiscards = (seg) => new RegExp(`(^|[ ])git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`, "i").test(seg);
+if (segments.some(checkoutDiscards)) {
   deny("git checkout . / checkout -- <ścieżka> — kasuje niezacommitowane zmiany; użyj git stash");
 }
 
