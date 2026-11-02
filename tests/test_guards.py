@@ -61,6 +61,7 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git checkout -q -b chore/x && kit-ai reload .", "allow"),
     ("git status && git checkout -- .", "deny"),
     ("git checkout -- .", "deny"),
+    ("echo `git checkout -- .`", "deny"),
     ("git stash", "allow"),
     ("git restore src/a.py", "allow"),
     ("git commit --no-verify -m x", "allow"),

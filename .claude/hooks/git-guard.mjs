@@ -73,7 +73,7 @@ const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
 // też łapie — prefiks rtk jest przed `git`, nie w środku.
-const B = "(^|[ ;&|(])";
+const B = "(^|[ ;&|(`])";
 
 // Usuń ciało heredoca z cytowanym ogranicznikiem (`<<'EOF'`, `<<"EOF"`, `<<-'EOF'`),
 // gdy nie czyta go powłoka — bash nie wykonuje go jako komend (#206). Ciało bez
@@ -200,7 +200,7 @@ function stripSingleQuotes(text) {
 
 // Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
 // `rm -f` obok pusha na feature branch to nie push na master ani force.
-const segments = code.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
+const segments = code.split(/&&|\|\||[;&|()`]/).map((s) => s.trim());
 
 function targetsProtectedRef(has) {
   const checks = [
