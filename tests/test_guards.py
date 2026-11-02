@@ -66,6 +66,10 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git reset `true` --hard", "deny"),
     ("echo `rm -rf ~/`", "deny"),
     ("echo `rm -rf build`", "allow"),
+    ("rm -rf ~", "deny"),
+    ("r``m -rf ~/", "deny"),
+    ("echo \\\\`git checkout -- .\\\\`", "deny"),
+    ("echo \\\\`rm -rf ~/\\\\`", "deny"),
     # Backtick w środku nie rozcina zewnętrznej komendy (#349).
     ("git push `true` origin main", "deny"),
     ("git checkout `true` -- .", "deny"),

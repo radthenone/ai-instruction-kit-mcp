@@ -68,9 +68,9 @@ const SHELL_WORD = /(^|[\s;&|(])(bash|sh|zsh|dash|ksh|ssh|eval)(\s|$)/;
 // ścieżka. Skrypty `bash -c '…'` / `eval '…'` są wykonywane — dokładamy je do `code`.
 const commandNoHeredoc = stripHeredocs(command);
 const executed = [commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes);
-const code = collapse(executed.map(expandBackticks).join(" ; "));
+const code = collapse(executed.flatMap((s) => [expandBackticks(s, ""), expandBackticks(s, " ")]).join(" ; "));
 const cmd = collapse(commandNoHeredoc);
-const cmdBackticks = collapse(expandBackticks(commandNoHeredoc));
+const cmdBackticks = [" ", ""].map((pad) => collapse(expandBackticks(commandNoHeredoc, pad)));
 const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
@@ -155,12 +155,12 @@ function shellScripts(text) {
   return [...text.matchAll(re)].map((m) => m[1] ?? m[2]);
 }
 
-// Podstawienie backticków (#349): bash zastępuje `…` jego treścią, więc rozpakowujemy
-// je w miejscu (`git push \`true\` origin main` czyta się jak `git push true origin main`).
-// Apostrofów nie ruszamy — w nich bash nie podstawia. Backticka nie robimy separatorem,
-// bo rozciąłby zewnętrzną komendę.
-function expandBackticks(text) {
-  return text.replace(/'[^']*'|`([^`]*)`/g, (m, body) => (body === undefined ? m : body));
+// Podstawienie backticków (#349): bash zastępuje `…` jego treścią. Liczymy dwa warianty:
+// bez odstępu (`r\`\`m` skleja się w `rm`) i z odstępem (przy `\\\`` przed słowem zostaje
+// śmieć, więc `git` nie ma spacji przed sobą). Apostrofów nie ruszamy — w nich bash nie
+// podstawia. Backticka nie robimy separatorem, bo rozciąłby zewnętrzną komendę.
+function expandBackticks(text, pad) {
+  return text.replace(/'[^']*'|`([^`]*)`/g, (m, body) => (body === undefined ? m : `${pad}${body}${pad}`));
 }
 
 // Zamień treść pojedynczych apostrofów (także `$'…'`) na spację — bash nie wykonuje
@@ -266,11 +266,12 @@ function broadPath(text) {
     test("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
     test("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
     test("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
-    test("[ ]/[ ]*$")
+    test("[ ]/[ ]*$") ||
+    test("(^|[ ])~([ ]|$)")
   );
 }
 const RM_RECURSIVE = `${B}rm[ ]+-[a-zA-Z]*r`;
-if ([cmd, cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(text) && broadPath(text))) {
+if ([cmd, ...cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(text) && broadPath(text))) {
   deny("rekursywne kasowanie na szerokiej ścieżce (katalog domowy, dysk, ..)");
 }
 
