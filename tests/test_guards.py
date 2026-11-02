@@ -62,6 +62,12 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git status && git checkout -- .", "deny"),
     ("git checkout -- .", "deny"),
     ("echo `git checkout -- .`", "deny"),
+    ("echo `git reset --hard`", "deny"),
+    # Backtick w środku nie rozcina zewnętrznej komendy (#349).
+    ("git push `true` origin main", "deny"),
+    ("git checkout `true` -- .", "deny"),
+    ("git commit -m \"fix `foo` bar\"", "allow"),
+    ("git commit -m 'docs: `rm -r ~/x` example'", "allow"),
     ("git stash", "allow"),
     ("git restore src/a.py", "allow"),
     ("git commit --no-verify -m x", "allow"),

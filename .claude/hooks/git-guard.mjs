@@ -67,13 +67,14 @@ const SHELL_WORD = /(^|[\s;&|(])(bash|sh|zsh|dash|ksh|ssh|eval)(\s|$)/;
 // `cmd` (bez ciała heredoca) zostaje dla celów mutacji: ścieżka w apostrofach to dalej
 // ścieżka. Skrypty `bash -c '…'` / `eval '…'` są wykonywane — dokładamy je do `code`.
 const commandNoHeredoc = stripHeredocs(command);
-const code = collapse([commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes).join(" ; "));
+const executed = [commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes);
+const code = collapse([...executed, ...executed.flatMap(backtickBodies)].join(" ; "));
 const cmd = collapse(commandNoHeredoc);
 const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
 // też łapie — prefiks rtk jest przed `git`, nie w środku.
-const B = "(^|[ ;&|(`])";
+const B = "(^|[ ;&|(])";
 
 // Usuń ciało heredoca z cytowanym ogranicznikiem (`<<'EOF'`, `<<"EOF"`, `<<-'EOF'`),
 // gdy nie czyta go powłoka — bash nie wykonuje go jako komend (#206). Ciało bez
@@ -153,6 +154,13 @@ function shellScripts(text) {
   return [...text.matchAll(re)].map((m) => m[1] ?? m[2]);
 }
 
+// Treść podpowłok w backtickach (#349) — bash ją wykonuje, więc dokładamy ją do `code`
+// jako osobne komendy. Backticka nie robimy separatorem: rozciąłby zewnętrzną komendę
+// (`git push \`true\` origin main` przestałby być pushem na main).
+function backtickBodies(text) {
+  return [...text.matchAll(/`([^`]*)`/g)].map((m) => m[1]);
+}
+
 // Zamień treść pojedynczych apostrofów (także `$'…'`) na spację — bash nie wykonuje
 // w nich komend ani podstawień, więc zawarty tam tekst nie jest komendą (#206).
 // Wyjątek: pojedyncze słowo (`'master'`) to zwykły argument — zostaje bez apostrofów,
@@ -200,7 +208,7 @@ function stripSingleQuotes(text) {
 
 // Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
 // `rm -f` obok pusha na feature branch to nie push na master ani force.
-const segments = code.split(/&&|\|\||[;&|()`]/).map((s) => s.trim());
+const segments = code.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
 
 function targetsProtectedRef(has) {
   const checks = [
