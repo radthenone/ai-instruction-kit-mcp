@@ -26,6 +26,10 @@ _Avoid_: index, catalog, registry file
 Instructions true of exactly one consuming repo — its paths, ports, task names — living in that repo rather than in the Kit. Appended to a Bundle, never merged into it.
 _Avoid_: local rules, project config, extras
 
+**Host**:
+The machine the agent runs on, classified as `vps` or `local`. Distinct from a Client (the AI tool) and a Workspace (the repo directory).
+_Avoid_: server, environment, machine
+
 ### Configuration
 
 **Profile**:

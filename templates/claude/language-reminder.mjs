@@ -5,8 +5,7 @@
 // działa od razu, bez czekania na reload wygenerowanego pliku.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cpus, platform as osPlatform } from "node:os";
-import { execFileSync } from "node:child_process";
+import { detectHostProfile } from "./host-profile.mjs";
 
 const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -32,88 +31,8 @@ const rawLanguage = match(profile, /^language:[ \t]*["']?([A-Za-z_-]+)/m, "pl").
 const language = ["en", "eng", "english"].includes(rawLanguage.split(/[-_]/)[0]) ? "en" : "pl";
 const base = match(overlay, /^base:[ \t]*(\S+)[ \t]*$/m, "");
 
-function normalizeOverride(value) {
-  const key = String(value || "").trim().toLowerCase();
-  return key === "vps" || key === "local" ? key : null;
-}
-
-function detectHost() {
-  const env = process.env;
-  const override = normalizeOverride(env.KIT_HOST_PROFILE) || normalizeOverride(env.GUIDES_HOST_PROFILE);
-  if (override) return override;
-
-  const plat = env.GUARD_PLATFORM || osPlatform();
-  if (!String(plat).startsWith("linux")) return "local";
-
-  const isCi = () => {
-    if (env.GUARD_IS_CI !== undefined) return env.GUARD_IS_CI === "1";
-    if (["1", "true", "yes"].includes(String(env.CI || "").trim().toLowerCase())) return true;
-    return ["GITHUB_ACTIONS", "GITLAB_CI", "JENKINS_URL", "BUILDKITE", "CIRCLECI", "TRAVIS", "TF_BUILD"].some(
-      (v) => String(env[v] || "").trim() !== "",
-    );
-  };
-  if (isCi()) return "local";
-
-  const isWsl = () => {
-    if (env.GUARD_IS_WSL !== undefined) return env.GUARD_IS_WSL === "1";
-    if (["WSL_DISTRO_NAME", "WSL_INTEROP"].some((v) => String(env[v] || "").trim() !== "")) return true;
-    try {
-      const version = readFileSync("/proc/version", "utf8").toLowerCase();
-      return version.includes("microsoft") || version.includes("wsl");
-    } catch {
-      return false;
-    }
-  };
-  if (isWsl()) return "local";
-
-  if (["CODESPACES", "REMOTE_CONTAINERS"].some((v) => String(env[v] || "").trim() !== "")) return "local";
-
-  const cpu = env.GUARD_CPU_COUNT !== undefined ? Number(env.GUARD_CPU_COUNT) : cpus().length;
-  let mem = null;
-  let swap = null;
-  if (env.GUARD_MEM_BYTES !== undefined || env.GUARD_SWAP_BYTES !== undefined) {
-    const m = env.GUARD_MEM_BYTES === "" ? null : Number(env.GUARD_MEM_BYTES);
-    const s = env.GUARD_SWAP_BYTES === "" ? null : Number(env.GUARD_SWAP_BYTES);
-    mem = Number.isFinite(m) ? m : null;
-    swap = Number.isFinite(s) ? s : null;
-  } else {
-    try {
-      for (const line of readFileSync("/proc/meminfo", "utf8").split("\n")) {
-        const m = line.match(/^(MemTotal|SwapTotal):\s+(\d+)/);
-        if (m) {
-          if (m[1] === "MemTotal") mem = Number(m[2]) * 1024;
-          else swap = Number(m[2]) * 1024;
-        }
-      }
-    } catch {
-      return "local";
-    }
-  }
-
-  if (!Number.isFinite(cpu) || mem === null || swap === null) return "local";
-  if (!(cpu <= 2 && mem <= 8 * 1024 ** 3 && swap === 0)) return "local";
-
-  let virt = "";
-  if (env.GUARD_VIRT !== undefined) virt = String(env.GUARD_VIRT).trim().toLowerCase();
-  else {
-    try {
-      virt = execFileSync("systemd-detect-virt", { encoding: "utf8", timeout: 5000 }).trim().toLowerCase();
-    } catch (err) {
-      virt = String(err?.stdout || "").trim().toLowerCase();
-    }
-  }
-  const virtualized = Boolean(virt) && virt !== "none" && virt !== "unknown";
-
-  const desktop = env.GUARD_HAS_DESKTOP !== undefined
-    ? env.GUARD_HAS_DESKTOP === "1"
-    : ["DISPLAY", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"].some(
-        (v) => String(env[v] || "").trim() !== "",
-      );
-
-  return (virtualized || !desktop) ? "vps" : "local";
-}
-
-const host = detectHost();
+// Wspólna detekcja hosta (ADR-0011) — ta sama reguła co w server-guard.
+const host = detectHostProfile();
 
 const priority =
   "Priorytet: wytyczne instruction-kit (brief w AGENTS.md, .ai/project.md, bundle MCP) " +

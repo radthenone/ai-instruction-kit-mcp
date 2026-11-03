@@ -771,6 +771,7 @@ def run_server_guard(payload: dict, env: dict[str, str], config: dict | None = N
         return run_guard("server-guard.mjs", payload, env)
     with tempfile.TemporaryDirectory() as tmp:
         shutil.copy(GUARDS / "server-guard.mjs", Path(tmp) / "server-guard.mjs")
+        shutil.copy(GUARDS / "host-profile.mjs", Path(tmp) / "host-profile.mjs")
         (Path(tmp) / "server-guard.json").write_text(json.dumps(config), encoding="utf-8")
         proc = subprocess.run(
             [NODE or "node", str(Path(tmp) / "server-guard.mjs")],

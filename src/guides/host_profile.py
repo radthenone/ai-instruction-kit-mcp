@@ -2,11 +2,16 @@
 
 Heurystyka zasobów + wirtualizacja + brak desktopu; nadpisanie zmienną
 środowiskową ``KIT_HOST_PROFILE`` (alias ``GUIDES_HOST_PROFILE``).
+
+Parytet z ``templates/shared/guards/host-profile.mjs`` (ADR-0011): ta sama reguła,
+te same progi, te same zmienne ``GUARD_*``. Zmienna ``GUARD_*`` pusta albo
+nieparsowalna = brak zmiennej → realny pomiar systemu.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,6 +46,8 @@ _DESKTOP_ENV_VARS = (
     "XDG_CURRENT_DESKTOP",
     "DESKTOP_SESSION",
 )
+
+_INT_RE = re.compile(r"[+-]?[0-9]+")
 
 
 def normalize_host_profile_override(raw: object | None) -> str | None:
@@ -131,22 +138,14 @@ def _detect_virt() -> str:
     return (proc.stdout or "").strip().lower()
 
 
-def _is_ci(env: dict[str, str] | os._Environ) -> bool:
-    """Czy proces działa w CI (pełna weryfikacja należy do CI, nie do VPS)."""
-    ci_flag = str(env.get("CI", "")).strip().lower()
-    if ci_flag in ("1", "true", "yes"):
-        return True
-    return any(str(env.get(var, "")).strip() for var in _CI_ENV_VARS[1:])
-
-
-def _has_desktop(env: dict[str, str] | os._Environ) -> bool:
-    """Czy sesja ma desktop (DISPLAY / Wayland / XDG desktop)."""
-    return any(str(env.get(var, "")).strip() for var in _DESKTOP_ENV_VARS)
+def _filled(env: dict[str, str] | os._Environ, names: tuple[str, ...]) -> bool:
+    """Czy którakolwiek ze zmiennych jest ustawiona i niepusta."""
+    return any(str(env.get(var, "")).strip() for var in names)
 
 
 def _is_wsl(env: dict[str, str] | os._Environ) -> bool:
     """Czy to WSL (dev na Windows, nie VPS mimo małych zasobów)."""
-    if str(env.get("WSL_DISTRO_NAME", "")).strip() or str(env.get("WSL_INTEROP", "")).strip():
+    if _filled(env, ("WSL_DISTRO_NAME", "WSL_INTEROP")):
         return True
     try:
         version = Path("/proc/version").read_text(encoding="utf-8").lower()
@@ -156,19 +155,24 @@ def _is_wsl(env: dict[str, str] | os._Environ) -> bool:
 
 
 def _guard_int(env: dict[str, str] | os._Environ, name: str) -> int | None:
-    """Liczba z env testowego server-guarda (``""`` / śmieci → ``None``)."""
+    """Liczba z ``GUARD_*``; pusta lub nieparsowalna → ``None`` (brak zmiennej)."""
     raw = env.get(name)
     if raw is None:
         return None
-    try:
-        return int(str(raw).strip())
-    except ValueError:
+    text = str(raw).strip()
+    if not _INT_RE.fullmatch(text):
         return None
+    return int(text)
 
 
-def _guard_bool(env: dict[str, str] | os._Environ, name: str) -> bool:
-    """Flaga ``GUARD_*`` w konwencji server-guarda (``1`` = prawda)."""
-    return str(env.get(name, "")) == "1"
+def _guard_flag(env: dict[str, str] | os._Environ, name: str) -> bool | None:
+    """Flaga ``GUARD_*``: ``1`` → True, ``0`` → False; inne → ``None`` (brak zmiennej)."""
+    text = str(env.get(name, "")).strip()
+    if text == "1":
+        return True
+    if text == "0":
+        return False
+    return None
 
 
 def detect_host_profile(
@@ -187,6 +191,8 @@ def detect_host_profile(
 
     VPS to Linux bez CI, z małymi zasobami (CPU ≤ 2, RAM ≤ 8 GB, brak swapu)
     i sygnałem serwerowym (wirtualizacja albo brak desktopu). WSL zawsze local.
+    Każda zmienna ``GUARD_*`` pusta albo nieparsowalna jest traktowana jak brak
+    i zastępowana realnym pomiarem.
 
     Args:
         env: Zmienne środowiskowe (do nadpisania i sygnałów CI/desktop/WSL).
@@ -207,20 +213,19 @@ def detect_host_profile(
     if override is not None:
         return override
 
-    # Te same cochy testowe co server-guard.mjs (parzystość decyzji 1:1).
     # Jawne argumenty funkcji mają pierwszeństwo — używają ich testy jednostkowe.
-    if platform is None and "GUARD_PLATFORM" in env:
+    if platform is None and str(env.get("GUARD_PLATFORM", "")).strip():
         platform = str(env["GUARD_PLATFORM"])
-    if cpu_count is None and "GUARD_CPU_COUNT" in env:
+    if cpu_count is None:
         cpu_count = _guard_int(env, "GUARD_CPU_COUNT")
-    if virt is None and "GUARD_VIRT" in env:
+    if virt is None and str(env.get("GUARD_VIRT", "")).strip():
         virt = str(env["GUARD_VIRT"])
-    if has_desktop is None and "GUARD_HAS_DESKTOP" in env:
-        has_desktop = _guard_bool(env, "GUARD_HAS_DESKTOP")
-    if is_ci is None and "GUARD_IS_CI" in env:
-        is_ci = _guard_bool(env, "GUARD_IS_CI")
-    if is_wsl is None and "GUARD_IS_WSL" in env:
-        is_wsl = _guard_bool(env, "GUARD_IS_WSL")
+    if has_desktop is None:
+        has_desktop = _guard_flag(env, "GUARD_HAS_DESKTOP")
+    if is_ci is None:
+        is_ci = _guard_flag(env, "GUARD_IS_CI")
+    if is_wsl is None:
+        is_wsl = _guard_flag(env, "GUARD_IS_WSL")
 
     plat = sys.platform if platform is None else platform
     if not plat.startswith("linux"):
@@ -235,40 +240,40 @@ def detect_host_profile(
         return LOCAL_PROFILE
 
     # Codespaces / devcontainer: mały kontener bez desktopu, ale to stacja deweloperska.
-    if any(str(env.get(var, "")).strip() for var in _DEV_CONTAINER_ENV_VARS):
+    if _filled(env, _DEV_CONTAINER_ENV_VARS):
         return LOCAL_PROFILE
 
-    cpu = os.cpu_count() if cpu_count is None else cpu_count
-    guard_mem = "GUARD_MEM_BYTES" in env or "GUARD_SWAP_BYTES" in env
-    if guard_mem and mem_total_bytes is None and swap_total_bytes is None:
-        # Jak w server-guardzie: obecność którejkolwiek zmiennej wyłącza /proc/meminfo.
-        mem_total_bytes = _guard_int(env, "GUARD_MEM_BYTES")
-        swap_total_bytes = _guard_int(env, "GUARD_SWAP_BYTES")
-    elif mem_total_bytes is None or swap_total_bytes is None:
+    cpu = cpu_count if cpu_count is not None else os.cpu_count()
+
+    mem = mem_total_bytes if mem_total_bytes is not None else _guard_int(env, "GUARD_MEM_BYTES")
+    swap = swap_total_bytes if swap_total_bytes is not None else _guard_int(env, "GUARD_SWAP_BYTES")
+    if mem is None or swap is None:
         live_mem, live_swap = _read_meminfo()
-        if mem_total_bytes is None:
-            mem_total_bytes = live_mem
-        if swap_total_bytes is None:
-            swap_total_bytes = live_swap
-    if cpu is None or mem_total_bytes is None or swap_total_bytes is None:
+        mem = live_mem if mem is None else mem
+        swap = live_swap if swap is None else swap
+    if cpu is None or mem is None or swap is None:
         return LOCAL_PROFILE
 
-    small_resources = (
-        cpu <= SMALL_CPU_MAX
-        and mem_total_bytes <= SMALL_RAM_MAX_BYTES
-        and swap_total_bytes == 0
-    )
+    small_resources = cpu <= SMALL_CPU_MAX and mem <= SMALL_RAM_MAX_BYTES and swap == 0
     if not small_resources:
         return LOCAL_PROFILE
 
     virt_value = _detect_virt() if virt is None else virt.strip().lower()
     virtualized = bool(virt_value) and virt_value not in ("none", "unknown")
-    desktop = _has_desktop(env) if has_desktop is None else has_desktop
+    desktop = _filled(env, _DESKTOP_ENV_VARS) if has_desktop is None else has_desktop
     headless = not desktop
 
     if virtualized or headless:
         return VPS_PROFILE
     return LOCAL_PROFILE
+
+
+def _is_ci(env: dict[str, str] | os._Environ) -> bool:
+    """Czy proces działa w CI (pełna weryfikacja należy do CI, nie do VPS)."""
+    ci_flag = str(env.get("CI", "")).strip().lower()
+    if ci_flag in ("1", "true", "yes"):
+        return True
+    return _filled(env, _CI_ENV_VARS[1:])
 
 
 def get_host_profile() -> str:
