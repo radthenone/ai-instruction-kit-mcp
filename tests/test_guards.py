@@ -950,7 +950,8 @@ class ServerGuardTest(unittest.TestCase):
                     "KIT_HOST_PROFILE": "", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": "",
                     "GUARD_PLATFORM": plat, "GUARD_CPU_COUNT": str(cpu),
                     "GUARD_MEM_BYTES": str(mem), "GUARD_SWAP_BYTES": str(swap),
-                    "GUARD_VIRT": virt, "GUARD_HAS_DESKTOP": flag[desktop],
+                    # Pusta GUARD_VIRT to brak zmiennej (ADR-0011), więc "" w tabeli to env "none".
+                    "GUARD_VIRT": virt or "none", "GUARD_HAS_DESKTOP": flag[desktop],
                     "GUARD_IS_CI": flag[ci], "GUARD_IS_WSL": flag[wsl],
                 }
                 got = decision("docker compose up", env)
