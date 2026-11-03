@@ -24,8 +24,6 @@ build-backend = "hatchling.build"
 # same import rooty co runtime.
 [tool.ty.environment]
 extra-paths = ["tests", "scripts"]
-# CI biegnie na Ubuntu; bez tego ty na Windows zgłasza typy z tempfile (test_guides_e2e).
-python-platform = "linux"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/guides"]
