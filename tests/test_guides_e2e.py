@@ -26,7 +26,7 @@ import tomllib
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO, cast
 from unittest import mock
 
 import yaml
@@ -253,7 +253,9 @@ async def _collect_tools(argv: list[str], workspace: Path) -> dict[str, str]:
         env=_server_env(workspace),
         cwd=str(workspace),
     )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errfile:
+        # TemporaryFile na Windows to _TemporaryFileWrapper, a stub oczekuje TextIO; cast nie zmienia runtime.
+        errlog = cast(TextIO, errfile)
         try:
             async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -287,7 +289,9 @@ async def _ping_language(argv: list[str], workspace: Path) -> str:
         env=_server_env(workspace),
         cwd=str(workspace),
     )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errfile:
+        # TemporaryFile na Windows to _TemporaryFileWrapper, a stub oczekuje TextIO; cast nie zmienia runtime.
+        errlog = cast(TextIO, errfile)
         try:
             async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -307,7 +311,9 @@ async def _init_instructions(argv: list[str], workspace: Path) -> str:
         env=_server_env(workspace),
         cwd=str(workspace),
     )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errfile:
+        # TemporaryFile na Windows to _TemporaryFileWrapper, a stub oczekuje TextIO; cast nie zmienia runtime.
+        errlog = cast(TextIO, errfile)
         try:
             async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
