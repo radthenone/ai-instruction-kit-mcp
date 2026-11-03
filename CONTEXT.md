@@ -1,6 +1,6 @@
 # Instruction Kit
 
-A central repository of project instructions, served to AI coding clients over MCP. A consuming repo records its choices in a Profile, adds an Overlay, and its agents read the resulting Bundles live — the instruction text is never copied into the consuming repo, so it cannot go stale.
+A central repository of project instructions, served to AI coding clients over MCP. A consuming repo records its choices in a Profile, adds an Overlay, and its agents read the resulting Bundles live — the instruction text is never copied into the consuming repo, so it cannot go stale. The one exception is the Brief Rules, which are copied into Carriers at reload (ADR-0010).
 
 ## Language
 
@@ -23,12 +23,24 @@ The registry that gives every Instruction Module its ID, file location and title
 _Avoid_: index, catalog, registry file
 
 **Overlay**:
-Instructions true of exactly one consuming repo — its paths, ports, task names — living in that repo rather than in the Kit. Appended to a Bundle, never merged into it.
+Instructions true of exactly one consuming repo — its paths, ports, task names — living in that repo rather than in the Kit. Appended to a Bundle, never merged into it. Delivered to the agent by `get_overlay`, never pasted into the Brief.
 _Avoid_: local rules, project config, extras
+
+**Brief**:
+The short orientation an agent reads before working in a Workspace: the Brief Rules plus a pointer to `get_overlay`. Lives in the MCP instructions and in the Kit-owned section of `AGENTS.md`.
+_Avoid_: prompt, system text, preamble
+
+**Brief Rules**:
+The few rules every agent must know before its first action — task classification, `get_overlay` before editing, docstring format, the VPS install restriction. Rendered from one template with the Profile's Language filled in; the only Kit instruction text copied into a Workspace.
+_Avoid_: guidelines, global rules, instructions
 
 **Host**:
 The machine the agent runs on, classified as `vps` or `local`. Distinct from a Client (the AI tool) and a Workspace (the repo directory).
 _Avoid_: server, environment, machine
+
+**Carrier**:
+A place where Brief Rules reach an agent: the per-turn language hook (Claude only), the MCP instructions, the Kit-owned section of `AGENTS.md` (read by every Client).
+_Avoid_: channel, transport, delivery
 
 ### Configuration
 
@@ -95,7 +107,7 @@ A migration of a rules file without a Project Block that the Kit does not apply 
 _Avoid_: failed migration, manual migration
 
 **Bootstrap**:
-Writing Kit files into a Workspace as its Profile dictates: client configuration, agent definitions, slash commands and Guards. Repeatable — rerun whenever the Profile or the Kit changes; never touches the Overlay. Distinct from serving instructions, which happens live over MCP and copies nothing.
+Writing Kit files into a Workspace as its Profile dictates: client configuration, agent definitions, slash commands and Guards. Repeatable — rerun whenever the Profile or the Kit changes; never touches the Overlay. Distinct from serving instructions, which happens live over MCP and copies nothing, except the Brief Rules written into Carriers (ADR-0010).
 _Avoid_: setup, deploy
 
 **Client**:
