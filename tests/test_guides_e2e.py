@@ -166,9 +166,10 @@ _ENV_TOKEN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 def _expand(value: str, workspace: Path) -> str:
     """Rozwiń placeholdery zmiennych środowiskowych używane przez klientów."""
+    # Ścieżki w configu są w formie posix (`mcp_server_entry`), więc rozwijamy tak samo.
     mapping = {
-        "CLAUDE_PROJECT_DIR": str(workspace),
-        "workspaceFolder": str(workspace),
+        "CLAUDE_PROJECT_DIR": workspace.as_posix(),
+        "workspaceFolder": workspace.as_posix(),
     }
 
     def replace(match: re.Match[str]) -> str:
@@ -431,16 +432,16 @@ class TestGeneratedClientConfigs(unittest.TestCase):
                 "--clients",
                 item.case.clients,
                 "--kit-root",
-                str(KIT_ROOT),
+                KIT_ROOT.as_posix(),
                 "--workspace",
-                str(item.root),
+                item.root.as_posix(),
             ]
             for client in KNOWN_CLIENTS:
                 with self.subTest(case=item.case.name, client=client):
                     argv = _client_argv(item.root, client)
                     self.assertEqual(argv[0], "uv", argv)
                     self.assertEqual(argv[1:3], ["run", "--project"], argv)
-                    self.assertEqual(argv[3], str(KIT_ROOT), argv)
+                    self.assertEqual(argv[3], KIT_ROOT.as_posix(), argv)
                     self.assertEqual(argv[4:], expected, argv)
 
     def test_server_starts_from_each_client_command_line(self) -> None:

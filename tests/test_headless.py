@@ -89,8 +89,6 @@ def _alive(pid: int) -> bool:
     return not (status.is_file() and "\nState:\tZ" in status.read_text())
 
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
-
 def _clock_ahead(*, hours: int, minutes: bool) -> str:
     """Godzina zegarowa (12h, am/pm) w czasie lokalnym, `hours` od teraz.
 
@@ -102,6 +100,8 @@ def _clock_ahead(*, hours: int, minutes: bool) -> str:
     suffix = "pm" if at.hour >= 12 else "am"
     return f"{hour}:{at.minute:02d}{suffix}" if minutes else f"{hour}{suffix}"
 
+
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
 class HeadlessWrapperTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()

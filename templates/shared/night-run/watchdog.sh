@@ -4,7 +4,9 @@
 # co się stało: `koniec nocy`, `życie`, `pauza trwa`, `wznowienie po pauzie limitu`.
 # Użycie: watchdog.sh <CTX> [próg_anomalii_min=60] [życie_min=110]
 # Testy: WATCHDOG_TICK_SEC (krok pętli, domyślnie 60), WATCHDOG_RECHECK_SEC (przerwa
-# sprawdzania pauzy bez godziny resetu, domyślnie 1800). Wymaga GNU date (godzina resetu).
+# sprawdzania pauzy bez godziny resetu, domyślnie 1800), WATCHDOG_READY_FILE (plik tworzony,
+# gdy offset transkryptu jest już policzony — linia limitu dopisana później zostanie wykryta).
+# Wymaga GNU date (godzina resetu).
 # Ceiling: pauza bez godziny wybudza po przerwie RECHECK, gdy nie ma nowej linii limitu
 # w transkrypcie — to przybliżenie „limit minął”, orkiestrator weryfikuje to po wybudzeniu.
 set -u
@@ -82,20 +84,25 @@ cat_transcripts() {
   while IFS= read -r file; do cat "$file"; done < <(subagent_transcripts)
 }
 
-transcript_line_count() { cat_transcripts | wc -l | tr -d ' '; }
+# Jak `NR` w `new_limit_line` (wc -l nie liczy ostatniej linii bez znaku nowej linii).
+transcript_line_count() { cat_transcripts | awk 'END { print NR }'; }
 
 # Nowa linia limitu w transkrypcie od ostatniego sprawdzenia (logów /headless nie czytamy —
 # limit wykonawcy to osobne issue). Przesuwa `limit_offset` w bieżącej powłoce, więc wynik
 # idzie do `LIMIT_LINE_FOUND`, a nie przez `$(...)` (podpowłoka nie zapisałaby offsetu).
 new_limit_line() {
-  local total
-  total=$(transcript_line_count)
-  (( total < limit_offset )) && limit_offset=0
+  local out
+  # Liczba linii i szukana linia z jednego odczytu: przy dwóch odczytach linia dopisana
+  # pomiędzy byłaby znaleziona, ale offset by jej nie objął — druga pauza na tę samą linię.
+  # Krótszy transkrypt niż offset (rotacja) — szukamy od początku.
   # Tylko wpisy błędu API (isApiErrorMessage + rate_limit): fraza w tool_result (czytany plik) to nie limit (#262).
-  LIMIT_LINE_FOUND=$(cat_transcripts | tail -n +$(( limit_offset + 1 )) \
-    | grep -E '"isApiErrorMessage"[[:space:]]*:[[:space:]]*true' \
-    | grep -E '"error"[[:space:]]*:[[:space:]]*"rate_limit"' | tail -n1)
-  limit_offset=$total
+  out=$(cat_transcripts | awk -v off="$limit_offset" '
+    /"isApiErrorMessage"[[:space:]]*:[[:space:]]*true/ && /"error"[[:space:]]*:[[:space:]]*"rate_limit"/ {
+      all = $0; if (NR > off) after = $0
+    }
+    END { printf "%d\t%s", NR, (NR < off ? all : after) }')
+  LIMIT_LINE_FOUND=${out#*$'\t'}
+  limit_offset=${out%%$'\t'*}
 }
 
 # „resets 3pm” / „resets 15:30” → epoch najbliższej takiej godziny w przyszłości (≤ 6 h).
@@ -164,6 +171,7 @@ fi
 last_seen=$(latest_activity)
 last_progress=$START
 limit_offset=$(transcript_line_count)
+[[ -n ${WATCHDOG_READY_FILE:-} ]] && : > "$WATCHDOG_READY_FILE"
 
 while :; do
   sleep "$TICK"
