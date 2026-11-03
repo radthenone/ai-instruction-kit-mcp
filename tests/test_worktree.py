@@ -227,6 +227,7 @@ class TestWorktreeCLI(unittest.TestCase):
             hooks_dir = repo / ".claude" / "hooks"
             hooks_dir.mkdir(parents=True)
             shutil.copy(KIT_ROOT / "templates/shared/guards/server-guard.mjs", hooks_dir / "server-guard.mjs")
+            shutil.copy(KIT_ROOT / "templates/shared/guards/host-profile.mjs", hooks_dir / "host-profile.mjs")
 
             (repo / ".ai").mkdir()
             (repo / ".ai" / "worktree.json").write_text(

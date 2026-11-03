@@ -176,8 +176,13 @@ class LanguageReminderValuesTest(unittest.TestCase):
         (tmp / ".ai").mkdir(parents=True)
         (tmp / ".ai" / "project.profile.yaml").write_text(profile, encoding="utf-8")
         (tmp / ".ai" / "project.md").write_text(overlay, encoding="utf-8")
+        # Hook importuje ./host-profile.mjs obok siebie — jak po Bootstrapie (.claude/hooks/).
+        hooks = tmp / ".claude" / "hooks"
+        hooks.mkdir(parents=True)
+        shutil.copy(TEMPLATES / "claude" / HOOK_COMMAND, hooks / HOOK_COMMAND)
+        shutil.copy(TEMPLATES / "shared" / "guards" / "host-profile.mjs", hooks / "host-profile.mjs")
         return subprocess.run(
-            ["node", str(TEMPLATES / "claude" / HOOK_COMMAND)],
+            ["node", str(hooks / HOOK_COMMAND)],
             input="{}",
             capture_output=True,
             text=True,

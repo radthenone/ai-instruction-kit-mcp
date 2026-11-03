@@ -89,7 +89,12 @@ class TestKitBrief(unittest.TestCase):
             )
             (ai_dir / "project.md").write_text("# Overlay\n\nbase: dev\n", encoding="utf-8")
 
-            hook_path = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
+            # Hook importuje ./host-profile.mjs obok siebie — jak po Bootstrapie (.claude/hooks/).
+            hooks = workspace / ".claude" / "hooks"
+            hooks.mkdir(parents=True)
+            shutil.copy(KIT_ROOT / "templates" / "shared" / "guards" / "host-profile.mjs", hooks / "host-profile.mjs")
+            hook_path = hooks / "language-reminder.mjs"
+            shutil.copy(KIT_ROOT / "templates" / "claude" / "language-reminder.mjs", hook_path)
             env = {
                 **os.environ,
                 "CLAUDE_PROJECT_DIR": str(workspace),

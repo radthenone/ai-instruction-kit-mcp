@@ -926,6 +926,8 @@ install_guards() {
   cp "$SHARED_GUARDS/git-guard.mjs" "$dest/git-guard.mjs"
   cp "$SHARED_GUARDS/sensitive-files-guard.mjs" "$dest/sensitive-files-guard.mjs"
   cp "$SHARED_GUARDS/server-guard.mjs" "$dest/server-guard.mjs"
+  # Wspólna detekcja hosta importowana przez server-guard i language-reminder (ADR-0011).
+  cp "$SHARED_GUARDS/host-profile.mjs" "$dest/host-profile.mjs"
   cp "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
   # Lista deny kita + rozwinięte wrappery (Taskfile / package.json / turbo) + sekcja
   # `server:` z Profilu → server-guard.json obok guarda. Guard bez reloadu działa
