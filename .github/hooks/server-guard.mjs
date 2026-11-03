@@ -9,8 +9,9 @@
  *   1. `server.guard: off` w Profilu (JSON obok guarda) → allow.
  *   2. `KIT_HOST_PROFILE` / `GUIDES_HOST_PROFILE` = `vps` / `local` → wymuszenie
  *      (tylko gdy heurystyka się myli; normalnie nieustawiane).
- *   3. Heurystyka 1:1 z `src/guides/host_profile.py` (Linux, nie CI, nie WSL,
- *      CPU ≤ 2, RAM ≤ 8 GB, swap 0, wirtualizacja albo brak desktopu) → aktywny.
+ *   3. Heurystyka z `host-profile.mjs` (ADR-0011, parytet z `src/guides/host_profile.py`:
+ *      Linux, nie CI, nie WSL, CPU ≤ 2, RAM ≤ 8 GB, swap 0, wirtualizacja albo brak
+ *      desktopu) → aktywny.
  *   4. W pozostałych przypadkach → allow.
  *
  * Polityka zna tylko allow/deny (ADR 0006). Dopasowanie po tokenach od początku
@@ -23,7 +24,7 @@
  * YAML-a. Po zmianie Taskfile / `package.json` trzeba `kit-ai reload` — bez reloadu
  * guard działa na starej liście wrapperów.
  *
- * Testy determinują heurystykę przez env (parzystość z `detect_host_profile`):
+ * Testy determinują heurystykę przez env (parzystość z `detect_host_profile`, ADR-0011):
  * `GUARD_PLATFORM`, `GUARD_CPU_COUNT`, `GUARD_MEM_BYTES`, `GUARD_SWAP_BYTES`,
  * `GUARD_VIRT`, `GUARD_HAS_DESKTOP` (1/0), `GUARD_IS_CI` (1/0), `GUARD_IS_WSL` (1/0).
  *
@@ -31,11 +32,11 @@
  * przez `invoke-hook.js --to cursor|opencode`. Narzędzia Playwright MCP
  * (`mcp__plugin_playwright_*`, `mcp__playwright_*`) → deny, gdy guard aktywny.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { homedir, cpus, totalmem, platform as osPlatform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectHostProfile, VPS } from "./host-profile.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -147,86 +148,11 @@ for (const item of config?.project_allow || []) {
   rules.push({ id: `project-allow:${item}`, kind: "allow", pattern: literalPattern(item), reason: `wyjątek projektu (\`server.allow\`: ${item})` });
 }
 
-// --- Aktywacja (1:1 z `src/guides/host_profile.py`) ----------------------------
-function normalizeOverride(value) {
-  const key = String(value || "").trim().toLowerCase();
-  return key === "vps" || key === "local" ? key : null;
-}
-
-function readMeminfo() {
-  if (process.env.GUARD_MEM_BYTES !== undefined || process.env.GUARD_SWAP_BYTES !== undefined) {
-    const mem = process.env.GUARD_MEM_BYTES === "" ? null : Number(process.env.GUARD_MEM_BYTES);
-    const swap = process.env.GUARD_SWAP_BYTES === "" ? null : Number(process.env.GUARD_SWAP_BYTES);
-    return [Number.isFinite(mem) ? mem : null, Number.isFinite(swap) ? swap : null];
-  }
-  try {
-    let mem = null;
-    let swap = null;
-    for (const line of readFileSync("/proc/meminfo", "utf8").split("\n")) {
-      const m = line.match(/^(MemTotal|SwapTotal):\s+(\d+)/);
-      if (m) {
-        if (m[1] === "MemTotal") mem = Number(m[2]) * 1024;
-        else swap = Number(m[2]) * 1024;
-      }
-    }
-    return [mem, swap];
-  } catch {
-    return [null, null];
-  }
-}
-
-function detectVirt() {
-  if (process.env.GUARD_VIRT !== undefined) return String(process.env.GUARD_VIRT).trim().toLowerCase();
-  try {
-    return execFileSync("systemd-detect-virt", { encoding: "utf8", timeout: 5000 }).trim().toLowerCase();
-  } catch (err) {
-    // Na bare metal komenda wypisuje `none` z kodem ≠ 0.
-    return String(err?.stdout || "").trim().toLowerCase();
-  }
-}
-
-const filled = (env, names) => names.some((v) => String(env[v] || "").trim() !== "");
-
-function isCI(env) {
-  if (process.env.GUARD_IS_CI !== undefined) return process.env.GUARD_IS_CI === "1";
-  if (["1", "true", "yes"].includes(String(env.CI || "").trim().toLowerCase())) return true;
-  return filled(env, ["GITHUB_ACTIONS", "GITLAB_CI", "JENKINS_URL", "BUILDKITE", "CIRCLECI", "TRAVIS", "TF_BUILD"]);
-}
-
-function isWSL(env) {
-  if (process.env.GUARD_IS_WSL !== undefined) return process.env.GUARD_IS_WSL === "1";
-  if (filled(env, ["WSL_DISTRO_NAME", "WSL_INTEROP"])) return true;
-  try {
-    const version = readFileSync("/proc/version", "utf8").toLowerCase();
-    return version.includes("microsoft") || version.includes("wsl");
-  } catch {
-    return false;
-  }
-}
-
+// --- Aktywacja (wspólna detekcja hosta, ADR-0011) -----------------------------
+// Wyłącznik `server.guard: off` nie jest częścią detekcji hosta — zostaje tutaj.
 function isActive() {
   if (config?.guard === "off") return false;
-  const env = process.env;
-  const override = normalizeOverride(env.KIT_HOST_PROFILE) || normalizeOverride(env.GUIDES_HOST_PROFILE);
-  if (override) return override === "vps";
-
-  const plat = env.GUARD_PLATFORM || osPlatform();
-  if (!String(plat).startsWith("linux")) return false;
-  if (isCI(env) || isWSL(env)) return false;
-  // Codespaces / devcontainer: mały kontener bez desktopu, ale to stacja deweloperska.
-  if (filled(env, ["CODESPACES", "REMOTE_CONTAINERS"])) return false;
-
-  const cpu = env.GUARD_CPU_COUNT !== undefined ? Number(env.GUARD_CPU_COUNT) : cpus().length;
-  const [mem, swap] = readMeminfo();
-  if (!Number.isFinite(cpu) || mem === null || swap === null) return false;
-  if (!(cpu <= 2 && mem <= 8 * 1024 ** 3 && swap === 0)) return false;
-
-  const virt = detectVirt();
-  const virtualized = Boolean(virt) && virt !== "none" && virt !== "unknown";
-  const desktop = env.GUARD_HAS_DESKTOP !== undefined
-    ? env.GUARD_HAS_DESKTOP === "1"
-    : filled(env, ["DISPLAY", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]);
-  return virtualized || !desktop;
+  return detectHostProfile(process.env) === VPS;
 }
 
 // --- Dopasowanie komendy (lustro `src/guides/server_guard.py`) -------------------
