@@ -211,7 +211,10 @@ class TestWorktreeCLI(unittest.TestCase):
             self.assertTrue((wt_dir / ".env").is_file())
             self.assertEqual((wt_dir / ".env").read_text(encoding="utf-8"), "SECRET=123\n")
             self.assertTrue((wt_dir / "node_modules").exists())
-            self.assertTrue((wt_dir / "node_modules").is_symlink())
+            link = wt_dir / "node_modules"
+            # Na Windows katalog linkujemy jako junction (bez trybu dewelopera) — `is_symlink()`
+            # go nie widzi; `is_junction()` jest od Pythona 3.12, a wspieramy 3.11.
+            self.assertTrue(link.is_symlink() or os.path.realpath(link) != os.path.abspath(link))
             self.assertIn("link do node_modules", res.stdout)
 
     def test_cli_setup_guard_denial(self) -> None:

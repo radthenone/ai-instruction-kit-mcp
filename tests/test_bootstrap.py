@@ -174,8 +174,8 @@ class TestRealRun(_BootstrapTestCase):
             for rel in (".codex/config.toml", "opencode.json"):
                 with self.subTest(config=rel):
                     text = (workspace / rel).read_text(encoding="utf-8")
-                    self.assertNotIn(str(other), text)
-                    self.assertIn(str(workspace.resolve()), text)
+                    self.assertNotIn(other.as_posix(), text)
+                    self.assertIn(workspace.resolve().as_posix(), text)
 
     def test_local_source_uses_uv_run_not_uvx(self) -> None:
         """Lokalny klon: `uv run --project` czyta kod i moduły z dysku.
