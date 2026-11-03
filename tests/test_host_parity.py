@@ -73,11 +73,10 @@ class TestHostParity(unittest.TestCase):
     def test_python_and_js_agree_on_every_row(self) -> None:
         rows = _table()
         proc = subprocess.run(
-            [NODE, "--input-type=module", "-e", _NODE_RUNNER, str(HOST_PROFILE_MJS)],
+            [NODE or "node", "--input-type=module", "-e", _NODE_RUNNER, str(HOST_PROFILE_MJS)],
             input=json.dumps(rows),
             capture_output=True,
             text=True,
-            encoding="utf-8",
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -102,9 +101,9 @@ class TestJsEmptyGuardValuesFallBack(unittest.TestCase):
             'process.stdout.write(detectHostProfile(JSON.parse(process.argv[2]), JSON.parse(process.argv[3])));'
         )
         proc = subprocess.run(
-            [NODE, "--input-type=module", "-e", script, HOST_PROFILE_MJS.as_uri(),
+            [NODE or "node", "--input-type=module", "-e", script, HOST_PROFILE_MJS.as_uri(),
              json.dumps(env), json.dumps(real)],
-            capture_output=True, text=True, encoding="utf-8", check=False,
+            capture_output=True, text=True, check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout
