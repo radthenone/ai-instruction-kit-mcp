@@ -75,6 +75,12 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git checkout `true` -- .", "deny"),
     ("git commit -m \"fix `foo` bar\"", "allow"),
     ("git commit -m 'docs: `rm -r ~/x` example'", "allow"),
+    # Globalne opcje gita przed `checkout` nie omijają reguły (#350).
+    ("git -C . checkout -- .", "deny"),
+    ("git -C . checkout .", "deny"),
+    ("git --no-pager checkout -- .", "deny"),
+    ("git -C . checkout -b feat/y", "allow"),
+    ("git -C . status", "allow"),
     ("git stash", "allow"),
     ("git restore src/a.py", "allow"),
     ("git commit --no-verify -m x", "allow"),
