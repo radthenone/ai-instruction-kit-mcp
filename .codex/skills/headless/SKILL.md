@@ -61,7 +61,9 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
 
    Zadanie trwa zwykle dłużej niż limit pojedynczej komendy (10 min) — jeśli klient pozwala,
    uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Zakaz czekania przez
-   `sleep N; <cmd>` (harness to blokuje) — czekaj na powiadomienie tła albo Monitor z pętlą until.
+   `sleep N; <cmd>` (harness to blokuje) — czekaj na powiadomienie tła; w Claude
+   `run_in_background` z `until grep -q ^EXIT= <log>; do sleep 5; done`. `Monitor` z tą pętlą
+   to opcja, ale wygasa po 30 min i trzeba go uzbroić ponownie.
    Wrapper po zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
 
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na

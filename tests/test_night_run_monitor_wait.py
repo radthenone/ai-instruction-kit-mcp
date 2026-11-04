@@ -28,10 +28,7 @@ ALLOWED_UNTIL_LOOP = re.compile(r"until\s+[^;]+;\s*do\s+sleep\s+\d+;\s*done")
 def find_forbidden_sleeps(text: str) -> list[str]:
     """Zwraca wystąpienia `sleep \\d+;` znajdujące się poza wzorcem until-loop."""
     stripped = ALLOWED_UNTIL_LOOP.sub("<ALLOWED_UNTIL_LOOP>", text)
-    matches = []
-    for match in re.finditer(r"[^\n]*sleep\s+\d+;[^\n]*", stripped):
-        matches.append(match.group(0).strip())
-    return matches
+    return [m.strip() for m in re.findall(r"[^\n]*sleep\s+\d+;[^\n]*", stripped)]
 
 
 class TestNightRunMonitorWait(unittest.TestCase):
@@ -59,7 +56,6 @@ class TestNightRunMonitorWait(unittest.TestCase):
         self.assertIn("Blocked: sleep", self.text)
 
     def test_monitor_pattern_for_claude(self) -> None:
-        self.assertIn("Monitor", self.text)
         background_sec = self._background_section(self.text)
         self.assertIn("Monitor", background_sec)
 
@@ -67,6 +63,11 @@ class TestNightRunMonitorWait(unittest.TestCase):
         background_sec = self._background_section(self.text)
         self.assertIn("timeout", background_sec)
         self.assertIn("pierwszoplanow", background_sec)
+
+    def test_ticket_subagent_waits_in_foreground(self) -> None:
+        paragraph = self._background_section(self.text).split("(tylko Claude Code)", 1)[1]
+        self.assertIn("timeout", paragraph)
+        self.assertIn("until grep", paragraph)
 
     def test_ci_checks_no_sleep_prefix(self) -> None:
         self.assertNotIn("sleep 20; gh pr checks", self.text)
