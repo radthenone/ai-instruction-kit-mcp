@@ -11,7 +11,8 @@
  *
  * Po zakończeniu, błędzie albo timeoucie wrapper zabija całe drzewo procesów wykonawcy
  * (Unix: grupa procesów, Windows: `taskkill /T /F`) — razem z jego LSP i serwerami MCP.
- * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie, 75 = pauza limitu
+ * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie albo błąd konfiguracji
+ * (np. nieznany model agy; linia `## nieznany model:` w raporcie), 75 = pauza limitu
  * dostawcy wykonawcy (nie błąd; linia `PAUSE=rate-limit reset=<ISO|brak>` w raporcie).
  * Pierwszeństwo: limit w ogonie wyjścia wygrywa też z timeoutem (75, nie 124).
  *
@@ -36,6 +37,37 @@ const PAUSE_CODE = 75
 // Komunikaty limitu opencode/Codex/agy i innych (watchdog.sh czyta limit Claude z pól JSON
 // transkryptu, nie z tekstu — tam wzorca nie ma). agy sprawdza też `/quota` (`quota` w EXECUTORS).
 const LIMIT_PATTERN = /usage limit|\brate[ _-]limit|session limit|quota exceeded|quota exhausted|resource_exhausted|too many requests|api error: 429/i
+// Błędny model agy: kod wyjścia 1 i lista dostępnych modeli (błąd konfiguracji, kod wyjścia 2, bez fallbacku).
+const AGY_MODEL_PATTERN = /\bavailable models\b/i
+
+// Parsowanie listy dostępnych modeli z wyjścia agy („Available models: ...”).
+export function parseAvailableModels(text) {
+  const match = /Available models:?([^\n]*)(?:\r?\n([\s\S]*))?/i.exec(text)
+  if (!match) return []
+  const inline = match[1].trim()
+  if (inline) {
+    return inline.split(",").map((s) => s.trim()).filter(Boolean)
+  }
+  if (!match[2]) return []
+  const list = []
+  for (const line of match[2].split(/\r?\n/)) {
+    if (/^\s+/.test(line) || /^\s*[-*]\s+/.test(line)) {
+      const item = line.replace(/^\s*[-*]\s*/, "").trim()
+      if (item) list.push(item)
+    } else if (line.trim() === "") {
+      continue
+    } else {
+      break
+    }
+  }
+  return list
+}
+
+// Wykrycie nazwy nieznanego modelu z wyjścia lub fallback na model z wywołania/configu.
+export function detectUnknownModel(text, fallbackModel = "") {
+  const match = /(?:--model\s+"([^"]+)"|model\s+([^\s:]+)\s+is not recognized)/i.exec(text)
+  return match?.[1] || match?.[2] || fallbackModel || ""
+}
 const LIMIT_TAIL_LINES = 20
 const OUTPUT_TAIL_BYTES = 65_536
 // Okno godziny resetu jak MAX_RESET_AHEAD_SEC w watchdog.sh (dalsza godzina = brak, nie zgadujemy).
@@ -595,9 +627,20 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
+  let invalidModel = null
   const failed = timedOut || code !== 0
-  const textLimit = failed && LIMIT_PATTERN.test(tailLines(outputTail))
-  const quota = failed && !textLimit && executor.quota ? executor.quota(bin) : null
+  const isInvalidModel = failed && !timedOut && AGY_MODEL_PATTERN.test(tailLines(outputTail))
+  if (isInvalidModel) {
+    const available = parseAvailableModels(tailLines(outputTail))
+    const detectedModel = detectUnknownModel(outputTail, model || (name === "antigravity" ? agyConfig().model : ""))
+    const modelDesc = detectedModel ? `model ${detectedModel}` : "model"
+    const executorLabel = name === "antigravity" ? "agy" : name
+    invalidModel = `${modelDesc} nieznany wykonawcy ${executorLabel}${available.length ? `; dostępne: ${available.join(", ")}` : ""}`
+    log(`[headless] ${invalidModel}\n`)
+    code = 2
+  }
+  const textLimit = failed && !isInvalidModel && LIMIT_PATTERN.test(tailLines(outputTail))
+  const quota = failed && !isInvalidModel && !textLimit && executor.quota ? executor.quota(bin) : null
   if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(tailLines(outputTail))) ?? "brak"}`
@@ -606,15 +649,16 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     code = 124
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line }))
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel }))
   return code
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail, pause, config }) {
+function finalReport({ startHead, startStash, tail, pause, config, invalidModel }) {
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
+  if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
   // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
   if (config) out.push(`## ${config}`)
   const status = git("status", "--short")

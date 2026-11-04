@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import json
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -463,6 +464,72 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         argv = self.argv()
         self.assertEqual(argv[1:4], ["-p", "", "-zadanie"])
+
+    def test_agy_invalid_model_failure_is_config_error_with_exit_code_2_without_fallback(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        fake_output = (
+            'error: invalid model selection (--model "bad-model" --effort ""): model bad-model is not recognized\n'
+            'Available models:\n'
+            '  Gemini 3.8 Flash (High)\n'
+            '  Gemini 3.8 Flash (Medium)\n'
+        )
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "bad-model", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.calls(), ["agy"])
+        self.assertIn("nieznany model", result.stdout)
+        self.assertIn(
+            "model bad-model nieznany wykonawcy agy; dostępne: Gemini 3.8 Flash (High), Gemini 3.8 Flash (Medium)",
+            result.stdout,
+        )
+        report = result.stdout.split("[headless] raport końcowy", 1)[1]
+        self.assertIn("## nieznany model: model bad-model nieznany wykonawcy agy", report)
+
+    def test_agy_invalid_model_minimal_available_models_output(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "unknown-m", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT="Available models:\n",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.calls(), ["agy"])
+        self.assertIn("model unknown-m nieznany wykonawcy agy", result.stdout)
+
+    def test_gemini_alias_invalid_model_failure_is_config_error_with_exit_code_2(self) -> None:
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        fake_output = (
+            'error: model bad-gem is not recognized\n'
+            'Available models:\n'
+            '  model-a\n'
+        )
+        result = self.run_wrapper(
+            "--host", "claude", "gemini", "--model", "bad-gem", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.calls(), ["agy"])
+        self.assertIn("model bad-gem nieznany wykonawcy agy; dostępne: model-a", result.stdout)
+        report = result.stdout.split("[headless] raport końcowy", 1)[1]
+        self.assertIn("## nieznany model: model bad-gem nieznany wykonawcy agy", report)
+
+    def test_agy_invalid_model_from_config_file(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        (self.root / ".agents").mkdir(exist_ok=True)
+        (self.root / ".agents/agy.json").write_text('{"model": "bad-cfg-model"}', encoding="utf-8")
+        fake_output = "Available models:\n  Gemini 3.8 Flash (High)\n"
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.calls(), ["agy"])
+        self.assertIn("model bad-cfg-model nieznany wykonawcy agy; dostępne: Gemini 3.8 Flash (High)", result.stdout)
 
     def test_missing_executor_binary_is_error(self) -> None:
         (self.bin / "claude").unlink()
@@ -924,6 +991,37 @@ class HeadlessWrapperTest(unittest.TestCase):
         exe.parent.mkdir(parents=True)
         exe.write_bytes(b"")
         self.assertEqual(self.resolve_shim(NPM_EXE_SHIM.replace("%dp0%", "%~dp0")), str(exe))
+
+    def test_parse_available_models_and_detect_unknown_model(self) -> None:
+        lines = [
+            'error: invalid model selection (--model "custom-xyz" --effort ""): model custom-xyz is not recognized',
+            'Available models:',
+            '  Gemini 3.8 Flash (High)',
+            '  Gemini 3.8 Flash (Medium)',
+            '  Claude Sonnet 4.6 (Thinking)',
+        ]
+        script = (
+            "const m = await import(process.env.WRAPPER_URL); "
+            "const text = JSON.parse(process.env.INPUT_TEXT); "
+            "const models = m.parseAvailableModels(text); "
+            "const detected = m.detectUnknownModel(text); "
+            "console.log(JSON.stringify({ models, detected }));"
+        )
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            env={**os.environ, "WRAPPER_URL": WRAPPER.as_uri(), "INPUT_TEXT": json.dumps("\n".join(lines))},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["detected"], "custom-xyz")
+        self.assertEqual(
+            data["models"],
+            ["Gemini 3.8 Flash (High)", "Gemini 3.8 Flash (Medium)", "Claude Sonnet 4.6 (Thinking)"],
+        )
 
     def test_wrapper_runs_via_symlink_with_preserve_symlinks_main(self) -> None:
         link = self.root / "headless.mjs"
