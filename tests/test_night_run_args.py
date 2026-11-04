@@ -59,6 +59,23 @@ class TestNightRunArgs(unittest.TestCase):
         self.assertIn("`/code-review <N>`", self.text)
         self.assertIn("oś Spec czyta issue", self.text)
 
+    def test_review_skills_output_language(self) -> None:
+        """Krok 2 i raport night-run wymuszają język Profilu dla skilli review (#326)."""
+        chain = self.text.split("## Łańcuch na ticket", 1)[1]
+        step2 = chain.split("2. **Review.**", 1)[1].split("3. **Wznów subagenta ticketu**", 1)[0]
+        self.assertIn("Język wyjścia: <language>", step2)
+        self.assertIn("get_language", step2)
+        self.assertIn("## Standardy", step2)
+        self.assertIn("## Spec", step2)
+        self.assertIn("TWARDE", step2)
+        self.assertIn("OCENA", step2)
+
+        # Reguła w NIGHT-RUN REPORT i prompcie ticketu
+        report_sec = self.text.split("## NIGHT-RUN REPORT", 1)[1]
+        self.assertIn("## Standardy", report_sec)
+        prompt_sec = self.text.split("## Prompt ticketu", 1)[1]
+        self.assertIn("findingi review w języku Profilu", prompt_sec)
+
     def test_cost_note_for_headless_and_inline_review(self) -> None:
         self.assertIn("koszt bez wykonawcy headless i review w sesji głównej", self.text)
 
@@ -71,6 +88,7 @@ class TestNightRunArgs(unittest.TestCase):
                 copy = (KIT_ROOT / rel).read_text(encoding="utf-8")
                 self.assertIn("Skille review z argumentów", copy)
                 self.assertIn("`/goal` opcjonalny", copy)
+                self.assertIn("Język wyjścia: <language>", copy)
 
 
 if __name__ == "__main__":
