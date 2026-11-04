@@ -48,6 +48,8 @@ class TestServerInstructions(unittest.TestCase):
         self.assertIn("`orval`", text)
         self.assertIn("get_bundle", text)
         self.assertIn("`claude`", text)
+        self.assertNotIn("Użyj get_language", text)
+        self.assertNotIn("Użyj get_language", server._STATIC_INSTRUCTIONS)
 
         saved_instructions = server.mcp._mcp_server.instructions
         try:
