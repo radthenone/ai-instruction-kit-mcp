@@ -281,8 +281,24 @@ if ([cmd, ...cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(tex
 
 // --- mutacje w katalogach systemowych -----------------------------------------------
 
+// Bezpieczne przekierowania: do /dev/null lub duplikacja deskryptora (2>&1, 1>&2, >&-).
+// Nie modyfikują systemu plików (#331).
+// Operator przekierowania: >, >>, >|, >&, 2>, 2>>, &>, &>> (wspólny dla trzech regexów).
+const REDIRECT_OP = "(?:[0-9]+|&)?>[>|&]?";
+const SAFE_REDIRECTS = new RegExp(
+  `${REDIRECT_OP}[ ]*["']?/dev/null["']?(?=[ ]|[;&|)]|$)|[0-9]*>&(?:[0-9]+|-)(?=[ ]|[;&|)]|$)`,
+  "gi",
+);
+const cmdClean = cmd.replace(SAFE_REDIRECTS, " ").replace(/ {2,}/g, " ").trim();
+const hasClean = (re) => new RegExp(re, "i").test(cmdClean);
+
 const MUTATING = `${B}(rm|mv|cp|install|ln|dd|shred|truncate|touch|mkdir|rmdir|chmod|chown|chgrp|tee|unlink)([ ]|$)`;
-const mutates = has(MUTATING) || has(`${B}sed[ ]+(-[a-zA-Z]*i|--in-place)`) || has(">[ ]*[~/A-Za-z]");
+// Przekierowanie zapisu do ścieżki:
+const REDIRECT_WRITE = `${REDIRECT_OP}[ ]*["']?[~/A-Za-z]`;
+const mutates =
+  hasClean(MUTATING) ||
+  hasClean(`${B}sed[ ]+(-[a-zA-Z]*i|--in-place)`) ||
+  hasClean(REDIRECT_WRITE);
 
 if (mutates) {
   const home = (process.env.HOME || process.env.USERPROFILE || homedir() || "").replace(/\\/g, "/");
@@ -309,7 +325,8 @@ if (mutates) {
     .filter(Boolean)
     .map(fold);
 
-  for (const tok of cmd.split(" ")) {
+  for (const rawTok of cmdClean.split(" ")) {
+    const tok = rawTok.replace(new RegExp(`^${REDIRECT_OP}`), "");
     if (tok.startsWith("-")) continue;
     // Tylko tokeny wyglądające na ścieżkę — reszta to argumenty, nie cele.
     if (!/^["']?([~/]|[A-Za-z]:[\\/]|\$\{?HOME)/.test(tok)) continue;
