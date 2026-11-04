@@ -59,7 +59,7 @@ _STATIC_INSTRUCTIONS = (
     "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
     "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
     "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
-    "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
+    "tytuły issue/PR/branch zawsze po angielsku. "
     "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
     "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace, "
     "a brakujące etykiety GitHuba zakłada ensure_labels — "
