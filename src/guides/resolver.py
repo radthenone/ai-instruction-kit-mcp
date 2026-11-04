@@ -269,6 +269,10 @@ class ResolvedBundle:
 
 
 _BASE_LINE = re.compile(r"(?m)^base:[ \t]*(\S+)[ \t]*$")
+BASE_FALLBACK_RULE_PL = (
+    "`dev`, jeśli `origin/dev` istnieje i nie jest w tyle za default; "
+    "inaczej default (brak `base:` w `{overlay_rel}`)"
+)
 _COMMANDS_HEADING = re.compile(r"(?m)^##[ \t]+Komendy[ \t]*$")
 _HEADING = re.compile(r"(?m)^##[ \t]+")
 
@@ -434,10 +438,7 @@ def render_project_brief(
     if base:
         base_line = f"`{base}` (z `{overlay_rel}`)"
     else:
-        base_line = (
-            f"`dev`, jeśli `origin/dev` istnieje i nie jest w tyle za default; "
-            f"inaczej default (brak `base:` w `{overlay_rel}`)"
-        )
+        base_line = BASE_FALLBACK_RULE_PL.format(overlay_rel=overlay_rel)
 
     commands = overlay_commands(overlay_content)
     commands_line = "; ".join(commands) if commands else (
