@@ -759,7 +759,7 @@ class TestAgentsBriefBlock(_BootstrapTestCase):
             template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertEqual(extract_brief(text), extract_brief(template))
 
-    def test_bootstrap_renders_profile_brief_with_overlay(self) -> None:
+    def test_bootstrap_renders_profile_brief_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             (workspace / ".ai").mkdir(parents=True)

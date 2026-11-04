@@ -456,8 +456,8 @@ class TestLanguageAndCodegen(unittest.TestCase):
 class TestProjectBrief(unittest.TestCase):
     """Brief projektu: wartości z Profilu i overlayu, gotowe dla pliku i MCP (#307)."""
 
-    def test_brief_carries_profile_overlay_and_priority(self) -> None:
-        """Język, baza, Tiery, codegen, klienci, overlay, komendy, bundle i moduły."""
+    def test_brief_carries_profile_values_and_priority(self) -> None:
+        """Język, baza, Tiery, codegen, klienci, wskaźnik overlayu, komendy, bundle i moduły."""
         tmp, workspace = _workspace(
             "name: brief-test\nlanguage: pl\nclients: all\n"
             "backend: fastapi\nweb: react\nmobile: none\ncodegen: orval\n"
@@ -496,23 +496,18 @@ class TestProjectBrief(unittest.TestCase):
         self.assertIn("codegraph_context", brief)
 
     def test_brief_does_not_paste_overlay_body(self) -> None:
-        """Brief niesie wskaźnik i wartości z overlayu, ale nie jego treść — tę daje get_overlay (#358)."""
+        """Brief wskazuje get_overlay, ale nie niesie treści overlayu — tę daje get_overlay (#358)."""
         tmp, workspace = _workspace("name: brief-overlay-test\nlanguage: pl\n")
         try:
             (workspace / ".ai" / "project.md").write_text(
-                "# Overlay\n\nbase: dev\n\nOVERLAY-BODY-SENTINEL\n\n"
-                "## Komendy\n\n- test: `make test`\n",
-                encoding="utf-8",
+                "# Overlay\n\nOVERLAY-BODY-SENTINEL\n", encoding="utf-8"
             )
             resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
         finally:
             tmp.cleanup()
 
-        brief = resolved.project_brief
-        self.assertNotIn("OVERLAY-BODY-SENTINEL", brief)
-        self.assertIn("`dev`", brief)
-        self.assertIn("make test", brief)
-        self.assertIn("project.md", brief)
+        self.assertNotIn("OVERLAY-BODY-SENTINEL", resolved.project_brief)
+        self.assertIn("`get_overlay`", resolved.project_brief)
         self.assertIn("OVERLAY-BODY-SENTINEL", resolved.overlay_content)
 
     def test_brief_for_claude_carries_codegraph_section(self) -> None:

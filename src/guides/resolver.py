@@ -472,7 +472,7 @@ def render_project_brief(
             f"web=`{tiers.get('web', TIER_NONE)}` mobile=`{tiers.get('mobile', TIER_NONE)}`",
             f"- **Codegen:** `{codegen}` (efektywny; para backend + klient: {pair})",
             f"- **Klienci:** {clients_line}",
-            f"- **Overlay:** `{overlay_rel}` — pierwszeństwo przed bundlami.",
+            f"- **Overlay:** `{overlay_rel}` przez `get_overlay` — pierwszeństwo przed bundlami.",
             f"- **Komendy:** {commands_line}",
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",

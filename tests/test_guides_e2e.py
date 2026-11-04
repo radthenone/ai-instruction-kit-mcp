@@ -409,9 +409,8 @@ def _brief_lines(workspace: Path) -> list[str]:
 
 
 def _has_brief(item: Workspace) -> bool:
-    """Czy AGENTS.md tego workspace'u niesie brief ze wskaźnikiem ``get_overlay`` (zależy od #307)."""
-    brief = "\n".join(_brief_lines(item.root))
-    return bool(brief) and "project.md" in brief
+    """Czy AGENTS.md tego workspace'u niesie wyrenderowany brief (zależy od #307)."""
+    return "**Profil:**" in "\n".join(_brief_lines(item.root))
 
 
 def _brief_available(item: Workspace | None = None) -> bool:
@@ -655,7 +654,7 @@ class TestBriefDelivery(unittest.TestCase):
             self.skipTest(BRIEF_ISSUE)
 
     def test_agents_md_carries_profile_values(self) -> None:
-        """Brief zawiera język, Tiery, codegen, klientów, overlay i regułę priorytetu."""
+        """Brief zawiera język, Tiery, codegen, klientów, wskaźnik overlayu i regułę priorytetu."""
         self._require_brief()
         for item in _WORKSPACES.values():
             case = item.case
@@ -672,7 +671,7 @@ class TestBriefDelivery(unittest.TestCase):
                     "all" in brief or all(client in brief for client in KNOWN_CLIENTS),
                     "brief nie wymienia klientów",
                 )
-                self.assertIn("project.md", brief)
+                self.assertIn("get_overlay", brief)
                 self.assertNotIn(case.sentinel, brief, "brief nie wkleja treści overlayu")
                 self.assertRegex(brief, r"(?i)priorytet")
                 self.assertRegex(brief, r"(?i)(kit|wytyczne)")
