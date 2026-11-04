@@ -315,8 +315,8 @@ Kroki:
 --- po wznowieniu ---
 6. Poprawki z review, potem `/git-end` (review zrobione, nie czekaj). W prompcie `/git-end`
    przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi. **CI
-   pilnuje agent `git-end`:** `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`,
-   bo checki rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
+   pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
+   checki mogą rejestrować się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
    przy `Host: vps` brak CI = brak merge: kroki 7–8 pomijasz, PR otwarty, hand-back needs-human
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
@@ -348,12 +348,19 @@ Reguły:
   wznawiasz po nim pracę.
   Koniec = powiadomienie o zakończeniu albo linia `EXIT=` w logu; wynik = jej wartość. Nie czekasz na tekst narzędzia (`passed`, `All checks…`) ani na stan procesu
   (`ps`, `pgrep`, `kill -0`) — taka pętla wisi bez końca albo staje na prośbie o zgodę.
+  Zakaz `sleep N; <cmd>` (np. `sleep N; cat/tail …`, `sleep N; gh pr checks …`): harness Claude Code
+  blokuje takie polecenia („Blocked: sleep”). Orkiestrator czeka wyłącznie na powiadomienie
+  o zakończeniu zadania w tle. Subagent w Claude czeka w tle (`run_in_background`) pętlą
+  `until grep -q ^EXIT= <log>; do sleep 5; done`; `Monitor` z tą pętlą to opcja, ale wygasa
+  po 30 min i trzeba go uzbroić ponownie. Klienci bez pracy w tle: pierwszoplanowy Bash
+  z limitem czasu (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`).
   Przed hand-backiem żadne Twoje zadanie w tle nie działa, zbędne kończysz.
   (tylko Claude Code) Nie kończysz tury, dopóki `/headless` działa w tle — inaczej
   orkiestrator dostaje powiadomienie „is waiting on its own background work” i płaci turę.
   Czekasz na pierwszoplanowym Bash z limitem czasu, który blokuje do linii `EXIT=` w logu
   wrappera (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`), i powtarzasz
-  go do skutku. To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
+  go do skutku; `Monitor` ani czekanie w tle nie zwalniają z zakazu kończenia tury.
+  To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
   i na powiadomienia nie reaguje narzędziami.
 - Odkrycie części niesprawdzalnej w trakcie pracy: gdy ticket ma część weryfikowalną
   (VPS + CI) i część niesprawdzalną (testy na telefonie, ręczne UI, sprzęt) — robisz część
