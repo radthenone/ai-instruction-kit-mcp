@@ -41,14 +41,9 @@ class NightRunHeadlessPauseTest(unittest.TestCase):
         self.assertIn("`75`", text)
 
     def test_suspect_no_changes_guidance_in_headless_and_night_run(self) -> None:
-        headless_text = HEADLESS_MD.read_text(encoding="utf-8")
-        self.assertIn("SUSPECT=no-changes", headless_text)
-        self.assertIn("silniejszym modelu", headless_text)
-        self.assertIn("needs-human", headless_text)
-
-        self.assertIn("SUSPECT=no-changes", self.night)
-        self.assertIn("silniejszym modelu", self.night)
-        self.assertIn("needs-human", self.night)
+        guidance = r"SUSPECT=no-changes`[^\n]*silniejszym modelu albo oznacz jako needs-human"
+        self.assertRegex(HEADLESS_MD.read_text(encoding="utf-8"), guidance)
+        self.assertRegex(self.night, guidance)
 
 
 if __name__ == "__main__":

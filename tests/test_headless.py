@@ -811,6 +811,11 @@ class HeadlessWrapperTest(unittest.TestCase):
             (self.root / "tracked.txt").write_text("b\n", encoding="utf-8")
             git("stash", "push", "-qm", "stary wpis")
 
+    def clean_git_repo(self) -> None:
+        """Repo jak `git_repo`, ale pliki fixture (wrapper, fałszywe CLI) w `.git/info/exclude` — czysty start."""
+        self.git_repo()
+        (self.root / ".git" / "info" / "exclude").write_text(".ai/\nbin/\ntools/\n", encoding="utf-8")
+
     def worktree(self) -> Path:
         """Główny checkout z commitem i linked worktree obok (bez `opencode.json`)."""
         def git(*args: str) -> None:
@@ -891,7 +896,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("stash@", result.stdout)
 
     def test_exit_zero_without_changes_or_commits_flags_suspect_no_changes(self) -> None:
-        self.git_repo()
+        self.clean_git_repo()
         state = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, state, ignore_errors=True)
         result = self.run_wrapper("--host", "claude", "opencode", "x", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
@@ -901,7 +906,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("## SUSPECT=no-changes", log)
 
     def test_exit_zero_with_commit_does_not_flag_suspect(self) -> None:
-        self.git_repo()
+        self.clean_git_repo()
         state = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, state, ignore_errors=True)
         result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_COMMIT="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
@@ -911,7 +916,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("SUSPECT=no-changes", log)
 
     def test_exit_zero_with_working_tree_changes_does_not_flag_suspect(self) -> None:
-        self.git_repo()
+        self.clean_git_repo()
         state = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, state, ignore_errors=True)
         result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_DIRTY="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
@@ -920,8 +925,30 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("SUSPECT=no-changes", result.stdout)
         self.assertNotIn("SUSPECT=no-changes", log)
 
+    def test_dirty_start_with_more_edits_to_same_file_does_not_flag_suspect(self) -> None:
+        self.clean_git_repo()
+        (self.root / "tracked.txt").write_text("brudny start\n", encoding="utf-8")
+        state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state, ignore_errors=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_DIRTY="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = self.log_path(result).read_text(encoding="utf-8")
+        self.assertNotIn("SUSPECT=no-changes", result.stdout)
+        self.assertNotIn("SUSPECT=no-changes", log)
+
+    def test_exit_zero_with_new_stash_entry_does_not_flag_suspect(self) -> None:
+        self.clean_git_repo()
+        state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state, ignore_errors=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_STASH="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = self.log_path(result).read_text(encoding="utf-8")
+        self.assertIn("nowe wpisy stasha", result.stdout)
+        self.assertNotIn("SUSPECT=no-changes", result.stdout)
+        self.assertNotIn("SUSPECT=no-changes", log)
+
     def test_exit_nonzero_without_changes_does_not_flag_suspect(self) -> None:
-        self.git_repo()
+        self.clean_git_repo()
         state = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, state, ignore_errors=True)
         result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_CODE="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
