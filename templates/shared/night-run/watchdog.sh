@@ -47,6 +47,9 @@ check_header() {
   local marker ctx_host host
   marker=$(grep -E -m1 "$MARKER_RE" "$CTX" 2>/dev/null)
   [[ -n $marker ]] || halt "nagłówek CTX bez znacznika generatora (kit-ai night-ctx)"
+  if ! command -v kit-ai >/dev/null 2>&1; then
+    halt "kit-ai nie w PATH — nagłówek CTX niezweryfikowany (dodaj kit-ai do PATH)"
+  fi
   host=$(current_host) || halt "nie mogę ustalić bieżącego Host (kit-ai host) — nagłówek CTX niezweryfikowany"
   [[ $marker =~ host=(vps|local) ]]
   ctx_host=${BASH_REMATCH[1]}
