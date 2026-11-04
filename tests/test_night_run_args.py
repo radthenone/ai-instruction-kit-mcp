@@ -69,11 +69,20 @@ class TestNightRunArgs(unittest.TestCase):
         self.assertIn("## Spec", step2)
         self.assertIn("TWARDE", step2)
         self.assertIn("OCENA", step2)
+        severity_rule = (
+            "nagłówek tabeli `Severity | Location | Finding | Fix`\n"
+            "   i wartości Severity"
+        )
+        self.assertIn(severity_rule, step2)
 
         # Reguła w NIGHT-RUN REPORT i prompcie ticketu
         report_sec = self.text.split("## NIGHT-RUN REPORT", 1)[1]
         self.assertIn("## Standardy", report_sec)
-        prompt_sec = self.text.split("## Prompt ticketu", 1)[1]
+        self.assertIn(
+            "nagłówek tabeli `Severity | Location | Finding | Fix` i wartości Severity bez zmian",
+            report_sec,
+        )
+        prompt_sec = self.text.split("## Prompt ticketu", 1)[1].split("\n## ", 1)[0]
         self.assertIn("findingi review w języku Profilu", prompt_sec)
 
     def test_cost_note_for_headless_and_inline_review(self) -> None:

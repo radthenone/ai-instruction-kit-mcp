@@ -249,13 +249,14 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    Język wyjścia: <language> (wartość z `get_language`).
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
-   i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` +
-   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id w `## Stan`.
-   Przed pokazaniem lub zapisaniem raportu review orkiestrator przekłada nagłówki, etykiety
-   i podsumowanie na język Profilu (np. `## Standardy` / `## Spec`, `TWARDE` / `OCENA`); cytaty kodu,
-   identyfikatory i ścieżki pozostają bez zmian.
-3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z
-   findingami przełożonymi wg reguły języka z kroku 2: potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
+   i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
+   bez zmian) + potwierdzony/niepewny. Nie edytuj.” Zapisz jego id w `## Stan`.
+   Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
+   przekłada na język Profilu: nagłówki sekcji, etykiety werdyktów i podsumowanie (np. `## Standardy` /
+   `## Spec`, `TWARDE` / `OCENA`). Bez zmian: nagłówek tabeli `Severity | Location | Finding | Fix`
+   i wartości Severity, cytaty kodu, identyfikatory i ścieżki.
+3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z samą
+   tabelą findingów (bez tłumaczenia): potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
    potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
    przed CI — krok `ci`. Dalej kroki 6–8 promptu.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
@@ -318,8 +319,8 @@ Kroki:
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
 6. Poprawki z review, potem `/git-end` (review zrobione, nie czekaj). W prompcie `/git-end`
-   przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi (nagłówki, etykiety
-   i podsumowanie w języku Profilu; cytaty kodu i ścieżki bez zmian). **CI
+   przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi (nagłówki sekcji
+   i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian). **CI
    pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
    checki mogą rejestrować się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
@@ -575,7 +576,7 @@ nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z h
 
 Założenia: <co przyjęto bez danych z repo>
 Pomiar per agent: <wiersze ze snippetu>
-Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule języka: nagłówki, etykiety i podsumowanie w języku Profilu (np. `## Standardy` / `## Spec`, `TWARDE` / `OCENA`), cytaty kodu, identyfikatory i ścieżki bez zmian.
+Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule języka: nagłówki sekcji, etykiety werdyktów i podsumowanie w języku Profilu (np. `## Standardy` / `## Spec`, `TWARDE` / `OCENA`); nagłówek tabeli `Severity | Location | Finding | Fix` i wartości Severity bez zmian, cytaty kodu, identyfikatory i ścieżki bez zmian.
 
 ### Nowe ekrany
 | PR | Route |
