@@ -1165,7 +1165,7 @@ Tańszy token nie znaczy tańszy ticket: mocniejszy model może zrobić mniej tu
 1. Wybierz **jeden** ticket średniej wielkości (kilka kryteriów akceptacji, jedna aplikacja backendu), bez decyzji o pieniądzach i zgodach, żeby needs-human nie zepsuł porównania. Zapisz commit bazowy: `git rev-parse origin/<BASE>`.
 2. Na każdy model osobny worktree z tego commitu i osobna sesja z dokładnym id modelu:
    ```bash
-   node .ai/worktree.mjs add ../measure-<model> <commit>
+   node .ai/worktree.mjs add ../measure-<model> --detach <commit>
    cd ../measure-<model> && claude -p --model <id> "/night-run #<N>, bez merge"
    ```
 3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `node .ai/worktree.mjs remove ../measure-<model>`.
