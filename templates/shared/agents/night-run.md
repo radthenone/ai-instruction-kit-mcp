@@ -286,7 +286,8 @@ Kroki:
    Przy ostrzeżeniu `deps differ from main checkout` oznacz ticket jako „weryfikacja w CI” i nie ufaj lokalnym testom.
 2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
    reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
-   (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
+   (wzorzec „Praca w tle” — zakaz `sleep N; <cmd>`, Monitor dla Claude, foreground timeout dla reszty),
+   sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
    → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
    Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
    w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
@@ -317,8 +318,8 @@ Kroki:
 --- po wznowieniu ---
 6. Poprawki z review, potem `/git-end` (review zrobione, nie czekaj). W prompcie `/git-end`
    przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi. **CI
-   pilnuje agent `git-end`:** `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`,
-   bo checki rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
+   pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
+   checki mogą rejestrować się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
    przy `Host: vps` brak CI = brak merge: kroki 7–8 pomijasz, PR otwarty, hand-back needs-human
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
@@ -350,12 +351,18 @@ Reguły:
   wznawiasz po nim pracę.
   Koniec = powiadomienie o zakończeniu albo linia `EXIT=` w logu; wynik = jej wartość. Nie czekasz na tekst narzędzia (`passed`, `All checks…`) ani na stan procesu
   (`ps`, `pgrep`, `kill -0`) — taka pętla wisi bez końca albo staje na prośbie o zgodę.
+  Zakaz `sleep N; <cmd>` (np. `sleep N; cat/tail …`, `sleep N; gh pr checks …`): harness Claude Code
+  blokuje takie polecenia („Blocked: sleep”). W Claude Code czekasz narzędziem `Monitor`
+  z pętlą until (`until grep -q ^EXIT= <log>; do sleep 5; done`); dla klientów bez Monitora
+  zostaje pierwszoplanowy Bash z limitem czasu `timeout … until grep`
+  (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`).
   Przed hand-backiem żadne Twoje zadanie w tle nie działa, zbędne kończysz.
   (tylko Claude Code) Nie kończysz tury, dopóki `/headless` działa w tle — inaczej
   orkiestrator dostaje powiadomienie „is waiting on its own background work” i płaci turę.
-  Czekasz na pierwszoplanowym Bash z limitem czasu, który blokuje do linii `EXIT=` w logu
-  wrappera (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`), i powtarzasz
-  go do skutku. To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
+  Czekasz narzędziem `Monitor` z pętlą until (`until grep -q ^EXIT= <log>; do sleep 5; done`)
+  albo na pierwszoplanowym Bash z limitem czasu (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`),
+  który blokuje do linii `EXIT=` w logu wrappera, i powtarzasz go do skutku.
+  To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
   i na powiadomienia nie reaguje narzędziami.
 - Odkrycie części niesprawdzalnej w trakcie pracy: gdy ticket ma część weryfikowalną
   (VPS + CI) i część niesprawdzalną (testy na telefonie, ręczne UI, sprzęt) — robisz część

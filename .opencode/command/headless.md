@@ -61,8 +61,9 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    apostrof w treści podwój: `''`).
 
    Zadanie trwa zwykle dłużej niż limit pojedynczej komendy (10 min) — jeśli klient pozwala,
-   uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Wrapper po
-   zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
+   uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Zakaz czekania przez
+   `sleep N; <cmd>` (harness to blokuje) — czekaj na powiadomienie tła albo Monitor z pętlą until.
+   Wrapper po zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
 
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
