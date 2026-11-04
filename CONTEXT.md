@@ -122,6 +122,10 @@ _Avoid_: guardrail, gate, hook, blocker
 The record a Bootstrap leaves in a Workspace of which Kit commit produced the copied files, so drift can be detected without reading any instruction text.
 _Avoid_: lockfile, manifest, version file
 
+**Managed Worktree**:
+A linked git worktree built or synced by the Kit's method, so it carries the gitignored files and dependencies it needs from the main checkout. A plain git worktree is not one until synced (ADR-0014).
+_Avoid_: kit worktree, isolated workspace
+
 ### Agents
 
 **Classification**:
