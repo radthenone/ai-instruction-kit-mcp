@@ -30,18 +30,63 @@ ADR 0006), aktywny **tylko na słabym hoście serwerowym**, z decyzją w runtime
 3. Heurystyka 1:1 z `host_profile.py` → aktywny na VPS.
 4. W pozostałych przypadkach → allow (PC i CI przepuszczają wszystko).
 
-## Dlaczego lista jest krótka
+## Zakres listy i jej koszt
 
-Guard odrzuca tylko komendy, które w kilka minut zjadają RAM/CPU albo zatrzymują
-cudze usługi: kontenery i ich budowanie, instalację/budowanie paczek, buildy
-produkcyjne, przeglądarki/e2e oraz `pytest -xdist`. Świadomie poza listą:
-dev serwery i watchery, `pytest` bez ścieżki, `eslint .`, `systemctl` / `pkill` —
-na serwerze z kilkoma GB RAM nie zawieszają go same z siebie (projekt dopisuje
-je w `server.deny`, README podaje gotowe propozycje).
+Guard odrzuca komendy, które w kilka minut zjadają RAM/CPU, zatrzymują cudze
+usługi albo pobierają i instalują kod poza lockfile'em. Lista domyślna ma ponad
+50 reguł (`DEFAULTS` w `src/guides/server_guard.py`, wbudowana kopia
+w `server-guard.mjs`) i obejmuje:
 
-Krótka lista = mało fałszywych blokad = agent nie uczy się obchodzić guarda.
-Każdy deny niesie powód z alternatywą (linter zamiast builda, `uv run --no-sync`
-zamiast `uv run`, CI zamiast e2e).
+- **kontenery:** `docker`, `docker compose`, `docker-compose`, `podman`, także
+  `docker logs -f`, który trzyma proces;
+- **instalację:** `uv sync|add|remove|lock`, `uv pip install|sync`,
+  `uv tool install`, `pip install`, instalację i zmianę zależności w
+  bun/npm/pnpm/yarn (także gołe `yarn`), `shadcn init|add`, `expo install`,
+  `cargo install`, `go install`, `apt install`, `corepack enable`;
+- **launchery, które pobierają z sieci:** `uvx`, `npx` / `npm exec` / `npm x`,
+  `bunx` / `bun x`, `pnpm dlx` / `yarn dlx` / `pnpx`, `uv run --with`;
+- **synchronizację w tle:** `uv run` bez `--no-sync`;
+- **buildy produkcyjne:** next, vite, nuxt, astro, tsup, webpack, `cargo build`,
+  `expo prebuild|export`, `eas build`, `turbo build`;
+- **e2e i procesy równoległe:** playwright, cypress, maestro, `pytest -n`.
+
+Część z tych reguł ma wyjątek: odczyt stanu kontenerów, `turbo run lint|typecheck`,
+`uv run --no-sync`, `uvx --offline`, `npx --no`, `bunx --no-install` i formy
+lock-only (niżej). Świadomie poza listą: dev serwery i watchery, `pytest` bez
+ścieżki, `eslint .`, `systemctl` / `pkill` — na serwerze z kilkoma GB RAM nie
+zawieszają go same z siebie (projekt dopisuje je w `server.deny`, README podaje
+gotowe propozycje). Poza listą jest też `uv tool run`, choć pobiera tak samo jak
+`uvx` (decyzja z #303, poza zakresem #301).
+
+**Dlaczego lista urosła.** Pierwsza wersja stawiała na minimum reguł, ale
+zostawiała luki. PR #303 (#301) domknął aliasy launcherów i instalacji, a `uvx`
+przeszedł z allow na deny, bo pobiera narzędzie z sieci. Wybór jest świadomy: wolimy fałszywą
+blokadę niż instalację, która położy serwer. Gdy deny zablokowało legalną pracę,
+dodaliśmy wąski wyjątek zamiast zdejmować regułę: tak powstały formy lock-only
+z PR #321 (#317).
+
+**Kompromis.** Dłuższa lista to więcej miejsc na fałszywą blokadę, a wyjątki
+siedzą w długich wyrażeniach regularnych z lookahead. Reguła `uvx` działa tylko
+dla flag przed nazwą narzędzia, bo flaga po nazwie należy do narzędzia, a
+najdłuższa reguła (`npm-install-lock-only`) ma 321 znaków. Guard dopasowuje tekst,
+nie parsuje argumentów, więc myli się w obie strony:
+
+| Komenda | Wynik | Dlaczego | Co zrobić |
+| --- | --- | --- | --- |
+| `uvx --python 3.12 --offline ruff` | deny | wartość flagi przerywa ciąg flag przed `--offline` | `uvx --offline --python 3.12 ruff` albo `UV_OFFLINE=1` |
+| `npx -p typescript --no tsc` | deny | jak wyżej, dla `--no` | `npx --no -p typescript tsc` |
+| `webpack --version`, `tsup --help`, `docker --version` | deny | reguła obejmuje całe narzędzie | `server.allow` |
+| `cargo build --help`, `apt-get -s install curl` | deny | reguła nie rozpoznaje form bez efektu | `server.allow` |
+| `uv run ruff --no-sync` | allow | reguła liczy `--no-sync` w dowolnym miejscu, a po nazwie narzędzia flaga trafia do narzędzia i uv synchronizuje (sprawdzone na uv 0.5.25) | znana luka (#384) |
+| `uv --color never sync`, `npm --loglevel silent install x` | allow | pomijanie flag nie zna ich wartości, więc `never` i `silent` biorą za podkomendę | znana luka (#384) |
+
+Większość deny niesie powód z alternatywą (linter zamiast builda,
+`uv run --no-sync` zamiast `uv run`, CI zamiast e2e), a `server.allow` odblokowuje
+konkretną formę bez zdejmowania reguły: wpis `webpack --version` przepuszcza tę
+formę, a `webpack` nadal dostaje deny.
+Ryzyko, którego pilnujemy, to agent uczący się obchodzić guarda. Dlatego nową
+regułę dodajemy razem z przypadkami w tabeli `SERVER_GUARD` w `tests/test_guards.py`:
+regexa z lookahead nie da się ocenić bez przykładów allow i deny.
 
 ## Wyjątek „tylko lockfile” (#317)
 
@@ -57,7 +102,8 @@ wersje i zapisują lockfile:
 | pnpm | `pnpm install` | `--lockfile-only` **i** `--ignore-scripts` |
 | bun | `bun install` | `--lockfile-only` **i** `--ignore-scripts` |
 
-Każda inna forma tych komend zostaje deny, a powód wskazuje dozwoloną formę.
+Inne formy tych komend zostają deny, a powód wskazuje dozwoloną formę; wyjątki
+od tej zasady opisuje tabela w „Zakres listy i jej koszt” i #384.
 `server.deny` w Profilu może te formy z powrotem zablokować (precedencja:
 `server.allow` > `server.deny` > allow kita > deny kita), a `server.guard: off`
 dalej wyłącza cały guard.
