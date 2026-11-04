@@ -1,0 +1,3 @@
+# Codegraph guidance reaches only clients that declare codegraph MCP, through the Profile
+
+`core:tooling-codegraph` stays out of the bundles except `full`, and is not forced into the core list. Its guidance reaches a client only when the Profile lists that client in `codegraph_clients:`; the brief section is rendered for those clients only, and `AGENTS.md` no longer carries the codegraph section for everyone. We rejected detecting codegraph from `.mcp.json` because ADR-0007 makes the Profile the only configuration, and rejected a claude-only gate because codex, opencode and antigravity also run codegraph MCP and would never receive the guidance. Cursor is not delivered by the kit: `.cursor/rules/codegraph.mdc` stays a hand-kept copy, and this ADR does not change it.
