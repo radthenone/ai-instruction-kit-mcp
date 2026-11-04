@@ -714,14 +714,12 @@ class TestContextHooks(unittest.TestCase):
             self.skipTest("brak node w PATH")
 
     def test_expected_context_hooks_are_installed(self) -> None:
-        """Claude ma hook języka (pl), Claude/Codex/VSCode hook doctora."""
+        """Claude ma hook języka (każdy język), Claude/Codex/VSCode hook doctora."""
         for item in _WORKSPACES.values():
             with self.subTest(case=item.case.name):
                 for client, hooks in _CONTEXT_HOOKS.items():
                     for rel in hooks:
-                        exists = (item.root / rel).is_file()
-                        expected = True
-                        self.assertEqual(exists, expected, rel)
+                        self.assertTrue((item.root / rel).is_file(), rel)
 
                 # Klienci bez hooków kontekstu nie dostają obcych plików.
                 # Katalogi klientów są różne (.agents/, .kilocode/, .kiro/, .opencode/…) — szukaj w całym drzewie.

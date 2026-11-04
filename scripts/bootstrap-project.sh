@@ -1020,10 +1020,10 @@ install_claude() {
   "$PYTHON_BIN" -c 'import json,sys
 t = json.load(open(sys.argv[1], encoding="utf-8"))
 t["hooks"]["UserPromptSubmit"] = json.load(open(sys.argv[2], encoding="utf-8"))["hooks"]["UserPromptSubmit"]
-print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/templates/claude/settings.language.json"  > "$SETTINGS_TEMPLATE"
+print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/templates/claude/settings.language.json" > "$SETTINGS_TEMPLATE"
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$SETTINGS_TEMPLATE"
-  [[ "$SETTINGS_TEMPLATE" == "$KIT_ROOT/templates/claude/settings.json" ]] || rm -f "$SETTINGS_TEMPLATE"
+  rm -f "$SETTINGS_TEMPLATE"
   # Matcher ponytaila poza gitem: lista agentów zależy od wersji kita (#316).
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" sync-local  "$TARGET/.claude/settings.local.json"
   # Claude Code czyta CLAUDE.md, nie AGENTS.md: import, żeby reguła języka była w kontekście.

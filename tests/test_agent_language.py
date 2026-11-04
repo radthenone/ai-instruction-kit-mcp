@@ -2,7 +2,7 @@
 
 Dwie warstwy: teksty źródeł (reguła, linie w orkiestratorach, stopka headless) oraz
 render bootstrapu u każdego klienta (`--clients all`, pl i en): plik instrukcji niesie
-regułę, a hook przypomnienia Claude istnieje tylko przy `language` ≠ en.
+regułę, a hook przypomnienia Claude istnieje dla każdego języka (#356, ADR 0010).
 """
 
 from __future__ import annotations
