@@ -1165,10 +1165,10 @@ Tańszy token nie znaczy tańszy ticket: mocniejszy model może zrobić mniej tu
 1. Wybierz **jeden** ticket średniej wielkości (kilka kryteriów akceptacji, jedna aplikacja backendu), bez decyzji o pieniądzach i zgodach, żeby needs-human nie zepsuł porównania. Zapisz commit bazowy: `git rev-parse origin/<BASE>`.
 2. Na każdy model osobny worktree z tego commitu i osobna sesja z dokładnym id modelu:
    ```bash
-   git worktree add ../measure-<model> <commit>
+   node .ai/worktree.mjs add ../measure-<model> <commit>
    cd ../measure-<model> && claude -p --model <id> "/night-run #<N>, bez merge"
    ```
-3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `git worktree remove ../measure-<model>`.
+3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `node .ai/worktree.mjs remove ../measure-<model>`.
 4. Metryki: snippet z sekcji „Pomiar kosztu ticketu” w agencie, uruchomiony na transkryptach sesji i jej subagentów (`~/.claude/projects/<projekt>/<sesja>.jsonl` i `…/<sesja>/subagents/*.jsonl`). Koszt liczysz **osobno** dla input, cache_creation, cache_read i output według aktualnego cennika, nie jedną stawką.
 5. Jakość: CI zielone za pierwszym razem (t/n), liczba rund poprawek, potwierdzone findingi review, needs-human (t/n).
 6. Limit: ile ticketów mieści się w jednym oknie limitu sesji. Okno nie jest publiczne, więc szacujesz: zużycie na ticket w stosunku do zużycia skumulowanego w chwili HTTP 429 we wcześniejszym przebiegu.
@@ -1266,7 +1266,7 @@ Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w s�
 stopka: na branchu `typ/<N>-slug` linia „Ticket #N: przeczytaj `gh issue view N --comments`”
 (branch bez numeru — bez tej linii), katalog runu na logi testów i pliki robocze, zakaz
 `git stash` / `git checkout` / `git reset` (porównanie z bazą przez
-`git worktree add --detach <katalog runu>/base <ref>` i `git worktree remove` na końcu),
+`node .ai/worktree.mjs add <katalog runu>/base --detach <ref> --plain` i `node .ai/worktree.mjs remove <katalog runu>/base` na końcu),
 plan 5–10 kroków przy tickecie z więcej niż 3 kryteriami albo więcej niż jedną aplikacją,
 test-first z lokalnym commitem po każdym zielonym kroku, lokalnie tylko testy dotknięte
 zmianą i szybkie bramki (pełny zestaw robi CI), na VPS `uv run --no-sync`, maks. 2 próby
