@@ -1646,10 +1646,13 @@ domyślnej.
 
 **`UV_NO_SYNC` per maszyna.** Task, który w środku woła `uv run` bez flagi,
 przechodzi tylko gdy klient na serwerze ma w env `UV_NO_SYNC=1`. Dla Claude
-miejscem per maszyna jest niecommitowany `.claude/settings.local.json` (`env`).
-OpenCode nie ma pliku env per maszyna — guard widzi środowisko procesu, więc
-zmienna musi być w powłoce serwera (np. `export UV_NO_SYNC=1` w `~/.profile`).
-Bez niej task z `uv run` bez `--no-sync` w środku dostaje deny.
+`kit-ai reload` zapisuje `env.UV_NO_SYNC="1"` do niecommitowanego
+`.claude/settings.local.json` tylko na hoście VPS (`kit-ai host`); na local wpis
+kita jest zdejmowany, a ręczna wartość inna niż `1` zostaje (#334). Ustawienie
+`env` z tego pliku musi docierać do hooka — po stronie VPS sprawdź to ręcznie
+(sekcja niżej). OpenCode nie ma pliku env per maszyna — guard widzi środowisko
+procesu, więc zmienna musi być w powłoce serwera (np. `export UV_NO_SYNC=1` w
+`~/.profile`). Bez niej task z `uv run` bez `--no-sync` w środku dostaje deny.
 
 **Ręczne sprawdzenie guarda:**
 
