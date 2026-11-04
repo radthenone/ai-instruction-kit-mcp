@@ -292,6 +292,7 @@ Kroki:
    reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
    → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
+   Linia `SUSPECT=no-changes` w raporcie wrappera (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human (liczy się do 2 prób).
    Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
    w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
    jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (gdy `reset=brak`, wpisz «nieznana»)
