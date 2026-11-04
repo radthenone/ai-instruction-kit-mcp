@@ -409,13 +409,9 @@ def _brief_lines(workspace: Path) -> list[str]:
 
 
 def _has_brief(item: Workspace) -> bool:
-    """Czy AGENTS.md tego workspace'u niesie brief z wartościami Profilu (zależy od #307)."""
+    """Czy AGENTS.md tego workspace'u niesie brief ze wskaźnikiem ``get_overlay`` (zależy od #307)."""
     brief = "\n".join(_brief_lines(item.root))
-    return bool(brief) and (
-        item.case.sentinel in brief
-        or (item.case.backend != "none" and item.case.backend in brief)
-        or (item.case.effective_codegen != "none" and item.case.effective_codegen in brief)
-    )
+    return bool(brief) and "project.md" in brief
 
 
 def _brief_available(item: Workspace | None = None) -> bool:
@@ -676,7 +672,8 @@ class TestBriefDelivery(unittest.TestCase):
                     "all" in brief or all(client in brief for client in KNOWN_CLIENTS),
                     "brief nie wymienia klientów",
                 )
-                self.assertTrue(case.sentinel in brief or "project.md" in brief, "brief bez overlayu")
+                self.assertIn("project.md", brief)
+                self.assertNotIn(case.sentinel, brief, "brief nie wkleja treści overlayu")
                 self.assertRegex(brief, r"(?i)priorytet")
                 self.assertRegex(brief, r"(?i)(kit|wytyczne)")
 

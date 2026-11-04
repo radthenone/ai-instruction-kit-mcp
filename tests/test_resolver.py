@@ -495,6 +495,26 @@ class TestProjectBrief(unittest.TestCase):
         self.assertIn("### CodeGraph", brief)
         self.assertIn("codegraph_context", brief)
 
+    def test_brief_does_not_paste_overlay_body(self) -> None:
+        """Brief niesie wskaźnik i wartości z overlayu, ale nie jego treść — tę daje get_overlay (#358)."""
+        tmp, workspace = _workspace("name: brief-overlay-test\nlanguage: pl\n")
+        try:
+            (workspace / ".ai" / "project.md").write_text(
+                "# Overlay\n\nbase: dev\n\nOVERLAY-BODY-SENTINEL\n\n"
+                "## Komendy\n\n- test: `make test`\n",
+                encoding="utf-8",
+            )
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        brief = resolved.project_brief
+        self.assertNotIn("OVERLAY-BODY-SENTINEL", brief)
+        self.assertIn("`dev`", brief)
+        self.assertIn("make test", brief)
+        self.assertIn("project.md", brief)
+        self.assertIn("OVERLAY-BODY-SENTINEL", resolved.overlay_content)
+
     def test_brief_for_claude_carries_codegraph_section(self) -> None:
         """Brief klienta Claude zawiera sekcję codegraph z instrukcją codegraph_context (#322)."""
         tmp, workspace = _workspace(
