@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Hook UserPromptSubmit (#248, #307, #324): przypomnienie z konkretnymi wartościami z Profilu.
-// Kit instaluje go tylko przy `language` ≠ en (scripts/bootstrap-project.sh, install_claude).
+// Kit instaluje go dla każdego języka (#356, ADR 0010).
 // Czyta `.ai/project.profile.yaml` i `.ai/project.md` w runtime, więc zmiana języka/bazy
 // działa od razu, bez czekania na reload wygenerowanego pliku.
 import { readFileSync } from "node:fs";
