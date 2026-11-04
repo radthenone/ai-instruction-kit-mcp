@@ -20,7 +20,7 @@ alwaysApply: true
 | Branch / PR | `/git-start` … `/git-end` + `git-branch-pr.mdc` |
 | Skrót czatu | **`/compact` tylko w Cursorze** (alias Summarize) |
 | Język prozy | MCP `get_language` / `--language pl\|en` — odpowiedzi zawsze w tym języku niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi) |
-| Worktree / finisz | Superpowers (opc.) na branchu z `/git-start` |
+| Worktree / finisz | Managed Worktree (opc.) metodą kita na branchu z `/git-start` (lub Superpowers + `sync`) |
 | PR → CI green | Autopilot po `/git-end` |
 
 Moduły: Tiery z `.ai/project.profile.yaml` + overlay `.ai/project.md`.  
@@ -38,7 +38,7 @@ Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 | Warstwa | Przykład | Kiedy |
 |---------|----------|--------|
 | Proces | `/grill-me`, `/tdd` | niejasny scope; red-green |
-| Meta | worktree / finishing / debug | izolacja, domknięcie |
+| Meta | worktree / finishing / debug | opcjonalna izolacja (Managed Worktree), domknięcie |
 | PR loop | Autopilot | CI + komentarze |
 
 Priorytet: użytkownik → overlay+MCP → `/git-*`+review → Matt → Superpowers → Autopilot.  
