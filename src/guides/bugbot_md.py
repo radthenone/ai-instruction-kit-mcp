@@ -578,7 +578,9 @@ def _git(kit_root: Path, *args: str) -> str | None:
         result = subprocess.run(
             ["git", "-C", str(kit_root), *args],
             capture_output=True,
-            text=True,
+            # Treść szablonów jest w UTF-8; bez tego Windows dekoduje ją lokalnym kodowaniem.
+            encoding="utf-8",
+            errors="replace",
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
             # Serwer MCP nie przekazuje stdin — inaczej git czeka na wejście, które nie przyjdzie.

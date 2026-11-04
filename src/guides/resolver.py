@@ -413,7 +413,8 @@ def render_project_brief(
         clients: Wartość ``clients:`` z Profilu.
         profile_path: Ścieżka Profilu (do wyświetlenia względem workspace'u).
         workspace_root: Root repo aplikacji.
-        overlay_content: Treść overlayu (także z nagłówkiem kita).
+        overlay_content: Treść overlayu (także z nagłówkiem kita); źródło bazy
+            i komend, nie treść briefu — sam overlay daje ``get_overlay``.
         bundle_names: Nazwy bundle'i z manifestu.
         module_ids: Włączone moduły (bez modułu hosta).
         codegraph_content: Treść modułu ``core:tooling-codegraph`` albo ``None``;
@@ -454,16 +455,6 @@ def render_project_brief(
     visible_modules = [mid for mid in module_ids if mid != VPS_LIGHTWEIGHT_MODULE]
     modules_line = ", ".join(f"`{mid}`" for mid in visible_modules)
 
-    overlay_body = overlay_content.strip()
-    overlay_header = "# Overlay projektu"
-    if overlay_body.startswith(overlay_header):
-        overlay_body = overlay_body[len(overlay_header) :].strip()
-    overlay_section = (
-        ["", f"### Overlay projektu (`{overlay_rel}`)", "", overlay_body]
-        if overlay_body
-        else ["", f"### Overlay projektu (`{overlay_rel}`)", "", "_Brak overlay — dodaj fakty repo._"]
-    )
-
     codegraph_section: list[str] = []
     if codegraph_content and "claude" in client_ids:
         codegraph_section = ["", _demote_headings(codegraph_content.strip())]
@@ -481,11 +472,10 @@ def render_project_brief(
             f"web=`{tiers.get('web', TIER_NONE)}` mobile=`{tiers.get('mobile', TIER_NONE)}`",
             f"- **Codegen:** `{codegen}` (efektywny; para backend + klient: {pair})",
             f"- **Klienci:** {clients_line}",
-            f"- **Overlay:** `{overlay_rel}` — pierwszeństwo przed bundlami.",
+            f"- **Overlay:** `{overlay_rel}` przez `get_overlay` — pierwszeństwo przed bundlami.",
             f"- **Komendy:** {commands_line}",
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
-            *overlay_section,
             *codegraph_section,
         ]
     )
