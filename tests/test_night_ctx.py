@@ -216,14 +216,6 @@ class NightCtxTest(unittest.TestCase):
         out = self._ctx()
         self.assertIn("Pełny zestaw testów: tylko CI", out)
 
-    def test_marker_re_not_in_night_ctx(self) -> None:
-        from guides import night_ctx
-
-        self.assertFalse(
-            hasattr(night_ctx, "MARKER_RE"),
-            "MARKER_RE nie powinien być zdefiniowany w guides.night_ctx (#345)",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 AGENTS = KIT_ROOT / "templates" / "shared" / "agents"
+HOOK = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
 FILES = ["git-start.md", "git-check.md", "git-end.md", "night-run.md"]
 
 
@@ -51,21 +52,16 @@ def _init_repo(repo: Path, *, dev: str | None = "same", default: str = "main") -
         _git(repo, "update-ref", f"refs/remotes/origin/{default}", default)
 
 
+def _git_start_base_script() -> str:
+    """Wycinek bloku bazy z git-start.md: od ``BASE=$(sed`` do ``fi`` przed ``LAST=``."""
+    block = base_block((AGENTS / "git-start.md").read_text(encoding="utf-8"))
+    start = block.index("BASE=$(sed")
+    return block[start : block.index("LAST=", start)]
+
+
 def _eval_bash_base(repo: Path, default: str) -> str:
-    """Weryfikacja logiki bash z git-start.md."""
-    script = (
-        f'DEFAULT="{default}"\n'
-        "BASE=$(sed -n 's/^base:[[:space:]]*\\([^[:space:]]*\\).*/\\1/p' .ai/project.md 2>/dev/null | head -1)\n"
-        'if [ -z "$BASE" ]; then\n'
-        '  BASE=$DEFAULT\n'
-        '  if git rev-parse -q --verify origin/dev >/dev/null \\\n'
-        '     && ! { git merge-base --is-ancestor origin/dev "origin/$DEFAULT" \\\n'
-        '            && [ "$(git rev-parse origin/dev)" != "$(git rev-parse "origin/$DEFAULT")" ]; }; then\n'
-        '    BASE=dev\n'
-        '  fi\n'
-        'fi\n'
-        'printf "%s" "$BASE"'
-    )
+    """Uruchamia logikę bazy z git-start.md w ``repo`` i zwraca wybraną gałąź."""
+    script = f'DEFAULT="{default}"\n{_git_start_base_script()}printf "%s" "$BASE"'
     proc = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, check=True)
     return proc.stdout.strip()
 
@@ -88,18 +84,15 @@ class BaseBranchRuleTest(unittest.TestCase):
     def test_base_fallback_rule_exported_and_matches_hook(self):
         from guides.resolver import BASE_FALLBACK_RULE_PL
 
-        hook_path = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
-        hook_text = hook_path.read_text(encoding="utf-8")
-        self.assertIn("`dev`, jeśli origin/dev nie jest w tyle za default; inaczej default", hook_text)
-        self.assertIn("dev", BASE_FALLBACK_RULE_PL)
+        rule = BASE_FALLBACK_RULE_PL.format(overlay_rel=".ai/project.md")
+        self.assertIn(rule, HOOK.read_text(encoding="utf-8"))
 
     def test_base_regex_parity_between_python_and_hook(self):
         from guides import resolver
 
-        hook_path = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
-        hook_text = hook_path.read_text(encoding="utf-8")
-        self.assertIn("match(overlay, /^base:[ \\t]*(\\S+)[ \\t]*$/m", hook_text)
-        self.assertEqual(resolver._BASE_LINE.pattern, r"(?m)^base:[ \t]*(\S+)[ \t]*$")
+        hook_re = re.search(r"match\(overlay, /(.+?)/m,", HOOK.read_text(encoding="utf-8"))
+        self.assertIsNotNone(hook_re)
+        self.assertEqual("(?m)" + hook_re.group(1), resolver._BASE_LINE.pattern)
 
     def test_night_ctx_base_branch_parity_with_git_start_bash(self):
         from guides.night_ctx import base_branch
@@ -112,26 +105,20 @@ class BaseBranchRuleTest(unittest.TestCase):
             ("no_overlay_no_dev", None, None, "main", "brak dev"),
         ]
 
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp) / "repo"
-            ai_dir = repo / ".ai"
+        for name, overlay_base_val, dev_mode, expected_branch, expected_reason in scenarios:
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                _init_repo(repo, dev=dev_mode, default="main")
+                (repo / ".ai").mkdir()
+                overlay_text = f"base: {overlay_base_val}\n" if overlay_base_val else "# Overlay\n"
+                (repo / ".ai" / "project.md").write_text(overlay_text, encoding="utf-8")
 
-            for name, overlay_base_val, dev_mode, expected_branch, expected_reason in scenarios:
-                with self.subTest(name):
-                    if repo.exists():
-                        import shutil
-                        shutil.rmtree(repo)
-                    _init_repo(repo, dev=dev_mode, default="main")
-                    ai_dir.mkdir(parents=True, exist_ok=True)
-                    overlay_text = f"base: {overlay_base_val}\n" if overlay_base_val else "# Overlay\n"
-                    (ai_dir / "project.md").write_text(overlay_text, encoding="utf-8")
+                branch, reason = base_branch(repo, overlay_text)
+                self.assertEqual(branch, expected_branch)
+                self.assertEqual(reason, expected_reason)
 
-                    branch, reason = base_branch(repo, overlay_text)
-                    self.assertEqual(branch, expected_branch)
-                    self.assertEqual(reason, expected_reason)
-
-                    bash_branch = _eval_bash_base(repo, "main")
-                    self.assertEqual(branch, bash_branch, f"Parzystość night_ctx i bash /git-start dla {name}")
+                bash_branch = _eval_bash_base(repo, "main")
+                self.assertEqual(branch, bash_branch, f"Parzystość night_ctx i bash /git-start dla {name}")
 
 
 if __name__ == "__main__":

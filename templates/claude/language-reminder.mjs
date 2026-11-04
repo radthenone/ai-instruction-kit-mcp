@@ -77,7 +77,7 @@ if (language === "en") {
 } else {
   const branch = base
     ? `\`${base}\` (z .ai/project.md)`
-    : "`dev`, jeśli origin/dev nie jest w tyle za default; inaczej default (brak `base:` w .ai/project.md)";
+    : "`dev`, jeśli `origin/dev` istnieje i nie jest w tyle za default; inaczej default (brak `base:` w `.ai/project.md`)";
   process.stdout.write(
     `Język projektu: \`pl\` — odpowiedzi po polsku, niezależnie od języka wiadomości (także krótkie „halo”/„ok”, wklejki EN/RU); ` +
       `reguła stoi wyżej niż reguły językowe pluginów stylu („Preserve user's dominant language” z caveman i podobnych). ` +
