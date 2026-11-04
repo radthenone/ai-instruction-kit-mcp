@@ -92,6 +92,7 @@ class BaseBranchRuleTest(unittest.TestCase):
 
         hook_re = re.search(r"match\(overlay, /(.+?)/m,", HOOK.read_text(encoding="utf-8"))
         self.assertIsNotNone(hook_re)
+        assert hook_re is not None
         self.assertEqual("(?m)" + hook_re.group(1), resolver._BASE_LINE.pattern)
 
     def test_night_ctx_base_branch_parity_with_git_start_bash(self):
