@@ -493,7 +493,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.fake("agy")
         result = self.run_wrapper(
             "--host", "claude", "antigravity", "--model", "unknown-m", "zadanie",
-            FAKE_CODE="1", FAKE_LIMIT="Available models:\n",
+            FAKE_CODE="1", FAKE_LIMIT="error: model unknown-m is not recognized\nAvailable models:\n",
         )
         self.assertEqual(result.returncode, 2)
         self.assertEqual(self.calls(), ["agy"])
@@ -522,14 +522,41 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.fake("agy")
         (self.root / ".agents").mkdir(exist_ok=True)
         (self.root / ".agents/agy.json").write_text('{"model": "bad-cfg-model"}', encoding="utf-8")
-        fake_output = "Available models:\n  Gemini 3.8 Flash (High)\n"
+        fake_output = "error: invalid model selection\nAvailable models:\n  Gemini 3.8 Flash (High)\n"
         result = self.run_wrapper(
             "--host", "claude", "antigravity", "zadanie",
             FAKE_CODE="1", FAKE_LIMIT=fake_output,
         )
         self.assertEqual(result.returncode, 2)
-        self.assertEqual(self.calls(), ["agy"])
         self.assertIn("model bad-cfg-model nieznany wykonawcy agy; dostępne: Gemini 3.8 Flash (High)", result.stdout)
+
+    def test_available_models_phrase_from_other_executor_is_plain_failure(self) -> None:
+        fake_output = "error: model bad is not recognized\nAvailable models:\n  model-a\n"
+        for executor in ("opencode", "claude"):
+            with self.subTest(executor=executor):
+                result = self.run_wrapper(
+                    "--host", "codex", executor, "zadanie",
+                    FAKE_CODE="1", FAKE_LIMIT=fake_output,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertNotIn("nieznany model", result.stdout)
+
+    def test_agy_rate_limit_beats_available_models_list(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        fake_output = (
+            "error: model bad is not recognized\n"
+            "Available models:\n"
+            "  model-a\n"
+            "Error: rate limit exceeded\n"
+        )
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "bad", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 75)
+        self.assertIn("PAUSE=rate-limit", result.stdout)
+        self.assertNotIn("nieznany model", result.stdout)
 
     def test_missing_executor_binary_is_error(self) -> None:
         (self.bin / "claude").unlink()

@@ -37,12 +37,15 @@ const PAUSE_CODE = 75
 // Komunikaty limitu opencode/Codex/agy i innych (watchdog.sh czyta limit Claude z pól JSON
 // transkryptu, nie z tekstu — tam wzorca nie ma). agy sprawdza też `/quota` (`quota` w EXECUTORS).
 const LIMIT_PATTERN = /usage limit|\brate[ _-]limit|session limit|quota exceeded|quota exhausted|resource_exhausted|too many requests|api error: 429/i
-// Błędny model agy: kod wyjścia 1 i lista dostępnych modeli (błąd konfiguracji, kod wyjścia 2, bez fallbacku).
-const AGY_MODEL_PATTERN = /\bavailable models\b/i
+// Błędny model agy (tylko wykonawca antigravity): kod wyjścia 1, komunikat odrzucenia modelu i lista
+// od początku linii — format z logu agy: `error: invalid model selection (...): model X is not
+// recognized ...` + `Available models:`. Błąd konfiguracji: kod wyjścia 2, bez fallbacku.
+const AGY_MODEL_ERROR = /invalid model selection|is not recognized/i
+const AGY_MODEL_LIST = /^Available models:?/im
 
 // Parsowanie listy dostępnych modeli z wyjścia agy („Available models: ...”).
 export function parseAvailableModels(text) {
-  const match = /Available models:?([^\n]*)(?:\r?\n([\s\S]*))?/i.exec(text)
+  const match = /^Available models:?([^\n]*)(?:\r?\n([\s\S]*))?/im.exec(text)
   if (!match) return []
   const inline = match[1].trim()
   if (inline) {
@@ -629,21 +632,22 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let pause = null
   let invalidModel = null
   const failed = timedOut || code !== 0
-  const isInvalidModel = failed && !timedOut && AGY_MODEL_PATTERN.test(tailLines(outputTail))
+  const outTail = tailLines(outputTail)
+  // Limit ma pierwszeństwo przed nieznanym modelem — pauza, nie błąd konfiguracji.
+  const textLimit = failed && LIMIT_PATTERN.test(outTail)
+  const isInvalidModel = failed && !timedOut && !textLimit && name === "antigravity"
+    && AGY_MODEL_LIST.test(outTail) && AGY_MODEL_ERROR.test(outTail)
   if (isInvalidModel) {
-    const available = parseAvailableModels(tailLines(outputTail))
-    const detectedModel = detectUnknownModel(outputTail, model || (name === "antigravity" ? agyConfig().model : ""))
-    const modelDesc = detectedModel ? `model ${detectedModel}` : "model"
-    const executorLabel = name === "antigravity" ? "agy" : name
-    invalidModel = `${modelDesc} nieznany wykonawcy ${executorLabel}${available.length ? `; dostępne: ${available.join(", ")}` : ""}`
+    const available = parseAvailableModels(outTail)
+    const detectedModel = detectUnknownModel(outTail, model || agyConfig().model)
+    invalidModel = `${detectedModel ? `model ${detectedModel}` : "model"} nieznany wykonawcy agy${available.length ? `; dostępne: ${available.join(", ")}` : ""}`
     log(`[headless] ${invalidModel}\n`)
     code = 2
   }
-  const textLimit = failed && !isInvalidModel && LIMIT_PATTERN.test(tailLines(outputTail))
   const quota = failed && !isInvalidModel && !textLimit && executor.quota ? executor.quota(bin) : null
   if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
   if (textLimit || quota) {
-    pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(tailLines(outputTail))) ?? "brak"}`
+    pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
     code = PAUSE_CODE
   } else if (timedOut) {
     code = 124
