@@ -122,10 +122,16 @@ class TestWatchdogScript(unittest.TestCase):
         _wait_for(lambda: (self.dir / "ready").exists() or proc.poll() is not None)
         return proc
 
-    def _run(self, *args: str, tick: str = "1", recheck: str = "1") -> subprocess.CompletedProcess:
+    def _run(
+        self,
+        *args: str,
+        tick: str = "1",
+        recheck: str = "1",
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), *args],
-            env=self._env(tick=tick, recheck=recheck),
+            env=self._env(tick=tick, recheck=recheck) if env is None else env,
             capture_output=True,
             text=True,
             timeout=240,
@@ -175,6 +181,25 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertIn("local", result.stdout)
         self.assertNotIn("anomalia", result.stdout)
         self.assertIn("halt:", self.ctx.read_text(encoding="utf-8"))
+
+    def test_missing_kit_ai_on_path_halts_night(self) -> None:
+        """Brak kit-ai w PATH kończy noc haltem ze wskazówką (#345)."""
+        self._write_ctx(MARKER)
+        env = self._env()
+        clean_path = os.pathsep.join(
+            p for p in env.get("PATH", "").split(os.pathsep)
+            if not (Path(p) / "kit-ai").exists() and not (Path(p) / "kit-ai.exe").exists()
+        )
+        env["PATH"] = clean_path
+        result = self._run("0", "110", env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("halt:", result.stdout)
+        self.assertIn("kit-ai nie w PATH", result.stdout)
+        self.assertNotIn("anomalia", result.stdout)
+        ctx = self.ctx.read_text(encoding="utf-8")
+        self.assertIn("halt:", ctx)
+        self.assertIn("kit-ai nie w PATH", ctx)
+        self.assertIn("krok: koniec", ctx)
 
     def test_unusable_kit_ai_host_halts_night(self) -> None:
         """Stare/zepsute ``kit-ai`` (kod ≠ 0 albo wynik spoza vps/local) kończy noc haltem."""

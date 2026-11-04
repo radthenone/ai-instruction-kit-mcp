@@ -186,7 +186,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 Orkiestrator budzi się tylko wtedy, gdy jest co robić. Tik kosztuje turę i cały kontekst,
 więc nie jest mechanizmem oczekiwania.
 
-- **Watchdog w tle (`.ai/night-run-watchdog.sh`, instalowany przy kliencie claude):** Bash
+- **Watchdog w tle (`.ai/night-run-watchdog.sh`, instalowany przy kliencie claude):** Wymaga `kit-ai` w PATH (weryfikacja `kit-ai host`; na VPS bez `uvx`). Bash
   `run_in_background` z **jawnym `timeout: 7200000`** i pełną ścieżką repo: `bash "$(git rev-parse --show-toplevel)/.ai/night-run-watchdog.sh" "$CTX" 60 110`
   (domyślnie próg anomalii 60 min, życie 110 min; cel `watchdog: próg N, życie M` (min)
   zamienia te liczby, życie ≤ 110). Bez `timeout` Bash w tle dostaje domyślne 30 min
@@ -196,7 +196,7 @@ więc nie jest mechanizmem oczekiwania.
   w transkrypcie subagenta z `subagent: <id>`. Kończy się, czyli budzi orkiestratora
   powiadomieniem o zakończeniu, tylko gdy:
   - exit 1 `anomalia` — brak postępu > 60 min (subagent failed/bez hand-backu też → tik);
-  - exit 0 `halt` — nagłówek CTX bez znacznika generatora albo `host=` ≠ `kit-ai host`
+  - exit 0 `halt` — nagłówek CTX bez znacznika generatora, brak `kit-ai` w PATH (dodaj do PATH; na VPS bez `uvx kit-ai`) albo `host=` ≠ `kit-ai host`
     (sprawdzane przy każdym starcie i odnowieniu) → halt C z powodem z linii `halt:`;
   - exit 0 `życie` — minęło 110 min → odnów (niżej);
   - exit 0 `koniec nocy` — w `## Stan` jest `krok: koniec`;
