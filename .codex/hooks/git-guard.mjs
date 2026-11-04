@@ -67,8 +67,10 @@ const SHELL_WORD = /(^|[\s;&|(])(bash|sh|zsh|dash|ksh|ssh|eval)(\s|$)/;
 // `cmd` (bez ciała heredoca) zostaje dla celów mutacji: ścieżka w apostrofach to dalej
 // ścieżka. Skrypty `bash -c '…'` / `eval '…'` są wykonywane — dokładamy je do `code`.
 const commandNoHeredoc = stripHeredocs(command);
-const code = collapse([commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes).join(" ; "));
+const executed = [commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes);
+const code = collapse(executed.flatMap((s) => [expandBackticks(s, ""), expandBackticks(s, " ")]).join(" ; "));
 const cmd = collapse(commandNoHeredoc);
+const cmdBackticks = [" ", ""].map((pad) => collapse(expandBackticks(commandNoHeredoc, pad)));
 const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
@@ -151,6 +153,14 @@ function stripHeredocs(text) {
 function shellScripts(text) {
   const re = /(?:^|[\s;&|(])(?:(?:ba|z|da|k)?sh(?:\s+-[A-Za-z]+)*\s+-[A-Za-z]*c[A-Za-z]*|eval)\s+(?:'([^']*)'|"((?:[^"\\]|\\.)*)")/g;
   return [...text.matchAll(re)].map((m) => m[1] ?? m[2]);
+}
+
+// Podstawienie backticków (#349): bash zastępuje `…` jego treścią. Liczymy dwa warianty:
+// bez odstępu (`r\`\`m` skleja się w `rm`) i z odstępem (przy `\\\`` przed słowem zostaje
+// śmieć, więc `git` nie ma spacji przed sobą). Apostrofów nie ruszamy — w nich bash nie
+// podstawia. Backticka nie robimy separatorem, bo rozciąłby zewnętrzną komendę.
+function expandBackticks(text, pad) {
+  return text.replace(/'[^']*'|`([^`]*)`/g, (m, body) => (body === undefined ? m : `${pad}${body}${pad}`));
 }
 
 // Zamień treść pojedynczych apostrofów (także `$'…'`) na spację — bash nie wykonuje
@@ -238,25 +248,34 @@ for (const seg of segments) {
 // --- git: nieodwracalne ---------------------------------------------------------
 
 const hasCode = (re) => new RegExp(re, "i").test(code);
-if (hasCode(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
+// Token z podstawienia (`true`) może stać między `reset` a `--hard`.
+if (hasCode(`${B}git[ ]+reset([ ]+[^ ]+)*[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
 if (hasCode(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
 // Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
 if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(code)) deny("git branch -D — użyj -d (tylko zmergowane)");
-if (hasCode(`${B}git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`)) {
+// Globalne opcje gita (`-C dir`, `--no-pager`, `-c k=v`) przed `checkout` nie omijają
+// reguły. Argument opcji zaczynający się od `-` traktujemy jak kolejną opcję — bez tej
+// granicy łańcuch samych flag dawał wykładniczy backtracking.
+const checkoutDiscards = (seg) =>
+  new RegExp(`(^|[ ])git( +-[^ ]+( +("[^"]*"|[^-][^ ]*))?)* +checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`, "i").test(seg);
+if (segments.some(checkoutDiscards)) {
   deny("git checkout . / checkout -- <ścieżka> — kasuje niezacommitowane zmiany; użyj git stash");
 }
 
 // --- rm rekursywne na szerokiej ścieżce -------------------------------------------
 
-function broadPath() {
+function broadPath(text) {
+  const test = (re) => new RegExp(re, "i").test(text);
   return (
-    has("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
-    has("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
-    has("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
-    has("[ ]/[ ]*$")
+    test("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
+    test("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
+    test("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
+    test("[ ]/[ ]*$") ||
+    test("(^|[ ])~([ ]|$)")
   );
 }
-if (has(`${B}rm[ ]+-[a-zA-Z]*r`) && broadPath()) {
+const RM_RECURSIVE = `${B}rm[ ]+-[a-zA-Z]*r`;
+if ([cmd, ...cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(text) && broadPath(text))) {
   deny("rekursywne kasowanie na szerokiej ścieżce (katalog domowy, dysk, ..)");
 }
 
