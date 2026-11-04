@@ -86,6 +86,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    przenieś do raportu dla użytkownika — tam może leżeć praca wykonawcy; sam go nie zdejmuj.
    Wyjście ucięte przez klienta — raport jest w logu:
    `sed -n '/^\[headless\] raport końcowy/,$p' <log>`.
+   Linia `SUSPECT=no-changes` w raporcie (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human.
 
 4. Raport dla użytkownika:
 

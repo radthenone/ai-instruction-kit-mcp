@@ -533,6 +533,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
+  // SUSPECT tylko przy czystym starcie — przy brudnym `status` nie odróżni dopisania do już zmienionego pliku.
+  const startClean = git("status", "--porcelain") === ""
   const startStash = new Set(lines(git("stash", "list", "--format=%H")))
   const started = Date.now()
 
@@ -653,26 +655,31 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     code = 124
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel }))
+  // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, checkNoChanges: code === 0 && startClean }))
   return code
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail, pause, config, invalidModel }) {
-  const out = ["[headless] raport końcowy"]
-  if (pause) out.push(`## ${pause}`)
-  if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
-  // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
-  if (config) out.push(`## ${config}`)
+function finalReport({ startHead, startStash, tail, pause, config, invalidModel, checkNoChanges }) {
   const status = git("status", "--short")
-  if (status !== null) out.push("## git status --short", status || "(czysto)")
-  if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")
   // Po hashach, nie po liczbie — `drop` + nowy wpis nie zmienia liczby.
   const added = lines(git("stash", "list", "--format=%H%x09%gd: %gs"))
     .map((l) => l.split("\t"))
     .filter(([hash]) => !startStash.has(hash))
     .map(([, entry]) => entry)
+  // Exit 0, a w drzewie, historii i stashu nic nowego — wykonawca mógł nic nie zrobić.
+  const suspect = checkNoChanges && status === "" && !added.length
+    && startHead !== null && git("rev-parse", "HEAD") === startHead
+  const out = ["[headless] raport końcowy"]
+  if (pause) out.push(`## ${pause}`)
+  if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
+  if (suspect) out.push("## SUSPECT=no-changes")
+  // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
+  if (config) out.push(`## ${config}`)
+  if (status !== null) out.push("## git status --short", status || "(czysto)")
+  if (startHead) out.push(`## git log ${startHead.slice(0, 7)}..HEAD --oneline`, git("log", `${startHead}..HEAD`, "--oneline") || "(brak commitów)")
   if (added.length) {
     out.push("## UWAGA: nowe wpisy stasha — praca wykonawcy może tam być; nie zdjęte automatycznie (`git stash pop` ręcznie)", ...added)
   }
