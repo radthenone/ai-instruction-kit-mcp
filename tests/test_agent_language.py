@@ -156,13 +156,18 @@ class RenderTest(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_en_render_has_no_claude_language_hook(self) -> None:
+    def test_en_render_carries_rule_and_claude_hook(self) -> None:
         tmp = self.render("en")
         try:
             target = tmp / "generated"
             settings = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
-            self.assertNotIn("UserPromptSubmit", settings["hooks"])
-            self.assertFalse((target / ".claude" / "hooks" / HOOK_COMMAND).exists())
+            commands = [
+                hook["command"]
+                for entry in settings["hooks"].get("UserPromptSubmit", [])
+                for hook in entry["hooks"]
+            ]
+            self.assertTrue(any(HOOK_COMMAND in c for c in commands), commands)
+            self.assertTrue((target / ".claude" / "hooks" / HOOK_COMMAND).is_file())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -269,6 +274,18 @@ class LanguageReminderValuesTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("`##`", result.stdout)
         self.assertIn("brak `base:`", result.stdout)
+
+    def test_hook_en_outputs_english_rules(self) -> None:
+        """Przypomnienie en: wypisuje reguły w języku angielskim (#356)."""
+        self._require_node()
+        result = self._run_hook("name: t\nlanguage: en\n", "# Overlay\n\nbase: dev\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+        self.assertIn("Project language: `en`", output)
+        self.assertIn("Task classification and MCP rules", output)
+        self.assertIn("get_overlay", output)
+        self.assertIn("Docstrings in repo format (Args/Returns, in English)", output)
+        self.assertIn("PR base: `dev`", output)
 
     def test_language_tag_matches_resolver(self) -> None:
         """``en-US`` to angielski, tak jak w ``normalize_language`` resolvera."""

@@ -1014,19 +1014,13 @@ install_claude() {
   cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
   # Przypomnienie o otwartej partii doctora (#269) — SessionStart, też Codex i Copilot.
   cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
-  # Przypomnienie języka (#248): hook UserPromptSubmit tylko przy language ≠ en.
-  # Reinstalacja zdejmuje stary wpis (marker language-reminder.mjs), więc przy en znika.
-  SETTINGS_TEMPLATE="$KIT_ROOT/templates/claude/settings.json"
-  if [[ "$LANGUAGE" != "en" ]]; then
-    cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
-    SETTINGS_TEMPLATE="$(mktemp)"
-    "$PYTHON_BIN" -c 'import json,sys
+  # Przypomnienie języka (#248, #356): hook UserPromptSubmit dla każdego języka (ADR 0010).
+  cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
+  SETTINGS_TEMPLATE="$(mktemp)"
+  "$PYTHON_BIN" -c 'import json,sys
 t = json.load(open(sys.argv[1], encoding="utf-8"))
 t["hooks"]["UserPromptSubmit"] = json.load(open(sys.argv[2], encoding="utf-8"))["hooks"]["UserPromptSubmit"]
-print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/templates/claude/settings.language.json" > "$SETTINGS_TEMPLATE"
-  else
-    rm -f "$TARGET/.claude/hooks/language-reminder.mjs"
-  fi
+print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/templates/claude/settings.language.json"  > "$SETTINGS_TEMPLATE"
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$SETTINGS_TEMPLATE"
   [[ "$SETTINGS_TEMPLATE" == "$KIT_ROOT/templates/claude/settings.json" ]] || rm -f "$SETTINGS_TEMPLATE"

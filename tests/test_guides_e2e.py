@@ -569,12 +569,12 @@ class TestChannelConsistency(unittest.TestCase):
                 self.assertIn(f"# Language: `{case.language}`", item.tools["language"])
 
                 hook = item.root / ".claude" / "hooks" / "language-reminder.mjs"
+                self.assertTrue(hook.is_file())
+                result = _run_hook(hook, item.root, {})
+                self.assertEqual(result.returncode, 0, result.stderr)
                 if case.language == "en":
-                    self.assertFalse(hook.exists(), "hook języka nie może zostać przy en")
+                    self.assertIn("language: `en`", result.stdout)
                 else:
-                    self.assertTrue(hook.is_file())
-                    result = _run_hook(hook, item.root, {})
-                    self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn("jęz", result.stdout.lower())
 
                 if _brief_available(item):
@@ -720,10 +720,7 @@ class TestContextHooks(unittest.TestCase):
                 for client, hooks in _CONTEXT_HOOKS.items():
                     for rel in hooks:
                         exists = (item.root / rel).is_file()
-                        if rel.endswith("language-reminder.mjs"):
-                            expected = item.case.language != "en"
-                        else:
-                            expected = True
+                        expected = True
                         self.assertEqual(exists, expected, rel)
 
                 # Klienci bez hooków kontekstu nie dostają obcych plików.
@@ -748,18 +745,15 @@ class TestContextHooks(unittest.TestCase):
                         result = _run_hook(script, item.root, {"cwd": str(item.root)})
                         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_language_hook_is_wired_in_settings_only_for_pl(self) -> None:
-        """``settings.json`` Claude woła hook języka tylko przy language ≠ en."""
+    def test_language_hook_is_wired_in_settings(self) -> None:
+        """``settings.json`` Claude woła hook języka także przy language: en (#356)."""
         for item in _WORKSPACES.values():
             with self.subTest(case=item.case.name):
                 settings = json.loads(
                     (item.root / ".claude" / "settings.json").read_text(encoding="utf-8")
                 )
                 commands = json.dumps(settings.get("hooks", {}).get("UserPromptSubmit", []))
-                self.assertEqual(
-                    "language-reminder.mjs" in commands,
-                    item.case.language != "en",
-                )
+                self.assertIn("language-reminder.mjs", commands)
 
     def test_doctor_reminder_speaks_when_doctor_batch_exists(self) -> None:
         """Hook doctora realnie czyta workspace i zwraca kontekst z trybem naprawy."""
