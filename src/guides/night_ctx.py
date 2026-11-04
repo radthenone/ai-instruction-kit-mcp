@@ -39,7 +39,12 @@ def _git(repo: Path, *args: str) -> str | None:
     """Wynik ``git`` w repo albo ``None`` (brak repo / błąd komendy)."""
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=repo, capture_output=True, text=True, check=False
+            ["git", *args],
+            cwd=repo,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
         )
     except OSError:
         return None
