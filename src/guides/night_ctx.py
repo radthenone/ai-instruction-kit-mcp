@@ -23,7 +23,6 @@ from guides.resolver import (
 )
 
 NIGHT_CTX_VERSION = "v1"
-MARKER_RE = re.compile(r"<!--\s*kit-ai night-ctx v(\d+) host=(vps|local)\s*-->")
 DEFAULT_GATES = ("ruff check", "pytest <pliki dotknięte ticketem>")
 CI_TRIGGERS = ("pull_request", "pull_request_target", "push")
 _CI_EXCLUDE = re.compile(r"\b(deploy|publish|release|secret)\b", re.IGNORECASE)
