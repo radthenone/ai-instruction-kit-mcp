@@ -129,6 +129,8 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("echo x 2> ~/.claude/settings.json", "deny"),
     ("echo x 2>> ~/.claude/settings.json", "deny"),
     ("echo x &> ~/.claude/settings.json", "deny"),
+    ("echo x >~/.ssh/k", "deny"),
+    ("echo x >&~/.ssh/k", "deny"),
     ("mkdir -p ~/.claude/hooks", "allow"),
 ]
 

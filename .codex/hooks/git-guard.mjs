@@ -283,13 +283,18 @@ if ([cmd, ...cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(tex
 
 // Bezpieczne przekierowania: do /dev/null lub duplikacja deskryptora (2>&1, 1>&2, >&-).
 // Nie modyfikują systemu plików (#331).
-const SAFE_REDIRECTS = /(?:(?:[0-9]+|&)?>(?:>|\|)?|>&)[ ]*["']?\/dev\/null["']?(?=[ ]|[;&|)]|$)|[0-9]*>&(?:[0-9]+|-)(?=[ ]|[;&|)]|$)/gi;
+// Operator przekierowania: >, >>, >|, >&, 2>, 2>>, &>, &>> (wspólny dla trzech regexów).
+const REDIRECT_OP = "(?:[0-9]+|&)?>[>|&]?";
+const SAFE_REDIRECTS = new RegExp(
+  `${REDIRECT_OP}[ ]*["']?/dev/null["']?(?=[ ]|[;&|)]|$)|[0-9]*>&(?:[0-9]+|-)(?=[ ]|[;&|)]|$)`,
+  "gi",
+);
 const cmdClean = cmd.replace(SAFE_REDIRECTS, " ").replace(/ {2,}/g, " ").trim();
 const hasClean = (re) => new RegExp(re, "i").test(cmdClean);
 
 const MUTATING = `${B}(rm|mv|cp|install|ln|dd|shred|truncate|touch|mkdir|rmdir|chmod|chown|chgrp|tee|unlink)([ ]|$)`;
-// Przekierowanie zapisu do ścieżki (>, >>, >|, 2>, 2>>, &>, &>>, >&):
-const REDIRECT_WRITE = /(?:(?:[0-9]+|&)?>(?:>|\|)?|>&)[ ]*["']?[~/A-Za-z]/;
+// Przekierowanie zapisu do ścieżki:
+const REDIRECT_WRITE = `${REDIRECT_OP}[ ]*["']?[~/A-Za-z]`;
 const mutates =
   hasClean(MUTATING) ||
   hasClean(`${B}sed[ ]+(-[a-zA-Z]*i|--in-place)`) ||
@@ -301,7 +306,7 @@ if (mutates) {
   const norm = (p) => {
     let s = p.replace(/^["']|["']$/g, "").replace(/\\/g, "/");
     if (s.startsWith("~")) s = home + s.slice(1);
-    s = s.replace(/^\$HOME/, home).replace(/^\${HOME}/, home);
+    s = s.replace(/^\$HOME/, home).replace(/^\$\{HOME\}/, home);
     return fold(s.replace(/\/+$/, ""));
   };
   const winRoot = (process.env.SystemDrive || "C:").replace(/\\/g, "/");
@@ -321,14 +326,15 @@ if (mutates) {
     .map(fold);
 
   for (const rawTok of cmdClean.split(" ")) {
-    const tok = rawTok.replace(/^(?:(?:[0-9]+|&)?>(?:>|\|)?|>&)/, "");
+    const tok = rawTok.replace(new RegExp(`^${REDIRECT_OP}`), "");
     if (tok.startsWith("-")) continue;
     // Tylko tokeny wyglądające na ścieżkę — reszta to argumenty, nie cele.
-    if (!/^["']?([~/]|[A-Za-z]:[\\/]|\${?HOME)/.test(tok)) continue;
+    if (!/^["']?([~/]|[A-Za-z]:[\\/]|\$\{?HOME)/.test(tok)) continue;
     const t = norm(tok);
     if (protectedPrefixes.some((p) => t === p || t.startsWith(p + "/"))) {
       deny(`zmiana w katalogu systemowym: ${tok}`);
     }
   }
 }
+
 allow();
