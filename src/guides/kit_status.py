@@ -118,7 +118,8 @@ def _git(kit_root: Path, *args: str) -> str | None:
         result = subprocess.run(
             ["git", "-C", str(kit_root), *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
             # Bez tego dziecko dziedziczy stdin serwera MCP — potok od klienta, ktory

@@ -256,5 +256,20 @@ class TestWheelStatus(unittest.TestCase):
         self.assertNotIn("aktualny", out)
 
 
+class TestKitStatusGit(unittest.TestCase):
+    def test_git_subprocess_uses_utf8_and_replace(self) -> None:
+        from guides.kit_status import _git
+
+        with mock.patch("subprocess.run") as fake_run:
+            fake_run.return_value = subprocess.CompletedProcess([], 0, "abc\n", "")
+            res = _git(Path("/fake/kit"), "rev-parse", "HEAD")
+
+        fake_run.assert_called_once()
+        kwargs = fake_run.call_args.kwargs
+        self.assertEqual(kwargs.get("encoding"), "utf-8")
+        self.assertEqual(kwargs.get("errors"), "replace")
+        self.assertEqual(res, "abc")
+
+
 if __name__ == "__main__":
     unittest.main()
