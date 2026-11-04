@@ -121,3 +121,21 @@ _Avoid_: guardrail, gate, hook, blocker
 **Bootstrap Stamp**:
 The record a Bootstrap leaves in a Workspace of which Kit commit produced the copied files, so drift can be detected without reading any instruction text.
 _Avoid_: lockfile, manifest, version file
+
+### Agents
+
+**Classification**:
+The required `procedure` or `code` value in an agent template's frontmatter, saying whether the agent runs a fixed kit procedure or changes application code. A missing or unknown value fails the Bootstrap (ADR-0013).
+_Avoid_: type, category, kind
+
+**Procedure agent**:
+An agent classified `procedure`: a kit workflow such as `/git-*` or `/review-*`, which the ponytail plugin must not rewrite.
+_Avoid_: workflow agent, kit agent
+
+**Code agent**:
+An agent classified `code`: one that writes application code, the only kind the ponytail plugin applies to.
+_Avoid_: dev agent, coding agent
+
+**Ponytail matcher**:
+The regex in `PONYTAIL_SUBAGENT_MATCHER` that matches every agent except the Procedure agents. Written by the Bootstrap to `.claude/settings.local.json` in the kit's form; a hand-written value is never overwritten (ADR-0013).
+_Avoid_: filter, pattern, allowlist
