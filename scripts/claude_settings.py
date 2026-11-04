@@ -25,6 +25,10 @@ w `.claude/settings.local.json` — poza gitem, bo lista agentów zależy od wer
 `sync-local` go dopisuje (wartość w postaci kita `^(?!(?:...)$).*` odświeża, ręczną zostawia),
 `prune-local` zdejmuje tylko postać kita. Matcher kita, który wcześniej trafił do
 `settings.json`, install i prune stamtąd usuwają; ręczna wartość zostaje w obu plikach.
+
+`env.UV_NO_SYNC=1` (#334) trafia do `settings.local.json` tylko na hoście VPS
+(`guides.host_profile`); na local sync-local go zdejmuje, prune-local zdejmuje zawsze.
+Ręczna wartość inna niż `1` zostaje.
 """
 
 from __future__ import annotations
@@ -37,6 +41,12 @@ KIT_ROOT = Path(__file__).resolve().parents[1]
 AGENTS_DIR = KIT_ROOT / "templates" / "shared" / "agents"
 sys.path.insert(0, str(KIT_ROOT / "src"))
 from guides.agent_classes import KIT_MATCHER_RE, MATCHER_KEY, ponytail_matcher  # noqa: E402
+from guides.host_profile import is_vps_host  # noqa: E402
+
+# `UV_NO_SYNC=1` na VPS: server-guard zdejmuje `uv run` bez `--no-sync` tylko wtedy, gdy env
+# ma tę zmienną (#334). Wartość zależna od maszyny — trzymana w settings.local.json.
+UV_NO_SYNC_KEY = "UV_NO_SYNC"
+KIT_UV_NO_SYNC_VALUE = "1"
 
 # Wpis należy do kita, jeśli jego komenda odwołuje się do któregoś z tych plików.
 GUARD_MARKERS: tuple[str, ...] = (
@@ -226,25 +236,52 @@ def write(path: Path, settings: dict) -> None:
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
-def sync_local_settings(target: Path) -> None:
+def drop_kit_uv_no_sync(settings: dict) -> dict:
     """
-    Dopisz matcher ponytaila kita do `env` w `.claude/settings.local.json`.
+    Zdejmij z `env` `UV_NO_SYNC` ustawione przez kit; ręczna wartość zostaje.
 
-    Wartość w postaci kita (także ze starej listy agentów) odświeża; ręczną zostawia.
+    Args:
+        settings: Ustawienia (modyfikowane w miejscu).
+
+    Returns:
+        dict: Te same ustawienia; pusty `env` znika.
+    """
+    env = settings.get("env")
+    if isinstance(env, dict) and env.get(UV_NO_SYNC_KEY) == KIT_UV_NO_SYNC_VALUE:
+        del env[UV_NO_SYNC_KEY]
+        if not env:
+            del settings["env"]
+    return settings
+
+
+def sync_local_settings(target: Path, vps: bool | None = None) -> None:
+    """
+    Dopisz do `env` w `.claude/settings.local.json` wpisy kita zależne od hosta.
+
+    Matcher ponytaila jest zawsze; `UV_NO_SYNC=1` tylko na VPS (#334). Na local
+    wartość kita `UV_NO_SYNC=1` zdejmowana, bo host przestał być VPS. Wartość w postaci
+    kita odświeża; ręczną zostawia.
 
     Args:
         target: Ścieżka do `.claude/settings.local.json`.
+        vps: Czy host to VPS (domyślnie z `guides.host_profile`).
     """
     settings = load(target)
     if not settings and target.is_file() and target.read_text(encoding="utf-8", errors="replace").strip() not in ("", "{}"):
         # Prywatny plik użytkownika (uprawnienia) — nieczytelnego nie nadpisujemy.
-        print(f"claude_settings: {target} nieczytelny — matcher ponytaila pominięty", file=sys.stderr)
+        print(f"claude_settings: {target} nieczytelny — wpisy env kita pominięte", file=sys.stderr)
         return
+    is_vps = is_vps_host() if vps is None else vps
     env = settings.get("env")
     if not isinstance(env, dict):
         env = settings["env"] = {}
     if MATCHER_KEY not in env or is_kit_matcher(env[MATCHER_KEY]):
         env[MATCHER_KEY] = build_ponytail_matcher()
+    if is_vps:
+        if env.get(UV_NO_SYNC_KEY, KIT_UV_NO_SYNC_VALUE) == KIT_UV_NO_SYNC_VALUE:
+            env[UV_NO_SYNC_KEY] = KIT_UV_NO_SYNC_VALUE
+    else:
+        drop_kit_uv_no_sync(settings)
     write(target, settings)
 
 
@@ -259,11 +296,13 @@ def main(argv: list[str]) -> int:
         sync_local_settings(target)
         return 0
     if mode == "prune-local":
-        # Zapis tylko po zdjęciu matchera kita — nieczytelny albo cudzy plik zostaje.
+        # Zapis tylko po zdjęciu wpisów kita — nieczytelny albo cudzy plik zostaje.
         local = load(target)
         env = local.get("env")
-        if isinstance(env, dict) and is_kit_matcher(env.get(MATCHER_KEY)):
-            write(target, drop_kit_matcher(local))
+        if isinstance(env, dict) and (
+            is_kit_matcher(env.get(MATCHER_KEY)) or env.get(UV_NO_SYNC_KEY) == KIT_UV_NO_SYNC_VALUE
+        ):
+            write(target, drop_kit_uv_no_sync(drop_kit_matcher(local)))
         return 0
 
     settings = strip_kit_entries(load(target))
