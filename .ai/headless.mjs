@@ -533,6 +533,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
+  const startStatus = git("status", "--porcelain")
   const startStash = new Set(lines(git("stash", "list", "--format=%H")))
   const started = Date.now()
 
@@ -652,17 +653,25 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   } else if (timedOut) {
     code = 124
   }
+  const endHead = git("rev-parse", "HEAD")
+  const endStatus = git("status", "--porcelain")
+  const suspect = code === 0 && !timedOut
+    && startHead !== null && endHead !== null && startHead === endHead
+    && startStatus !== null && endStatus !== null && startStatus === endStatus
+    ? "SUSPECT=no-changes"
+    : null
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel }))
+  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, suspect }))
   return code
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail, pause, config, invalidModel }) {
+function finalReport({ startHead, startStash, tail, pause, config, invalidModel, suspect }) {
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
+  if (suspect) out.push(`## ${suspect}`)
   // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
   if (config) out.push(`## ${config}`)
   const status = git("status", "--short")
