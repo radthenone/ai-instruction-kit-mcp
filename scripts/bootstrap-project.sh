@@ -869,6 +869,7 @@ install_agenty_md_once() {
     BLOCK="agents" \
     KIT_ROOT="$KIT_ROOT" \
     BRIEF="${BRIEF_FILE:-}" \
+    BRIEF_RULES="${BRIEF_RULES_FILE:-}" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
   if [[ "$existed" -eq 0 ]]; then
     echo "  + AGENTS.md"
@@ -891,6 +892,19 @@ agents_pristine() {
 render_project_brief() {
   WORKSPACE="$WORKSPACE_PATH" LANGUAGE="$LANGUAGE" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/project_brief.py"
+}
+
+# Reguły briefu (#355, ADR-0010): renderowane z wariantu językowego Profilu.
+render_brief_rules() {
+  LANGUAGE="$LANGUAGE" KIT_ROOT="$KIT_ROOT" "$PYTHON_BIN" -c '
+import os, sys
+from pathlib import Path
+kit_root = Path(os.environ["KIT_ROOT"])
+sys.path.insert(0, str(kit_root / "src"))
+from guides.brief_rules import get_brief_rules
+lang = os.environ.get("LANGUAGE", "pl")
+sys.stdout.write(get_brief_rules(lang).strip() + "\n")
+'
 }
 
 
@@ -1344,7 +1358,8 @@ HEADLESS=0
 if headless_enabled; then HEADLESS=1; fi
 STAGED_AGENTS="$(mktemp -d)"
 BRIEF_FILE="$(mktemp)"
-trap 'rm -rf "$STAGED_AGENTS" "$BRIEF_FILE"' EXIT
+BRIEF_RULES_FILE="$(mktemp)"
+trap 'rm -rf "$STAGED_AGENTS" "$BRIEF_FILE" "$BRIEF_RULES_FILE"' EXIT
 SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
 # Python na Windowsie kończy linie `\r\n` — `\r` przykleja się do nazwy i `rm -f` chybia.
 SKIPPED_AGENTS="${SKIPPED_AGENTS//$'\r'/}"
@@ -1353,6 +1368,7 @@ echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, cli
 
 # Brief to dodatek: błąd renderowania (uszkodzony Profil, manifest) nie zatrzymuje instalacji.
 render_project_brief > "$BRIEF_FILE" || { echo "  ! brief nie wyrenderowany" >&2; : > "$BRIEF_FILE"; }
+render_brief_rules > "$BRIEF_RULES_FILE" || { echo "  ! reguły briefu nie wyrenderowane" >&2; : > "$BRIEF_RULES_FILE"; }
 install_agenty_md_once
 install_bugbot_md_once
 prune_tier_agents
