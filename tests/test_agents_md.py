@@ -1,4 +1,4 @@
-"""Odświeżanie części kitowej ``AGENTS.md`` z blokiem ``project:agents`` (#269).
+"""Odświeżanie części kitowej ``AGENTS.md`` z blokiem ``project:agents`` (#269, #355).
 
 Ten sam model co ``BUGBOT.md`` (``guides.bugbot_md``): część kita z szablonu przy
 każdym reloadzie, własna treść projektu w chronionym bloku. Blok ``## Agent skills``
@@ -12,7 +12,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from guides.bugbot_md import SyncResult, extract_rules, is_pristine, render, sync_file
+from guides.brief_rules import get_brief_rules
+from guides.bugbot_md import (
+    SyncResult,
+    extract_brief_rules,
+    extract_rules,
+    is_pristine,
+    render,
+    sync_file,
+)
 
 CURRENT = """# AGENTS.md
 
@@ -119,6 +127,10 @@ WITH_BRIEF = """# AGENTS.md
 _Brief nie jest jeszcze wyrenderowany._
 <!-- /kit:brief -->
 
+<!-- kit:brief-rules -->
+_Reguły nie są jeszcze wyrenderowane._
+<!-- /kit:brief-rules -->
+
 ## Reguły projektu
 
 <!-- project:agents -->
@@ -159,6 +171,43 @@ class TestAgentsBrief(unittest.TestCase):
             self.assertEqual(result.action, "refreshed")
             self.assertIn("nowy brief", text)
             self.assertNotIn("stary brief", text)
+
+
+class TestAgentsBriefRules(unittest.TestCase):
+    """Blok ``kit:brief-rules`` jest renderowany z szablonu w wybranym języku (#355)."""
+
+    def test_render_embeds_brief_rules(self) -> None:
+        en_rules = get_brief_rules("en")
+        text = render(WITH_BRIEF, "", block="agents", brief_rules=en_rules)
+
+        self.assertIn(f"<!-- kit:brief-rules -->\n{en_rules.strip()}\n<!-- /kit:brief-rules -->", text)
+
+    def test_brief_rules_is_kit_content_not_project_rule(self) -> None:
+        """Reguły briefu to treść kita — nie trafiają do bloku projektu i nie psują is_pristine."""
+        rendered = render(WITH_BRIEF, "", block="agents", brief_rules=get_brief_rules("en"))
+
+        self.assertEqual(extract_rules(rendered, "agents"), extract_rules(WITH_BRIEF, "agents"))
+        self.assertTrue(is_pristine(rendered, WITH_BRIEF, "agents"))
+
+    def test_sync_replaces_stale_brief_rules(self) -> None:
+        """Sync odświeża blok kit:brief-rules nowym wariantem językowym."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "AGENTS.md"
+            source = Path(tmp) / "template.md"
+            dest.write_text(
+                render(WITH_BRIEF, "", block="agents", brief_rules=get_brief_rules("pl")),
+                encoding="utf-8",
+                newline="\n",
+            )
+            source.write_text(WITH_BRIEF, encoding="utf-8", newline="\n")
+
+            en_rules = get_brief_rules("en")
+            result = sync_file(dest, source, block="agents", brief_rules=en_rules)
+
+            text = dest.read_text(encoding="utf-8")
+            self.assertEqual(result.action, "refreshed")
+            self.assertIn(en_rules.strip(), text)
+            self.assertNotIn("Zadanie kodowe", text)
 
 
 if __name__ == "__main__":

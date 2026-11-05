@@ -6,6 +6,17 @@
 _Brief nie jest jeszcze wyrenderowany — uruchom `kit-ai reload`._
 <!-- /kit:brief -->
 
+<!-- kit:brief-rules -->
+## Klasyfikacja zadań i reguły MCP (#307, #324)
+
+- **Zadanie kodowe:** tworzenie, edycja lub debug plików w `src/`, `tests/`, `templates/`, `modules/`; implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany.
+- **Zadanie proceduralne:** każdy slash command z procedury kita (`/git-*`, `/review-*`, `/create-task`, `/create-skill`, `/night-run`, `/headless`, `/tdd`, `/kit-project-*`) oraz każda czynność zapisu na GitHub.
+- **Wymóg wywołania:** przed pierwszą edycją przy zadaniu kodowym lub proceduralnym wywołaj `get_overlay`, a `get_bundle` gdy brief wskazuje moduł. W wątpliwości wywołaj `get_overlay` (koszt mały, błędny fix bez overlay kosztuje dużo).
+- **Bez wywołań MCP:** pytania o język, bazę lub Tiery (są w briefie), rozmowa, wyjaśnienie, odpowiedź tekstowa bez zmiany plików.
+- **Docstringi:** format repo (Args/Returns, po polsku).
+- **VPS (#317):** na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only (`uv lock --no-build`, `npm install --package-lock-only --ignore-scripts`).
+<!-- /kit:brief-rules -->
+
 ## Warstwy AI (nie mieszaj)
 
 | Warstwa | Co | Gdzie | Po co |

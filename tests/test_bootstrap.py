@@ -21,7 +21,7 @@ from _shell import is_ci, resolve_bash
 
 from guides import server
 from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
-from guides.bugbot_md import extract_brief, extract_rules, is_pristine
+from guides.bugbot_md import extract_brief, extract_brief_rules, extract_rules, is_pristine
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
@@ -815,6 +815,30 @@ class TestAgentsBriefBlock(_BootstrapTestCase):
             self.assertIsNotNone(brief)
             assert brief is not None
             self.assertIn("backend=`fastapi`", brief)
+
+    def test_bootstrap_renders_brief_rules_for_language(self) -> None:
+        """Bootstrap i reload renderują reguły briefu w AGENTS.md w języku Profilu (#355)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / ".ai").mkdir(parents=True)
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                "name: brief-rules-app\nlanguage: en\nclients: claude\n"
+                "backend: none\nweb: none\nmobile: none\ncodegen: none\n",
+                encoding="utf-8",
+            )
+            run_bootstrap(
+                target=workspace, kit_root=KIT_ROOT, clients="claude", language="en"
+            )
+
+            agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+            rules = extract_brief_rules(agents_text)
+            self.assertIsNotNone(rules)
+            assert rules is not None
+            self.assertIn("Task classification and MCP rules", rules)
+            self.assertIn("in English", rules)
+            self.assertNotIn("Zadanie kodowe", rules)
+            self.assertNotIn("po polsku", rules)
 
 
 class TestServerTool(_BootstrapTestCase):

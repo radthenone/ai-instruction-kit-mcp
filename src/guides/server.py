@@ -9,6 +9,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from guides.brief_rules import get_brief_rules
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
 from guides.cli import (
     DOCTOR_FIX_COMMAND,
@@ -37,22 +38,7 @@ from guides.resolver import (
     resolve_workspace_profile,
 )
 
-_INSTRUCTIONS_RULES = (
-    "## Klasyfikacja zadań i reguły MCP (#307, #324)\n"
-    "\n"
-    "- **Zadanie kodowe:** tworzenie, edycja lub debug plików w `src/`, `tests/`, `templates/`, `modules/`; "
-    "implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany.\n"
-    "- **Zadanie proceduralne:** każdy slash command z procedury kita (`/git-*`, `/review-*`, `/create-task`, "
-    "`/create-skill`, `/night-run`, `/headless`, `/tdd`, `/kit-project-*`) oraz każda czynność zapisu na GitHub.\n"
-    "- **Wymóg wywołania:** przed pierwszą edycją przy zadaniu kodowym lub proceduralnym wywołaj `get_overlay`, "
-    "a `get_bundle` gdy brief wskazuje moduł. W wątpliwości wywołaj `get_overlay` "
-    "(koszt mały, błędny fix bez overlay kosztuje dużo).\n"
-    "- **Bez wywołań MCP:** pytania o język, bazę lub Tiery (są w briefie), rozmowa, wyjaśnienie, "
-    "odpowiedź tekstowa bez zmiany plików.\n"
-    "- **Docstringi:** format repo (Args/Returns), język wg Profilu.\n"
-    "- **VPS (#317):** na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only "
-    "(`uv lock --no-build`, `npm install --package-lock-only --ignore-scripts`)."
-)
+_INSTRUCTIONS_RULES = get_brief_rules("pl")
 
 _STATIC_INSTRUCTIONS = (
     "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
@@ -118,7 +104,7 @@ def build_instructions(resolved: ResolvedProfile) -> str:
             "- `get_index()` / `list_modules()` / `get_module(id)` — rejestr i pojedyncze moduły.",
             "- `bootstrap_workspace()` / `reload_workspace()` — instalacja plików kita, domyślnie dry-run.",
             "",
-            _INSTRUCTIONS_RULES,
+            get_brief_rules(resolved.language),
             "",
             _STATIC_INSTRUCTIONS,
         ]
