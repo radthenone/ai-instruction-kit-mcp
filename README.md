@@ -189,7 +189,7 @@ kładzie skille — globalnie widzi tylko `~/.gemini/config/skills/`
 > - **Dlaczego:** nacisk ponytaila na „najkrótszą drogę” sprzyja omijaniu procedur i źródeł prawdy kita (np. grep zamiast `get_bundle`).
 > - **Inni klienci:** mechanizm dotyczy tylko Claude Code — pozostali klienci kita nie mają filtrowania po typie subagenta.
 > - **Własna konfiguracja / wyłączenie:** wpisz własną wartość `PONYTAIL_SUBAGENT_MATCHER` w `env` w `.claude/settings.local.json` (albo `.claude/settings.json`) — kit nie nadpisze wpisu użytkownika w żadnym z nich; matcher kita, który wcześniej trafił do `settings.json`, reload stamtąd usuwa. `kit-ai doctor` zgłosi ostrzeżenie, gdy obowiązujący matcher (najpierw `settings.local.json`) nie wyklucza procedur kita.
-> - **Sesja główna:** ponytail zostaje włączony — kit nigdzie go nie wyłącza. Brief kita (hook `language-reminder`) mówi, że ponytail i podobne pluginy stylu kodu dotyczą kodu aplikacji, nie procedur kita ani edycji plików kita i konfiguracji projektu (`.ai/`, `AGENTS.md`, Profil, `templates/`, `.claude/`).
+> - **Sesja główna:** ponytail zostaje włączony — kit nigdzie go nie wyłącza. Reguły briefu kita (hook `language-reminder`, instrukcje MCP, blok `kit:brief-rules` w `AGENTS.md`; [ADR-0010](docs/adr/0010-brief-as-artifact.md)) mówią, że ponytail i podobne pluginy stylu kodu dotyczą kodu aplikacji, nie procedur kita ani edycji plików kita i konfiguracji projektu (`.ai/`, `AGENTS.md`, Profil, `templates/`, `.claude/`).
 > - **Współdzielony plik trybu:** ponytail trzyma aktywny tryb w jednym pliku na maszynę (`~/.claude/.ponytail-active`), więc różne tryby w równoległych sesjach na jednej maszynie nie są wspierane.
 
 **Context7** ([upstash/context7](https://github.com/upstash/context7)) — docs bibliotek (MCP)
@@ -474,6 +474,19 @@ przepisze `mcp.json`. Bootstrap zapisuje tylko `--language` i `--clients` (z Pro
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
 **Codegen (Orval):** wyłącznie `codegen:` w `.ai/project.profile.yaml` (`orval` \| `none` \| `graphql`, domyślnie `orval`; ADR-0007), odczyt przez MCP tool `get_codegen`. Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
+
+### Brief projektu i instrukcje MCP ([ADR-0010](docs/adr/0010-brief-as-artifact.md))
+
+Serwer MCP `project-guides` przy starcie/handshake'u przekazuje klientowi **instrukcje serwera** (`build_instructions`), które niosą **Brief projektu** oraz zwięzłą mapę narzędzi MCP. Ten sam brief trafia przy `kit-ai reload` do bloku `<!-- kit:brief -->` w `AGENTS.md` (czytanego m.in. przez Claude Code przez import `@AGENTS.md`).
+
+- **Zawartość Briefu:** metadane projektu (nazwa, wykryty Host `vps`/`local`, znormalizowany język, aktywne Tiery, baza i komendy wyciągnięte z overlayu) oraz wskaźnik do `get_overlay()`.
+- **Overlay nie jest wklejany:** cała treść pliku `.ai/project.md` **nigdy nie jest wklejana** do briefu ani instrukcji MCP (aby nie duplikować pliku i nie starzeć się po lokalnych edycjach). Unikalne fakty repozytorium agent pobiera na żądanie przez MCP tool `get_overlay()`, a reguła nakazuje wywołanie `get_overlay()` przed pierwszą edycją kodu.
+- **Reguły briefu (Brief Rules):** kluczowe wytyczne (klasyfikacja zadań kodowych i proceduralnych, `get_overlay` przed pierwszą edycją, format docstringów `Args/Returns`, zakaz instalacji na VPS poza formami lock-only wg [ADR-0009](docs/adr/0009-server-guard-denies-heavy-commands-on-vps.md)).
+- **Jedno źródło reguł bez ręcznych kopii:** reguły briefu mają dokładnie jedno źródło — szablon `templates/shared/rules/brief-rules.md` z placeholderem języka (`language:` z Profilu). Stamtąd są renderowane do nośników (*Carriers*):
+  1. hooka Claude (`templates/claude/language-reminder.mjs` i `.claude/hooks/language-reminder.mjs`, instalowanego dla każdego języka),
+  2. instrukcji serwera MCP (moduł `src/guides/brief_rules.py` z wariantami `pl` i `en` pieczonymi w pakiet kita; w runtime serwer wybiera wariant wg Profilu),
+  3. bloku `<!-- kit:brief-rules -->` w commitowanym `AGENTS.md`, czytanym przez każdego klienta.
+  Świeżość plików wygenerowanych z szablonu weryfikuje test CI (`scripts/render_brief_rules.py --check`). Żaden plik repozytorium nie zawiera ręcznej kopii reguł.
 
 ## Profil z Tierami (backend/web/mobile)
 
