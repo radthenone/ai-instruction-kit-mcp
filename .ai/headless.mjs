@@ -294,15 +294,30 @@ function profileClients() {
 
 const KEEP_RUNS = 5
 
+// Plik wycinka runu w CTX (#396).
+const excerptFile = (ctx, runName) => join(ctx, `headless-excerpt-${runName}.txt`)
+
+// Runy z klasą inną niż OK, których wycinka nie ma w CTX (#396): ich logi zostają, dopóki wycinek nie
+// trafi do bufora nocy. Bez CTX nie ma bufora, więc nic nie chronimy.
+function failedRunsWithoutExcerpt(ctx) {
+  if (!ctx) return new Set()
+  return new Set(readRows(ctx)
+    .filter((row) => row.klasa && row.klasa !== "OK" && row.log)
+    .map((row) => basename(dirname(row.log)))
+    .filter((name) => !existsSync(excerptFile(ctx, name))))
+}
+
 // Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
 // ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
 // Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
-function pruneRuns(runsDir, current) {
+function pruneRuns(runsDir, current, ctx) {
+  const keep = failedRunsWithoutExcerpt(ctx)
   const runs = readdirSync(runsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== current)
     .map((entry) => entry.name)
     .sort()
   for (const name of runs.slice(0, -(KEEP_RUNS - 1))) {
+    if (keep.has(name)) continue
     try {
       rmSync(join(runsDir, name), { recursive: true, force: true })
     } catch {
@@ -515,7 +530,7 @@ function writeExcerpt(ctx, logPath) {
   const tailStart = Math.max(0, all.length - EXCERPT_LINES)
   const reportStart = all.lastIndexOf("[headless] raport końcowy")
   const start = reportStart >= 0 ? Math.min(reportStart, tailStart) : tailStart
-  writeFileSync(join(ctx, `headless-excerpt-${basename(dirname(logPath))}.txt`), `${all.slice(start).join("\n")}\n`)
+  writeFileSync(excerptFile(ctx, basename(dirname(logPath))), `${all.slice(start).join("\n")}\n`)
 }
 
 // Wiersz jako ostatnia linia wyjścia; callback przed `exit` — stdout do potoku bywa asynchroniczny
@@ -615,7 +630,7 @@ async function main() {
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runsDir, ".gitignore"), "*\n")
-  pruneRuns(runsDir, basename(runDir))
+  pruneRuns(runsDir, basename(runDir), call.ctx)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
   prompt += footer(runDir, call.ticket)

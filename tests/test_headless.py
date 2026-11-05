@@ -998,6 +998,46 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("--report wymaga --ctx", result.stderr)
 
+    # --- sprzątanie runów a wycinki w CTX (#396) ----------------------------------
+
+    def run_row(self, run: str, klasa: str) -> dict:
+        """Wiersz bufora dla konkretnego runu w `.ai/headless-runs` (log w katalogu tego runu)."""
+        row = self.report_row("396", "2020-01-01T00:00:00.000Z", klasa)
+        return {**row, "log": str(self.root / ".ai/headless-runs" / run / "headless.log")}
+
+    def prune_fixture(self, ctx: Path, klasa: str) -> list[str]:
+        """Siedem starych runów; najstarszy ma wiersz bufora z podaną klasą."""
+        runs = self.root / ".ai/headless-runs"
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (runs / name).mkdir(parents=True)
+        self.write_buffer(ctx, [self.run_row(old[0], klasa)])
+        return old
+
+    def test_prune_keeps_failed_run_without_excerpt_in_ctx(self) -> None:
+        ctx = self.ctx_dir()
+        old = self.prune_fixture(ctx, "ERROR")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        runs = self.root / ".ai/headless-runs"
+        self.assertTrue((runs / old[0]).is_dir(), "nieudany run bez wycinka w CTX został skasowany")
+        self.assertFalse((runs / old[1]).exists())
+
+    def test_prune_removes_failed_run_once_its_excerpt_is_in_ctx(self) -> None:
+        ctx = self.ctx_dir()
+        old = self.prune_fixture(ctx, "ERROR")
+        (ctx / f"headless-excerpt-{old[0]}.txt").write_text("wycinek\n", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / ".ai/headless-runs" / old[0]).exists())
+
+    def test_prune_removes_ok_run_without_excerpt(self) -> None:
+        ctx = self.ctx_dir()
+        old = self.prune_fixture(ctx, "OK")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / ".ai/headless-runs" / old[0]).exists())
+
     # --- flagi i reguły -----------------------------------------------------
 
     def test_unknown_flag_lists_known_flags(self) -> None:
