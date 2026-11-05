@@ -479,14 +479,14 @@ przepisze `mcp.json`. Bootstrap zapisuje tylko `--language` i `--clients` (z Pro
 
 Serwer MCP `project-guides` przy starcie/handshake'u przekazuje klientowi **instrukcje serwera** (`build_instructions`), które niosą **Brief projektu** oraz zwięzłą mapę narzędzi MCP. Ten sam brief trafia przy `kit-ai reload` do bloku `<!-- kit:brief -->` w `AGENTS.md` (czytanego m.in. przez Claude Code przez import `@AGENTS.md`).
 
-- **Zawartość Briefu:** metadane projektu (nazwa, wykryty Host `vps`/`local`, znormalizowany język, aktywne Tiery, baza i komendy wyciągnięte z overlayu) oraz wskaźnik do `get_overlay()`.
+- **Zawartość Briefu:** metadane projektu (nazwa i Profil, znormalizowany język, Tiery, codegen, klienci, bundle i moduły, baza i komendy wyciągnięte z overlayu) oraz wskaźnik do `get_overlay()`. Wykryty Host (`vps`/`local`) dokleja tylko serwer MCP w instrukcjach — blok w `AGENTS.md` go nie ma, żeby plik nie starzał się między maszynami.
 - **Overlay nie jest wklejany:** cała treść pliku `.ai/project.md` **nigdy nie jest wklejana** do briefu ani instrukcji MCP (aby nie duplikować pliku i nie starzeć się po lokalnych edycjach). Unikalne fakty repozytorium agent pobiera na żądanie przez MCP tool `get_overlay()`, a reguła nakazuje wywołanie `get_overlay()` przed pierwszą edycją kodu.
 - **Reguły briefu (Brief Rules):** kluczowe wytyczne (klasyfikacja zadań kodowych i proceduralnych, `get_overlay` przed pierwszą edycją, format docstringów `Args/Returns`, zakaz instalacji na VPS poza formami lock-only wg [ADR-0009](docs/adr/0009-server-guard-denies-heavy-commands-on-vps.md)).
 - **Jedno źródło reguł bez ręcznych kopii:** reguły briefu mają dokładnie jedno źródło — szablon `templates/shared/rules/brief-rules.md` z placeholderem języka (`language:` z Profilu). Stamtąd są renderowane do nośników (*Carriers*):
   1. hooka Claude (`templates/claude/language-reminder.mjs` i `.claude/hooks/language-reminder.mjs`, instalowanego dla każdego języka),
   2. instrukcji serwera MCP (moduł `src/guides/brief_rules.py` z wariantami `pl` i `en` pieczonymi w pakiet kita; w runtime serwer wybiera wariant wg Profilu),
   3. bloku `<!-- kit:brief-rules -->` w commitowanym `AGENTS.md`, czytanym przez każdego klienta.
-  Świeżość plików wygenerowanych z szablonu weryfikuje test CI (`scripts/render_brief_rules.py --check`). Żaden plik repozytorium nie zawiera ręcznej kopii reguł.
+  Świeżość plików wygenerowanych z szablonu weryfikuje test CI (`TestBriefRulesFreshness` w `tests/test_brief_rules.py`); lokalnie to samo sprawdza `python3 scripts/render_brief_rules.py --check`. Żaden plik repozytorium nie zawiera ręcznej kopii reguł.
 
 ## Profil z Tierami (backend/web/mobile)
 
