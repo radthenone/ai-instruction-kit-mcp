@@ -1282,7 +1282,7 @@ stopka: na branchu `typ/<N>-slug` linia „Ticket #N: przeczytaj `gh issue view 
 `git stash` / `git checkout` / `git reset` (porównanie z bazą przez
 `node .ai/worktree.mjs add <katalog runu>/base --detach <ref> --plain` i `node .ai/worktree.mjs remove <katalog runu>/base` na końcu),
 plan 5–10 kroków przy tickecie z więcej niż 3 kryteriami albo więcej niż jedną aplikacją,
-test-first z lokalnym commitem po każdym zielonym kroku, lokalnie tylko testy dotknięte
+test-first z lokalnym commitem po każdym zielonym kroku, temat commita po polsku wg `language` z Profilu (po angielsku dla `en`), na końcu każdego commita trailer `Co-Authored-By: Claude <noreply@anthropic.com>`, lokalnie tylko testy dotknięte
 zmianą i szybkie bramki (pełny zestaw robi CI), na VPS `uv run --no-sync`, maks. 2 próby
 naprawy tego samego błędu, raport `## Zmiany` / `## Testy` / `## Problemy`. Dlatego
 `/headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza.
@@ -1302,12 +1302,14 @@ w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
 `git stash list` z ostrzeżeniem `UWAGA` (bez auto-`pop` — konflikt) i ostatnie 20 linii
 wykonawcy. Agent `/headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.
+Commity z zakresu wywołania (`start..HEAD`) bez trailera `Co-Authored-By` trafiają do linii `UWAGA: commity bez trailera` z hashami;
+wrapper ich nie przepisuje, poprawia je orkiestrator na branchu ticketu przed push.
 
 **Wiersz wywołania i raport nocy (#396).** Wywołanie z poprawnymi flagami kończy się jedną linią
 JSON jako ostatnią linią wyjścia: `ticket`, `wykonawca`, `lancuch`, `model`, `kod`, `klasa`, `start`,
 `koniec`, `log`, `sprawdz`, `dzialanie`. Klasy: `OK`; `LIMIT` (pauza, kod `75`); `HANG` (timeout albo
 sygnał w trakcie pracy wykonawcy); `ERROR` (kod ≠ 0 albo błąd wywołania); `MODEL` (nieznany model agy);
-`SUSPECT` (exit 0 bez zmian w repo); `POLITYKA` (wpis stasha albo odmowa wykonawcy spoza zasad kitu).
+`SUSPECT` (exit 0 bez zmian w repo); `POLITYKA` (wpis stasha, commit bez trailera `Co-Authored-By` z hashem w `dzialanie` albo odmowa wykonawcy spoza zasad kitu; nie uruchamia zastępcy, praca zostaje). `POLITYKA` ustępuje `LIMIT`, `MODEL`, `HANG` i `ERROR`.
 `node .ai/headless.mjs --report --ctx <katalog>` składa z bufora HEADLESS REPORT po tickecie oraz listę
 wszystkich wywołań w kolejności; bufor kasuje dopiero po wypisaniu, więc przerwany raport go zostawia.
 

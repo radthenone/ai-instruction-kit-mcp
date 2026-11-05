@@ -471,7 +471,7 @@ const lines = (text) => (text ? text.split("\n") : [])
 // Wiersz wywołania (#396): jedna linia JSON na końcu każdego wywołania, także przy sygnale, błędzie
 // i odmowie przed startem. Stan wywołania zbiera się po drodze, wiersz składa się na końcu.
 // Klasy: OK, LIMIT (pauza), HANG (timeout albo sygnał), ERROR (kod ≠ 0 albo błąd wywołania),
-// MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha albo odmowa wykonawcy).
+// MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha, commit bez trailera albo odmowa wykonawcy).
 let call = null
 const CHECK_HINT = {
   OK: "-",
@@ -480,7 +480,7 @@ const CHECK_HINT = {
   ERROR: "sprawdzić wycinek logu (kod i ostatnie linie)",
   MODEL: "wybrać model z listy dostępnych w raporcie",
   SUSPECT: "sprawdzić, czy wykonawca cokolwiek zrobił",
-  POLITYKA: "sprawdzić złamanie zasad kitu (wpis stasha) albo odmowę wywołania",
+  POLITYKA: "sprawdzić złamanie zasad kitu (wpis stasha, commit bez trailera) albo odmowę wywołania",
 }
 
 function startCall(opts) {
@@ -493,6 +493,7 @@ function startCall(opts) {
     log: null,
     klasa: null,
     actions: [],
+    untrailed: [],
   }
 }
 
@@ -867,10 +868,13 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean })
+  // Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 — klasa wiersza i dzialanie (#398).
+  call.untrailed.push(...changes.untrailed)
+  if (changes.untrailed.length) call.actions.push(`commity bez trailera: ${changes.untrailed.join(", ")}`)
   log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : timedOut ? "HANG" : code !== 0 ? "ERROR"
-    : changes.added.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
+    : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
   return code
 }
 

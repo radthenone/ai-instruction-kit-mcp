@@ -1372,6 +1372,47 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.uwaga_lines(self.headless_log()), [])
 
+    def test_commit_without_trailer_makes_policy_row_with_hash(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_COMMIT="1", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("POLITYKA", 0))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+        self.assertEqual(self.calls(), ["claude"])
+
+    def test_commit_with_trailer_row_stays_ok(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\n{self.TRAILER}", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "OK")
+
+    def test_policy_from_executor_before_handoff_stays_in_row(self) -> None:
+        self.clean_git_repo()
+        # Pierwszy wykonawca commituje bez trailera i wraca z limitem → przekazanie 1:1 do opencode.
+        (self.bin / "claude").write_text(
+            '#!/bin/sh\ncat > /dev/null\necho c > commit.txt; git add commit.txt; git commit -qm "bez trailera"\n'
+            'echo "Error: rate limit reached"\nexit 1\n',
+            encoding="utf-8",
+        )
+        (self.bin / "claude").chmod(0o755)
+        result = self.run_wrapper("--host", "codex", "claude", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["lancuch"]), ("POLITYKA", "claude>opencode"))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+
+    def test_error_row_keeps_error_class_and_hash(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_COMMIT="1", FAKE_CODE="3", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("ERROR", 3))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+
     # --- config wykonawcy w linked worktree (#300) ---------------------------
 
     def test_worktree_uses_main_checkout_config_and_sets_executor_env(self) -> None:
