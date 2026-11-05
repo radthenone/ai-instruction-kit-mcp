@@ -726,6 +726,328 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertLess(time.time() - started, 15)
         self.assert_tree_killed()
 
+    # --- wiersz wywołania: klasa i ostatnia linia wyjścia (#396) ----------------
+
+    def last_row(self, result: subprocess.CompletedProcess) -> dict:
+        """Ostatnia linia stdout — wiersz JSON wywołania (#396)."""
+        return json.loads(result.stdout.splitlines()[-1])
+
+    def test_call_ends_with_row_and_writes_no_buffer_without_ctx(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual(
+            {key: row[key] for key in ("ticket", "wykonawca", "lancuch", "model", "kod", "klasa", "sprawdz", "dzialanie")},
+            {"ticket": "-", "wykonawca": "opencode", "lancuch": "opencode", "model": None,
+             "kod": 0, "klasa": "OK", "sprawdz": "-", "dzialanie": "-"},
+        )
+        self.assertEqual(row["log"], str(self.log_path(result)))
+        self.assertIn("start", row)
+        self.assertIn("koniec", row)
+        self.assertEqual(list(self.root.rglob("headless-rows.jsonl")), [])
+
+    def test_row_takes_ticket_from_branch(self) -> None:
+        self.git_repo()
+        subprocess.run(["git", "checkout", "-qb", "feat/396-headless-row-night-buffer"], cwd=self.root, check=True, capture_output=True)
+        result = self.run_wrapper("--host", "opencode", "claude", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["ticket"], "396")
+
+    def test_timeout_row_is_hang_with_code_124(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30")
+        self.assertEqual(result.returncode, 124)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 124))
+        self.assertIn("zabito drzewo procesów", row["dzialanie"])
+
+    def test_limit_row_is_limit_with_code_75(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertEqual(result.returncode, 75)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("LIMIT", 75))
+        self.assertIn("PAUSE", row["sprawdz"])
+
+    def test_failure_row_is_error_with_executor_code(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_CODE="3")
+        self.assertEqual(result.returncode, 3)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("ERROR", 3))
+
+    def test_exit_zero_without_changes_row_is_suspect(self) -> None:
+        self.clean_git_repo()
+        state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state, ignore_errors=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "SUSPECT")
+
+    def test_new_stash_entry_row_is_policy(self) -> None:
+        self.clean_git_repo()
+        state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state, ignore_errors=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_STASH="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "POLITYKA")
+
+    def test_agy_invalid_model_row_is_model_with_code_2(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        fake_output = "error: invalid model selection\nAvailable models:\n  Gemini 3.8 Flash (High)\n"
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "bad-model", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 2)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"], row["model"]), ("MODEL", 2, "bad-model"))
+
+    def test_terminated_call_ends_with_hang_row(self) -> None:
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=10)
+        self.assertEqual(proc.returncode, 143)
+        self.assert_tree_killed()
+        row = json.loads(out.splitlines()[-1])
+        self.assertEqual((row["klasa"], row["kod"], row["wykonawca"]), ("HANG", 143, "opencode"))
+        self.assertIn("sygnał SIGTERM", row["dzialanie"])
+
+    def test_refused_executor_row_is_policy_without_run(self) -> None:
+        result = self.run_wrapper("--host", "claude", "claude", "x")
+        self.assertEqual(result.returncode, 2)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"], row["wykonawca"], row["log"]), ("POLITYKA", 2, "-", None))
+        self.assertIn("nie wywołuje sam siebie", row["sprawdz"])
+        self.assertFalse((self.root / ".ai/headless-runs").exists())
+
+    # --- bufor nocy i wycinek logu (#396) -----------------------------------------
+
+    def ctx_dir(self) -> Path:
+        """Katalog CTX nocy poza repo (w produkcji `~/.cache/night-run-…`)."""
+        path = Path(tempfile.mkdtemp(prefix="night-ctx-"))
+        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
+        return path
+
+    def buffer_rows(self, ctx: Path) -> list[dict]:
+        text = (ctx / "headless-rows.jsonl").read_text(encoding="utf-8")
+        return [json.loads(line) for line in text.splitlines()]
+
+    def terminate_wrapper(self, *args: str) -> tuple[int, str]:
+        """Start wrappera z wiszącym wykonawcą, SIGTERM po starcie; zwraca kod i stdout."""
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), *args],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=10)
+        self.assert_tree_killed()
+        return proc.returncode, out
+
+    def test_call_with_ctx_appends_its_row_to_buffer(self) -> None:
+        ctx = self.ctx_dir()
+        first = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        second = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "y")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.buffer_rows(ctx), [self.last_row(first), self.last_row(second)])
+
+    def test_failed_call_with_ctx_copies_excerpt_next_to_buffer(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x", FAKE_CODE="3")
+        self.assertEqual(result.returncode, 3, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual(self.buffer_rows(ctx), [row])
+        excerpt = ctx / f"headless-excerpt-{Path(row['log']).parent.name}.txt"
+        text = excerpt.read_text(encoding="utf-8")
+        self.assertIn("wynik wykonawcy", text)
+        self.assertIn("[headless] raport końcowy", text)
+
+    def test_ok_call_with_ctx_writes_no_excerpt(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([row["klasa"] for row in self.buffer_rows(ctx)], ["OK"])
+        self.assertEqual(list(ctx.glob("headless-excerpt-*.txt")), [])
+
+    def test_terminated_call_with_ctx_buffers_hang_row_and_excerpt(self) -> None:
+        ctx = self.ctx_dir()
+        code, out = self.terminate_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(code, 143)
+        (row,) = self.buffer_rows(ctx)
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 143))
+        self.assertEqual(row, json.loads(out.splitlines()[-1]))
+        self.assertTrue((ctx / f"headless-excerpt-{Path(row['log']).parent.name}.txt").is_file())
+
+    def test_refused_call_with_ctx_is_buffered_as_policy(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--host", "claude", "claude", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 2)
+        rows = self.buffer_rows(ctx)
+        self.assertEqual(rows, [self.last_row(result)])
+        self.assertEqual(rows[0]["klasa"], "POLITYKA")
+
+    def test_unwritable_ctx_does_not_fail_the_call(self) -> None:
+        blocker = self.root / "ctx-jest-plikiem"
+        blocker.write_text("nie katalog\n", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(blocker), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bufor nocy", result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "OK")
+
+    # --- składanie raportu nocy z bufora (#396) -----------------------------------
+
+    def report_row(self, ticket: str, start: str, klasa: str = "OK") -> dict:
+        return {
+            "ticket": ticket,
+            "wykonawca": "opencode",
+            "lancuch": "opencode",
+            "model": None,
+            "kod": 0 if klasa == "OK" else 1,
+            "klasa": klasa,
+            "start": start,
+            "koniec": start,
+            "log": str(self.root / ".ai/headless-runs" / f"{start}-opencode" / "headless.log"),
+            "sprawdz": "-" if klasa == "OK" else "sprawdzić wycinek logu (kod i ostatnie linie)",
+            "dzialanie": "-",
+        }
+
+    def write_buffer(self, ctx: Path, rows: list[dict]) -> None:
+        (ctx / "headless-rows.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+    def test_report_groups_rows_by_ticket_and_lists_calls_in_order(self) -> None:
+        ctx = self.ctx_dir()
+        rows = [
+            self.report_row("396", "2026-11-05T01:00:00.000Z"),
+            self.report_row("398", "2026-11-05T01:10:00.000Z", "ERROR"),
+            self.report_row("396", "2026-11-05T01:20:00.000Z"),
+            self.report_row("-", "2026-11-05T01:30:00.000Z", "HANG"),
+        ]
+        self.write_buffer(ctx, rows)
+        result = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        head, _, listing = result.stdout.partition("## Raport listy")
+        self.assertIn("## HEADLESS REPORT", head)
+        groups = {section.split("\n", 1)[0]: section for section in head.split("\n### ")[1:]}
+        self.assertEqual(list(groups), ["#396", "#398", "bez ticketu"])
+        self.assertIn(rows[0]["start"], groups["#396"])
+        self.assertIn(rows[2]["start"], groups["#396"])
+        self.assertNotIn(rows[1]["start"], groups["#396"])
+        self.assertIn(rows[1]["start"], groups["#398"])
+        self.assertIn(rows[3]["start"], groups["bez ticketu"])
+        positions = [listing.index(row["start"]) for row in rows]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_report_deletes_buffer_after_printing(self) -> None:
+        ctx = self.ctx_dir()
+        self.write_buffer(ctx, [self.report_row("396", "2026-11-05T01:00:00.000Z")])
+        result = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("#396", result.stdout)
+        self.assertFalse((ctx / "headless-rows.jsonl").exists())
+
+    def test_report_points_to_excerpt_and_accepts_flag_after_ctx(self) -> None:
+        ctx = self.ctx_dir()
+        start = "2026-11-05T01:00:00.000Z"
+        self.write_buffer(ctx, [self.report_row("396", start, "ERROR")])
+        excerpt = ctx / f"headless-excerpt-{start}-opencode.txt"
+        excerpt.write_text("ostatnie linie\n", encoding="utf-8")
+        result = self.run_wrapper("--ctx", str(ctx), "--report")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"wycinek: {excerpt}", result.stdout)
+
+    def test_report_terminated_while_printing_keeps_buffer(self) -> None:
+        ctx = self.ctx_dir()
+        # Wypis większy niż bufor potoku (64 KB) i nikt go nie czyta: zapis wisi, aż przyjdzie sygnał.
+        self.write_buffer(ctx, [self.report_row(str(n), f"2026-11-05T01:{n % 60:02d}:00.000Z") for n in range(1, 2001)])
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--report", "--ctx", str(ctx)],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path()},
+        )
+        time.sleep(1)
+        self.assertIsNone(proc.poll(), "raport skończył się przed sygnałem — test nie testuje przerwania")
+        proc.terminate()
+        proc.communicate(timeout=10)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertTrue((ctx / "headless-rows.jsonl").is_file())
+
+    def test_report_without_buffer_says_there_were_no_calls(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("brak wywołań headless", result.stdout)
+
+    def test_report_without_ctx_is_error(self) -> None:
+        result = self.run_wrapper("--report")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--report wymaga --ctx", result.stderr)
+
+    # --- sprzątanie runów a wycinki w CTX (#396) ----------------------------------
+
+    def run_row(self, run: str, klasa: str) -> dict:
+        """Wiersz bufora dla konkretnego runu w `.ai/headless-runs` (log w katalogu tego runu)."""
+        row = self.report_row("396", "2020-01-01T00:00:00.000Z", klasa)
+        return {**row, "log": str(self.root / ".ai/headless-runs" / run / "headless.log")}
+
+    def prune_fixture(self, ctx: Path, klasa: str) -> list[str]:
+        """Siedem starych runów; najstarszy ma wiersz bufora z podaną klasą."""
+        runs = self.root / ".ai/headless-runs"
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (runs / name).mkdir(parents=True)
+        self.write_buffer(ctx, [self.run_row(old[0], klasa)])
+        return old
+
+    def test_prune_keeps_failed_run_without_excerpt_in_ctx(self) -> None:
+        ctx = self.ctx_dir()
+        old = self.prune_fixture(ctx, "ERROR")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        runs = self.root / ".ai/headless-runs"
+        self.assertTrue((runs / old[0]).is_dir(), "nieudany run bez wycinka w CTX został skasowany")
+        self.assertFalse((runs / old[1]).exists())
+
+    def test_prune_removes_failed_run_once_its_excerpt_is_in_ctx(self) -> None:
+        ctx = self.ctx_dir()
+        old = self.prune_fixture(ctx, "ERROR")
+        (ctx / f"headless-excerpt-{old[0]}.txt").write_text("wycinek\n", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / ".ai/headless-runs" / old[0]).exists())
+
+    def test_prune_removes_ok_run_without_excerpt(self) -> None:
+        ctx = self.ctx_dir()
+        old = self.prune_fixture(ctx, "OK")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / ".ai/headless-runs" / old[0]).exists())
+
     # --- flagi i reguły -----------------------------------------------------
 
     def test_unknown_flag_lists_known_flags(self) -> None:
@@ -734,6 +1056,9 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("--fast", result.stderr)
         self.assertIn("--model", result.stderr)
         self.assertIn("--timeout", result.stderr)
+        row = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(row["klasa"], "ERROR")
+        self.assertEqual(row["kod"], 2)
 
     def test_bad_timeout_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "zero", "x")

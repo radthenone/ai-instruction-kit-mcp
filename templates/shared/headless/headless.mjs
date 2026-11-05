@@ -2,7 +2,7 @@
 /**
  * Wrapper `/headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
  *
- *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [treść…]
+ *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
  *
  * Treść: argumenty po fladze albo (bez nich) stdin — słowo w słowo, plus stała stopka.
  * `--host` wstawia bootstrap w pliku agenta każdego klienta; wykonawca musi być w tabeli
@@ -20,6 +20,12 @@
  * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
  * po 2 interwałach ciszy ostrzeżenie o zacięciu. Na końcu (także 124) raport: status, commity
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
+ *
+ * Każde wywołanie kończy się wierszem JSON jako ostatnią linią wyjścia (#396). Z `--ctx <katalog>`
+ * (noc) wiersz dopisuje się też do `<katalog>/headless-rows.jsonl`, a przy klasie innej niż OK wycinek
+ * logu trafia do `<katalog>/headless-excerpt-<run>.txt` — log runu znika przy sprzątaniu.
+ * `--report --ctx <katalog>` składa z bufora HEADLESS REPORT po tickecie i listę wywołań w kolejności;
+ * bufor kasuje dopiero po wypisaniu.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -28,7 +34,7 @@ import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
-const FLAGS = ["--model", "--timeout", "--heartbeat"]
+const FLAGS = ["--model", "--timeout", "--heartbeat", "--ctx"]
 const DEFAULT_TIMEOUT_MIN = 60
 const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
@@ -231,8 +237,15 @@ function configModel(path) {
   }
 }
 
-function fail(message) {
+function fail(message, klasa = "ERROR") {
   process.stderr.write(`[headless] ${message}\n`)
+  // Synchronicznie: `fail` nie wraca, więc kod po nim nie może dopisać drugiego wiersza.
+  if (call) {
+    process.stdout.write(finishRow(2, klasa, {
+      sprawdz: message,
+      dzialanie: klasa === "POLITYKA" ? "odrzucono przed startem" : "przerwano: błąd wywołania",
+    }))
+  }
   process.exit(2)
 }
 
@@ -281,15 +294,30 @@ function profileClients() {
 
 const KEEP_RUNS = 5
 
+// Plik wycinka runu w CTX (#396).
+const excerptFile = (ctx, runName) => join(ctx, `headless-excerpt-${runName}.txt`)
+
+// Runy z klasą inną niż OK, których wycinka nie ma w CTX (#396): ich logi zostają, dopóki wycinek nie
+// trafi do bufora nocy. Bez CTX nie ma bufora, więc nic nie chronimy.
+function failedRunsWithoutExcerpt(ctx) {
+  if (!ctx) return new Set()
+  return new Set(readRows(ctx)
+    .filter((row) => row.klasa && row.klasa !== "OK" && row.log)
+    .map((row) => basename(dirname(row.log)))
+    .filter((name) => !existsSync(excerptFile(ctx, name))))
+}
+
 // Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
 // ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
 // Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
-function pruneRuns(runsDir, current) {
+function pruneRuns(runsDir, current, ctx) {
+  const keep = failedRunsWithoutExcerpt(ctx)
   const runs = readdirSync(runsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== current)
     .map((entry) => entry.name)
     .sort()
   for (const name of runs.slice(0, -(KEEP_RUNS - 1))) {
+    if (keep.has(name)) continue
     try {
       rmSync(join(runsDir, name), { recursive: true, force: true })
     } catch {
@@ -299,7 +327,7 @@ function pruneRuns(runsDir, current) {
 }
 
 function parse(argv) {
-  const opts = { host: "", executor: "", model: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
+  const opts = { host: "", executor: "", model: "", ctx: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
   // Wartość flagi nie może być kolejną flagą — `--model --timeout 5` to błąd, nie model.
   const value = (i) => {
     const v = argv[i + 1]
@@ -316,6 +344,8 @@ function parse(argv) {
     } else if (arg === "--heartbeat") {
       opts.heartbeatMin = Number(value(i++))
       if (!(opts.heartbeatMin > 0)) fail(`--heartbeat wymaga liczby minut > 0, dostał: ${argv[i]}`)
+    } else if (arg === "--ctx") {
+      opts.ctx = resolve(value(i++))
     } else if (arg === "--") opts.words.push(...argv.splice(i + 1))
     else if (arg.startsWith("--")) fail(`nieznana flaga ${arg}. Dozwolone: ${FLAGS.join(", ")}`)
     else if (!opts.executor) opts.executor = arg.toLowerCase()
@@ -421,8 +451,157 @@ function git(...args) {
 
 const lines = (text) => (text ? text.split("\n") : [])
 
+// Wiersz wywołania (#396): jedna linia JSON na końcu każdego wywołania, także przy sygnale, błędzie
+// i odmowie przed startem. Stan wywołania zbiera się po drodze, wiersz składa się na końcu.
+// Klasy: OK, LIMIT (pauza), HANG (timeout albo sygnał), ERROR (kod ≠ 0 albo błąd wywołania),
+// MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha albo odmowa wykonawcy).
+let call = null
+const CHECK_HINT = {
+  OK: "-",
+  LIMIT: "wznowić po resecie z linii PAUSE",
+  HANG: "sprawdzić ostatnie linie logu (zacięcie albo timeout)",
+  ERROR: "sprawdzić wycinek logu (kod i ostatnie linie)",
+  MODEL: "wybrać model z listy dostępnych w raporcie",
+  SUSPECT: "sprawdzić, czy wykonawca cokolwiek zrobił",
+  POLITYKA: "sprawdzić złamanie zasad kitu (wpis stasha) albo odmowę wywołania",
+}
+
+function startCall(opts) {
+  return {
+    ctx: opts.ctx || null,
+    ticket: ticketNumber(),
+    start: new Date(),
+    chain: [],
+    model: null,
+    log: null,
+    klasa: null,
+    actions: [],
+  }
+}
+
+function callRow(code, klasa, { sprawdz, dzialanie } = {}) {
+  return {
+    ticket: call.ticket ?? "-",
+    wykonawca: call.chain.at(-1) ?? "-",
+    lancuch: call.chain.join(">") || "-",
+    model: call.model,
+    kod: code,
+    klasa,
+    start: call.start.toISOString(),
+    koniec: new Date().toISOString(),
+    log: call.log,
+    sprawdz: sprawdz ?? CHECK_HINT[klasa] ?? "-",
+    dzialanie: dzialanie ?? (call.actions.join("; ") || "-"),
+  }
+}
+
+const ROW_FILE = "headless-rows.jsonl"
+const EXCERPT_LINES = 40
+
+// Składa wiersz, zapisuje go w buforze nocy (gdy jest CTX) i zwraca linię do wypisania.
+function finishRow(code, klasa, extra) {
+  const row = callRow(code, klasa, extra)
+  recordRow(row)
+  return `${JSON.stringify(row)}\n`
+}
+
+// Bufor nocy: wiersz dopisany do `<ctx>/headless-rows.jsonl`, a przy klasie innej niż OK wycinek logu.
+// Błąd zapisu nie wywraca wywołania — tylko ostrzeżenie na stderr.
+function recordRow(row) {
+  if (!call.ctx) return
+  try {
+    mkdirSync(call.ctx, { recursive: true })
+    appendFileSync(join(call.ctx, ROW_FILE), `${JSON.stringify(row)}\n`)
+  } catch (err) {
+    process.stderr.write(`[headless] bufor nocy ${call.ctx} niedostępny: ${err.message}\n`)
+    return
+  }
+  if (row.klasa === "OK" || !row.log) return
+  try {
+    writeExcerpt(call.ctx, row.log)
+  } catch (err) {
+    process.stderr.write(`[headless] wycinek logu nie zapisany w ${call.ctx}: ${err.message}\n`)
+  }
+}
+
+// Wycinek: ostatnie EXCERPT_LINES linii logu; gdy raport końcowy leży wcześniej, zaczynamy od niego.
+function writeExcerpt(ctx, logPath) {
+  const all = lines(readFileSync(logPath, "utf8"))
+  const tailStart = Math.max(0, all.length - EXCERPT_LINES)
+  const reportStart = all.lastIndexOf("[headless] raport końcowy")
+  const start = reportStart >= 0 ? Math.min(reportStart, tailStart) : tailStart
+  writeFileSync(excerptFile(ctx, basename(dirname(logPath))), `${all.slice(start).join("\n")}\n`)
+}
+
+// Wiersz jako ostatnia linia wyjścia; callback przed `exit` — stdout do potoku bywa asynchroniczny
+// (macOS, Windows).
+function exitWithRow(code, klasa = "ERROR", extra) {
+  if (!call) process.exit(code)
+  process.stdout.write(finishRow(code, klasa, extra), () => process.exit(code))
+}
+
+// Wiersze bufora nocy; zepsuta linia nie blokuje raportu.
+function readRows(ctx) {
+  const path = join(ctx, ROW_FILE)
+  if (!existsSync(path)) return []
+  return lines(readFileSync(path, "utf8")).flatMap((line) => {
+    try {
+      return [JSON.parse(line)]
+    } catch {
+      return []
+    }
+  })
+}
+
+const ticketHeading = (row) => (row.ticket && row.ticket !== "-" ? `#${row.ticket}` : "bez ticketu")
+
+// Jedno wywołanie w HEADLESS REPORT: wynik w jednej linii, uwaga i log pod spodem.
+// Wycinek w CTX przeżywa `pruneRuns`, więc wskazujemy go obok logu.
+function callEntry(row, ctx) {
+  const model = row.model ?? "domyślny"
+  const note = row.sprawdz && row.sprawdz !== "-" ? `\n  - sprawdź: ${row.sprawdz}` : ""
+  const excerpt = ctx && row.log ? excerptFile(ctx, basename(dirname(row.log))) : null
+  const cut = excerpt && existsSync(excerpt) ? `\n  - wycinek: ${excerpt}` : ""
+  return `- ${row.start} · ${row.wykonawca} (${row.lancuch}) · model ${model} · kod ${row.kod} · ${row.klasa} · ${row.dzialanie}${note}\n  - log: ${row.log ?? "brak"}${cut}`
+}
+
+// HEADLESS REPORT po tickecie i lista wszystkich wywołań w kolejności (#396).
+function buildReport(rows, ctx) {
+  const calls = [...rows].sort((a, b) => String(a.start).localeCompare(String(b.start)))
+  if (!calls.length) return "## HEADLESS REPORT\nbrak wywołań headless w tej nocy\n\n## Raport listy\nbrak wywołań\n"
+  const groups = new Map()
+  for (const row of calls) {
+    const heading = ticketHeading(row)
+    groups.set(heading, [...(groups.get(heading) || []), row])
+  }
+  const out = ["## HEADLESS REPORT"]
+  for (const [heading, group] of groups) out.push("", `### ${heading}`, ...group.map((row) => callEntry(row, ctx)))
+  out.push("", "## Raport listy (wszystkie wywołania w kolejności)")
+  calls.forEach((row, i) => out.push(`${i + 1}. ${row.start} · ${ticketHeading(row)} · ${row.wykonawca} · ${row.klasa} (kod ${row.kod})`))
+  return `${out.join("\n")}\n`
+}
+
+// `--report --ctx <katalog>` (#396): raport nocy z bufora. Bufor kasujemy dopiero po udanym wypisaniu,
+// więc przerwany raport go zostawia.
+function reportMain(argv) {
+  const at = argv.indexOf("--ctx")
+  if (at < 0 || !argv[at + 1] || argv[at + 1].startsWith("--")) fail("--report wymaga --ctx <katalog>")
+  const ctx = resolve(argv[at + 1])
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, () => process.exit(128 + constants.signals[signal]))
+  }
+  process.stdout.write(buildReport(readRows(ctx), ctx), (err) => {
+    if (err) process.exit(1)
+    rmSync(join(ctx, ROW_FILE), { force: true })
+    process.exit(0)
+  })
+}
+
 async function main() {
+  // Wiersz także przy błędzie flag; CTX znany dopiero po parsowaniu.
+  call = startCall({})
   const opts = parse(process.argv.slice(2))
+  call.ctx = opts.ctx || null
   if (Object.hasOwn(EXECUTOR_ALIASES, opts.executor)) opts.executor = EXECUTOR_ALIASES[opts.executor]
   // Nazwa binarki (`opencode2`) działa jak nazwa wykonawcy.
   if (!EXECUTORS[opts.executor]) {
@@ -437,7 +616,7 @@ async function main() {
       : !EXECUTORS[opts.executor]
         ? `${opts.executor} nie ma trybu headless z guardami kita`
         : `${opts.executor} nie jest w clients: Profilu`
-    fail(`${why}. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ") || "brak"}`)
+    fail(`${why}. Dozwoleni wykonawcy z ${opts.host}: ${allowed.join(", ") || "brak"}`, "POLITYKA")
   }
 
   let prompt = opts.words.join(" ")
@@ -456,10 +635,10 @@ async function main() {
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runsDir, ".gitignore"), "*\n")
-  pruneRuns(runsDir, basename(runDir))
+  pruneRuns(runsDir, basename(runDir), call.ctx)
   const logPath = join(runDir, "headless.log")
-  const ticket = ticketNumber()
-  prompt += footer(runDir, ticket)
+  call.log = logPath
+  prompt += footer(runDir, call.ticket)
 
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
@@ -468,7 +647,7 @@ async function main() {
   }
   process.stdout.write(`[headless] log: ${logPath}\n`)
   // Prompt nie trafia do logu — numer ticketu tak, żeby run dało się przypisać do issue.
-  if (ticket) log(`[headless] ticket #${ticket}\n`)
+  if (call.ticket) log(`[headless] ticket #${call.ticket}\n`)
 
   // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
   // z uprawnieniami na edycje i bash.
@@ -478,13 +657,15 @@ async function main() {
     process.on(signal, async () => {
       if (current.stopping) return
       current.stopping = true
+      const hadChild = !!current.child
       const killing = current.child ? killTree(current.child) : null
       const after = current.started ? ` po ${((Date.now() - current.started) / 1000).toFixed(1)} s od startu wykonawcy` : ""
       log(`[headless] sygnał ${signal}${after} (wrapper pid ${process.pid}, ppid ${process.ppid})\n`)
       log(processSnapshot(current.child?.pid))
       await killing
       log(current.report())
-      process.exit(128 + constants.signals[signal])
+      if (hadChild) call.actions.push(`zabito drzewo procesów (sygnał ${signal})`)
+      exitWithRow(128 + constants.signals[signal], hadChild ? "HANG" : "ERROR")
     })
   }
 
@@ -502,12 +683,14 @@ async function main() {
       if (code === PAUSE_CODE) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
       break
     }
+    call.actions.push(`przekazano 1:1: ${name} → ${next}`)
     log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
   if (current.stopping) return
+  // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
+  current.stopping = true
   log(`[headless] kod wyjścia: ${code}\n`)
-  // Pusty zapis z callbackiem — stdout do potoku bywa asynchroniczny (macOS, Windows).
-  process.stdout.write("", () => process.exit(code))
+  exitWithRow(code, call.klasa ?? "ERROR")
 }
 
 function resolveBin(name) {
@@ -540,6 +723,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
 
   // Unix: własna grupa procesów (setsid), żeby zabić ją w całości. Windows: powłoka tylko dla
   // shima `.cmd` bez exe (wykonawca ze stdin); drzewo i tak sprząta taskkill /T.
+  call.chain.push(name)
+  call.model = model || config?.model || null
   const child = spawn(bin, args, {
     detached: process.platform !== "win32",
     shell: needsShell,
@@ -578,7 +763,12 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const minutes = (ms) => Math.round(ms / 6000) / 10
   current.child = child
   current.started = started
-  current.report = () => finalReport({ startHead, startStash, tail: fullTail(), config: config?.line })
+  current.report = () => finalReport({
+    startHead,
+    tail: fullTail(),
+    config: config?.line,
+    changes: repoChanges({ startHead, startStash, checkNoChanges: false }),
+  })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
   const heartbeat = setInterval(() => {
@@ -628,7 +818,10 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
   current.child = null
-  if (timedOut) log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
+  if (timedOut) {
+    call.actions.push(`zabito drzewo procesów (timeout ${opts.timeoutMin} min)`)
+    log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
+  }
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
@@ -656,13 +849,16 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
-  log(finalReport({ startHead, startStash, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, checkNoChanges: code === 0 && startClean }))
+  const changes = repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean })
+  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
+  // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
+  call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : timedOut ? "HANG" : code !== 0 ? "ERROR"
+    : changes.added.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
   return code
 }
 
-// Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
-// i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, startStash, tail, pause, config, invalidModel, checkNoChanges }) {
+// Stan repo po wykonawcy: status, nowe wpisy stasha i SUSPECT. Z tego powstają raport i klasa wiersza (#396).
+function repoChanges({ startHead, startStash, checkNoChanges }) {
   const status = git("status", "--short")
   // Po hashach, nie po liczbie — `drop` + nowy wpis nie zmienia liczby.
   const added = lines(git("stash", "list", "--format=%H%x09%gd: %gs"))
@@ -672,6 +868,13 @@ function finalReport({ startHead, startStash, tail, pause, config, invalidModel,
   // Exit 0, a w drzewie, historii i stashu nic nowego — wykonawca mógł nic nie zrobić.
   const suspect = checkNoChanges && status === "" && !added.length
     && startHead !== null && git("rev-parse", "HEAD") === startHead
+  return { status, added, suspect }
+}
+
+// Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
+// i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
+function finalReport({ startHead, tail, pause, config, invalidModel, changes }) {
+  const { status, added, suspect } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
@@ -701,4 +904,15 @@ const isMain = (() => {
     return false
   }
 })()
-if (isMain) await main()
+if (isMain) {
+  const argv = process.argv.slice(2)
+  if (argv.includes("--report")) {
+    reportMain(argv.filter((a) => a !== "--report"))
+  } else {
+    await main().catch((err) => {
+      // Błąd poza ścieżkami z `fail` nie może wyjść bez wiersza.
+      process.stderr.write(`[headless] błąd wewnętrzny: ${err?.stack || err}\n`)
+      exitWithRow(1, "ERROR", { sprawdz: String(err?.message || err) })
+    })
+  }
+}

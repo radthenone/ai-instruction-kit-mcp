@@ -1266,7 +1266,7 @@ Z dowolnego klienta kitu (host) zlecasz zadanie innemu klientowi uruchomionemu b
 interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wynik.
 
 ```text
-/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] "<treść>"
+/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] "<treść>"
 ```
 
 | Flaga | Znaczenie |
@@ -1274,6 +1274,7 @@ interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wyn
 | `--model <id>` | Model sesji wykonawcy w jego formacie (`haiku`, `anthropic/claude-haiku-5-5`) |
 | `--timeout <min>` | Limit w minutach, domyślnie 60; po nim drzewo procesów jest zabijane (kod `124`) |
 | `--heartbeat <min>` | Co ile minut linia stanu `[headless] ♥` w wyjściu i logu, domyślnie 10 |
+| `--ctx <katalog>` | Katalog nocy (podaje `/night-run`): wiersz wywołania trafia do `headless-rows.jsonl`, a przy klasie innej niż `OK` wycinek logu do `headless-excerpt-<run>.txt` |
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
 stopka: na branchu `typ/<N>-slug` linia „Ticket #N: przeczytaj `gh issue view N --comments`”
@@ -1289,7 +1290,7 @@ W logu runu linia `[headless] ticket #N`.
 Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
-do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie; przy starcie kasuje runy poza 5 najnowszymi);
+do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie; przy starcie kasuje runy poza 5 najnowszymi, z wyjątkiem nieudanych bez wycinka w katalogu nocy);
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
@@ -1301,6 +1302,14 @@ w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
 `git stash list` z ostrzeżeniem `UWAGA` (bez auto-`pop` — konflikt) i ostatnie 20 linii
 wykonawcy. Agent `/headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.
+
+**Wiersz wywołania i raport nocy (#396).** Wywołanie z poprawnymi flagami kończy się jedną linią
+JSON jako ostatnią linią wyjścia: `ticket`, `wykonawca`, `lancuch`, `model`, `kod`, `klasa`, `start`,
+`koniec`, `log`, `sprawdz`, `dzialanie`. Klasy: `OK`; `LIMIT` (pauza, kod `75`); `HANG` (timeout albo
+sygnał w trakcie pracy wykonawcy); `ERROR` (kod ≠ 0 albo błąd wywołania); `MODEL` (nieznany model agy);
+`SUSPECT` (exit 0 bez zmian w repo); `POLITYKA` (wpis stasha albo odmowa wykonawcy spoza zasad kitu).
+`node .ai/headless.mjs --report --ctx <katalog>` składa z bufora HEADLESS REPORT po tickecie oraz listę
+wszystkich wywołań w kolejności; bufor kasuje dopiero po wypisaniu, więc przerwany raport go zostawia.
 
 **Reguły.** Wykonawca musi być w `clients:` Profilu, mieć tryb headless z guardami kita
 i być **inny niż host** — `/headless <host>` z tego samego hosta kończy się błędem z listą
