@@ -176,6 +176,10 @@ integracyjnego.
   do server-guarda i tego ADR-a.
 - Lokalne pluginy guardów w projektach stają się zbędne: podbij wersję kita,
   `kit-ai reload`, usuń własny plugin.
+- Zakaz instalacji na VPS wchodzi do wspólnego szablonu reguł briefu
+  (`templates/shared/rules/brief-rules.md`), dostarczanego agentom przez nośniki
+  briefu (hook Claude, instrukcje MCP, `AGENTS.md`), bez ręcznych kopii
+  ani wklejania overlayu ([ADR-0010](0010-brief-as-artifact.md)).
 - Czego guard tekstowy nie złapie: agent zapisuje własny skrypt i go odpala.
   Dlatego README zaleca też higienę hosta (Playwright MCP wyłączony na serwerze,
   użytkownik agenta poza grupą `docker`, limit pamięci na sesję).

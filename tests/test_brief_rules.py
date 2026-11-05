@@ -224,5 +224,58 @@ class TestBriefRulesFreshness(unittest.TestCase):
         self.assertEqual(extract_hook_rule(repo_hook_text, "en").strip(), expected_en)
 
 
+
+
+class TestBriefDocumentation(unittest.TestCase):
+    """Dokumentacja (README, ADR-0009) opisuje kontrakt briefu i reguł briefu (#360, ADR-0010)."""
+
+    def setUp(self) -> None:
+        self.readme = (KIT_ROOT / "README.md").read_text(encoding="utf-8")
+        self.adr_0009 = (KIT_ROOT / "docs" / "adr" / "0009-server-guard-denies-heavy-commands-on-vps.md").read_text(encoding="utf-8")
+
+    def test_readme_documents_brief_and_mcp_instructions(self) -> None:
+        """README opisuje brief, instrukcje MCP, szablon reguł i brak wklejania overlayu (#360)."""
+        # Odwołanie do ADR-0010
+        self.assertIn("ADR-0010", self.readme)
+        self.assertIn("0010-brief-as-artifact.md", self.readme)
+
+        # Sekcja o briefie i instrukcjach MCP
+        self.assertIn("Brief projektu", self.readme)
+        self.assertIn("get_overlay", self.readme)
+
+        # Zakaz wklejania całego overlayu do briefu / instrukcji
+        self.assertRegex(self.readme, r"(?i)overlay.*nie jest wklejan")
+
+        # Jedno źródło reguł z szablonu, brak ręcznych kopii
+        self.assertIn("brief-rules.md", self.readme)
+        self.assertRegex(self.readme, r"(?i)jedno źródło|jeden szablon")
+
+    def test_adr_0009_links_to_adr_0010(self) -> None:
+        """ADR-0009 zawiera poprawne odwołanie do ADR-0010 (#360)."""
+        self.assertIn("ADR-0010", self.adr_0009)
+        self.assertIn("0010-brief-as-artifact.md", self.adr_0009)
+
+    def test_adr_0010_link_targets_exist(self) -> None:
+        """Wszystkie linki do ADR-0010 w README i docs/adr/ wskazują istniejące pliki (#360)."""
+        target = KIT_ROOT / "docs" / "adr" / "0010-brief-as-artifact.md"
+        self.assertTrue(target.is_file(), f"Plik ADR-0010 nie istnieje: {target}")
+
+        # Weryfikacja formatu linków w README: [ADR-0010](docs/adr/0010-brief-as-artifact.md)
+        found_readme = False
+        for match in re.finditer(r"\[([^\]]*ADR[ -]?0010[^\]]*)\]\(([^)]+)\)", self.readme):
+            found_readme = True
+            link_path = (KIT_ROOT / match.group(2)).resolve()
+            self.assertTrue(link_path.is_file(), f"Niepoprawny link w README: {match.group(0)} -> {link_path}")
+        self.assertTrue(found_readme, "Brak linku do ADR-0010 w README.md")
+
+        # Weryfikacja formatu linków w docs/adr/0009: [ADR-0010](0010-brief-as-artifact.md)
+        found_adr = False
+        for match in re.finditer(r"\[([^\]]*ADR[ -]?0010[^\]]*)\]\(([^)]+)\)", self.adr_0009):
+            found_adr = True
+            link_path = (KIT_ROOT / "docs" / "adr" / match.group(2)).resolve()
+            self.assertTrue(link_path.is_file(), f"Niepoprawny link w ADR-0009: {match.group(0)} -> {link_path}")
+        self.assertTrue(found_adr, "Brak linku do ADR-0010 w ADR-0009")
+
+
 if __name__ == "__main__":
     unittest.main()
