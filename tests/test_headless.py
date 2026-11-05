@@ -129,9 +129,10 @@ class HeadlessWrapperTest(unittest.TestCase):
         """PATH bez katalogów systemowych — fałszywi wykonawcy + symlinki narzędzi."""
         return os.pathsep.join([str(self.bin), str(self.tools)])
 
-    def profile(self, clients: str) -> None:
+    def profile(self, clients: str, language: str | None = None) -> None:
+        lang = f"language: {language}\n" if language else ""
         (self.root / ".ai/project.profile.yaml").write_text(
-            f"name: app\nclients: {clients}\nbackend: none\n", encoding="utf-8"
+            f"name: app\n{lang}clients: {clients}\nbackend: none\n", encoding="utf-8"
         )
 
     def fake(self, name: str) -> None:
@@ -1309,6 +1310,17 @@ class HeadlessWrapperTest(unittest.TestCase):
         for rule in ("plan 5–10 kroków", "test-first", "pełny zestaw zrobi CI", "--no-sync", "2 próby", "Nie pushuj"):
             self.assertIn(rule, prompt)
         self.assertNotIn("pełna suita raz", prompt)
+
+    def test_footer_requires_polish_topic_and_coauthor_trailer(self) -> None:
+        prompt, _ = self.footer_on_branch("feat/398-x")
+        self.assertIn("Commity: temat po polsku (język `pl` z Profilu)", prompt)
+        self.assertIn("trailer `Co-Authored-By: Claude <noreply@anthropic.com>`", prompt)
+
+    def test_footer_topic_language_follows_profile(self) -> None:
+        self.profile("claude,opencode,codex", language="en")
+        prompt, _ = self.footer_on_branch("feat/398-x")
+        self.assertIn("Commity: temat po angielsku (język `en` z Profilu)", prompt)
+        self.assertNotIn("temat po polsku", prompt)
 
     def test_footer_without_ticket_number_skips_ticket_line(self) -> None:
         prompt, log = self.footer_on_branch("dev")

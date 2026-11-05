@@ -106,7 +106,10 @@ export function resetIso(text, now = Date.now()) {
 // Ostatnie linie wyjścia — tam siedzi komunikat limitu; reszta (kod, diffy, logi) nie liczy się.
 const tailLines = (text) => text.split("\n").slice(-LIMIT_TAIL_LINES).join("\n")
 
-const footer = (runDir, ticket) => `
+// Temat commita po polsku albo angielsku wg `language` z Profilu (#398); inny kod — podany wprost.
+const topicLanguage = (language) => ({ pl: "po polsku", en: "po angielsku" })[language] ?? `w języku ${language}`
+
+const footer = (runDir, ticket, language) => `
 
 ---
 Zasady tej sesji (headless, bez użytkownika):${ticket ? `
@@ -115,6 +118,7 @@ Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add ${join(runDir, 'base')} --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove ${join(runDir, 'base')}\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
+- Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`Co-Authored-By: Claude <noreply@anthropic.com>\`.
 - Lokalnie tylko testy dotknięte zmianą i szybkie bramki; pełny zestaw zrobi CI.
 - Na VPS \`uv run\` zawsze z \`--no-sync\`.
 - Maks. 2 próby naprawy tego samego błędu, potem stop i opis w sekcji Problemy raportu.
@@ -290,6 +294,16 @@ function profileClients() {
   const raw = match ? `${match[1]},${match[2].replace(/^[ \t]+-/gm, ",")}` : ""
   const list = raw.split(/[,\n]/).map((c) => c.replace(/[[\]'"\s]/g, "").toLowerCase()).filter(Boolean)
   return list.includes("all") ? KNOWN_CLIENTS : list.map((c) => (c === "copilot" ? "vscode" : c))
+}
+
+// Język tematu commitów z Profilu (`language:`); bez klucza albo pliku — `pl`, jak w bootstrapie kita (#398).
+function profileLanguage() {
+  try {
+    const match = /^language:[ \t]*["']?([\w-]+)/m.exec(readFileSync(join(".ai", "project.profile.yaml"), "utf8"))
+    return match ? match[1] : "pl"
+  } catch {
+    return "pl"
+  }
 }
 
 const KEEP_RUNS = 5
@@ -638,7 +652,7 @@ async function main() {
   pruneRuns(runsDir, basename(runDir), call.ctx)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
-  prompt += footer(runDir, call.ticket)
+  prompt += footer(runDir, call.ticket, profileLanguage())
 
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
