@@ -726,6 +726,113 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertLess(time.time() - started, 15)
         self.assert_tree_killed()
 
+    # --- wiersz wywołania: klasa i ostatnia linia wyjścia (#396) ----------------
+
+    def last_row(self, result: subprocess.CompletedProcess) -> dict:
+        """Ostatnia linia stdout — wiersz JSON wywołania (#396)."""
+        return json.loads(result.stdout.splitlines()[-1])
+
+    def test_call_ends_with_row_and_writes_no_buffer_without_ctx(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual(
+            {key: row[key] for key in ("ticket", "wykonawca", "lancuch", "model", "kod", "klasa", "sprawdz", "dzialanie")},
+            {"ticket": "-", "wykonawca": "opencode", "lancuch": "opencode", "model": None,
+             "kod": 0, "klasa": "OK", "sprawdz": "-", "dzialanie": "-"},
+        )
+        self.assertEqual(row["log"], str(self.log_path(result)))
+        self.assertIn("start", row)
+        self.assertIn("koniec", row)
+        self.assertEqual(list(self.root.rglob("headless-rows.jsonl")), [])
+
+    def test_row_takes_ticket_from_branch(self) -> None:
+        self.git_repo()
+        subprocess.run(["git", "checkout", "-qb", "feat/396-headless-row-night-buffer"], cwd=self.root, check=True, capture_output=True)
+        result = self.run_wrapper("--host", "opencode", "claude", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["ticket"], "396")
+
+    def test_timeout_row_is_hang_with_code_124(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.02", "x", FAKE_SLEEP="30")
+        self.assertEqual(result.returncode, 124)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 124))
+        self.assertIn("zabito drzewo procesów", row["dzialanie"])
+
+    def test_limit_row_is_limit_with_code_75(self) -> None:
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_CODE="1", FAKE_LIMIT="Error: Free usage limit reached",
+        )
+        self.assertEqual(result.returncode, 75)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("LIMIT", 75))
+        self.assertIn("PAUSE", row["sprawdz"])
+
+    def test_failure_row_is_error_with_executor_code(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_CODE="3")
+        self.assertEqual(result.returncode, 3)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("ERROR", 3))
+
+    def test_exit_zero_without_changes_row_is_suspect(self) -> None:
+        self.clean_git_repo()
+        state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state, ignore_errors=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "SUSPECT")
+
+    def test_new_stash_entry_row_is_policy(self) -> None:
+        self.clean_git_repo()
+        state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state, ignore_errors=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_STASH="1", HEADLESS_TEST_DIR=state, **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "POLITYKA")
+
+    def test_agy_invalid_model_row_is_model_with_code_2(self) -> None:
+        self.profile("claude,antigravity")
+        self.fake("agy")
+        fake_output = "error: invalid model selection\nAvailable models:\n  Gemini 3.8 Flash (High)\n"
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "bad-model", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 2)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"], row["model"]), ("MODEL", 2, "bad-model"))
+
+    def test_terminated_call_ends_with_hang_row(self) -> None:
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=10)
+        self.assertEqual(proc.returncode, 143)
+        self.assert_tree_killed()
+        row = json.loads(out.splitlines()[-1])
+        self.assertEqual((row["klasa"], row["kod"], row["wykonawca"]), ("HANG", 143, "opencode"))
+        self.assertIn("sygnał SIGTERM", row["dzialanie"])
+
+    def test_refused_executor_row_is_policy_without_run(self) -> None:
+        result = self.run_wrapper("--host", "claude", "claude", "x")
+        self.assertEqual(result.returncode, 2)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"], row["wykonawca"], row["log"]), ("POLITYKA", 2, "-", None))
+        self.assertIn("nie wywołuje sam siebie", row["sprawdz"])
+        self.assertFalse((self.root / ".ai/headless-runs").exists())
+
     # --- flagi i reguły -----------------------------------------------------
 
     def test_unknown_flag_lists_known_flags(self) -> None:
