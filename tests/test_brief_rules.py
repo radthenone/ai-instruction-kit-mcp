@@ -8,6 +8,7 @@ from pathlib import Path
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PATH = KIT_ROOT / "templates" / "shared" / "rules" / "brief-rules.md"
 HOOK_TEMPLATE = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
+HOOK_REPO = KIT_ROOT / ".claude" / "hooks" / "language-reminder.mjs"
 AGENTS_TEMPLATE = KIT_ROOT / "templates" / "AGENTS.md"
 
 
@@ -89,6 +90,38 @@ class TestBriefRules(unittest.TestCase):
         self.assertIsNotNone(brief_rules)
         assert brief_rules is not None  # zawęża typ dla ty (assertIsNotNone tego nie robi)
         self.assertEqual(brief_rules.strip(), get_brief_rules("pl").strip())
+
+
+
+
+
+def extract_hook_rule(hook_content: str, language: str = "pl") -> str:
+    """Wyciągnij wartość reguły (rulesPl lub rulesEn) z kodu hooka language-reminder.mjs."""
+    import json
+    import re
+
+    lang = "en" if language.lower().startswith("en") else "pl"
+    var_name = "rulesEn" if lang == "en" else "rulesPl"
+    pattern = rf"const {var_name} =\s*\n?\s*\"([^\"\\]*(?:\\.[^\"\\]*)*)\";"
+    match = re.search(pattern, hook_content)
+    if not match:
+        raise ValueError(f"Nie znaleziono zmiennej {var_name} w hooku")
+    return json.loads(f"\"{match.group(1)}\"")
+
+class TestBriefRulesFreshness(unittest.TestCase):
+    """Testy świeżości (freshness) generowanych plików reguł briefu (#359, ADR-0010)."""
+
+    def test_repo_hook_is_fresh(self) -> None:
+        """Hook repozytorium .claude/hooks/language-reminder.mjs jest identyczny z renderem szablonu (#359)."""
+        from guides.brief_rules import render_hook_rules
+
+        template_text = TEMPLATE_PATH.read_text(encoding="utf-8")
+        expected_pl = render_hook_rules(template_text, "pl").strip()
+        expected_en = render_hook_rules(template_text, "en").strip()
+
+        repo_hook_text = HOOK_REPO.read_text(encoding="utf-8")
+        self.assertEqual(extract_hook_rule(repo_hook_text, "pl").strip(), expected_pl)
+        self.assertEqual(extract_hook_rule(repo_hook_text, "en").strip(), expected_en)
 
 
 if __name__ == "__main__":
