@@ -556,14 +556,17 @@ function readRows(ctx) {
 const ticketHeading = (row) => (row.ticket && row.ticket !== "-" ? `#${row.ticket}` : "bez ticketu")
 
 // Jedno wywołanie w HEADLESS REPORT: wynik w jednej linii, uwaga i log pod spodem.
-function callEntry(row) {
+// Wycinek w CTX przeżywa `pruneRuns`, więc wskazujemy go obok logu.
+function callEntry(row, ctx) {
   const model = row.model ?? "domyślny"
   const note = row.sprawdz && row.sprawdz !== "-" ? `\n  - sprawdź: ${row.sprawdz}` : ""
-  return `- ${row.start} · ${row.wykonawca} (${row.lancuch}) · model ${model} · kod ${row.kod} · ${row.klasa} · ${row.dzialanie}${note}\n  - log: ${row.log ?? "brak"}`
+  const excerpt = ctx && row.log ? excerptFile(ctx, basename(dirname(row.log))) : null
+  const cut = excerpt && existsSync(excerpt) ? `\n  - wycinek: ${excerpt}` : ""
+  return `- ${row.start} · ${row.wykonawca} (${row.lancuch}) · model ${model} · kod ${row.kod} · ${row.klasa} · ${row.dzialanie}${note}\n  - log: ${row.log ?? "brak"}${cut}`
 }
 
 // HEADLESS REPORT po tickecie i lista wszystkich wywołań w kolejności (#396).
-function buildReport(rows) {
+function buildReport(rows, ctx) {
   const calls = [...rows].sort((a, b) => String(a.start).localeCompare(String(b.start)))
   if (!calls.length) return "## HEADLESS REPORT\nbrak wywołań headless w tej nocy\n\n## Raport listy\nbrak wywołań\n"
   const groups = new Map()
@@ -572,7 +575,7 @@ function buildReport(rows) {
     groups.set(heading, [...(groups.get(heading) || []), row])
   }
   const out = ["## HEADLESS REPORT"]
-  for (const [heading, group] of groups) out.push("", `### ${heading}`, ...group.map(callEntry))
+  for (const [heading, group] of groups) out.push("", `### ${heading}`, ...group.map((row) => callEntry(row, ctx)))
   out.push("", "## Raport listy (wszystkie wywołania w kolejności)")
   calls.forEach((row, i) => out.push(`${i + 1}. ${row.start} · ${ticketHeading(row)} · ${row.wykonawca} · ${row.klasa} (kod ${row.kod})`))
   return `${out.join("\n")}\n`
@@ -587,7 +590,7 @@ function reportMain(argv) {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.once(signal, () => process.exit(128 + constants.signals[signal]))
   }
-  process.stdout.write(buildReport(readRows(ctx)), (err) => {
+  process.stdout.write(buildReport(readRows(ctx), ctx), (err) => {
     if (err) process.exit(1)
     rmSync(join(ctx, ROW_FILE), { force: true })
     process.exit(0)
@@ -595,8 +598,10 @@ function reportMain(argv) {
 }
 
 async function main() {
+  // Wiersz także przy błędzie flag; CTX znany dopiero po parsowaniu.
+  call = startCall({})
   const opts = parse(process.argv.slice(2))
-  call = startCall(opts)
+  call.ctx = opts.ctx || null
   if (Object.hasOwn(EXECUTOR_ALIASES, opts.executor)) opts.executor = EXECUTOR_ALIASES[opts.executor]
   // Nazwa binarki (`opencode2`) działa jak nazwa wykonawcy.
   if (!EXECUTORS[opts.executor]) {
@@ -682,6 +687,8 @@ async function main() {
     log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
   if (current.stopping) return
+  // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
+  current.stopping = true
   log(`[headless] kod wyjścia: ${code}\n`)
   exitWithRow(code, call.klasa ?? "ERROR")
 }
@@ -899,8 +906,8 @@ const isMain = (() => {
 })()
 if (isMain) {
   const argv = process.argv.slice(2)
-  if (argv[0] === "--report") {
-    reportMain(argv.slice(1))
+  if (argv.includes("--report")) {
+    reportMain(argv.filter((a) => a !== "--report"))
   } else {
     await main().catch((err) => {
       // Błąd poza ścieżkami z `fail` nie może wyjść bez wiersza.

@@ -967,6 +967,16 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("#396", result.stdout)
         self.assertFalse((ctx / "headless-rows.jsonl").exists())
 
+    def test_report_points_to_excerpt_and_accepts_flag_after_ctx(self) -> None:
+        ctx = self.ctx_dir()
+        start = "2026-11-05T01:00:00.000Z"
+        self.write_buffer(ctx, [self.report_row("396", start, "ERROR")])
+        excerpt = ctx / f"headless-excerpt-{start}-opencode.txt"
+        excerpt.write_text("ostatnie linie\n", encoding="utf-8")
+        result = self.run_wrapper("--ctx", str(ctx), "--report")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"wycinek: {excerpt}", result.stdout)
+
     def test_report_terminated_while_printing_keeps_buffer(self) -> None:
         ctx = self.ctx_dir()
         # Wypis większy niż bufor potoku (64 KB) i nikt go nie czyta: zapis wisi, aż przyjdzie sygnał.
@@ -1046,6 +1056,9 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("--fast", result.stderr)
         self.assertIn("--model", result.stderr)
         self.assertIn("--timeout", result.stderr)
+        row = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(row["klasa"], "ERROR")
+        self.assertEqual(row["kod"], 2)
 
     def test_bad_timeout_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "zero", "x")
