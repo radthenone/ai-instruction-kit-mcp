@@ -24,6 +24,8 @@
  * Każde wywołanie kończy się wierszem JSON jako ostatnią linią wyjścia (#396). Z `--ctx <katalog>`
  * (noc) wiersz dopisuje się też do `<katalog>/headless-rows.jsonl`, a przy klasie innej niż OK wycinek
  * logu trafia do `<katalog>/headless-excerpt-<run>.txt` — log runu znika przy sprzątaniu.
+ * `--report --ctx <katalog>` składa z bufora HEADLESS REPORT po tickecie i listę wywołań w kolejności;
+ * bufor kasuje dopiero po wypisaniu.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -523,6 +525,60 @@ function exitWithRow(code, klasa = "ERROR", extra) {
   process.stdout.write(finishRow(code, klasa, extra), () => process.exit(code))
 }
 
+// Wiersze bufora nocy; zepsuta linia nie blokuje raportu.
+function readRows(ctx) {
+  const path = join(ctx, ROW_FILE)
+  if (!existsSync(path)) return []
+  return lines(readFileSync(path, "utf8")).flatMap((line) => {
+    try {
+      return [JSON.parse(line)]
+    } catch {
+      return []
+    }
+  })
+}
+
+const ticketHeading = (row) => (row.ticket && row.ticket !== "-" ? `#${row.ticket}` : "bez ticketu")
+
+// Jedno wywołanie w HEADLESS REPORT: wynik w jednej linii, uwaga i log pod spodem.
+function callEntry(row) {
+  const model = row.model ?? "domyślny"
+  const note = row.sprawdz && row.sprawdz !== "-" ? `\n  - sprawdź: ${row.sprawdz}` : ""
+  return `- ${row.start} · ${row.wykonawca} (${row.lancuch}) · model ${model} · kod ${row.kod} · ${row.klasa} · ${row.dzialanie}${note}\n  - log: ${row.log ?? "brak"}`
+}
+
+// HEADLESS REPORT po tickecie i lista wszystkich wywołań w kolejności (#396).
+function buildReport(rows) {
+  const calls = [...rows].sort((a, b) => String(a.start).localeCompare(String(b.start)))
+  if (!calls.length) return "## HEADLESS REPORT\nbrak wywołań headless w tej nocy\n\n## Raport listy\nbrak wywołań\n"
+  const groups = new Map()
+  for (const row of calls) {
+    const heading = ticketHeading(row)
+    groups.set(heading, [...(groups.get(heading) || []), row])
+  }
+  const out = ["## HEADLESS REPORT"]
+  for (const [heading, group] of groups) out.push("", `### ${heading}`, ...group.map(callEntry))
+  out.push("", "## Raport listy (wszystkie wywołania w kolejności)")
+  calls.forEach((row, i) => out.push(`${i + 1}. ${row.start} · ${ticketHeading(row)} · ${row.wykonawca} · ${row.klasa} (kod ${row.kod})`))
+  return `${out.join("\n")}\n`
+}
+
+// `--report --ctx <katalog>` (#396): raport nocy z bufora. Bufor kasujemy dopiero po udanym wypisaniu,
+// więc przerwany raport go zostawia.
+function reportMain(argv) {
+  const at = argv.indexOf("--ctx")
+  if (at < 0 || !argv[at + 1] || argv[at + 1].startsWith("--")) fail("--report wymaga --ctx <katalog>")
+  const ctx = resolve(argv[at + 1])
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, () => process.exit(128 + constants.signals[signal]))
+  }
+  process.stdout.write(buildReport(readRows(ctx)), (err) => {
+    if (err) process.exit(1)
+    rmSync(join(ctx, ROW_FILE), { force: true })
+    process.exit(0)
+  })
+}
+
 async function main() {
   const opts = parse(process.argv.slice(2))
   call = startCall(opts)
@@ -827,9 +883,14 @@ const isMain = (() => {
   }
 })()
 if (isMain) {
-  await main().catch((err) => {
-    // Błąd poza ścieżkami z `fail` nie może wyjść bez wiersza.
-    process.stderr.write(`[headless] błąd wewnętrzny: ${err?.stack || err}\n`)
-    exitWithRow(1, "ERROR", { sprawdz: String(err?.message || err) })
-  })
+  const argv = process.argv.slice(2)
+  if (argv[0] === "--report") {
+    reportMain(argv.slice(1))
+  } else {
+    await main().catch((err) => {
+      // Błąd poza ścieżkami z `fail` nie może wyjść bez wiersza.
+      process.stderr.write(`[headless] błąd wewnętrzny: ${err?.stack || err}\n`)
+      exitWithRow(1, "ERROR", { sprawdz: String(err?.message || err) })
+    })
+  }
 }

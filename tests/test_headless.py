@@ -916,6 +916,88 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("bufor nocy", result.stderr)
         self.assertEqual(self.last_row(result)["klasa"], "OK")
 
+    # --- składanie raportu nocy z bufora (#396) -----------------------------------
+
+    def report_row(self, ticket: str, start: str, klasa: str = "OK") -> dict:
+        return {
+            "ticket": ticket,
+            "wykonawca": "opencode",
+            "lancuch": "opencode",
+            "model": None,
+            "kod": 0 if klasa == "OK" else 1,
+            "klasa": klasa,
+            "start": start,
+            "koniec": start,
+            "log": str(self.root / ".ai/headless-runs" / f"{start}-opencode" / "headless.log"),
+            "sprawdz": "-" if klasa == "OK" else "sprawdzić wycinek logu (kod i ostatnie linie)",
+            "dzialanie": "-",
+        }
+
+    def write_buffer(self, ctx: Path, rows: list[dict]) -> None:
+        (ctx / "headless-rows.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+    def test_report_groups_rows_by_ticket_and_lists_calls_in_order(self) -> None:
+        ctx = self.ctx_dir()
+        rows = [
+            self.report_row("396", "2026-11-05T01:00:00.000Z"),
+            self.report_row("398", "2026-11-05T01:10:00.000Z", "ERROR"),
+            self.report_row("396", "2026-11-05T01:20:00.000Z"),
+            self.report_row("-", "2026-11-05T01:30:00.000Z", "HANG"),
+        ]
+        self.write_buffer(ctx, rows)
+        result = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        head, _, listing = result.stdout.partition("## Raport listy")
+        self.assertIn("## HEADLESS REPORT", head)
+        groups = {section.split("\n", 1)[0]: section for section in head.split("\n### ")[1:]}
+        self.assertEqual(list(groups), ["#396", "#398", "bez ticketu"])
+        self.assertIn(rows[0]["start"], groups["#396"])
+        self.assertIn(rows[2]["start"], groups["#396"])
+        self.assertNotIn(rows[1]["start"], groups["#396"])
+        self.assertIn(rows[1]["start"], groups["#398"])
+        self.assertIn(rows[3]["start"], groups["bez ticketu"])
+        positions = [listing.index(row["start"]) for row in rows]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_report_deletes_buffer_after_printing(self) -> None:
+        ctx = self.ctx_dir()
+        self.write_buffer(ctx, [self.report_row("396", "2026-11-05T01:00:00.000Z")])
+        result = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("#396", result.stdout)
+        self.assertFalse((ctx / "headless-rows.jsonl").exists())
+
+    def test_report_terminated_while_printing_keeps_buffer(self) -> None:
+        ctx = self.ctx_dir()
+        # Wypis większy niż bufor potoku (64 KB) i nikt go nie czyta: zapis wisi, aż przyjdzie sygnał.
+        self.write_buffer(ctx, [self.report_row(str(n), f"2026-11-05T01:{n % 60:02d}:00.000Z") for n in range(1, 2001)])
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--report", "--ctx", str(ctx)],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path()},
+        )
+        time.sleep(1)
+        self.assertIsNone(proc.poll(), "raport skończył się przed sygnałem — test nie testuje przerwania")
+        proc.terminate()
+        proc.communicate(timeout=10)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertTrue((ctx / "headless-rows.jsonl").is_file())
+
+    def test_report_without_buffer_says_there_were_no_calls(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("brak wywołań headless", result.stdout)
+
+    def test_report_without_ctx_is_error(self) -> None:
+        result = self.run_wrapper("--report")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--report wymaga --ctx", result.stderr)
+
     # --- flagi i reguły -----------------------------------------------------
 
     def test_unknown_flag_lists_known_flags(self) -> None:
