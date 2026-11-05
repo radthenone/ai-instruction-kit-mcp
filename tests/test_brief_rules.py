@@ -7,6 +7,8 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PATH = KIT_ROOT / "templates" / "shared" / "rules" / "brief-rules.md"
+HOOK_TEMPLATE = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
+AGENTS_TEMPLATE = KIT_ROOT / "templates" / "AGENTS.md"
 
 
 class TestBriefRules(unittest.TestCase):
@@ -65,6 +67,27 @@ class TestBriefRules(unittest.TestCase):
         self.assertEqual(render_mcp_rules(template_text, "en").strip(), get_brief_rules("en").strip())
         self.assertEqual(render_hook_rules(template_text, "pl").strip(), get_hook_rules("pl").strip())
         self.assertEqual(render_hook_rules(template_text, "en").strip(), get_hook_rules("en").strip())
+
+    def test_hook_contains_rendered_rules(self) -> None:
+        """Hook language-reminder.mjs zawiera reguły wygenerowane z szablonu (#355)."""
+        from guides.brief_rules import get_hook_rules
+
+        hook_text = HOOK_TEMPLATE.read_text(encoding="utf-8")
+        pl_rules = get_hook_rules("pl")
+        en_rules = get_hook_rules("en")
+
+        self.assertIn(pl_rules, hook_text)
+        self.assertIn(en_rules, hook_text)
+
+    def test_agents_template_contains_rendered_rules(self) -> None:
+        """templates/AGENTS.md zawiera blok kit:brief-rules z regułami z szablonu (#355)."""
+        from guides.brief_rules import get_brief_rules
+        from guides.bugbot_md import extract_brief_rules
+
+        agents_text = AGENTS_TEMPLATE.read_text(encoding="utf-8")
+        brief_rules = extract_brief_rules(agents_text)
+        self.assertIsNotNone(brief_rules)
+        self.assertEqual(brief_rules.strip(), get_brief_rules("pl").strip())
 
 
 if __name__ == "__main__":
