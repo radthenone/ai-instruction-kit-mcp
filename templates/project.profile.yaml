@@ -13,6 +13,10 @@ mobile: none
 
 codegen: orval
 
+# Klienci z sekcją CodeGraph w instrukcjach MCP (ADR-0012). Pusta lista = brak sekcji.
+# Dopisz tylko klientów, którzy mają serwer codegraph, np. [claude, codex].
+codegraph_clients: []
+
 # Server guard (VPS) — twarda blokada ciężkich komend tylko na słabym hoście
 # serwerowym (decyzja w runtime, normalnie nic nie ustawiasz). Brak sekcji
 # = `guard: auto`, sama lista kita + rozwinięte wrappery. Po zmianie Taskfile

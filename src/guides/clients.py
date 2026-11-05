@@ -112,3 +112,26 @@ def format_clients_arg(clients: list[str]) -> str:
     if clients == ["all"]:
         return "all"
     return ",".join(clients)
+
+def parse_codegraph_clients(raw: object) -> set[str]:
+    """
+    Parsuj wartość ``codegraph_clients:`` z Profilu (#365).
+
+    Args:
+        raw: Lista YAML, string po przecinku, "all", pusta lista lub None.
+
+    Returns:
+        set[str]: Zbiór kanonicznych id klientów z KNOWN_CLIENTS; pusty przy braku/błędzie.
+    """
+    if raw is None:
+        return set()
+    if isinstance(raw, (list, tuple)):
+        raw = ",".join(str(item) for item in raw)
+    token = str(raw).strip()
+    if not token:
+        return set()
+    try:
+        return set(expand_clients(parse_clients(token)))
+    except ValueError:
+        return set()
+

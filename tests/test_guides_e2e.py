@@ -426,19 +426,21 @@ class TestGeneratedClientConfigs(unittest.TestCase):
     def test_every_client_config_points_at_the_same_server(self) -> None:
         """Jeden serwer, jedna flaga języka/klientów, workspace = repo aplikacji."""
         for item in _WORKSPACES.values():
-            expected = [
-                "guides-mcp",
-                "--language",
-                item.case.language,
-                "--clients",
-                item.case.clients,
-                "--kit-root",
-                KIT_ROOT.as_posix(),
-                "--workspace",
-                item.root.as_posix(),
-            ]
             for client in KNOWN_CLIENTS:
                 with self.subTest(case=item.case.name, client=client):
+                    expected = [
+                        "guides-mcp",
+                        "--language",
+                        item.case.language,
+                        "--clients",
+                        item.case.clients,
+                        "--kit-root",
+                        KIT_ROOT.as_posix(),
+                        "--client",
+                        client,
+                        "--workspace",
+                        item.root.as_posix(),
+                    ]
                     argv = _client_argv(item.root, client)
                     self.assertEqual(argv[0], "uv", argv)
                     self.assertEqual(argv[1:3], ["run", "--project"], argv)

@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from guides.clients import expand_clients, format_clients_arg, parse_clients
+from guides.clients import expand_clients, format_clients_arg, normalize_client_id, parse_clients, parse_codegraph_clients
 from guides.manifest import BundleRule, Manifest, Mappings, load_manifest
 from guides.host_profile import VPS_LIGHTWEIGHT_MODULE, detect_host_profile
 
@@ -396,6 +396,8 @@ def render_project_brief(
     bundle_names: Sequence[str],
     module_ids: Sequence[str],
     codegraph_content: str | None = None,
+    client: str | None = None,
+    codegraph_clients: object = None,
 ) -> str:
     """
     Zrenderuj brief projektu z Profilu i overlayu — jedno źródło dla pliku i MCP.
@@ -455,8 +457,20 @@ def render_project_brief(
     visible_modules = [mid for mid in module_ids if mid != VPS_LIGHTWEIGHT_MODULE]
     modules_line = ", ".join(f"`{mid}`" for mid in visible_modules)
 
+    codegraph_targets = parse_codegraph_clients(codegraph_clients)
+    canonical_client: str | None = None
+    if client:
+        try:
+            canonical_client = normalize_client_id(client)
+        except ValueError:
+            canonical_client = None
+
     codegraph_section: list[str] = []
-    if codegraph_content and "claude" in client_ids:
+    if (
+        codegraph_content
+        and canonical_client is not None
+        and canonical_client in codegraph_targets
+    ):
         codegraph_section = ["", _demote_headings(codegraph_content.strip())]
 
     prose = BRIEF_LANGUAGE_PROSE.get(language, BRIEF_LANGUAGE_PROSE["pl"])
@@ -1033,6 +1047,7 @@ def resolve_workspace_profile(
     language_override: str | None = None,
     notice: str = "",
     host_profile: str | None = None,
+    client: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil workspace'u (``.ai/project.profile.yaml``).
@@ -1062,6 +1077,7 @@ def resolve_workspace_profile(
         language_override=language_override,
         notice=notice,
         host_profile=host_profile,
+        client=client,
     )
 
 
@@ -1074,6 +1090,7 @@ def resolve_profile(
     language_override: str | None = None,
     notice: str = "",
     host_profile: str | None = None,
+    client: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
@@ -1189,6 +1206,8 @@ def resolve_profile(
         bundle_names=list(bundles),
         module_ids=enabled_modules,
         codegraph_content=codegraph_content,
+        client=client,
+        codegraph_clients=profile_data.get("codegraph_clients"),
     )
 
     index_lines = []
