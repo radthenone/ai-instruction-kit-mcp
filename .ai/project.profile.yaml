@@ -10,6 +10,7 @@ web: none
 mobile: none
 
 codegen: none
+codegraph_clients: [claude, codex, antigravity, opencode]
 
 server:
   guard: auto

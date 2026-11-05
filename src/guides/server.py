@@ -23,6 +23,7 @@ from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
     format_clients_arg,
+    normalize_client_id,
     parse_clients,
 )
 from guides.host_profile import get_host_profile
@@ -59,6 +60,7 @@ _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
 _language_override: str | None = None
 _clients: list[str] = ["all"]
+_client: str | None = None
 _legacy_config: bool = False
 _gh_runner: Runner | None = None
 
@@ -71,6 +73,7 @@ def _get_resolved():
         extra_overlays=_extra_overlays or None,
         language_override=_language_override,
         notice=MIGRATION_NOTICE if _legacy_config else "",
+        client=_client,
     )
 
 
@@ -594,11 +597,13 @@ def get_clients() -> str:
     """
     flag = format_clients_arg(_clients)
     expanded = expand_clients(_clients)
+    client_line = f"- Client (`--client`): `{_client}`" if _client else "- Client (`--client`): _none_"
     lines = [
         "# Clients (MCP metadata)",
         "",
         f"- Flag `--clients`: `{flag}`",
         f"- Expanded: {', '.join(f'`{c}`' for c in expanded)}",
+        client_line,
         "",
         "Bundle content is identical for every client. "
         "Use this only to know which IDE packs were intended at bootstrap.",
@@ -637,7 +642,7 @@ def _register_bundle_resources() -> None:
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
     global _kit_root, _workspace_root, _extra_overlays
-    global _language_override, _clients, _legacy_config
+    global _language_override, _clients, _client, _legacy_config
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -684,6 +689,15 @@ def main() -> None:
             "antigravity | opencode (lista po przecinku; alias copilot→vscode). Nie zmienia bundle."
         ),
     )
+    parser.add_argument(
+        "--client",
+        required=False,
+        default=None,
+        help=(
+            "Identyfikator klienta AI tego serwera MCP: cursor | claude | codex | vscode | "
+            "kiro | kilo | antigravity | opencode. Służy do celowanego deliverowania instrukcji (np. codegraph)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.kit_root:
@@ -709,6 +723,13 @@ def main() -> None:
         _clients = parse_clients(clients_raw)
     except ValueError as exc:
         parser.error(f"--clients: {exc}")
+
+    client_raw = args.client if args.client is not None else os.environ.get("GUIDES_CLIENT")
+    if client_raw:
+        try:
+            _client = normalize_client_id(client_raw)
+        except ValueError as exc:
+            parser.error(f"--client: {exc}")
 
     _legacy_config = bool(
         args.preset

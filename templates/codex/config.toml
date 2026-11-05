@@ -10,5 +10,6 @@ args = [
   "guides-mcp",
   "--language", "pl",
   "--clients", "all",
+  "--client", "codex",
   "--workspace", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU",
 ]
