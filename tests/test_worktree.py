@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 
 from guides.doctor import run_doctor
+from guides.manifest import load_manifest
+from guides.questions import render_catalog
 from guides.worktree import (
     DEFAULT_VENV,
     KNOWN_WORKTREE_KEYS,
@@ -36,6 +38,42 @@ def setUpModule() -> None:
 
 
 class TestWorktreeConfig(unittest.TestCase):
+    def test_profile_template_and_catalog_align_with_known_worktree_keys(self) -> None:
+        """Szablon Profilu i katalog pytań honorują KNOWN_WORKTREE_KEYS i ADR-0014 (#368)."""
+        template_text = (KIT_ROOT / "templates" / "project.profile.yaml").read_text(encoding="utf-8")
+        self.assertIn("# worktree:", template_text)
+        for key in KNOWN_WORKTREE_KEYS:
+            self.assertIn(f"#   {key}:", template_text)
+
+        lines = template_text.splitlines()
+        wt_start = next(i for i, line in enumerate(lines) if line.strip() == "# worktree:")
+        wt_block_lines = []
+        for line in lines[wt_start:]:
+            if not line.startswith("#"):
+                break
+            uncommented = line[2:] if line.startswith("# ") else line[1:]
+            if uncommented.startswith("  ") or uncommented.startswith("worktree:"):
+                wt_block_lines.append(uncommented)
+            elif wt_block_lines and not uncommented.strip():
+                continue
+            elif wt_block_lines:
+                break
+        uncommented_yaml = "\n".join(wt_block_lines)
+        parsed = parse_worktree_section(uncommented_yaml)
+        self.assertEqual(parsed["warnings"], [])
+        self.assertIsNotNone(parsed["copy"])
+        self.assertIsInstance(parsed["link"], list)
+        self.assertIsInstance(parsed["setup"], list)
+        self.assertIn(parsed["venv"], VALID_VENV_VALUES)
+
+        manifest = load_manifest(KIT_ROOT)
+        catalog = render_catalog(manifest, {"backend": "none", "web": "none", "mobile": "none"})
+        self.assertIn("## Sekcja `worktree:`", catalog)
+        self.assertIn("Nie pytaj o nią w wywiadzie", catalog)
+        self.assertIn("na życzenie", catalog)
+        for key in KNOWN_WORKTREE_KEYS:
+            self.assertIn(f"`{key}`", catalog)
+
     def test_parse_valid_worktree_section(self) -> None:
         yaml_text = """\
 name: test

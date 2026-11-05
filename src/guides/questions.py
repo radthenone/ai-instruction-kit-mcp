@@ -94,6 +94,14 @@ def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
             "`off`, `deny` / `allow` jako listy dosłownych wywołań (allow projektu > deny projektu). "
             "Schemat i propozycje: README „Server guard (VPS)”.",
             "",
+            "## Sekcja `worktree:` (Managed Worktree)",
+            "",
+            "Nie pytaj o nią w wywiadzie — worktree jest opcjonalny (ADR-0014), a brak sekcji oznacza "
+            "domyślne kopiowanie plików maszynowych (.env, konfiguracje MCP) i automatyczny overlay venv. "
+            "Zapisz ją w `.ai/project.profile.yaml` tylko na życzenie użytkownika: `copy` (dodatkowe pliki), "
+            "`link` (zasoby tylko do odczytu), `setup` (komendy po utworzeniu), `venv` (`auto` | `overlay` | `none`). "
+            "Szczegóły: README „Git worktree (.ai/worktree.mjs)”.",
+            "",
             "## Układ katalogów",
             "",
         ]

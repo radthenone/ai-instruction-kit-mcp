@@ -10,12 +10,12 @@ _Brief nie jest jeszcze wyrenderowany — uruchom `kit-ai reload`._
 
 | Warstwa | Co | Gdzie | Po co |
 |---------|-----|------|--------|
-| **1. Fundament** | instruction-kit MCP + `/git-*` + `/review-*` | `.cursor/mcp.json`, `.ai/`, agents | Stack, konwencja gita, review |
+| **1. Fundament** | instruction-kit MCP + `/git-*` + `/review-*` | `.cursor/mcp.json`, `.ai/`, agents | Stack, konwencja gita, Managed Worktree, review |
 | **2. Proces** | mattpocock | skills | `/grill-me`, `/tdd` — *jak* budować feature |
 | **3. Meta / izolacja** | Superpowers | plugin / skills | worktree, brainstorm, debug, **finishing** branch |
 | **4. PR → green** | Autopilot (Cursor) | skill Autopilot | pętla CI + komentarze na istniejącym PR |
 
-Kit = prawda o stacku **i** nazwach branchy. Matt = proces feature. Superpowers = sesja / worktree / finisz. Autopilot = dociąganie PR. **Nie** zamieniaj kita na Matta/Superpowers.
+Kit = prawda o stacku, nazwach branchy **i** metodzie Managed Worktree. Matt = proces feature. Superpowers = sesja / decyzja o worktree / finisz. Autopilot = dociąganie PR. **Nie** zamieniaj kita na Matta/Superpowers.
 
 ## Instruction-kit (MCP)
 
@@ -53,7 +53,7 @@ Pełna reguła: `.cursor/rules/git-branch-pr.mdc`.
 - **`/git-start` / `/git-check` / `/git-commit` / `/git-end`** — issue, sync, Conventional commit(s), push+PR.  
 - **`/grill-me`** — tylko przy niejasnym scope / trade-offach (nie przy oczywistym fixie).  
 - **`/teacher-backend` / `/teacher-frontend` / `/teacher-architecture`** — nauka **przed** kodem: koncepcja, „dlaczego tak”, opcje i koszty. Nie edytują plików; nie mylić z `/review-*` (te działają na gotowym diffie).  
-- **Superpowers worktree** — opcjonalna izolacja *na już nazwanym* branchu.  
+- **Worktree** — opcjonalna izolacja *na już nazwanym* branchu (decyzja człowieka/Superpowers/procedury kita); każdy worktree to Managed Worktree metodą kita (`worktree.mjs add` lub natywny/Superpowers + natychmiastowy `sync`, na końcu `remove`).  
 - **Finishing** — lokalne testy OK → opcja PR (zamiast lub obok `/git-end`).  
 - **Autopilot** — po PR: CI/komentarze aż merge-ready (bez auto-merge).
 
@@ -63,7 +63,7 @@ Chronione: `main` / `master` / `dev`.
 
 1. (Opc.) `/grill-me` — **tylko** gdy scope niejasny  
 2. `/git-start` — issue + branch  
-3. (Opc.) Superpowers worktree  
+3. (Opc.) Worktree (Managed Worktree: `node .ai/worktree.mjs add` lub Superpowers/natywny + `sync`)  
 4. MCP `get_bundle` + `get_overlay` (+ `get_language`; `codegen:` z profilu)  
 5. Implementacja (+ opc. `/tdd`)  
 6. (Opc.) `/git-check` — gdy scope/diff rozjechał się z issue  
