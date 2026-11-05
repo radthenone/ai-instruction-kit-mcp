@@ -52,6 +52,13 @@ BRIEF_OPEN = "<!-- kit:brief -->"
 BRIEF_CLOSE = "<!-- /kit:brief -->"
 _BRIEF_RE = re.compile(re.escape(BRIEF_OPEN) + r"(.*?)" + re.escape(BRIEF_CLOSE), re.DOTALL)
 
+# Blok reguł briefu (#355): generowany z szablonu brief-rules.md w wybranym języku.
+BRIEF_RULES_OPEN = "<!-- kit:brief-rules -->"
+BRIEF_RULES_CLOSE = "<!-- /kit:brief-rules -->"
+_BRIEF_RULES_RE = re.compile(
+    re.escape(BRIEF_RULES_OPEN) + r"(.*?)" + re.escape(BRIEF_RULES_CLOSE), re.DOTALL
+)
+
 
 def _markers(block: str) -> tuple[str, str]:
     """Znaczniki bloku projektu, np. ``project:rules`` albo ``project:agents``."""
@@ -150,6 +157,28 @@ def _with_brief(text: str, brief: str | None) -> str:
         return text
     replacement = f"{BRIEF_OPEN}\n{brief.strip()}\n{BRIEF_CLOSE}"
     return _BRIEF_RE.sub(lambda _: replacement, text, count=1)
+
+
+def extract_brief_rules(text: str) -> str | None:
+    """
+    Wyciągnij treść generowanego bloku ``kit:brief-rules`` z ``AGENTS.md`` (#355).
+
+    Args:
+        text: Treść ``AGENTS.md``.
+
+    Returns:
+        str | None: Treść między znacznikami albo ``None``, gdy plik nie ma bloku.
+    """
+    match = _BRIEF_RULES_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _with_brief_rules(text: str, brief_rules: str | None) -> str:
+    """Podmień treść bloku ``kit:brief-rules`` (``None`` albo brak bloku = bez zmian)."""
+    if brief_rules is None or BRIEF_RULES_OPEN not in text or BRIEF_RULES_CLOSE not in text:
+        return text
+    replacement = f"{BRIEF_RULES_OPEN}\n{brief_rules.strip()}\n{BRIEF_RULES_CLOSE}"
+    return _BRIEF_RULES_RE.sub(lambda _: replacement, text, count=1)
 
 
 def overlay_path_entries(text: str) -> list[tuple[int, str, str]]:
@@ -254,6 +283,7 @@ def render(
     paths: Mapping[str, str] | None = None,
     block: str = "rules",
     brief: str | None = None,
+    brief_rules: str | None = None,
 ) -> str:
     """
     Wyrenderuj szablon: wybrane sekcje Tierów + blok reguł projektu.
@@ -289,7 +319,8 @@ def render(
     text = re.sub(r"\n{3,}", "\n\n", text)
     if default_rules is not None:
         text = text.replace(_SENTINEL, block_rules or "")
-    return _with_brief(text, brief)
+    text = _with_brief(text, brief)
+    return _with_brief_rules(text, brief_rules)
 
 
 def _render_pattern(template: str, tiers: frozenset[str], block: str) -> re.Pattern[str]:
@@ -330,6 +361,9 @@ def is_pristine(text: str, template: str, block: str = "rules") -> bool:
     default_brief = extract_brief(template)
     if default_brief is not None and extract_brief(normalized) is not None:
         normalized = _with_brief(normalized, default_brief)
+    default_brief_rules = extract_brief_rules(template)
+    if default_brief_rules is not None and extract_brief_rules(normalized) is not None:
+        normalized = _with_brief_rules(normalized, default_brief_rules)
     return any(
         _render_pattern(template, tiers, block).fullmatch(normalized) for tiers in TIER_SETS
     )
@@ -358,6 +392,7 @@ def migrate(
     paths: Mapping[str, str] | None = None,
     block: str = "rules",
     brief: str | None = None,
+    brief_rules: str | None = None,
 ) -> Migration:
     """
     Zmigruj plik bez bloku: dopisane linie → ``project:rules``, reszta z szablonu.
@@ -405,10 +440,10 @@ def migrate(
         )
 
     if not added:
-        return Migration(render(template, tiers, paths=paths, block=block, brief=brief), moved=[])
+        return Migration(render(template, tiers, paths=paths, block=block, brief=brief, brief_rules=brief_rules), moved=[])
 
     rules = "\n" + "\n".join(added) + "\n"
-    return Migration(render(template, tiers, rules, paths, block, brief), moved=added)
+    return Migration(render(template, tiers, rules, paths, block, brief, brief_rules=brief_rules), moved=added)
 
 
 def needs_migration(text: str, template: str, block: str = "rules") -> bool:
@@ -510,6 +545,7 @@ def sync_file(
     paths: Mapping[str, str] | None = None,
     block: str = "rules",
     brief: str | None = None,
+    brief_rules: str | None = None,
 ) -> SyncResult:
     """
     Doprowadź plik ``BUGBOT.md`` / ``AGENTS.md`` do stanu zgodnego z szablonem i blokiem.
@@ -529,7 +565,7 @@ def sync_file(
     """
     template = source.read_text(encoding="utf-8")
     if not dest.is_file():
-        _write(dest, render(template, tiers, paths=paths, block=block, brief=brief))
+        _write(dest, render(template, tiers, paths=paths, block=block, brief=brief, brief_rules=brief_rules))
         return SyncResult("created")
 
     # Surowe bajty: read_text tłumaczy CRLF po cichu, a plik ma skończyć z LF.
@@ -554,11 +590,11 @@ def sync_file(
         return SyncResult("unchanged")
 
     if rules is not None:
-        return refresh(render(template, tiers, rules, paths, block, brief))
+        return refresh(render(template, tiers, rules, paths, block, brief, brief_rules=brief_rules))
     if is_pristine(text, template, block):
-        return refresh(render(template, tiers, paths=paths, block=block, brief=brief))
+        return refresh(render(template, tiers, paths=paths, block=block, brief=brief, brief_rules=brief_rules))
 
-    migration = migrate(text, template, tiers, history, paths, block, brief)
+    migration = migrate(text, template, tiers, history, paths, block, brief, brief_rules=brief_rules)
     if migration.text is None:
         return SyncResult(
             "uncertain",
@@ -649,6 +685,16 @@ def main() -> int:
         if brief_path is not None and brief_path.is_file() and brief_path.stat().st_size
         else None
     )
+    brief_rules_path = (
+        Path(os.environ["BRIEF_RULES"]) if os.environ.get("BRIEF_RULES") else None
+    )
+    brief_rules = (
+        brief_rules_path.read_text(encoding="utf-8")
+        if brief_rules_path is not None
+        and brief_rules_path.is_file()
+        and brief_rules_path.stat().st_size
+        else None
+    )
 
     if os.environ.get("CHECK_ONLY"):
         if not dest.is_file():
@@ -678,6 +724,7 @@ def main() -> int:
         paths,
         block,
         brief,
+        brief_rules,
     )
     if result.message:
         print(result.message)

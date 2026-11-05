@@ -758,17 +758,21 @@ def _uncertain_migration(
     )
 
 
+BRIEF_RULES_OPEN = "<!-- kit:brief-rules -->"
+BRIEF_RULES_CLOSE = "<!-- /kit:brief-rules -->"
+
+
 def _brief_lines(text: str) -> set[int]:
-    """Numery linii generowanego bloku ``kit:brief`` — to treść kita, nie reguła projektu."""
+    """Numery linii generowanych bloków briefu i reguł briefu — to treść kita, nie reguła projektu."""
     numbers: set[int] = set()
     inside = False
     for number, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
-        if stripped == BRIEF_OPEN:
+        if stripped in (BRIEF_OPEN, BRIEF_RULES_OPEN):
             inside = True
         if inside:
             numbers.add(number)
-        if stripped == BRIEF_CLOSE:
+        if stripped in (BRIEF_CLOSE, BRIEF_RULES_CLOSE):
             inside = False
     return numbers
 
