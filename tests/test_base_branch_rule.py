@@ -4,7 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-KIT_ROOT = Path(__file__).resolve().parents[1]
+from guides.bootstrap import find_bash
+
+KIT_ROOT =Path(__file__).resolve().parents[1]
 AGENTS = KIT_ROOT / "templates" / "shared" / "agents"
 HOOK = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
 FILES = ["git-start.md", "git-check.md", "git-end.md", "night-run.md"]
@@ -62,7 +64,7 @@ def _git_start_base_script() -> str:
 def _eval_bash_base(repo: Path, default: str) -> str:
     """Uruchamia logikę bazy z git-start.md w ``repo`` i zwraca wybraną gałąź."""
     script = f'DEFAULT="{default}"\n{_git_start_base_script()}printf "%s" "$BASE"'
-    proc = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, check=True)
+    proc = subprocess.run([find_bash(), "-c", script], cwd=repo, capture_output=True, text=True, check=True)
     return proc.stdout.strip()
 
 
