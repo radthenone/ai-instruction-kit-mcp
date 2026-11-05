@@ -2,7 +2,7 @@
 /**
  * Wrapper `/headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
  *
- *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [treść…]
+ *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
  *
  * Treść: argumenty po fladze albo (bez nich) stdin — słowo w słowo, plus stała stopka.
  * `--host` wstawia bootstrap w pliku agenta każdego klienta; wykonawca musi być w tabeli
@@ -20,6 +20,10 @@
  * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
  * po 2 interwałach ciszy ostrzeżenie o zacięciu. Na końcu (także 124) raport: status, commity
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
+ *
+ * Każde wywołanie kończy się wierszem JSON jako ostatnią linią wyjścia (#396). Z `--ctx <katalog>`
+ * (noc) wiersz dopisuje się też do `<katalog>/headless-rows.jsonl`, a przy klasie innej niż OK wycinek
+ * logu trafia do `<katalog>/headless-excerpt-<run>.txt` — log runu znika przy sprzątaniu.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -28,7 +32,7 @@ import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
-const FLAGS = ["--model", "--timeout", "--heartbeat"]
+const FLAGS = ["--model", "--timeout", "--heartbeat", "--ctx"]
 const DEFAULT_TIMEOUT_MIN = 60
 const DEFAULT_HEARTBEAT_MIN = 10
 const TAIL_LINES = 20
@@ -235,7 +239,7 @@ function fail(message, klasa = "ERROR") {
   process.stderr.write(`[headless] ${message}\n`)
   // Synchronicznie: `fail` nie wraca, więc kod po nim nie może dopisać drugiego wiersza.
   if (call) {
-    process.stdout.write(rowLine(2, klasa, {
+    process.stdout.write(finishRow(2, klasa, {
       sprawdz: message,
       dzialanie: klasa === "POLITYKA" ? "odrzucono przed startem" : "przerwano: błąd wywołania",
     }))
@@ -306,7 +310,7 @@ function pruneRuns(runsDir, current) {
 }
 
 function parse(argv) {
-  const opts = { host: "", executor: "", model: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
+  const opts = { host: "", executor: "", model: "", ctx: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
   // Wartość flagi nie może być kolejną flagą — `--model --timeout 5` to błąd, nie model.
   const value = (i) => {
     const v = argv[i + 1]
@@ -323,6 +327,8 @@ function parse(argv) {
     } else if (arg === "--heartbeat") {
       opts.heartbeatMin = Number(value(i++))
       if (!(opts.heartbeatMin > 0)) fail(`--heartbeat wymaga liczby minut > 0, dostał: ${argv[i]}`)
+    } else if (arg === "--ctx") {
+      opts.ctx = resolve(value(i++))
     } else if (arg === "--") opts.words.push(...argv.splice(i + 1))
     else if (arg.startsWith("--")) fail(`nieznana flaga ${arg}. Dozwolone: ${FLAGS.join(", ")}`)
     else if (!opts.executor) opts.executor = arg.toLowerCase()
@@ -472,15 +478,49 @@ function callRow(code, klasa, { sprawdz, dzialanie } = {}) {
   }
 }
 
-function rowLine(code, klasa, extra) {
-  return `${JSON.stringify(callRow(code, klasa, extra))}\n`
+const ROW_FILE = "headless-rows.jsonl"
+const EXCERPT_LINES = 40
+
+// Składa wiersz, zapisuje go w buforze nocy (gdy jest CTX) i zwraca linię do wypisania.
+function finishRow(code, klasa, extra) {
+  const row = callRow(code, klasa, extra)
+  recordRow(row)
+  return `${JSON.stringify(row)}\n`
+}
+
+// Bufor nocy: wiersz dopisany do `<ctx>/headless-rows.jsonl`, a przy klasie innej niż OK wycinek logu.
+// Błąd zapisu nie wywraca wywołania — tylko ostrzeżenie na stderr.
+function recordRow(row) {
+  if (!call.ctx) return
+  try {
+    mkdirSync(call.ctx, { recursive: true })
+    appendFileSync(join(call.ctx, ROW_FILE), `${JSON.stringify(row)}\n`)
+  } catch (err) {
+    process.stderr.write(`[headless] bufor nocy ${call.ctx} niedostępny: ${err.message}\n`)
+    return
+  }
+  if (row.klasa === "OK" || !row.log) return
+  try {
+    writeExcerpt(call.ctx, row.log)
+  } catch (err) {
+    process.stderr.write(`[headless] wycinek logu nie zapisany w ${call.ctx}: ${err.message}\n`)
+  }
+}
+
+// Wycinek: ostatnie EXCERPT_LINES linii logu; gdy raport końcowy leży wcześniej, zaczynamy od niego.
+function writeExcerpt(ctx, logPath) {
+  const all = lines(readFileSync(logPath, "utf8"))
+  const tailStart = Math.max(0, all.length - EXCERPT_LINES)
+  const reportStart = all.lastIndexOf("[headless] raport końcowy")
+  const start = reportStart >= 0 ? Math.min(reportStart, tailStart) : tailStart
+  writeFileSync(join(ctx, `headless-excerpt-${basename(dirname(logPath))}.txt`), `${all.slice(start).join("\n")}\n`)
 }
 
 // Wiersz jako ostatnia linia wyjścia; callback przed `exit` — stdout do potoku bywa asynchroniczny
 // (macOS, Windows).
 function exitWithRow(code, klasa = "ERROR", extra) {
   if (!call) process.exit(code)
-  process.stdout.write(rowLine(code, klasa, extra), () => process.exit(code))
+  process.stdout.write(finishRow(code, klasa, extra), () => process.exit(code))
 }
 
 async function main() {

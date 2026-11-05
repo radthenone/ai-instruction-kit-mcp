@@ -833,6 +833,89 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("nie wywołuje sam siebie", row["sprawdz"])
         self.assertFalse((self.root / ".ai/headless-runs").exists())
 
+    # --- bufor nocy i wycinek logu (#396) -----------------------------------------
+
+    def ctx_dir(self) -> Path:
+        """Katalog CTX nocy poza repo (w produkcji `~/.cache/night-run-…`)."""
+        path = Path(tempfile.mkdtemp(prefix="night-ctx-"))
+        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
+        return path
+
+    def buffer_rows(self, ctx: Path) -> list[dict]:
+        text = (ctx / "headless-rows.jsonl").read_text(encoding="utf-8")
+        return [json.loads(line) for line in text.splitlines()]
+
+    def terminate_wrapper(self, *args: str) -> tuple[int, str]:
+        """Start wrappera z wiszącym wykonawcą, SIGTERM po starcie; zwraca kod i stdout."""
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), *args],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30"},
+        )
+        deadline = time.time() + 10
+        while not (self.root / "child").is_file() and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=10)
+        self.assert_tree_killed()
+        return proc.returncode, out
+
+    def test_call_with_ctx_appends_its_row_to_buffer(self) -> None:
+        ctx = self.ctx_dir()
+        first = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        second = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "y")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.buffer_rows(ctx), [self.last_row(first), self.last_row(second)])
+
+    def test_failed_call_with_ctx_copies_excerpt_next_to_buffer(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x", FAKE_CODE="3")
+        self.assertEqual(result.returncode, 3, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual(self.buffer_rows(ctx), [row])
+        excerpt = ctx / f"headless-excerpt-{Path(row['log']).parent.name}.txt"
+        text = excerpt.read_text(encoding="utf-8")
+        self.assertIn("wynik wykonawcy", text)
+        self.assertIn("[headless] raport końcowy", text)
+
+    def test_ok_call_with_ctx_writes_no_excerpt(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([row["klasa"] for row in self.buffer_rows(ctx)], ["OK"])
+        self.assertEqual(list(ctx.glob("headless-excerpt-*.txt")), [])
+
+    def test_terminated_call_with_ctx_buffers_hang_row_and_excerpt(self) -> None:
+        ctx = self.ctx_dir()
+        code, out = self.terminate_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
+        self.assertEqual(code, 143)
+        (row,) = self.buffer_rows(ctx)
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 143))
+        self.assertEqual(row, json.loads(out.splitlines()[-1]))
+        self.assertTrue((ctx / f"headless-excerpt-{Path(row['log']).parent.name}.txt").is_file())
+
+    def test_refused_call_with_ctx_is_buffered_as_policy(self) -> None:
+        ctx = self.ctx_dir()
+        result = self.run_wrapper("--host", "claude", "claude", "--ctx", str(ctx), "x")
+        self.assertEqual(result.returncode, 2)
+        rows = self.buffer_rows(ctx)
+        self.assertEqual(rows, [self.last_row(result)])
+        self.assertEqual(rows[0]["klasa"], "POLITYKA")
+
+    def test_unwritable_ctx_does_not_fail_the_call(self) -> None:
+        blocker = self.root / "ctx-jest-plikiem"
+        blocker.write_text("nie katalog\n", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(blocker), "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bufor nocy", result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "OK")
+
     # --- flagi i reguły -----------------------------------------------------
 
     def test_unknown_flag_lists_known_flags(self) -> None:
