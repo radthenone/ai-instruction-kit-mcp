@@ -38,6 +38,9 @@ _RULES_PL_RE = re.compile(r"const rulesPl =\s*[\s\S]*?(?=\n\nif \(language === \
 _AGENTS_BRIEF_RULES_RE = re.compile(
     r"<!-- kit:brief-rules -->[\s\S]*?<!-- /kit:brief-rules -->"
 )
+_BRIEF_RULES_PY_RE = re.compile(
+    r"(# Pre-renderowane warianty dla runtime'u MCP \(ADR-0010 wariant a\)\n)[\s\S]*?(?=\n\n\ndef get_brief_rules)"
+)
 
 
 def render_all(check: bool = False) -> int:
@@ -85,7 +88,7 @@ def render_all(check: bool = False) -> int:
         else:
             AGENTS_TEMPLATE.write_text(rendered_agents, encoding="utf-8", newline="\n")
 
-    # 4. Check src/guides/brief_rules.py consistency
+    # 4. Update src/guides/brief_rules.py (pre-rendered constants for the MCP runtime)
     from guides.brief_rules import BRIEF_RULES_EN, BRIEF_RULES_PL, HOOK_RULES_EN, HOOK_RULES_PL
 
     if (
@@ -94,7 +97,23 @@ def render_all(check: bool = False) -> int:
         or HOOK_RULES_PL.strip() != hook_pl.strip()
         or HOOK_RULES_EN.strip() != hook_en.strip()
     ):
-        dirty = True
+        if check:
+            dirty = True
+        else:
+            py_text = BRIEF_RULES_PY.read_text(encoding="utf-8")
+            constants = "\n\n".join(
+                f"{name} = (\n"
+                + "".join(f"    {line!r}\n" for line in value.splitlines(keepends=True))
+                + ")"
+                for name, value in (
+                    ("BRIEF_RULES_PL", mcp_pl),
+                    ("BRIEF_RULES_EN", mcp_en),
+                    ("HOOK_RULES_PL", hook_pl),
+                    ("HOOK_RULES_EN", hook_en),
+                )
+            )
+            rendered_py = _BRIEF_RULES_PY_RE.sub(lambda m: m.group(1) + constants, py_text)
+            BRIEF_RULES_PY.write_text(rendered_py, encoding="utf-8", newline="\n")
 
     if check and dirty:
         print("Pliki wygenerowane z brief-rules.md są nieaktualne!", file=sys.stderr)
