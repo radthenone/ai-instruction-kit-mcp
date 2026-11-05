@@ -24,6 +24,7 @@ KIT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT_ROOT / "src"))
 
 from guides.brief_rules import (
+    check_brief_rules_freshness,
     render_hook_rules,
     render_mcp_rules,
 )
@@ -44,6 +45,14 @@ _BRIEF_RULES_PY_RE = re.compile(
 
 
 def render_all(check: bool = False) -> int:
+    if check:
+        stale = check_brief_rules_freshness(KIT_ROOT)
+        if stale:
+            for item in stale:
+                print(f"  ! {item}", file=sys.stderr)
+            print("Pliki wygenerowane z brief-rules.md są nieaktualne!", file=sys.stderr)
+            return 1
+        return 0
     template_text = TEMPLATE_FILE.read_text(encoding="utf-8")
 
     mcp_pl = render_mcp_rules(template_text, "pl")

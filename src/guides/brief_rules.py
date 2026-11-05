@@ -6,7 +6,9 @@ Runtime serwera MCP nie czyta szablonu z dysku (ADR-0010 wariant a).
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 _LANG_BLOCK_RE = re.compile(r"<!-- lang:(\w+) -->\n(.*?)<!-- /lang:\1 -->", re.DOTALL)
 _HOOK_BLOCK_RE = re.compile(r"<!-- hook:(\w+) -->\n(.*?)<!-- /hook:\1 -->", re.DOTALL)
@@ -126,3 +128,77 @@ def get_hook_rules(language: str = "pl") -> str:
     """Zwróć pre-renderowane reguły hooka w wybranym języku (pl lub en)."""
     lang = "en" if language.lower().startswith("en") else "pl"
     return HOOK_RULES_EN if lang == "en" else HOOK_RULES_PL
+
+
+_RULES_PL_RE = re.compile(r"const rulesPl =\s*[\s\S]*?(?=\n\nif \(language === \"en\"\))")
+
+
+def check_brief_rules_freshness(kit_root: Path | None = None) -> list[str]:
+    """Sprawdź świeżość wszystkich plików wygenerowanych z szablonu brief-rules.md (#359, ADR-0010).
+
+    Args:
+        kit_root: Ścieżka do katalogu głównego kita (domyślnie wykrywana).
+
+    Returns:
+        list[str]: Lista opisów plików, które są nieaktualne lub zmodyfikowane ręcznie.
+                   Pusta lista oznacza pełną świeżość.
+    """
+    if kit_root is None:
+        kit_root = Path(__file__).resolve().parents[2]
+
+    template_file = kit_root / "templates" / "shared" / "rules" / "brief-rules.md"
+    if not template_file.is_file():
+        return [f"Brak pliku szablonu reguł briefu: {template_file}"]
+
+    template_text = template_file.read_text(encoding="utf-8")
+    mcp_pl = render_mcp_rules(template_text, "pl")
+    mcp_en = render_mcp_rules(template_text, "en")
+    hook_pl = render_hook_rules(template_text, "pl")
+    hook_en = render_hook_rules(template_text, "en")
+
+    stale: list[str] = []
+
+    # 1. Sprawdź stałe w src/guides/brief_rules.py
+    if (
+        BRIEF_RULES_PL.strip() != mcp_pl.strip()
+        or BRIEF_RULES_EN.strip() != mcp_en.strip()
+        or HOOK_RULES_PL.strip() != hook_pl.strip()
+        or HOOK_RULES_EN.strip() != hook_en.strip()
+    ):
+        stale.append("src/guides/brief_rules.py: stałe MCP nie odpowiadają wyrenderowanemu szablonowi")
+
+    # 2. Sprawdź templates/AGENTS.md
+    agents_template = kit_root / "templates" / "AGENTS.md"
+    if agents_template.is_file():
+        from guides.bugbot_md import extract_brief_rules
+
+        agents_text = agents_template.read_text(encoding="utf-8")
+        brief = extract_brief_rules(agents_text)
+        if brief is None or brief.strip() != mcp_pl.strip():
+            stale.append("templates/AGENTS.md: blok kit:brief-rules nie odpowiada wyrenderowanemu szablonowi")
+    else:
+        stale.append(f"Brak pliku: {agents_template}")
+
+    # 3. Sprawdź templates/claude/language-reminder.mjs
+    hook_template = kit_root / "templates" / "claude" / "language-reminder.mjs"
+    expected_hook_block = (
+        f"const rulesPl =\n  {json.dumps(hook_pl, ensure_ascii=False)};\n\n"
+        f"const rulesEn =\n  {json.dumps(hook_en, ensure_ascii=False)};"
+    )
+    if hook_template.is_file():
+        hook_text = hook_template.read_text(encoding="utf-8")
+        m = _RULES_PL_RE.search(hook_text)
+        if not m or m.group(0).strip() != expected_hook_block.strip():
+            stale.append("templates/claude/language-reminder.mjs: reguły hooka nie odpowiadają wyrenderowanemu szablonowi")
+    else:
+        stale.append(f"Brak pliku: {hook_template}")
+
+    # 4. Sprawdź .claude/hooks/language-reminder.mjs (jeśli istnieje)
+    hook_repo = kit_root / ".claude" / "hooks" / "language-reminder.mjs"
+    if hook_repo.is_file():
+        repo_hook_text = hook_repo.read_text(encoding="utf-8")
+        m = _RULES_PL_RE.search(repo_hook_text)
+        if not m or m.group(0).strip() != expected_hook_block.strip():
+            stale.append(".claude/hooks/language-reminder.mjs: reguły hooka repozytorium nie odpowiadają wyrenderowanemu szablonowi")
+
+    return stale

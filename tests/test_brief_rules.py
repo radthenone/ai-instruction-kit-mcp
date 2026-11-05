@@ -111,6 +111,13 @@ def extract_hook_rule(hook_content: str, language: str = "pl") -> str:
 class TestBriefRulesFreshness(unittest.TestCase):
     """Testy świeżości (freshness) generowanych plików reguł briefu (#359, ADR-0010)."""
 
+    def test_check_brief_rules_freshness_all_clean(self) -> None:
+        """Funkcja check_brief_rules_freshness potwierdza świeżość wszystkich generowanych plików (#359)."""
+        from guides.brief_rules import check_brief_rules_freshness
+
+        stale = check_brief_rules_freshness(KIT_ROOT)
+        self.assertEqual(stale, [], f"Nieaktualne pliki reguł briefu: {stale}")
+
     def test_repo_hook_is_fresh(self) -> None:
         """Hook repozytorium .claude/hooks/language-reminder.mjs jest identyczny z renderem szablonu (#359)."""
         from guides.brief_rules import render_hook_rules
