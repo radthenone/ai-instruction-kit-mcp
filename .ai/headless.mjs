@@ -106,6 +106,9 @@ export function resetIso(text, now = Date.now()) {
 // Ostatnie linie wyjścia — tam siedzi komunikat limitu; reszta (kod, diffy, logi) nie liczy się.
 const tailLines = (text) => text.split("\n").slice(-LIMIT_TAIL_LINES).join("\n")
 
+// Trailer autorstwa, którego kit wymaga w każdym commicie wykonawcy (#398).
+const COAUTHOR_TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
+
 // Temat commita po polsku albo angielsku wg `language` z Profilu (#398); inny kod — podany wprost.
 const topicLanguage = (language) => ({ pl: "po polsku", en: "po angielsku" })[language] ?? `w języku ${language}`
 
@@ -118,7 +121,7 @@ Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add ${join(runDir, 'base')} --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove ${join(runDir, 'base')}\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
-- Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`Co-Authored-By: Claude <noreply@anthropic.com>\`.
+- Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`${COAUTHOR_TRAILER}\`.
 - Lokalnie tylko testy dotknięte zmianą i szybkie bramki; pełny zestaw zrobi CI.
 - Na VPS \`uv run\` zawsze z \`--no-sync\`.
 - Maks. 2 próby naprawy tego samego błędu, potem stop i opis w sekcji Problemy raportu.
@@ -871,6 +874,19 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   return code
 }
 
+// Commity z `start..HEAD` bez trailera `Co-Authored-By` (#398), skróty hashów. Temat i język kontroluje
+// review; historii nie przepisujemy. Błąd gita daje pustą listę — bez fałszywego naruszenia.
+function untrailedCommits(startHead) {
+  const records = (git("log", "--format=%h%x1f%B%x1e", `${startHead}..HEAD`) ?? "").split("\x1e")
+  return records.flatMap((record) => {
+    const cut = record.indexOf("\x1f")
+    if (cut < 0) return []
+    const hash = record.slice(0, cut).trim()
+    const hasTrailer = record.slice(cut + 1).split("\n").some((line) => line.trim() === COAUTHOR_TRAILER)
+    return hash && !hasTrailer ? [hash] : []
+  })
+}
+
 // Stan repo po wykonawcy: status, nowe wpisy stasha i SUSPECT. Z tego powstają raport i klasa wiersza (#396).
 function repoChanges({ startHead, startStash, checkNoChanges }) {
   const status = git("status", "--short")
@@ -882,13 +898,14 @@ function repoChanges({ startHead, startStash, checkNoChanges }) {
   // Exit 0, a w drzewie, historii i stashu nic nowego — wykonawca mógł nic nie zrobić.
   const suspect = checkNoChanges && status === "" && !added.length
     && startHead !== null && git("rev-parse", "HEAD") === startHead
-  return { status, added, suspect }
+  const untrailed = startHead !== null ? untrailedCommits(startHead) : []
+  return { status, added, suspect, untrailed }
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
 function finalReport({ startHead, tail, pause, config, invalidModel, changes }) {
-  const { status, added, suspect } = changes
+  const { status, added, suspect, untrailed } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
@@ -900,6 +917,7 @@ function finalReport({ startHead, tail, pause, config, invalidModel, changes }) 
   if (added.length) {
     out.push("## UWAGA: nowe wpisy stasha — praca wykonawcy może tam być; nie zdjęte automatycznie (`git stash pop` ręcznie)", ...added)
   }
+  if (untrailed.length) out.push(`## UWAGA: commity bez trailera \`${COAUTHOR_TRAILER}\` — poprawić na branchu ticketu przed push (nie na dev): ${untrailed.join(" ")}`)
   out.push(`## ostatnie ${TAIL_LINES} linii wykonawcy`, ...tail.slice(-TAIL_LINES))
   return `${out.join("\n")}\n`
 }

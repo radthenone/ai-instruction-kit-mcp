@@ -41,7 +41,7 @@ if [ "$(basename "$0")" = claude ]; then cat > "$HEADLESS_TEST_DIR/stdin"; fi
 sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
 echo "wynik wykonawcy"
-if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "praca wykonawcy"; fi
+if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "${FAKE_COMMIT_MSG:-praca wykonawcy}"; fi
 if [ -n "$FAKE_DIRTY" ]; then echo mod >> tracked.txt; fi
 if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
@@ -1327,6 +1327,50 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("Ticket #", prompt)
         self.assertNotIn("ticket #", log)
         self.assertIn("test-first", prompt)
+
+    # --- commity wykonawcy: trailer Co-Authored-By (#398) ----------------------
+
+    TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+    def uwaga_lines(self, log: str) -> list[str]:
+        return [line for line in log.splitlines() if "commity bez trailera" in line]
+
+    def head_hash(self) -> str:
+        return subprocess.run(
+            ["git", "log", "-1", "--format=%h"], cwd=self.root, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    def test_commit_without_trailer_is_listed_in_report_with_hash(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_COMMIT="1", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        uwaga = self.uwaga_lines(self.headless_log())
+        self.assertEqual(len(uwaga), 1)
+        self.assertIn(self.head_hash(), uwaga[0])
+
+    def test_commit_with_trailer_is_not_listed_in_report(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\n{self.TRAILER}", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.uwaga_lines(self.headless_log()), [])
+
+    def test_commit_before_run_is_outside_trailer_check(self) -> None:
+        self.clean_git_repo()
+        (self.root / "before.txt").write_text("przed\n", encoding="utf-8")
+        subprocess.run(["git", "add", "before.txt"], cwd=self.root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "przed wywołaniem"],
+            cwd=self.root, check=True, capture_output=True, env={**os.environ, **self.GIT_ENV},
+        )
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\n{self.TRAILER}", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.uwaga_lines(self.headless_log()), [])
 
     # --- config wykonawcy w linked worktree (#300) ---------------------------
 
