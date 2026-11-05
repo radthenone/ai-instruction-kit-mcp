@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import re
 import unittest
 from pathlib import Path
 
@@ -10,6 +13,16 @@ TEMPLATE_PATH = KIT_ROOT / "templates" / "shared" / "rules" / "brief-rules.md"
 HOOK_TEMPLATE = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
 HOOK_REPO = KIT_ROOT / ".claude" / "hooks" / "language-reminder.mjs"
 AGENTS_TEMPLATE = KIT_ROOT / "templates" / "AGENTS.md"
+RENDER_SCRIPT = KIT_ROOT / "scripts" / "render_brief_rules.py"
+
+
+def load_render_script():
+    """Załaduj scripts/render_brief_rules.py jako moduł (logika freshness żyje poza runtime'em MCP, ADR-0010)."""
+    spec = importlib.util.spec_from_file_location("render_brief_rules", RENDER_SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class TestBriefRules(unittest.TestCase):
@@ -94,9 +107,6 @@ class TestBriefRules(unittest.TestCase):
 
 def extract_hook_rule(hook_content: str, language: str = "pl") -> str:
     """Wyciągnij wartość reguły (rulesPl lub rulesEn) z kodu hooka language-reminder.mjs."""
-    import json
-    import re
-
     lang = "en" if language.lower().startswith("en") else "pl"
     var_name = "rulesEn" if lang == "en" else "rulesPl"
     pattern = rf"const {var_name} =\s*\n?\s*\"([^\"\\]*(?:\\.[^\"\\]*)*)\";"
@@ -105,16 +115,14 @@ def extract_hook_rule(hook_content: str, language: str = "pl") -> str:
         raise ValueError(f"Nie znaleziono zmiennej {var_name} w hooku")
     return json.loads(f"\"{match.group(1)}\"")
 
+
 class TestBriefRulesFreshness(unittest.TestCase):
     """Testy świeżości (freshness) generowanych plików reguł briefu (#359, ADR-0010)."""
 
     def test_check_brief_rules_freshness_all_clean(self) -> None:
         """Funkcja check_brief_rules_freshness potwierdza świeżość wszystkich generowanych plików (#359)."""
-        from guides.brief_rules import check_brief_rules_freshness
-
-        stale = check_brief_rules_freshness(KIT_ROOT)
+        stale = load_render_script().check_brief_rules_freshness(KIT_ROOT)
         self.assertEqual(stale, [], f"Nieaktualne pliki reguł briefu: {stale}")
-
 
     def test_hook_template_is_fresh(self) -> None:
         """Hook templates/claude/language-reminder.mjs ma reguły identyczne z renderem szablonu (#359)."""
@@ -159,7 +167,8 @@ class TestBriefRulesFreshness(unittest.TestCase):
         """Ręczna zmiana w wygenerowanym pliku (hook, AGENTS.md) bez szablonu wywala freshness (#359)."""
         import tempfile
         import shutil
-        from guides.brief_rules import check_brief_rules_freshness
+
+        check_brief_rules_freshness = load_render_script().check_brief_rules_freshness
 
         with tempfile.TemporaryDirectory(prefix="kit-freshness-") as tmp:
             tmp_root = Path(tmp)
@@ -167,7 +176,6 @@ class TestBriefRulesFreshness(unittest.TestCase):
             (tmp_root / "templates" / "shared" / "rules").mkdir(parents=True)
             (tmp_root / "templates" / "claude").mkdir(parents=True)
             (tmp_root / ".claude" / "hooks").mkdir(parents=True)
-            (tmp_root / "src" / "guides").mkdir(parents=True)
 
             shutil.copy(TEMPLATE_PATH, tmp_root / "templates" / "shared" / "rules" / "brief-rules.md")
             shutil.copy(AGENTS_TEMPLATE, tmp_root / "templates" / "AGENTS.md")
