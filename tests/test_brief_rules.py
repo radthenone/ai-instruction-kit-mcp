@@ -87,6 +87,7 @@ class TestBriefRules(unittest.TestCase):
         agents_text = AGENTS_TEMPLATE.read_text(encoding="utf-8")
         brief_rules = extract_brief_rules(agents_text)
         self.assertIsNotNone(brief_rules)
+        assert brief_rules is not None  # zawęża typ dla ty (assertIsNotNone tego nie robi)
         self.assertEqual(brief_rules.strip(), get_brief_rules("pl").strip())
 
 
