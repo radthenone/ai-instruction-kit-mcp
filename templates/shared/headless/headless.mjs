@@ -106,7 +106,13 @@ export function resetIso(text, now = Date.now()) {
 // Ostatnie linie wyjścia — tam siedzi komunikat limitu; reszta (kod, diffy, logi) nie liczy się.
 const tailLines = (text) => text.split("\n").slice(-LIMIT_TAIL_LINES).join("\n")
 
-const footer = (runDir, ticket) => `
+// Trailer autorstwa, którego kit wymaga w każdym commicie wykonawcy (#398).
+const COAUTHOR_TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+// Temat commita po polsku albo angielsku wg `language` z Profilu (#398); inny kod — podany wprost.
+const topicLanguage = (language) => ({ pl: "po polsku", en: "po angielsku" })[language] ?? `w języku ${language}`
+
+const footer = (runDir, ticket, language) => `
 
 ---
 Zasady tej sesji (headless, bez użytkownika):${ticket ? `
@@ -115,6 +121,7 @@ Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add ${join(runDir, 'base')} --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove ${join(runDir, 'base')}\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
+- Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`${COAUTHOR_TRAILER}\`.
 - Lokalnie tylko testy dotknięte zmianą i szybkie bramki; pełny zestaw zrobi CI.
 - Na VPS \`uv run\` zawsze z \`--no-sync\`.
 - Maks. 2 próby naprawy tego samego błędu, potem stop i opis w sekcji Problemy raportu.
@@ -292,6 +299,16 @@ function profileClients() {
   return list.includes("all") ? KNOWN_CLIENTS : list.map((c) => (c === "copilot" ? "vscode" : c))
 }
 
+// Język tematu commitów z Profilu (`language:`); bez klucza albo pliku — `pl`, jak w bootstrapie kita (#398).
+function profileLanguage() {
+  try {
+    const match = /^language:[ \t]*["']?([\w-]+)/m.exec(readFileSync(join(".ai", "project.profile.yaml"), "utf8"))
+    return match ? match[1] : "pl"
+  } catch {
+    return "pl"
+  }
+}
+
 const KEEP_RUNS = 5
 
 // Plik wycinka runu w CTX (#396).
@@ -454,7 +471,7 @@ const lines = (text) => (text ? text.split("\n") : [])
 // Wiersz wywołania (#396): jedna linia JSON na końcu każdego wywołania, także przy sygnale, błędzie
 // i odmowie przed startem. Stan wywołania zbiera się po drodze, wiersz składa się na końcu.
 // Klasy: OK, LIMIT (pauza), HANG (timeout albo sygnał), ERROR (kod ≠ 0 albo błąd wywołania),
-// MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha albo odmowa wykonawcy).
+// MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha, commit bez trailera albo odmowa wykonawcy).
 let call = null
 const CHECK_HINT = {
   OK: "-",
@@ -463,7 +480,7 @@ const CHECK_HINT = {
   ERROR: "sprawdzić wycinek logu (kod i ostatnie linie)",
   MODEL: "wybrać model z listy dostępnych w raporcie",
   SUSPECT: "sprawdzić, czy wykonawca cokolwiek zrobił",
-  POLITYKA: "sprawdzić złamanie zasad kitu (wpis stasha) albo odmowę wywołania",
+  POLITYKA: "sprawdzić złamanie zasad kitu (wpis stasha, commit bez trailera) albo odmowę wywołania",
 }
 
 function startCall(opts) {
@@ -476,6 +493,7 @@ function startCall(opts) {
     log: null,
     klasa: null,
     actions: [],
+    untrailed: [],
   }
 }
 
@@ -638,7 +656,7 @@ async function main() {
   pruneRuns(runsDir, basename(runDir), call.ctx)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
-  prompt += footer(runDir, call.ticket)
+  prompt += footer(runDir, call.ticket, profileLanguage())
 
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
@@ -767,7 +785,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     startHead,
     tail: fullTail(),
     config: config?.line,
-    changes: repoChanges({ startHead, startStash, checkNoChanges: false }),
+    changes: noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: false })),
   })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
@@ -849,12 +867,32 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
-  const changes = repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean })
+  const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
   log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : timedOut ? "HANG" : code !== 0 ? "ERROR"
-    : changes.added.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
+    : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
   return code
+}
+
+// Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 i po sygnale — klasa wiersza i dzialanie (#398).
+function noteUntrailed(changes) {
+  call.untrailed.push(...changes.untrailed)
+  if (changes.untrailed.length) call.actions.push(`commity bez trailera: ${changes.untrailed.join(", ")}`)
+  return changes
+}
+
+// Commity z `start..HEAD` bez trailera `Co-Authored-By` (#398), skróty hashów. Temat i język kontroluje
+// review; historii nie przepisujemy. Błąd gita daje pustą listę — bez fałszywego naruszenia.
+function untrailedCommits(startHead) {
+  const records = (git("log", "--format=%h%x1f%B%x1e", `${startHead}..HEAD`) ?? "").split("\x1e")
+  return records.flatMap((record) => {
+    const cut = record.indexOf("\x1f")
+    if (cut < 0) return []
+    const hash = record.slice(0, cut).trim()
+    const hasTrailer = record.slice(cut + 1).split("\n").some((line) => line.trim() === COAUTHOR_TRAILER)
+    return hash && !hasTrailer ? [hash] : []
+  })
 }
 
 // Stan repo po wykonawcy: status, nowe wpisy stasha i SUSPECT. Z tego powstają raport i klasa wiersza (#396).
@@ -868,13 +906,14 @@ function repoChanges({ startHead, startStash, checkNoChanges }) {
   // Exit 0, a w drzewie, historii i stashu nic nowego — wykonawca mógł nic nie zrobić.
   const suspect = checkNoChanges && status === "" && !added.length
     && startHead !== null && git("rev-parse", "HEAD") === startHead
-  return { status, added, suspect }
+  const untrailed = startHead !== null ? untrailedCommits(startHead) : []
+  return { status, added, suspect, untrailed }
 }
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
 function finalReport({ startHead, tail, pause, config, invalidModel, changes }) {
-  const { status, added, suspect } = changes
+  const { status, added, suspect, untrailed } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
@@ -886,6 +925,7 @@ function finalReport({ startHead, tail, pause, config, invalidModel, changes }) 
   if (added.length) {
     out.push("## UWAGA: nowe wpisy stasha — praca wykonawcy może tam być; nie zdjęte automatycznie (`git stash pop` ręcznie)", ...added)
   }
+  if (untrailed.length) out.push(`## UWAGA: commity bez trailera \`${COAUTHOR_TRAILER}\` — poprawić na branchu ticketu przed push (nie na dev): ${untrailed.join(" ")}`)
   out.push(`## ostatnie ${TAIL_LINES} linii wykonawcy`, ...tail.slice(-TAIL_LINES))
   return `${out.join("\n")}\n`
 }

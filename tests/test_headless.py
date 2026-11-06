@@ -41,7 +41,7 @@ if [ "$(basename "$0")" = claude ]; then cat > "$HEADLESS_TEST_DIR/stdin"; fi
 sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
 echo "wynik wykonawcy"
-if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "praca wykonawcy"; fi
+if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "${FAKE_COMMIT_MSG:-praca wykonawcy}"; fi
 if [ -n "$FAKE_DIRTY" ]; then echo mod >> tracked.txt; fi
 if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
@@ -129,9 +129,10 @@ class HeadlessWrapperTest(unittest.TestCase):
         """PATH bez katalogów systemowych — fałszywi wykonawcy + symlinki narzędzi."""
         return os.pathsep.join([str(self.bin), str(self.tools)])
 
-    def profile(self, clients: str) -> None:
+    def profile(self, clients: str, language: str | None = None) -> None:
+        lang = f"language: {language}\n" if language else ""
         (self.root / ".ai/project.profile.yaml").write_text(
-            f"name: app\nclients: {clients}\nbackend: none\n", encoding="utf-8"
+            f"name: app\n{lang}clients: {clients}\nbackend: none\n", encoding="utf-8"
         )
 
     def fake(self, name: str) -> None:
@@ -1310,11 +1311,126 @@ class HeadlessWrapperTest(unittest.TestCase):
             self.assertIn(rule, prompt)
         self.assertNotIn("pełna suita raz", prompt)
 
+    def test_footer_requires_polish_topic_and_coauthor_trailer(self) -> None:
+        prompt, _ = self.footer_on_branch("feat/398-x")
+        self.assertIn("Commity: temat po polsku (język `pl` z Profilu)", prompt)
+        self.assertIn("trailer `Co-Authored-By: Claude <noreply@anthropic.com>`", prompt)
+
+    def test_footer_topic_language_follows_profile(self) -> None:
+        self.profile("claude,opencode,codex", language="en")
+        prompt, _ = self.footer_on_branch("feat/398-x")
+        self.assertIn("Commity: temat po angielsku (język `en` z Profilu)", prompt)
+        self.assertNotIn("temat po polsku", prompt)
+
     def test_footer_without_ticket_number_skips_ticket_line(self) -> None:
         prompt, log = self.footer_on_branch("dev")
         self.assertNotIn("Ticket #", prompt)
         self.assertNotIn("ticket #", log)
         self.assertIn("test-first", prompt)
+
+    # --- commity wykonawcy: trailer Co-Authored-By (#398) ----------------------
+
+    TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+    def uwaga_lines(self, log: str) -> list[str]:
+        return [line for line in log.splitlines() if "commity bez trailera" in line]
+
+    def head_hash(self) -> str:
+        return subprocess.run(
+            ["git", "log", "-1", "--format=%h"], cwd=self.root, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    def test_commit_without_trailer_is_listed_in_report_with_hash(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_COMMIT="1", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        uwaga = self.uwaga_lines(self.headless_log())
+        self.assertEqual(len(uwaga), 1)
+        self.assertIn(self.head_hash(), uwaga[0])
+
+    def test_commit_with_trailer_is_not_listed_in_report(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\n{self.TRAILER}", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.uwaga_lines(self.headless_log()), [])
+
+    def test_commit_before_run_is_outside_trailer_check(self) -> None:
+        self.clean_git_repo()
+        (self.root / "before.txt").write_text("przed\n", encoding="utf-8")
+        subprocess.run(["git", "add", "before.txt"], cwd=self.root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "przed wywołaniem"],
+            cwd=self.root, check=True, capture_output=True, env={**os.environ, **self.GIT_ENV},
+        )
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\n{self.TRAILER}", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.uwaga_lines(self.headless_log()), [])
+
+    def test_commit_without_trailer_makes_policy_row_with_hash(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_COMMIT="1", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("POLITYKA", 0))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+        self.assertEqual(self.calls(), ["claude"])
+
+    def test_commit_with_trailer_row_stays_ok(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\n{self.TRAILER}", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.last_row(result)["klasa"], "OK")
+
+    def test_policy_from_executor_before_handoff_stays_in_row(self) -> None:
+        self.clean_git_repo()
+        # Pierwszy wykonawca commituje bez trailera i wraca z limitem → przekazanie 1:1 do opencode.
+        (self.bin / "claude").write_text(
+            '#!/bin/sh\ncat > /dev/null\necho c > commit.txt; git add commit.txt; git commit -qm "bez trailera"\n'
+            'echo "Error: rate limit reached"\nexit 1\n',
+            encoding="utf-8",
+        )
+        (self.bin / "claude").chmod(0o755)
+        result = self.run_wrapper("--host", "codex", "claude", "x", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["lancuch"]), ("POLITYKA", "claude>opencode"))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+
+    def test_error_row_keeps_error_class_and_hash(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_COMMIT="1", FAKE_CODE="3", **self.GIT_ENV)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("ERROR", 3))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+
+    def test_signal_row_keeps_hang_class_and_untrailed_hash(self) -> None:
+        self.clean_git_repo()
+        start = self.head_hash()
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_COMMIT": "1", **self.GIT_ENV},
+        )
+        deadline = time.time() + 10
+        while self.head_hash() == start and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=10)
+        self.assert_tree_killed()
+        row = json.loads(out.splitlines()[-1])
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 143))
+        self.assertIn(self.head_hash(), row["dzialanie"])
 
     # --- config wykonawcy w linked worktree (#300) ---------------------------
 
