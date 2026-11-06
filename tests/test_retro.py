@@ -7,12 +7,15 @@ wiadomość z sesji nie trafia do repo.
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
 from guides import retro
 
+KIT_ROOT = Path(__file__).resolve().parents[1]
+NODE = shutil.which("node")
 SESSION = "11111111-2222-4333-8444-555555555555"
 GUARD_DENY = (
     "PreToolUse:Bash hook error: git-guard: git checkout . / checkout -- <ścieżka> "
@@ -174,6 +177,106 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(parsed.metrics.api_calls, 2)
         self.assertEqual(parsed.metrics.cache_read_sum, 4000)
         self.assertEqual(parsed.metrics.max_context, 3000 + 10 + 50)
+
+
+class ReplayTests(unittest.TestCase):
+    """Deny z transkryptu odtwarza się na aktualnych guardach; naprawiony odpada."""
+
+    @staticmethod
+    def _deny(command: str = "cat a.md 2>/dev/null") -> retro.Signal:
+        return retro.Signal(
+            "guard_deny",
+            "git-guard: checkout",
+            "checkout",
+            guard="git-guard",
+            tool_name="Bash",
+            tool_input={"command": command},
+        )
+
+    def test_fixed_deny_is_dropped(self) -> None:
+        self.assertEqual(retro.build_findings([self._deny()], replay=lambda signal: "allow"), [])
+
+    def test_reproduced_deny_is_kept_with_replay_status(self) -> None:
+        [finding] = retro.build_findings([self._deny()], replay=lambda signal: "deny")
+        self.assertEqual(finding.kind, "guard_deny")
+        self.assertEqual(finding.guard, "git-guard")
+        self.assertEqual(finding.replay, "deny")
+
+    def test_unknown_replay_keeps_the_finding(self) -> None:
+        [finding] = retro.build_findings([self._deny()], replay=lambda signal: "unknown")
+        self.assertEqual(finding.replay, "unknown")
+
+    def test_other_signals_are_not_replayed(self) -> None:
+        calls: list[retro.Signal] = []
+        tool_error = retro.Signal("tool_error", "x", "x")
+        findings = retro.build_findings([tool_error], replay=lambda signal: calls.append(signal) or "allow")
+        self.assertEqual(calls, [])
+        self.assertEqual(len(findings), 1)
+
+    def test_identical_denies_are_replayed_once_and_counted(self) -> None:
+        calls: list[retro.Signal] = []
+        findings = retro.build_findings(
+            [self._deny(), self._deny(), self._deny()],
+            replay=lambda signal: calls.append(signal) or "deny",
+        )
+        self.assertEqual(len(calls), 1)
+        [finding] = findings
+        self.assertEqual(finding.count, 3)
+
+    def test_count_includes_only_reproduced_denies(self) -> None:
+        still = self._deny("git checkout .")
+        fixed = self._deny("cat a.md 2>/dev/null")
+        verdicts = {"git checkout .": "deny", "cat a.md 2>/dev/null": "allow"}
+        [finding] = retro.build_findings([still, fixed], replay=lambda signal: verdicts[signal.tool_input["command"]])
+        self.assertEqual(finding.count, 1)
+
+
+@unittest.skipUnless(NODE, "brak node")
+class ReplayWithGuardsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _fake_kit(self, name: str, body: str) -> Path:
+        guards = self.root / "templates" / "shared" / "guards"
+        guards.mkdir(parents=True, exist_ok=True)
+        (guards / f"{name}.mjs").write_text(body, encoding="utf-8")
+        return self.root
+
+    def test_redirect_to_dev_null_is_allowed_by_current_git_guard(self) -> None:
+        status = retro.replay_guard(
+            "git-guard", "Bash", {"command": "cat README.md 2>/dev/null"}, kit_root=KIT_ROOT, cwd=KIT_ROOT
+        )
+        self.assertEqual(status, "allow")
+
+    def test_checkout_dot_is_still_denied_by_current_git_guard(self) -> None:
+        status = retro.replay_guard("git-guard", "Bash", {"command": "git checkout ."}, kit_root=KIT_ROOT, cwd=KIT_ROOT)
+        self.assertEqual(status, "deny")
+
+    def test_deny_decision_from_guard_output_is_deny(self) -> None:
+        body = 'process.stdout.write(JSON.stringify({hookSpecificOutput:{permissionDecision:"deny"}}));\n'
+        root = self._fake_kit("fake-deny", body)
+        self.assertEqual(retro.replay_guard("fake-deny", "Bash", {"command": "x"}, kit_root=root, cwd=root), "deny")
+
+    def test_silent_guard_has_no_opinion_so_it_is_allow(self) -> None:
+        root = self._fake_kit("fake-silent", "")
+        self.assertEqual(retro.replay_guard("fake-silent", "Bash", {"command": "x"}, kit_root=root, cwd=root), "allow")
+
+    def test_crashing_guard_is_unknown_not_allow(self) -> None:
+        root = self._fake_kit("fake-crash", "process.exit(1);\n")
+        self.assertEqual(retro.replay_guard("fake-crash", "Bash", {"command": "x"}, kit_root=root, cwd=root), "unknown")
+
+    def test_missing_guard_missing_input_or_unsafe_name_is_unknown(self) -> None:
+        self.assertEqual(
+            retro.replay_guard("no-such-guard", "Bash", {"command": "x"}, kit_root=KIT_ROOT, cwd=KIT_ROOT), "unknown"
+        )
+        self.assertEqual(
+            retro.replay_guard("../git-guard", "Bash", {"command": "x"}, kit_root=KIT_ROOT, cwd=KIT_ROOT), "unknown"
+        )
+        self.assertEqual(retro.replay_guard("git-guard", "Bash", None, kit_root=KIT_ROOT, cwd=KIT_ROOT), "unknown")
 
 
 if __name__ == "__main__":

@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-from collections.abc import Iterator
+import shutil
+import subprocess
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -287,3 +290,114 @@ def _int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+GUARD_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+REPLAY_TIMEOUT = 10.0
+
+
+@dataclass(frozen=True)
+class Finding:
+    """Znalezisko: sygnały o tym samym fingerprincie (termin „Znalezisko” z GLOSSARY.md)."""
+
+    kind: str
+    fingerprint: str
+    count: int
+    evidence: str
+    guard: str | None = None
+    tool_name: str | None = None
+    replay: str = "n/a"
+
+
+def replay_guard(
+    guard: str | None,
+    tool_name: str | None,
+    tool_input: Any,
+    *,
+    kit_root: Path,
+    cwd: Path,
+    timeout: float = REPLAY_TIMEOUT,
+) -> str:
+    """Odtwarza decyzję aktualnego guarda z ``templates/shared/guards`` dla zapisanego wywołania.
+
+    Zwraca ``allow`` albo ``deny``; ``unknown``, gdy nie da się rozstrzygnąć (brak guarda,
+    brak wejścia, błąd procesu, nieczytelna odpowiedź). Pusta odpowiedź przy kodzie 0
+    znaczy brak opinii, czyli ``allow``.
+    """
+    node = shutil.which("node")
+    if guard is None or not GUARD_NAME.fullmatch(guard) or node is None or tool_input is None:
+        return "unknown"
+    script = kit_root / "templates" / "shared" / "guards" / f"{guard}.mjs"
+    if not script.is_file():
+        return "unknown"
+    payload = json.dumps(
+        {"hook_event_name": "PreToolUse", "tool_name": tool_name or "", "tool_input": tool_input, "cwd": str(cwd)},
+        ensure_ascii=False,
+    )
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(cwd)}
+    try:
+        proc = subprocess.run(
+            [node, str(script)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+            cwd=str(cwd),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    if proc.returncode != 0:
+        return "unknown"
+    output = proc.stdout.strip()
+    if not output:
+        return "allow"
+    try:
+        data = json.loads(output.splitlines()[-1])
+    except ValueError:
+        return "unknown"
+    if not isinstance(data, dict):
+        return "unknown"
+    hook = data.get("hookSpecificOutput")
+    decision = hook.get("permissionDecision") if isinstance(hook, dict) else data.get("permissionDecision")
+    return decision if decision in ("allow", "deny") else "unknown"
+
+
+def build_findings(signals: list[Signal], *, replay: Callable[[Signal], str]) -> list[Finding]:
+    """Grupuje sygnały po fingerprincie; deny, który na aktualnym kicie się nie odtwarza, odpada.
+
+    Każdy deny guarda odtwarzany jest raz na unikalne wywołanie (guard, narzędzie, wejście).
+    Inne rodzaje sygnałów nie są odtwarzane.
+    """
+    verdicts: dict[tuple[str | None, str | None, str], str] = {}
+    groups: dict[str, list[tuple[Signal, str]]] = {}
+    for signal in signals:
+        status = "n/a"
+        if signal.kind == "guard_deny":
+            call = (signal.guard, signal.tool_name, json.dumps(signal.tool_input, sort_keys=True, default=str))
+            if call not in verdicts:
+                verdicts[call] = replay(signal)
+            status = verdicts[call]
+            if status == "allow":
+                continue
+        groups.setdefault(fingerprint(signal.kind, signal.key), []).append((signal, status))
+    findings: list[Finding] = []
+    for fp, members in groups.items():
+        first = members[0][0]
+        if first.kind == "guard_deny":
+            replay_status = "deny" if any(status == "deny" for _, status in members) else "unknown"
+        else:
+            replay_status = "n/a"
+        findings.append(
+            Finding(
+                kind=first.kind,
+                fingerprint=fp,
+                count=sum(signal.count for signal, _ in members),
+                evidence=first.evidence,
+                guard=first.guard,
+                tool_name=first.tool_name,
+                replay=replay_status,
+            )
+        )
+    return sorted(findings, key=lambda finding: (finding.kind, finding.fingerprint))
