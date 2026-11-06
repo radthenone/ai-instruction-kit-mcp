@@ -58,6 +58,16 @@ class NightRunTakeoverTest(unittest.TestCase):
         self.assertIn("opencode → przejęte (<model>, limit)", self.night)
         self.assertIn("przejęcie: <model> (<źródło>)", self.night)
 
+    def test_wrapper_failure_is_one_full_chain_path_not_two_attempts(self) -> None:
+        # Wrapper sam przechodzi łańcuch 1:1 (#397), więc ponowienie tym samym wykonawcą to zbędna próba.
+        self.assertIn("nie ponawiasz go tym samym wykonawcą", self.night)
+        self.assertIn("jedna pełna ścieżka", self.night)
+        self.assertNotIn("maks. 2 próby, potem needs-human", self.night)
+
+    def test_exhausted_chain_without_limit_goes_to_takeover(self) -> None:
+        self.assertIn("Wyczerpany łańcuch bez limitu", self.night)
+        self.assertIn("klasa `HANG` albo `ERROR`", self.night)
+
 
 class KitProjectEditTakeoverTest(unittest.TestCase):
     def test_kit_project_edit_describes_takeover_key(self) -> None:
