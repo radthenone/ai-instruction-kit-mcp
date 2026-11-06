@@ -48,10 +48,10 @@ skills-lock.json
 # w repo bylyby to linki donikad, na dodatek ze sciezka absolutna maszyny, na ktorej
 # odpalono instalator.
 .claude/skills/*
-!.claude/skills/skill-authoring/
-!.claude/skills/skill-authoring/**
 !.claude/skills/retro/
 !.claude/skills/retro/**
+!.claude/skills/skill-authoring/
+!.claude/skills/skill-authoring/**
 !.claude/settings.json
 # Prywatne nadpisania: uprawnienia, włączone serwery MCP. Per maszyna, nie per repo.
 .claude/settings.local.json
@@ -90,6 +90,8 @@ skills-lock.json
 .cursor/skills/*
 !.cursor/skills/compact/
 !.cursor/skills/compact/**
+!.cursor/skills/retro/
+!.cursor/skills/retro/**
 !.cursor/skills/skill-authoring/
 !.cursor/skills/skill-authoring/**
 
