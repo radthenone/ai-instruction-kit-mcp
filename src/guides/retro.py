@@ -86,7 +86,7 @@ def fingerprint(kind: str, key: str) -> str:
 
 @dataclass(frozen=True)
 class Signal:
-    """Pojedyncze wykrycie w sesji (termin „Sygnał” z GLOSSARY.md)."""
+    """Pojedyncze wykrycie w sesji (termin „Sygnał” z CONTEXT.md)."""
 
     kind: str
     key: str
@@ -307,7 +307,7 @@ REPLAY_BUDGET = 60.0
 
 @dataclass(frozen=True)
 class Finding:
-    """Znalezisko: sygnały o tym samym fingerprincie (termin „Znalezisko” z GLOSSARY.md)."""
+    """Znalezisko: sygnały o tym samym fingerprincie (termin „Znalezisko” z CONTEXT.md)."""
 
     kind: str
     fingerprint: str

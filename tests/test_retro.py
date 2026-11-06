@@ -513,7 +513,7 @@ class RetroCliTests(unittest.TestCase):
 
 
 class HeadlessRunTests(unittest.TestCase):
-    """Przebieg headless (``.ai/headless-runs/<run>/headless.log``) to osobna sesja (GLOSSARY: Sesja)."""
+    """Przebieg headless (``.ai/headless-runs/<run>/headless.log``) to osobna sesja (CONTEXT.md: Sesja)."""
 
     RUN = "2026-11-05T00-02-27-147Z-antigravity"
 
