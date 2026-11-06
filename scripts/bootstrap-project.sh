@@ -1028,6 +1028,8 @@ install_claude() {
   cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
   # Przypomnienie o otwartej partii doctora (#269) — SessionStart, też Codex i Copilot.
   cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
+  # Skaner sesji po jej zakończeniu (#371): SessionEnd, tylko Claude Code.
+  cp "$SHARED_GUARDS/retro-session-end.mjs" "$TARGET/.claude/hooks/retro-session-end.mjs"
   # Przypomnienie języka (#248, #356): hook UserPromptSubmit dla każdego języka (ADR 0010).
   cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
   SETTINGS_TEMPLATE="$(mktemp)"
