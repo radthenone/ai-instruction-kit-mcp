@@ -1030,6 +1030,8 @@ install_claude() {
   cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
   # Skaner sesji po jej zakończeniu (#371): SessionEnd, tylko Claude Code.
   cp "$SHARED_GUARDS/retro-session-end.mjs" "$TARGET/.claude/hooks/retro-session-end.mjs"
+  # Blokada narzędzi zdalnej sesji dla subagentów (#403): przestrzeń istnieje tylko w Claude Code.
+  cp "$SHARED_GUARDS/subagent-remote-guard.mjs" "$TARGET/.claude/hooks/subagent-remote-guard.mjs"
   # Przypomnienie języka (#248, #356): hook UserPromptSubmit dla każdego języka (ADR 0010).
   cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
   SETTINGS_TEMPLATE="$(mktemp)"

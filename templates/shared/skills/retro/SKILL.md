@@ -15,7 +15,7 @@ description: >-
 
 Czytasz wynik skanu sesji, przypisujesz każde znalezisko do jednej z czterech kategorii i
 podajesz ocenę w rozmowie. Wynik to propozycje dla człowieka, a nie poprawki, więc niczego
-nie zapisujesz. Terminy (Sesja, Sygnał, Znalezisko, Fingerprint, Propozycja) są z `GLOSSARY.md`.
+nie zapisujesz. Terminy (Sesja, Sygnał, Znalezisko, Fingerprint, Propozycja) są z `CONTEXT.md`.
 
 Degradacja: u klientów bez natywnych skilli ten plik działa jako komenda `/retro`. Wykonaj te
 same kroki; zasobów do wczytania nie ma.

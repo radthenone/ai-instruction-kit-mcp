@@ -2,7 +2,7 @@
 
 Skill klasyfikuje znaleziska ze skanu `kit-ai retro scan` i niczego nie zapisuje w repo.
 Testy pilnują rzeczy, które łatwo zepsuć po cichu: nazwy skilla (od niej zależy komenda
-u klientów bez natywnych skilli), taksonomii z GLOSSARY.md oraz tego, że skill przeżywa
+u klientów bez natywnych skilli), taksonomii z CONTEXT.md oraz tego, że skill przeżywa
 degradację do jednego pliku — bez `references/`, `scripts/` ani `assets/`.
 """
 

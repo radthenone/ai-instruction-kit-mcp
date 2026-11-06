@@ -143,3 +143,47 @@ _Avoid_: dev agent, coding agent
 **Ponytail matcher**:
 The regex in `PONYTAIL_SUBAGENT_MATCHER` that matches every agent except the Procedure agents. Written by the Bootstrap to `.claude/settings.local.json` in the kit's form; a hand-written value is never overwritten (ADR-0013).
 _Avoid_: filter, pattern, allowlist
+
+**Subagent**:
+An agent started by another agent for one bounded job, in its own context. It cannot talk to the human; whatever it has to say goes through a Hand-back.
+_Avoid_: child agent, worker
+
+### Night run
+
+**Orchestrator**:
+The main session driving a `/night-run`: it picks Tickets and starts a Subagent for each, and never does a Ticket's work itself.
+_Avoid_: main agent, coordinator, master
+
+**Ticket**:
+One issue taken through a `/night-run`, from its branch to a merge or to Needs-human.
+_Avoid_: task, job
+
+**Hand-back**:
+The final report a Subagent gives the agent that started it: the state of the work and what is left. Giving it ends the Subagent's run.
+_Avoid_: handover, handoff, return value
+
+**Needs-human**:
+The outcome of a Ticket that cannot be finished without a person, stated in a report. A status, never a label: the issue itself gets `ready-for-human`, `needs-info` or `needs-local`.
+_Avoid_: blocked, escalated, needs-human label
+
+### Retro
+
+**Sesja**:
+Jeden zapis rozmowy agenta (plik JSONL wraz z jego subagentami) albo jeden przebieg headless lub nocny ticket, traktowany jako całość przy analizie.
+_Avoid_: Transkrypt, run, rozmowa
+
+**Sygnał**:
+Pojedyncze wykrycie w logu sesji, na przykład odrzucenie przez guard albo błąd narzędzia.
+_Avoid_: Błąd, event, alert
+
+**Znalezisko**:
+Sygnały o tym samym znaczeniu zgrupowane po fingerprincie, z liczbą wystąpień i dowodem po maskowaniu.
+_Avoid_: Problem, issue, raport
+
+**Fingerprint**:
+Klucz deduplikacji znaleziska, stały między sesjami i maszynami dla tego samego problemu.
+_Avoid_: ID, hash, sygnatura
+
+**Propozycja**:
+Sugerowana zmiana kitu, projektu albo karta do założenia, którą człowiek musi zaakceptować przed jakimkolwiek zapisem na GitHub.
+_Avoid_: Zadanie, ticket, automatyczne issue

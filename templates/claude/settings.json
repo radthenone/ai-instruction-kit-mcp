@@ -32,6 +32,15 @@
         ]
       },
       {
+        "matcher": "mcp__claude-code-remote__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-remote-guard.mjs\""
+          }
+        ]
+      },
+      {
         "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {

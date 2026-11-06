@@ -72,6 +72,7 @@ GUARD_COPIES: tuple[tuple[str, str], ...] = (
     (".claude/hooks", "rtk-check.mjs"),
     (".claude/hooks", "kit-doctor-reminder.mjs"),
     (".claude/hooks", "retro-session-end.mjs"),
+    (".claude/hooks", "subagent-remote-guard.mjs"),
     (".codex/hooks", "kit-doctor-reminder.mjs"),
     (".github/hooks", "kit-doctor-reminder.mjs"),
 )
@@ -199,8 +200,8 @@ class TestDogfoodCopies(unittest.TestCase):
         self.assertEqual(stale, [], msg=f"kopie niezgodne z bootstrapem: {stale}")
 
     def test_cursor_does_not_get_claude_only_guards(self) -> None:
-        """bash-guard, linters-guard i rtk-check sa tylko dla Claude Code (#63)."""
-        for name in ("bash-guard.mjs", "linters-guard.mjs", "rtk-check.mjs"):
+        """bash-guard, linters-guard, rtk-check i subagent-remote-guard sa tylko dla Claude Code (#63, #403)."""
+        for name in ("bash-guard.mjs", "linters-guard.mjs", "rtk-check.mjs", "subagent-remote-guard.mjs"):
             self.assertFalse((self.generated / ".cursor/hooks" / name).exists(), name)
 
     def test_no_legacy_guards_left(self) -> None:
