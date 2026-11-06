@@ -309,6 +309,37 @@ function profileLanguage() {
   }
 }
 
+function profileText() {
+  try {
+    return readFileSync(join(".ai", "project.profile.yaml"), "utf8")
+  } catch {
+    return ""
+  }
+}
+
+// `models.<klient>.<tier>` z Profilu (#397): tani model checkera zacięcia. Bez klucza albo pliku — null.
+// Klucze klienta na wcięciu 2, tier na 4; `agents: light:` to inna sekcja i nie jest modelem.
+export function profileModel(client, tier, text = profileText()) {
+  let inModels = false
+  let inClient = false
+  for (const raw of lines(text)) {
+    const line = raw.replace(/\s+#.*$/, "")
+    if (/^\S/.test(line)) {
+      inModels = line.trimEnd() === "models:"
+      inClient = false
+      continue
+    }
+    const key = /^(\s+)([\w-]+):(?:[ \t]+(.*?))?[ \t]*$/.exec(line)
+    if (!inModels || !key) continue
+    if (key[1].length <= 2) {
+      inClient = key[2] === client
+    } else if (inClient && key[2] === tier) {
+      return key[3]?.replace(/^["']|["']$/g, "") || null
+    }
+  }
+  return null
+}
+
 const KEEP_RUNS = 5
 
 // Plik wycinka runu w CTX (#396).
@@ -466,7 +497,111 @@ function git(...args) {
   return r.status === 0 ? r.stdout.trimEnd() : null
 }
 
+// Stan gita jako źródło postępu: HEAD i git status (#397). Poza repo — pusty, stały tekst.
+const gitState = () => [git("rev-parse", "HEAD"), git("status", "--porcelain")].join("\n")
+
 const lines = (text) => (text ? text.split("\n") : [])
+
+// Kontrola postępu co 30 min (#397): jeden próg dla całego wywołania.
+export const STALL_CHECK_MIN = 30
+
+// Czas CPU (utime + stime, w tickach) procesu wykonawcy i jego potomków z /proc. Bez /proc
+// (macOS, Windows) — null: wtedy postęp liczą log i git. Rodzic liczymy z pola ppid, nie z grupy
+// procesów, bo serwer opencode ma własną grupę.
+export function cpuTicksOfTree(rootPid, proc = "/proc") {
+  let names
+  try {
+    names = readdirSync(proc)
+  } catch {
+    return null
+  }
+  const children = new Map()
+  const ticks = new Map()
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue
+    let stat
+    try {
+      stat = readFileSync(join(proc, name, "stat"), "utf8")
+    } catch {
+      continue // proces zniknął między listą katalogu a odczytem
+    }
+    // Po `)` zamykającym nazwę: stan (0), ppid (1), …, utime (11), stime (12).
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+    const pid = Number(name)
+    children.set(Number(fields[1]), [...(children.get(Number(fields[1])) || []), pid])
+    ticks.set(pid, Number(fields[11]) + Number(fields[12]))
+  }
+  let total = 0
+  const queue = [rootPid]
+  for (const pid of queue) {
+    total += ticks.get(pid) ?? 0
+    queue.push(...(children.get(pid) || []))
+  }
+  return total
+}
+
+// Kontrola postępu co `intervalMs` (#397). Postęp = wzrost bajtów wyjścia wykonawcy, zmiana HEAD
+// albo git status, wzrost CPU potomków (spadek to koniec procesu, nie praca). Brak postępu w oknie
+// → `onStall({ idleMs })`, czyli czas od ostatniej zmiany. Źródła, zegar i harmonogram są wstrzyknięte.
+export function watchProgress({
+  read,
+  onStall,
+  intervalMs = STALL_CHECK_MIN * 60_000,
+  now = Date.now,
+  schedule = setInterval,
+  unschedule = clearInterval,
+}) {
+  let previous = read()
+  let changedAt = now()
+  const tick = () => {
+    const current = read()
+    const progressed = current.output > previous.output
+      || current.git !== previous.git
+      || (current.cpu ?? 0) > (previous.cpu ?? 0)
+    previous = current
+    if (progressed) changedAt = now()
+    const idleMs = now() - changedAt
+    if (!progressed) onStall({ idleMs })
+    return { progressed, idleMs }
+  }
+  const timer = schedule(tick, intervalMs)
+  return { tick, stop: () => unschedule(timer) }
+}
+
+// Checker zacięcia (#397): tani model z `models.claude.light` tylko opisuje, co robi wykonawca.
+// Nie decyduje o zabiciu — brak postępu zabija zawsze, a opis trafia do raportu.
+export const CHECKER_TIMEOUT_MS = 60_000
+export const CHECKER_LOG_LINES = 40
+// Asynchronicznie: spawnSync wstrzymałby event loop na czas checkera — sygnały hosta i SIGKILL po
+// SIGTERM czekałyby do 60 s. Bez narzędzi i MCP: checker tylko pisze, niczego nie wywołuje i o nic nie pyta.
+const runChecker = (args, input, { timeout }) => new Promise((done) => {
+  const child = spawn("claude", args, { stdio: ["pipe", "pipe", "ignore"], timeout, killSignal: "SIGKILL", windowsHide: true })
+  let stdout = ""
+  child.stdout.setEncoding("utf8").on("data", (text) => { stdout += text })
+  child.on("error", (error) => done({ error, status: null, stdout }))
+  child.on("close", (status, signal) => done({ status: status ?? signal, stdout }))
+  child.stdin.on("error", () => {})
+  child.stdin.end(input)
+})
+
+export async function describeStall({ tail, status, idleMs, model, run = runChecker }) {
+  if (!model) return "checker wyłączony: brak models.claude.light w Profilu"
+  const log = (Array.isArray(tail) ? tail : lines(tail)).slice(-CHECKER_LOG_LINES).join("\n")
+  const prompt = [
+    `Wykonawca headless nie dał postępu przez ${Math.round(idleMs / 60_000)} min (bez nowych bajtów wyjścia, zmiany HEAD i git status, wzrostu CPU).`,
+    "Opisz po polsku w 1–3 zdaniach, co wykonawca robi i czy wygląda na zawieszonego. Nie decyduj o zabiciu.",
+    "",
+    "git status --short:",
+    status || "(czysto)",
+    "",
+    `ostatnie ${CHECKER_LOG_LINES} linii wyjścia:`,
+    log,
+  ].join("\n")
+  const r = await run(["-p", "--model", model, "--tools", "", "--strict-mcp-config"], prompt, { timeout: CHECKER_TIMEOUT_MS })
+  if (r.error || r.status !== 0) return `checker niedostępny: ${r.error?.message ?? `kod ${r.status}`}`
+  const text = lines(r.stdout).map((l) => l.trim()).filter(Boolean).slice(0, 3).join(" ")
+  return text.slice(0, 600) || "checker bez odpowiedzi"
+}
 
 // Wiersz wywołania (#396): jedna linia JSON na końcu każdego wywołania, także przy sygnale, błędzie
 // i odmowie przed startem. Stan wywołania zbiera się po drodze, wiersz składa się na końcu.
@@ -697,12 +832,15 @@ async function main() {
     }
     // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
     code = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
-    if (code !== PAUSE_CODE || !next) {
-      if (code === PAUSE_CODE) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
+    // Zły model agy to błąd konfiguracji, nie wykonawcy: zastępca go nie naprawi, więc kończymy od razu.
+    if (code === 0 || !next || call.klasa === "MODEL") {
+      if (code !== 0 && !next) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
       break
     }
+    // Każdy błąd przekazuje zadanie 1:1 zastępcy: limit (75), HANG (timeout albo brak postępu), inny kod (#397).
+    const reason = code === PAUSE_CODE ? `limit ${name}` : `${name} zakończony klasą ${call.klasa} (kod ${code})`
     call.actions.push(`przekazano 1:1: ${name} → ${next}`)
-    log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
+    log(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
   if (current.stopping) return
   // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
@@ -760,11 +898,14 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let stallReported = false
   // Ogon wyjścia (64 KB) — komunikat limitu rozpoznajemy dopiero po zakończeniu wykonawcy.
   let outputTail = ""
+  // Bajty wyjścia wykonawcy (bez heartbeatu wrappera) — źródło postępu kontroli co 30 min (#397).
+  let outBytes = 0
   const capture = (source, stream) => {
     source.setEncoding("utf8")
     partial.set(source, "")
     source.on("data", (text) => {
       log(text, stream)
+      outBytes += Buffer.byteLength(text)
       outputTail = (outputTail + text).slice(-OUTPUT_TAIL_BYTES)
       lastOutput = Date.now()
       stallReported = false
@@ -785,6 +926,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     startHead,
     tail: fullTail(),
     config: config?.line,
+    stall: stallNote,
+    tree: stallTree,
     changes: noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: false })),
   })
 
@@ -795,7 +938,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     log(`[headless] ♥ ${minutes(Date.now() - started)} min | pliki: ${status === null ? "?" : lines(status).length}`
       + ` | commity: ${commits ?? "?"} | ostatnio: ${lastLine() || "—"}\n`)
     const silent = Date.now() - lastOutput
-    // Tylko ostrzeżenie — zabija `--timeout`. Raz na okres ciszy, żeby host budził się raz.
+    // Tylko ostrzeżenie — zabija kontrola postępu albo `--timeout`. Raz na okres ciszy, żeby host budził się raz.
     if (silent >= 2 * heartbeatMs && !stallReported) {
       stallReported = true
       log(`[headless] możliwe zacięcie: brak wyjścia od ${minutes(silent)} min\n`)
@@ -815,6 +958,27 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     timedOut = true
     killTree(child)
   }, opts.timeoutMin * 60_000)
+  // Brak postępu przez STALL_CHECK_MIN min: zrzut drzewa i zabicie jak przy timeoucie, klasa HANG (#397).
+  // Najpierw zrzut i zabicie, potem opis checkera w tle; raport końcowy czeka na `stallDescribed`.
+  let stalled = false
+  let stallNote = null
+  let stallTree = null
+  let stallDescribed = null
+  const progress = watchProgress({
+    read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
+    onStall: ({ idleMs }) => {
+      stalled = true
+      const checkerInput = { tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") }
+      stallTree = processSnapshot(child.pid)
+      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
+      log(stallTree)
+      killTree(child)
+      stallDescribed = describeStall(checkerInput).then((note) => {
+        stallNote = note
+        log(`[headless] zacięcie: ${note}\n`)
+      })
+    },
+  })
 
   let code
   try {
@@ -829,6 +993,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     clearTimeout(timer)
     clearInterval(poll)
     clearInterval(heartbeat)
+    progress.stop()
     await killTree(child)
   }
   if (current.stopping) await new Promise(() => {})
@@ -840,15 +1005,18 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     call.actions.push(`zabito drzewo procesów (timeout ${opts.timeoutMin} min)`)
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   }
+  await stallDescribed
+  if (stalled) call.actions.push(`zabito drzewo procesów (brak postępu ${STALL_CHECK_MIN} min)`)
+  const hung = timedOut || stalled
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
   let invalidModel = null
-  const failed = timedOut || code !== 0
+  const failed = hung || code !== 0
   const outTail = tailLines(outputTail)
   // Limit ma pierwszeństwo przed nieznanym modelem — pauza, nie błąd konfiguracji.
   const textLimit = failed && LIMIT_PATTERN.test(outTail)
-  const isInvalidModel = failed && !timedOut && !textLimit && name === "antigravity"
+  const isInvalidModel = failed && !hung && !textLimit && name === "antigravity"
     && AGY_MODEL_LIST.test(outTail) && AGY_MODEL_ERROR.test(outTail)
   if (isInvalidModel) {
     const available = parseAvailableModels(outTail)
@@ -862,15 +1030,15 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
     code = PAUSE_CODE
-  } else if (timedOut) {
+  } else if (hung) {
     code = 124
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
-  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
+  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, tree: stallTree, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
-  call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : timedOut ? "HANG" : code !== 0 ? "ERROR"
+  call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
   return code
 }
@@ -912,11 +1080,13 @@ function repoChanges({ startHead, startStash, checkNoChanges }) {
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, tail, pause, config, invalidModel, changes }) {
+export function finalReport({ startHead, tail, pause, config, invalidModel, stall, tree, changes }) {
   const { status, added, suspect, untrailed } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
+  if (stall) out.push(`## zacięcie: ${stall}`)
+  if (tree) out.push("## drzewo procesów przy zabiciu", tree.trimEnd())
   if (suspect) out.push("## SUSPECT=no-changes")
   // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
   if (config) out.push(`## ${config}`)

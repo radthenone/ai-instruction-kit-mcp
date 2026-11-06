@@ -28,9 +28,10 @@ opencode:     /headless gemini "..."
 antigravity:  /headless opencode "..."
 ```
 
-Limit dostawcy albo brak binarki → wrapper sam przekazuje tę samą treść 1:1 drugiemu
-tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta i klientów
-spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
+Limit dostawcy, brak postępu (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje
+tę samą treść 1:1 drugiemu tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta
+i klientów spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
+Ostatni z innym błędem → jego kod wyjścia i wiersz `HANG`/`ERROR` w raporcie.
 Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywołania).
 
 - `<wykonawca>` — klient z `clients:` w `.ai/project.profile.yaml`, inny niż host, z trybem
@@ -70,7 +71,8 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
    `grep '^\[headless\]' <log> | tail -1`. Budzić się (np. Monitor) warto tylko na linię
-   `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija — robi to `--timeout`.
+   `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija. Zabija kontrola postępu co 30 min
+   (brak bajtów wyjścia, zmiany `HEAD`/`git status` i wzrostu CPU), a wrapper przechodzi dalej 1:1; `--timeout` zabija też.
 2. Kod wyjścia `2` = błędne wywołanie (np. wykonawca == host, spoza `clients:`, nieznana
    flaga). Pokaż komunikat wrappera użytkownikowi i zakończ.
    Kod `75` = limit u ostatniego wykonawcy łańcucha, nie błąd: linia

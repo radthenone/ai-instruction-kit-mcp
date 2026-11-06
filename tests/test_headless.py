@@ -11,6 +11,7 @@ import json
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = KIT_ROOT / "templates/shared/headless/headless.mjs"
@@ -25,7 +26,8 @@ TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
 # robią w repo commit / `git stash` jak wykonawca w trakcie pracy (#183).
 # `-p /quota` (agy) odpowiada FAKE_QUOTA z kodem FAKE_QUOTA_CODE; FAKE_LIMIT_FOR / FAKE_FAIL_FOR —
-# podane binarki kończą się kodem 1 z tekstem limitu / zwykłego błędu (#293).
+# podane binarki kończą się kodem 1 z tekstem limitu / zwykłego błędu (#293). FAKE_HANG_FOR — podane
+# binarki wiszą bez wyjścia do zabicia drzewa, jak wykonawca bez postępu (#397).
 FAKE = """#!/bin/sh
 if [ "$1" = -p ] && [ "$2" = /quota ]; then
   echo "$(basename "$0") /quota" >> "$HEADLESS_TEST_DIR/calls"; printf '%b' "$FAKE_QUOTA"; exit "${FAKE_QUOTA_CODE:-0}"
@@ -47,6 +49,7 @@ if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
 if [ -n "$FAKE_PARTIAL" ]; then printf 'bez nowej linii'; fi
 if [ -n "$FAKE_LIMIT" ]; then echo "$FAKE_LIMIT"; fi
+case " $FAKE_HANG_FOR " in *" $(basename "$0") "*) sleep 300; exit 0;; esac
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 exit "${FAKE_CODE:-0}"
 """
@@ -732,6 +735,64 @@ class HeadlessWrapperTest(unittest.TestCase):
     def last_row(self, result: subprocess.CompletedProcess) -> dict:
         """Ostatnia linia stdout — wiersz JSON wywołania (#396)."""
         return json.loads(result.stdout.splitlines()[-1])
+
+    # --- przekazanie 1:1 po HANG, błędzie i wyczerpaniu łańcucha (#397) ------
+
+    def chain_profile(self) -> None:
+        """Łańcuch opencode → antigravity (`agy`) w Profilu i w PATH."""
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+
+    def test_hang_hands_task_1_to_1_to_next_executor(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "--ctx", str(self.root / "ctx"), "x",
+            FAKE_HANG_FOR="opencode2",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("przekazuję zadanie 1:1: opencode → antigravity", self.headless_log())
+        row = self.last_row(result)
+        self.assertEqual((row["lancuch"], row["wykonawca"], row["kod"]), ("opencode>antigravity", "antigravity", 0))
+        self.assertIn("przekazano 1:1: opencode → antigravity", row["dzialanie"])
+
+    def test_exhausted_chain_of_hangs_is_hang_row_in_report(self) -> None:
+        self.chain_profile()
+        ctx = self.root / "ctx"
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "--ctx", str(ctx), "x",
+            FAKE_HANG_FOR="opencode2 agy",
+        )
+        self.assertEqual(result.returncode, 124, result.stderr)
+        # Po zawieszeniu agy sprawdza /quota (istniejąca ścieżka po błędzie wykonawcy).
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").splitlines(), ["opencode2", "agy", "agy /quota"])
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"], row["lancuch"]), ("HANG", 124, "opencode>antigravity"))
+        report = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("opencode>antigravity", report.stdout)
+        self.assertIn("kod 124 · HANG", report.stdout)
+
+    def test_error_exit_hands_task_to_next_executor(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_FAIL_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("przekazuję zadanie 1:1: opencode → antigravity", self.headless_log())
+
+    def test_handover_keeps_uncommitted_changes_of_killed_executor(self) -> None:
+        self.chain_profile()
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_HANG_FOR="opencode2", FAKE_DIRTY="1", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Raport zabitego wykonawcy pokazuje jego zmianę; wrapper nie robi checkout ani stash.
+        self.assertIn(" M tracked.txt", self.headless_log())
+        self.assertEqual((self.root / "tracked.txt").read_text(encoding="utf-8"), "a\nmod\nmod\n")
+        stash = subprocess.run(["git", "stash", "list"], cwd=self.root, capture_output=True, text=True, check=True)
+        self.assertEqual(stash.stdout, "")
 
     def test_call_ends_with_row_and_writes_no_buffer_without_ctx(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "x")
@@ -1577,6 +1638,309 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("kod wyjścia: 0", result.stdout)
         self.assertEqual(self.argv()[0], "opencode2")
+
+
+def node_export(expression: str, cwd: Path) -> Any:
+    """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
+    script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify(await ({expression})));"
+    result = subprocess.run(
+        [NODE, "--input-type=module", "-e", script],
+        cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr)
+    return json.loads(result.stdout)
+
+
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+class HeadlessStallProfileTest(unittest.TestCase):
+    """Tani model checkera zacięcia z `models.claude.light` w Profilu (#397)."""
+
+    PROFILE = """name: app
+agents:
+  light: cleanup,headless
+models:
+  claude:
+    light: haiku # tani model checkera
+    takeover: haiku
+  opencode:
+    light: gpt-mini
+clients: claude,opencode
+"""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / ".ai").mkdir()
+        (self.root / ".ai/project.profile.yaml").write_text(self.PROFILE, encoding="utf-8")
+
+    def test_reads_claude_light_from_models_block(self) -> None:
+        self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
+
+    def test_agents_light_list_is_not_a_model(self) -> None:
+        self.assertIsNone(node_export('h.profileModel("agents", "light")', self.root))
+
+    def test_missing_tier_or_client_is_null(self) -> None:
+        self.assertIsNone(node_export('h.profileModel("claude", "heavy")', self.root))
+        self.assertIsNone(node_export('h.profileModel("codex", "light")', self.root))
+
+    def test_missing_profile_is_null(self) -> None:
+        (self.root / ".ai/project.profile.yaml").unlink()
+        self.assertIsNone(node_export('h.profileModel("claude", "light")', self.root))
+
+
+# Szkielet sprawdzenia postępu: `read` zwraca kolejne migawki (pierwsza przy starcie, potem po jednej
+# na kontrolę), `now` to wstrzyknięty zegar w ms. Wynik: czy kontrola widziała postęp i czasy zacięć.
+WATCH_JS = """(() => {
+  const reads = __SNAPSHOTS__;
+  const clock = { t: 0 };
+  const stalls = [];
+  const watch = h.watchProgress({
+    read: () => reads.shift(),
+    onStall: ({ idleMs }) => stalls.push(idleMs),
+    now: () => clock.t,
+    schedule: () => 0,
+    unschedule: () => {},
+  });
+  const results = __TICKS__.map((t) => { clock.t = t; return watch.tick().progressed; });
+  return { results, stalls };
+})()"""
+
+
+def run_watch(snapshots: list[dict], ticks: list[int], root: Path) -> dict:
+    js = WATCH_JS.replace("__SNAPSHOTS__", json.dumps(snapshots)).replace("__TICKS__", json.dumps(ticks))
+    return node_export(js, root)
+
+
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+class HeadlessProgressSourcesTest(unittest.TestCase):
+    """Źródła postępu (CPU z /proc, log, git) i kontrola co 30 min na wstrzykniętym zegarze (#397)."""
+
+    MIN = 60_000
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def fake_proc(self, rows: dict[int, tuple[int, int, int]]) -> Path:
+        """Fałszywy /proc: pid → (ppid, utime, stime); reszta pól `stat` jak w Linuksie."""
+        proc = self.root / "proc"
+        for pid, (ppid, utime, stime) in rows.items():
+            (proc / str(pid)).mkdir(parents=True, exist_ok=True)
+            (proc / str(pid) / "stat").write_text(
+                f"{pid} (node) S {ppid} {pid} {pid} 0 -1 4194304 0 0 0 0 {utime} {stime} 0 0 20 0 1 0 1 0 0\n",
+                encoding="utf-8",
+            )
+        (proc / "self").mkdir(parents=True, exist_ok=True)  # wpis nie-PID jest pomijany
+        return proc
+
+    def test_cpu_ticks_sum_only_the_executor_tree(self) -> None:
+        proc = self.fake_proc({100: (1, 10, 5), 101: (100, 7, 3), 102: (101, 1, 1), 200: (1, 999, 999)})
+        self.assertEqual(node_export(f"h.cpuTicksOfTree(100, {json.dumps(str(proc))})", self.root), 27)
+
+    def test_cpu_ticks_are_null_without_proc(self) -> None:
+        self.assertIsNone(node_export('h.cpuTicksOfTree(100, "/nonexistent-proc")', self.root))
+
+    def test_check_threshold_is_thirty_minutes(self) -> None:
+        self.assertEqual(node_export("h.STALL_CHECK_MIN", self.root), 30)
+
+    def test_output_growth_counts_as_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 12, "git": "a", "cpu": 10}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True], "stalls": []})
+
+    def test_git_head_or_status_change_counts_as_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "b", "cpu": 10}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True], "stalls": []})
+
+    def test_cpu_growth_counts_as_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "a", "cpu": 11}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True], "stalls": []})
+
+    def test_cpu_drop_when_child_exits_is_not_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "a", "cpu": 4}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [False], "stalls": [30 * self.MIN]})
+
+    def test_no_progress_in_window_is_stall_with_idle_time(self) -> None:
+        same = {"output": 0, "git": "a", "cpu": 10}
+        result = run_watch([same, dict(same)], [30 * self.MIN], self.root)
+        self.assertEqual(result, {"results": [False], "stalls": [30 * self.MIN]})
+
+    def test_idle_time_counts_from_last_progress(self) -> None:
+        same = {"output": 0, "git": "a", "cpu": 10}
+        result = run_watch(
+            [same, {"output": 5, "git": "a", "cpu": 10}, {"output": 5, "git": "a", "cpu": 10}],
+            [30 * self.MIN, 60 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True, False], "stalls": [30 * self.MIN]})
+
+    def test_check_is_scheduled_every_interval_and_stop_unschedules(self) -> None:
+        result = node_export(
+            """(() => {
+  const scheduled = [];
+  const unscheduled = [];
+  const watch = h.watchProgress({
+    read: () => ({ output: 0, git: "a", cpu: 0 }),
+    onStall: () => {},
+    schedule: (fn, ms) => { scheduled.push(ms); return "timer"; },
+    unschedule: (token) => unscheduled.push(token),
+  });
+  watch.stop();
+  return { scheduled, unscheduled };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"scheduled": [30 * self.MIN], "unscheduled": ["timer"]})
+
+
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+class HeadlessStallCheckerTest(unittest.TestCase):
+    """Checker zacięcia tylko opisuje stan (tani model z Profilu), nie decyduje o zabiciu (#397)."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def test_checker_gets_last_40_lines_status_and_idle_time(self) -> None:
+        result = node_export(
+            """(async () => {
+  const calls = [];
+  const run = (args, input, options) => {
+    calls.push({ args, input, timeout: options.timeout });
+    return { status: 0, stdout: "Wykonawca czeka na wejście.\\nDrugie zdanie." };
+  };
+  const tail = Array.from({ length: 60 }, (_, i) => `linia ${i + 1}`);
+  const note = await h.describeStall({ tail, status: " M plik.txt", idleMs: 30 * 60_000, model: "haiku", run });
+  const [call] = calls;
+  const inputLines = call.input.split("\\n");
+  return {
+    note,
+    args: call.args,
+    timeoutPositive: call.timeout > 0,
+    hasLastLine: inputLines.includes("linia 60"),
+    hasLine21: inputLines.includes("linia 21"),
+    hasLine20: inputLines.includes("linia 20"),
+    hasStatus: inputLines.includes(" M plik.txt"),
+    hasIdle: call.input.includes("30 min"),
+  };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {
+            "note": "Wykonawca czeka na wejście. Drugie zdanie.",
+            "args": ["-p", "--model", "haiku", "--tools", "", "--strict-mcp-config"],
+            "timeoutPositive": True,
+            "hasLastLine": True,
+            "hasLine21": True,
+            "hasLine20": False,
+            "hasStatus": True,
+            "hasIdle": True,
+        })
+
+    def test_missing_light_model_disables_checker_without_running_it(self) -> None:
+        result = node_export(
+            """(async () => {
+  let called = false;
+  const note = await h.describeStall({ tail: [], status: "", idleMs: 1, model: null, run: () => { called = true; return {}; } });
+  return { note, called };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"note": "checker wyłączony: brak models.claude.light w Profilu", "called": False})
+
+    def test_checker_failure_is_described_not_thrown(self) -> None:
+        result = node_export(
+            """(async () => {
+  const exited = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku", run: () => ({ status: 1, stdout: "" }) });
+  const missing = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: null, error: { message: "spawn claude ENOENT" } }) });
+  return { exited, missing };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {
+            "exited": "checker niedostępny: kod 1",
+            "missing": "checker niedostępny: spawn claude ENOENT",
+        })
+
+    def test_checker_note_is_at_most_three_lines_and_capped(self) -> None:
+        result = node_export(
+            """(async () => {
+  const many = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: 0, stdout: "a\\nb\\nc\\nd\\ne" }) });
+  const long = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: 0, stdout: "x".repeat(1000) }) });
+  return { many, longLength: long.length };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"many": "a b c", "longLength": 600})
+
+    def test_wait_verdict_of_checker_does_not_stop_stall_kill(self) -> None:
+        result = node_export(
+            """(async () => {
+  const note = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: 0, stdout: "czekaj" }) });
+  let killed = false;
+  const watch = h.watchProgress({
+    read: () => ({ output: 0, git: "a", cpu: 0 }),
+    onStall: () => { killed = true; },
+    now: () => 0,
+    schedule: () => 0,
+    unschedule: () => {},
+  });
+  watch.tick();
+  return { note, killed };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"note": "czekaj", "killed": True})
+
+    def test_stall_note_is_in_final_report(self) -> None:
+        result = node_export(
+            """(() => h.finalReport({
+  startHead: null,
+  tail: ["ostatnia linia"],
+  pause: null,
+  config: null,
+  invalidModel: null,
+  stall: "Wykonawca czeka na wejście.",
+  changes: { status: null, added: [], suspect: false, untrailed: [] },
+}))()""",
+            self.root,
+        )
+        self.assertIn("## zacięcie: Wykonawca czeka na wejście.", result)
+
+    def test_stall_tree_dump_is_in_final_report(self) -> None:
+        result = node_export(
+            """(() => h.finalReport({
+  startHead: null,
+  tail: [],
+  pause: null,
+  config: null,
+  invalidModel: null,
+  stall: "czeka",
+  tree: "PID PPID PGID START COMM\\n4242 1 4242 Mon node\\n",
+  changes: { status: null, added: [], suspect: false, untrailed: [] },
+}))()""",
+            self.root,
+        )
+        self.assertIn("## drzewo procesów przy zabiciu", result)
+        self.assertIn("4242 1 4242 Mon node", result)
 
 
 if __name__ == "__main__":

@@ -289,7 +289,9 @@ Kroki:
 2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
    reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
-   → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
+   (kod ≠ 0, w tym HANG po 30 min bez postępu) → nie ponawiasz go tym samym wykonawcą: wrapper
+   już przeszedł cały łańcuch 1:1, więc to jedna pełna ścieżka. Wyczerpany łańcuch → przejęcie
+   (niżej), potem needs-human. Dalej kroki 4–5.
    Linia `SUSPECT=no-changes` w raporcie wrappera (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human (liczy się do 2 prób).
    Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
    w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
@@ -310,6 +312,7 @@ Kroki:
    (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limicie zagnieżdżenia 3
    (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
    Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
+   Wyczerpany łańcuch bez limitu (kod ≠ 0 i nie 75, klasa `HANG` albo `ERROR`) idzie tą samą drogą: subagent przejęcia z `PRZEJĘCIE`, bez `LIMIT: czekaj`.
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
