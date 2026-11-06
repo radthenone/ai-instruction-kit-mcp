@@ -1413,6 +1413,25 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual((row["klasa"], row["kod"]), ("ERROR", 3))
         self.assertIn(self.head_hash(), row["dzialanie"])
 
+    def test_signal_row_keeps_hang_class_and_untrailed_hash(self) -> None:
+        self.clean_git_repo()
+        start = self.head_hash()
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_COMMIT": "1", **self.GIT_ENV},
+        )
+        deadline = time.time() + 10
+        while self.head_hash() == start and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=10)
+        self.assert_tree_killed()
+        row = json.loads(out.splitlines()[-1])
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 143))
+        self.assertIn(self.head_hash(), row["dzialanie"])
+
     # --- config wykonawcy w linked worktree (#300) ---------------------------
 
     def test_worktree_uses_main_checkout_config_and_sets_executor_env(self) -> None:

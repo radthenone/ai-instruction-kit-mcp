@@ -785,7 +785,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     startHead,
     tail: fullTail(),
     config: config?.line,
-    changes: repoChanges({ startHead, startStash, checkNoChanges: false }),
+    changes: noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: false })),
   })
 
   const heartbeatMs = opts.heartbeatMin * 60_000
@@ -867,15 +867,19 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
-  const changes = repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean })
-  // Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 — klasa wiersza i dzialanie (#398).
-  call.untrailed.push(...changes.untrailed)
-  if (changes.untrailed.length) call.actions.push(`commity bez trailera: ${changes.untrailed.join(", ")}`)
+  const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
   log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : timedOut ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
   return code
+}
+
+// Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 i po sygnale — klasa wiersza i dzialanie (#398).
+function noteUntrailed(changes) {
+  call.untrailed.push(...changes.untrailed)
+  if (changes.untrailed.length) call.actions.push(`commity bez trailera: ${changes.untrailed.join(", ")}`)
+  return changes
 }
 
 // Commity z `start..HEAD` bez trailera `Co-Authored-By` (#398), skróty hashów. Temat i język kontroluje
