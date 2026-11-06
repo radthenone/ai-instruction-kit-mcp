@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -29,7 +30,7 @@ OVERLAY_TOOL = "mcp__project-guides__get_overlay"
 EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 KIT_CODE_PATH = re.compile(r"(?:^|/)(?:src|tests|templates|modules)/")
 
-_HOOK_DENY = re.compile(r"^PreToolUse:(?P<tool>\w+) hook error: (?P<guard>[\w.-]+): (?P<msg>.*)$")
+_HOOK_DENY = re.compile(r"^PreToolUse:(?P<tool>[\w-]+) hook error: (?P<guard>[\w.-]+): (?P<msg>.*)$")
 _TRAILING_TAG = re.compile(r"\s*\[[\w.-]+\]\s*$")
 _HARNESS_BLOCKS = (
     ("sleep", re.compile(r"^Blocked: sleep\b")),
@@ -48,6 +49,7 @@ _HOME = re.compile(r"/(?:home|Users)/[^/\s]+")
 _UUID = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
 _LONG_HEX = re.compile(r"\b[0-9a-fA-F]{12,}\b")
 _DIGITS = re.compile(r"\d+")
+_EXIT_CODE = re.compile(r"^Exit code -?\d+$")
 
 
 def mask(text: str) -> str:
@@ -255,12 +257,16 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
                 tool_input=tool_input,
             )
         )
-    elif is_error and first:
-        scan.signals.append(Signal("tool_error", normalize(mask(first)), evidence(first)))
+        return
     for label, pattern in _HARNESS_BLOCKS:
         if first and pattern.search(first):
             scan.signals.append(Signal("harness_block", label, evidence(first)))
-            break
+            return
+    if is_error and first:
+        # Bash zaczyna błąd od „Exit code N” — bez tego wszystkie błędy Bash zlałyby się w jedno Znalezisko.
+        detail = next((line for line in lines[1:] if line.strip()), "") if _EXIT_CODE.match(first) else ""
+        line = f"{first}: {detail}" if detail else first
+        scan.signals.append(Signal("tool_error", normalize(mask(line)), evidence(line)))
 
 
 def _api_signal(text: str) -> Signal:
@@ -295,6 +301,8 @@ def _int(value: Any) -> int:
 
 GUARD_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 REPLAY_TIMEOUT = 10.0
+# Łączny limit replayu na jeden skan: hook SessionEnd ma 120 s, reszta deny dostaje ``unknown``.
+REPLAY_BUDGET = 60.0
 
 
 @dataclass(frozen=True)
@@ -363,6 +371,26 @@ def replay_guard(
     hook = data.get("hookSpecificOutput")
     decision = hook.get("permissionDecision") if isinstance(hook, dict) else data.get("permissionDecision")
     return decision if decision in ("allow", "deny") else "unknown"
+
+
+def budgeted_replay(*, kit_root: Path, cwd: Path, budget: float = REPLAY_BUDGET) -> Callable[[Signal], str]:
+    """Replay guardów z łącznym limitem czasu; po jego wyczerpaniu zwraca ``unknown``."""
+    deadline = time.monotonic() + budget
+
+    def replay(signal: Signal) -> str:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return "unknown"
+        return replay_guard(
+            signal.guard,
+            signal.tool_name,
+            signal.tool_input,
+            kit_root=kit_root,
+            cwd=cwd,
+            timeout=min(REPLAY_TIMEOUT, remaining),
+        )
+
+    return replay
 
 
 def build_findings(signals: list[Signal], *, replay: Callable[[Signal], str]) -> list[Finding]:
@@ -441,7 +469,10 @@ def parse_since(value: str, *, now: datetime) -> float:
 
 
 def kit_sha(workspace: Path) -> str:
-    """Commit kita, z którego działa serwer MCP (argument ``--kit-root`` w ``.mcp.json``); inaczej ``unknown``."""
+    """Commit kita, z którego działa serwer MCP; inaczej ``unknown``.
+
+    Najpierw pin ``@<ref>`` z ``--from git+…`` (instalacja przez uvx), potem HEAD klona z ``--kit-root``.
+    """
     try:
         config = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -453,8 +484,12 @@ def kit_sha(workspace: Path) -> str:
         args = server.get("args") if isinstance(server, dict) else None
         if not isinstance(args, list):
             continue
-        for flag, value in zip(args, args[1:]):
-            if flag != "--kit-root" or not isinstance(value, str):
+        pairs = [(flag, value) for flag, value in zip(args, args[1:]) if isinstance(value, str)]
+        for flag, value in pairs:
+            if flag == "--from" and value.startswith("git+") and "@" in value.rsplit("/", 1)[-1]:
+                return value.rsplit("@", 1)[1]
+        for flag, value in pairs:
+            if flag != "--kit-root":
                 continue
             try:
                 result = subprocess.run(
@@ -528,18 +563,18 @@ def _scan_files(
     session_id: str,
     workspace: Path,
     cache_root: Path,
-    kit_root: Path,
-    runner: Callable[[Signal], str] | None,
+    replay: Callable[[Signal], str],
+    sha: str,
     now: datetime | None,
-) -> tuple[Path, int]:
+) -> tuple[Path, list[Finding]]:
     """Sesja Claude: parsuje jej pliki razem z subagentami i zapisuje wpisy."""
     return _write_entries(
         parse_session(files, session_id=session_id),
         source="claude",
         workspace=workspace,
         cache_root=cache_root,
-        kit_root=kit_root,
-        runner=runner,
+        replay=replay,
+        sha=sha,
         now=now,
     )
 
@@ -550,22 +585,19 @@ def _write_entries(
     source: str,
     workspace: Path,
     cache_root: Path,
-    kit_root: Path,
-    runner: Callable[[Signal], str] | None,
+    replay: Callable[[Signal], str],
+    sha: str,
     now: datetime | None,
-) -> tuple[Path, int]:
+) -> tuple[Path, list[Finding]]:
     """Odtwarza deny, buduje Znaleziska i zapisuje wpisy do ``cache_root/<repo>/<sesja>.jsonl``.
 
     Plik powstaje przez zapis tymczasowy i podmianę, więc ponowny skan tej samej sesji
     zastępuje wynik zamiast go dublować.
     """
     session_id = parsed.session_id
-    replay = runner or (
-        lambda signal: replay_guard(signal.guard, signal.tool_name, signal.tool_input, kit_root=kit_root, cwd=workspace)
-    )
     findings = build_findings(parsed.signals, replay=replay)
     repo = repo_name(workspace)
-    base = {"schema": SCHEMA_VERSION, "source": source, "repo": repo, "kit_sha": kit_sha(workspace), "session": session_id}
+    base = {"schema": SCHEMA_VERSION, "source": source, "repo": repo, "kit_sha": sha, "session": session_id}
     stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
     records: list[dict] = [
         {
@@ -597,7 +629,7 @@ def _write_entries(
     staging = target.with_name(f"{target.name}.tmp")
     staging.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
     os.replace(staging, target)
-    return target, len(findings)
+    return target, findings
 
 
 def scan_session(
@@ -619,8 +651,8 @@ def scan_session(
         session_id=session_id,
         workspace=workspace,
         cache_root=cache_root,
-        kit_root=kit_root,
-        runner=runner,
+        replay=runner or budgeted_replay(kit_root=kit_root, cwd=workspace),
+        sha=kit_sha(workspace),
         now=now,
     )
     return target
@@ -639,13 +671,24 @@ def scan_command(
 ) -> str:
     """Tekst wyniku ``kit-ai retro scan``: jedna sesja (``session``) albo sesje repo, opcjonalnie od ``since``."""
     stamp = now or datetime.now(timezone.utc)
-    options = {"workspace": workspace, "cache_root": cache_root, "kit_root": kit_root, "runner": runner, "now": stamp}
+    options = {
+        "workspace": workspace,
+        "cache_root": cache_root,
+        "replay": runner or budgeted_replay(kit_root=kit_root, cwd=workspace),
+        "sha": kit_sha(workspace),
+        "now": stamp,
+    }
     if session is not None:
         files = find_session_files(projects_root, session)
         if not files:
             raise ValueError(f"nie znaleziono sesji {session} w {projects_root}")
-        target, found = _scan_files(files, session_id=session, **options)
-        return f"retro: sesja {session} → {target} (znaleziska: {found})"
+        target, findings = _scan_files(files, session_id=session, **options)
+        lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)})"]
+        lines += [
+            f"  {f.kind} ×{f.count} replay={f.replay}" + (f" [{f.guard}]" if f.guard else "") + f": {f.evidence}"
+            for f in findings
+        ]
+        return "\n".join(lines)
     cutoff = parse_since(since, now=stamp) if since else None
     base = projects_root / project_dir_name(workspace)
     mains = [
@@ -662,11 +705,11 @@ def scan_command(
         return f"retro: brak sesji i przebiegów headless w {base}"
     found_total = 0
     for main in mains:
-        _, found = _scan_files([main, *_subagent_files(base, main.stem)], session_id=main.stem, **options)
-        found_total += found
+        _, findings = _scan_files([main, *_subagent_files(base, main.stem)], session_id=main.stem, **options)
+        found_total += len(findings)
     for run in runs:
-        _, found = _write_entries(parse_headless_run(run), source="headless", **options)
-        found_total += found
+        _, findings = _write_entries(parse_headless_run(run), source="headless", **options)
+        found_total += len(findings)
     return (
         f"retro: sesje: {len(mains)}, przebiegi headless: {len(runs)}, znaleziska: {found_total} "
         f"→ {cache_root / repo_name(workspace)}"

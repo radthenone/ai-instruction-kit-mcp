@@ -175,6 +175,23 @@ class SignalTests(unittest.TestCase):
         quoted = self._parse(_tool_result("t2", "docs say: Blocked: sleep is a harness rule"))
         self.assertNotIn("harness_block", self._kinds(quoted))
 
+    def test_harness_block_error_is_not_also_a_tool_error(self) -> None:
+        parsed = self._parse(_tool_result("t1", "Blocked: sleep 600 is not allowed", is_error=True))
+        self.assertEqual(self._kinds(parsed), ["harness_block"])
+
+    def test_bash_exit_code_errors_are_grouped_by_stderr(self) -> None:
+        parsed = self._parse(
+            _tool_result("t1", "Exit code 1\nfatal: not a git repository", is_error=True),
+            _tool_result("t2", "Exit code 2\nls: cannot access 'x'", is_error=True),
+        )
+        keys = {s.key for s in parsed.signals if s.kind == "tool_error"}
+        self.assertEqual(len(keys), 2)
+
+    def test_guard_deny_on_mcp_tool_with_hyphen_is_recognized(self) -> None:
+        deny = "PreToolUse:mcp__project-guides__get_bundle hook error: server-guard: zablokowane"
+        parsed = self._parse(_tool_result("t1", deny, is_error=True))
+        self.assertEqual(self._kinds(parsed), ["guard_deny"])
+
     def test_metrics_count_each_api_message_once(self) -> None:
         usage = {"input_tokens": 10, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 50}
         streamed = _assistant("msg_1", {"type": "text", "text": "a"}, usage=usage)
@@ -198,6 +215,12 @@ class ReplayTests(unittest.TestCase):
             tool_name="Bash",
             tool_input={"command": command},
         )
+
+    def test_exhausted_replay_budget_returns_unknown_without_running_guard(self) -> None:
+        replay = retro.budgeted_replay(kit_root=KIT_ROOT, cwd=KIT_ROOT, budget=0)
+        with mock.patch.object(retro, "replay_guard") as guard:
+            self.assertEqual(replay(self._deny()), "unknown")
+        guard.assert_not_called()
 
     def test_fixed_deny_is_dropped(self) -> None:
         self.assertEqual(retro.build_findings([self._deny()], replay=lambda signal: "allow"), [])
@@ -446,6 +469,14 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(retro.kit_sha(work), expected)
 
 
+    def test_kit_sha_prefers_ref_pinned_in_uvx_from(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = "git+https://github.com/o/ai-instruction-kit-mcp.git@v1.2.3"
+            config = {"mcpServers": {"project-guides": {"command": "uvx", "args": ["--from", source, "guides-mcp"]}}}
+            (Path(tmp) / ".mcp.json").write_text(json.dumps(config), encoding="utf-8")
+            self.assertEqual(retro.kit_sha(Path(tmp)), "v1.2.3")
+
+
 class RetroCliTests(unittest.TestCase):
     def test_scan_session_writes_cache_and_reports_location(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -468,6 +499,7 @@ class RetroCliTests(unittest.TestCase):
             target = cache / "kit-ai" / "retro" / "my-repo" / f"{SESSION}.jsonl"
             self.assertTrue(target.is_file())
             self.assertIn(str(target), out)
+            self.assertIn("guard_deny", out)
             self.assertIn('"replay": "deny"', target.read_text(encoding="utf-8"))
 
     def test_unknown_session_exits_with_error(self) -> None:
