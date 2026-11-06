@@ -497,6 +497,9 @@ function git(...args) {
   return r.status === 0 ? r.stdout.trimEnd() : null
 }
 
+// Stan gita jako źródło postępu: HEAD i git status (#397). Poza repo — pusty, stały tekst.
+const gitState = () => [git("rev-parse", "HEAD"), git("status", "--porcelain")].join("\n")
+
 const lines = (text) => (text ? text.split("\n") : [])
 
 // Kontrola postępu co 30 min (#397): jeden próg dla całego wywołania.
@@ -794,12 +797,15 @@ async function main() {
     }
     // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
     code = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
-    if (code !== PAUSE_CODE || !next) {
-      if (code === PAUSE_CODE) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
+    // Zły model agy to błąd konfiguracji, nie wykonawcy: zastępca go nie naprawi, więc kończymy od razu.
+    if (code === 0 || !next || call.klasa === "MODEL") {
+      if (code !== 0 && !next) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
       break
     }
+    // Każdy błąd przekazuje zadanie 1:1 zastępcy: limit (75), HANG (timeout albo brak postępu), inny kod (#397).
+    const reason = code === PAUSE_CODE ? `limit ${name}` : `${name} zakończony klasą ${call.klasa} (kod ${code})`
     call.actions.push(`przekazano 1:1: ${name} → ${next}`)
-    log(`[headless] limit ${name} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
+    log(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
   }
   if (current.stopping) return
   // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
@@ -857,11 +863,14 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let stallReported = false
   // Ogon wyjścia (64 KB) — komunikat limitu rozpoznajemy dopiero po zakończeniu wykonawcy.
   let outputTail = ""
+  // Bajty wyjścia wykonawcy (bez heartbeatu wrappera) — źródło postępu kontroli co 30 min (#397).
+  let outBytes = 0
   const capture = (source, stream) => {
     source.setEncoding("utf8")
     partial.set(source, "")
     source.on("data", (text) => {
       log(text, stream)
+      outBytes += Buffer.byteLength(text)
       outputTail = (outputTail + text).slice(-OUTPUT_TAIL_BYTES)
       lastOutput = Date.now()
       stallReported = false
@@ -912,6 +921,17 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     timedOut = true
     killTree(child)
   }, opts.timeoutMin * 60_000)
+  // Brak postępu przez STALL_CHECK_MIN min: zrzut drzewa i zabicie jak przy timeoucie, klasa HANG (#397).
+  let stalled = false
+  const progress = watchProgress({
+    read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
+    onStall: ({ idleMs }) => {
+      stalled = true
+      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
+      log(processSnapshot(child.pid))
+      killTree(child)
+    },
+  })
 
   let code
   try {
@@ -926,6 +946,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     clearTimeout(timer)
     clearInterval(poll)
     clearInterval(heartbeat)
+    progress.stop()
     await killTree(child)
   }
   if (current.stopping) await new Promise(() => {})
@@ -937,15 +958,17 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     call.actions.push(`zabito drzewo procesów (timeout ${opts.timeoutMin} min)`)
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   }
+  if (stalled) call.actions.push(`zabito drzewo procesów (brak postępu ${STALL_CHECK_MIN} min)`)
+  const hung = timedOut || stalled
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
   let invalidModel = null
-  const failed = timedOut || code !== 0
+  const failed = hung || code !== 0
   const outTail = tailLines(outputTail)
   // Limit ma pierwszeństwo przed nieznanym modelem — pauza, nie błąd konfiguracji.
   const textLimit = failed && LIMIT_PATTERN.test(outTail)
-  const isInvalidModel = failed && !timedOut && !textLimit && name === "antigravity"
+  const isInvalidModel = failed && !hung && !textLimit && name === "antigravity"
     && AGY_MODEL_LIST.test(outTail) && AGY_MODEL_ERROR.test(outTail)
   if (isInvalidModel) {
     const available = parseAvailableModels(outTail)
@@ -959,7 +982,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
     code = PAUSE_CODE
-  } else if (timedOut) {
+  } else if (hung) {
     code = 124
   }
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
@@ -967,7 +990,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
   log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
-  call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : timedOut ? "HANG" : code !== 0 ? "ERROR"
+  call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
   return code
 }

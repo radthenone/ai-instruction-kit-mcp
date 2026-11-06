@@ -25,7 +25,8 @@ TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
 # robią w repo commit / `git stash` jak wykonawca w trakcie pracy (#183).
 # `-p /quota` (agy) odpowiada FAKE_QUOTA z kodem FAKE_QUOTA_CODE; FAKE_LIMIT_FOR / FAKE_FAIL_FOR —
-# podane binarki kończą się kodem 1 z tekstem limitu / zwykłego błędu (#293).
+# podane binarki kończą się kodem 1 z tekstem limitu / zwykłego błędu (#293). FAKE_HANG_FOR — podane
+# binarki wiszą bez wyjścia do zabicia drzewa, jak wykonawca bez postępu (#397).
 FAKE = """#!/bin/sh
 if [ "$1" = -p ] && [ "$2" = /quota ]; then
   echo "$(basename "$0") /quota" >> "$HEADLESS_TEST_DIR/calls"; printf '%b' "$FAKE_QUOTA"; exit "${FAKE_QUOTA_CODE:-0}"
@@ -47,6 +48,7 @@ if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
 if [ -n "$FAKE_PARTIAL" ]; then printf 'bez nowej linii'; fi
 if [ -n "$FAKE_LIMIT" ]; then echo "$FAKE_LIMIT"; fi
+case " $FAKE_HANG_FOR " in *" $(basename "$0") "*) sleep 300; exit 0;; esac
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 exit "${FAKE_CODE:-0}"
 """
@@ -732,6 +734,64 @@ class HeadlessWrapperTest(unittest.TestCase):
     def last_row(self, result: subprocess.CompletedProcess) -> dict:
         """Ostatnia linia stdout — wiersz JSON wywołania (#396)."""
         return json.loads(result.stdout.splitlines()[-1])
+
+    # --- przekazanie 1:1 po HANG, błędzie i wyczerpaniu łańcucha (#397) ------
+
+    def chain_profile(self) -> None:
+        """Łańcuch opencode → antigravity (`agy`) w Profilu i w PATH."""
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+
+    def test_hang_hands_task_1_to_1_to_next_executor(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "--ctx", str(self.root / "ctx"), "x",
+            FAKE_HANG_FOR="opencode2",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("przekazuję zadanie 1:1: opencode → antigravity", self.headless_log())
+        row = self.last_row(result)
+        self.assertEqual((row["lancuch"], row["wykonawca"], row["kod"]), ("opencode>antigravity", "antigravity", 0))
+        self.assertIn("przekazano 1:1: opencode → antigravity", row["dzialanie"])
+
+    def test_exhausted_chain_of_hangs_is_hang_row_in_report(self) -> None:
+        self.chain_profile()
+        ctx = self.root / "ctx"
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "--ctx", str(ctx), "x",
+            FAKE_HANG_FOR="opencode2 agy",
+        )
+        self.assertEqual(result.returncode, 124, result.stderr)
+        # Po zawieszeniu agy sprawdza /quota (istniejąca ścieżka po błędzie wykonawcy).
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").splitlines(), ["opencode2", "agy", "agy /quota"])
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"], row["lancuch"]), ("HANG", 124, "opencode>antigravity"))
+        report = self.run_wrapper("--report", "--ctx", str(ctx))
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("opencode>antigravity", report.stdout)
+        self.assertIn("kod 124 · HANG", report.stdout)
+
+    def test_error_exit_hands_task_to_next_executor(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_FAIL_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("przekazuję zadanie 1:1: opencode → antigravity", self.headless_log())
+
+    def test_handover_keeps_uncommitted_changes_of_killed_executor(self) -> None:
+        self.chain_profile()
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_HANG_FOR="opencode2", FAKE_DIRTY="1", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Raport zabitego wykonawcy pokazuje jego zmianę; wrapper nie robi checkout ani stash.
+        self.assertIn(" M tracked.txt", self.headless_log())
+        self.assertEqual((self.root / "tracked.txt").read_text(encoding="utf-8"), "a\nmod\nmod\n")
+        stash = subprocess.run(["git", "stash", "list"], cwd=self.root, capture_output=True, text=True, check=True)
+        self.assertEqual(stash.stdout, "")
 
     def test_call_ends_with_row_and_writes_no_buffer_without_ctx(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "x")
