@@ -1,0 +1,289 @@
+"""Retro: deterministyczny skaner sesji agentów (#371, część (a) #338).
+
+Czyta transkrypty Claude Code (JSONL razem z subagentami) i wyciąga sygnały: deny
+guardów, błędy narzędzi, blokady harnessu, błędy API, powtórzone wywołania, zgodność
+z ``get_overlay`` przed edycją kodu oraz koszt sesji. Do ``~/.cache`` trafia tylko
+znormalizowany tekst i zamaskowane evidence, nigdy całe wiadomości. Nic tu nie woła
+modelu (0 tokenów).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+SCHEMA_VERSION = 1
+KEY_LIMIT = 200
+EVIDENCE_LIMIT = 240
+REPEAT_THRESHOLD = 3
+OVERLAY_TOOL = "mcp__project-guides__get_overlay"
+EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
+KIT_CODE_PATH = re.compile(r"(?:^|/)(?:src|tests|templates|modules)/")
+
+_HOOK_DENY = re.compile(r"^PreToolUse:(?P<tool>\w+) hook error: (?P<guard>[\w.-]+): (?P<msg>.*)$")
+_TRAILING_TAG = re.compile(r"\s*\[[\w.-]+\]\s*$")
+_HARNESS_BLOCKS = (
+    ("sleep", re.compile(r"^Blocked: sleep\b")),
+    ("safety-check", re.compile(r"built-in safety check", re.IGNORECASE)),
+)
+_SECRETS = (
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+)
+_BEARER = re.compile(r"(?i)\bbearer\s+\S+")
+_KEY_VALUE = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?key)(\s*[=:]\s*)\S+")
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_HOME = re.compile(r"/(?:home|Users)/[^/\s]+")
+_UUID = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+_LONG_HEX = re.compile(r"\b[0-9a-fA-F]{12,}\b")
+_DIGITS = re.compile(r"\d+")
+
+
+def mask(text: str) -> str:
+    """Maskuje sekrety, e-maile i nazwę użytkownika w ścieżce domowej."""
+    masked = _HOME.sub("~", text)
+    for pattern in _SECRETS:
+        masked = pattern.sub("<secret>", masked)
+    masked = _BEARER.sub("Bearer <secret>", masked)
+    masked = _KEY_VALUE.sub(r"\1\2<secret>", masked)
+    return _EMAIL.sub("<email>", masked)
+
+
+def normalize(text: str) -> str:
+    """Klucz grupowania: bez katalogu domowego, identyfikatorów, liczb i nadmiaru spacji."""
+    collapsed = _HOME.sub("~", text)
+    collapsed = _UUID.sub("<id>", collapsed)
+    collapsed = _LONG_HEX.sub("<id>", collapsed)
+    collapsed = _DIGITS.sub("N", collapsed)
+    return " ".join(collapsed.split())[:KEY_LIMIT]
+
+
+def evidence(text: str) -> str:
+    """Zamaskowany, jednowierszowy fragment do zapisu (nigdy cała wiadomość)."""
+    single = " ".join(mask(text).split())
+    if len(single) <= EVIDENCE_LIMIT:
+        return single
+    return single[: EVIDENCE_LIMIT - 3] + "..."
+
+
+def fingerprint(kind: str, key: str) -> str:
+    """Stały klucz deduplikacji znaleziska — ten sam problem daje ten sam ciąg w każdej sesji."""
+    return hashlib.sha256(f"{kind}\x1f{key}".encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class Signal:
+    """Pojedyncze wykrycie w sesji (termin „Sygnał” z GLOSSARY.md)."""
+
+    kind: str
+    key: str
+    evidence: str
+    guard: str | None = None
+    tool_name: str | None = None
+    tool_input: Any = None
+    count: int = 1
+
+
+@dataclass
+class SessionMetrics:
+    """Koszt sesji liczony z ``message.usage`` (każde wywołanie API raz)."""
+
+    api_calls: int = 0
+    cache_read_sum: int = 0
+    max_context: int = 0
+
+
+@dataclass
+class ParsedSession:
+    session_id: str
+    files: int
+    signals: list[Signal] = field(default_factory=list)
+    metrics: SessionMetrics = field(default_factory=SessionMetrics)
+
+
+@dataclass
+class _Scan:
+    """Stan przebiegu przez wszystkie pliki sesji (główny plik i subagenty)."""
+
+    tool_uses: dict[str, tuple[str, dict]] = field(default_factory=dict)
+    seen_tool_ids: set[str] = field(default_factory=set)
+    seen_message_ids: set[str] = field(default_factory=set)
+    repeats: dict[str, int] = field(default_factory=dict)
+    signals: list[Signal] = field(default_factory=list)
+    metrics: SessionMetrics = field(default_factory=SessionMetrics)
+
+
+@dataclass
+class _FileState:
+    """Stan jednego pliku: ``get_overlay`` obowiązuje w kontekście agenta, który go zawołał."""
+
+    overlay_seen: bool = False
+    unseen_edits: int = 0
+    first_unseen: str = ""
+
+
+def parse_session(paths: list[Path], session_id: str) -> ParsedSession:
+    """Wyciąga sygnały i metryki z plików sesji (główny JSONL i jego subagenty)."""
+    scan = _Scan()
+    for path in paths:
+        _scan_file(path, scan)
+    for key, count in sorted(scan.repeats.items()):
+        if count >= REPEAT_THRESHOLD:
+            name = key.split(" ", 1)[0]
+            scan.signals.append(
+                Signal("repeated_tool_use", normalize(mask(key)), evidence(key), tool_name=name, count=count)
+            )
+    return ParsedSession(session_id=session_id, files=len(paths), signals=scan.signals, metrics=scan.metrics)
+
+
+def _read_records(path: Path) -> Iterator[dict]:
+    try:
+        handle = path.open(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    with handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(data, dict):
+                yield data
+
+
+def _scan_file(path: Path, scan: _Scan) -> None:
+    state = _FileState()
+    for record in _read_records(path):
+        if record.get("isApiErrorMessage") is True:
+            scan.signals.append(_api_signal(_flatten(_content(record))))
+            continue
+        message = record.get("message")
+        if not isinstance(message, dict):
+            continue
+        _count_usage(message, scan)
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                _on_tool_use(block, scan, state)
+            elif block.get("type") == "tool_result":
+                _on_tool_result(block, scan)
+    if state.unseen_edits:
+        scan.signals.append(
+            Signal(
+                "mcp_compliance",
+                "missing-get_overlay-before-edit",
+                evidence(state.first_unseen),
+                count=state.unseen_edits,
+            )
+        )
+
+
+def _content(record: dict) -> Any:
+    message = record.get("message")
+    return message.get("content") if isinstance(message, dict) else None
+
+
+def _count_usage(message: dict, scan: _Scan) -> None:
+    usage = message.get("usage")
+    msg_id = message.get("id")
+    if not isinstance(usage, dict) or not msg_id or msg_id in scan.seen_message_ids:
+        return
+    scan.seen_message_ids.add(msg_id)
+    cache_read = _int(usage.get("cache_read_input_tokens"))
+    context = _int(usage.get("input_tokens")) + cache_read + _int(usage.get("cache_creation_input_tokens"))
+    scan.metrics.api_calls += 1
+    scan.metrics.cache_read_sum += cache_read
+    scan.metrics.max_context = max(scan.metrics.max_context, context)
+
+
+def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
+    tool_id = str(block.get("id") or "")
+    if tool_id:
+        if tool_id in scan.seen_tool_ids:
+            return
+        scan.seen_tool_ids.add(tool_id)
+    name = str(block.get("name") or "")
+    raw_input = block.get("input")
+    tool_input = raw_input if isinstance(raw_input, dict) else {}
+    if tool_id:
+        scan.tool_uses[tool_id] = (name, tool_input)
+    if name == OVERLAY_TOOL:
+        state.overlay_seen = True
+    path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+    if name in EDIT_TOOLS and path and KIT_CODE_PATH.search(path) and not state.overlay_seen:
+        state.unseen_edits += 1
+        state.first_unseen = state.first_unseen or path
+    repeat_key = f"{name} {json.dumps(tool_input, sort_keys=True, ensure_ascii=False)}"
+    scan.repeats[repeat_key] = scan.repeats.get(repeat_key, 0) + 1
+
+
+def _on_tool_result(block: dict, scan: _Scan) -> None:
+    text = _flatten(block.get("content"))
+    lines = text.strip().splitlines()
+    first = lines[0] if lines else ""
+    is_error = block.get("is_error") is True
+    hook = _HOOK_DENY.match(first)
+    if hook and is_error:
+        name, tool_input = scan.tool_uses.get(str(block.get("tool_use_id") or ""), (hook.group("tool"), None))
+        guard = hook.group("guard")
+        message = _TRAILING_TAG.sub("", hook.group("msg"))
+        scan.signals.append(
+            Signal(
+                "guard_deny",
+                f"{guard}: {normalize(mask(message))}",
+                evidence(message),
+                guard=guard,
+                tool_name=name or hook.group("tool"),
+                tool_input=tool_input,
+            )
+        )
+    elif is_error and first:
+        scan.signals.append(Signal("tool_error", normalize(mask(first)), evidence(first)))
+    for label, pattern in _HARNESS_BLOCKS:
+        if first and pattern.search(first):
+            scan.signals.append(Signal("harness_block", label, evidence(first)))
+            break
+
+
+def _api_signal(text: str) -> Signal:
+    lowered = text.lower()
+    if "rate_limit" in lowered or "rate limit" in lowered:
+        label = "rate_limit"
+    elif "authentication" in lowered:
+        label = "authentication_failed"
+    else:
+        label = "other"
+    return Signal("api_error", f"api:{label}", evidence(text))
+
+
+def _flatten(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        )
+    return ""
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
