@@ -917,6 +917,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     tail: fullTail(),
     config: config?.line,
     stall: stallNote,
+    tree: stallTree,
     changes: noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: false })),
   })
 
@@ -950,13 +951,15 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // Brak postępu przez STALL_CHECK_MIN min: zrzut drzewa i zabicie jak przy timeoucie, klasa HANG (#397).
   let stalled = false
   let stallNote = null
+  let stallTree = null
   const progress = watchProgress({
     read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
     onStall: ({ idleMs }) => {
       stalled = true
       stallNote = describeStall({ tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") })
+      stallTree = processSnapshot(child.pid)
       log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}: ${stallNote}\n`)
-      log(processSnapshot(child.pid))
+      log(stallTree)
       killTree(child)
     },
   })
@@ -1016,7 +1019,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
-  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, changes }))
+  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, tree: stallTree, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
@@ -1060,12 +1063,13 @@ function repoChanges({ startHead, startStash, checkNoChanges }) {
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-export function finalReport({ startHead, tail, pause, config, invalidModel, stall, changes }) {
+export function finalReport({ startHead, tail, pause, config, invalidModel, stall, tree, changes }) {
   const { status, added, suspect, untrailed } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
   if (stall) out.push(`## zacięcie: ${stall}`)
+  if (tree) out.push("## drzewo procesów przy zabiciu", tree.trimEnd())
   if (suspect) out.push("## SUSPECT=no-changes")
   // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
   if (config) out.push(`## ${config}`)

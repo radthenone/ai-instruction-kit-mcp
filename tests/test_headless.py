@@ -1924,6 +1924,23 @@ class HeadlessStallCheckerTest(unittest.TestCase):
         )
         self.assertIn("## zacięcie: Wykonawca czeka na wejście.", result)
 
+    def test_stall_tree_dump_is_in_final_report(self) -> None:
+        result = node_export(
+            """(() => h.finalReport({
+  startHead: null,
+  tail: [],
+  pause: null,
+  config: null,
+  invalidModel: null,
+  stall: "czeka",
+  tree: "PID PPID PGID START COMM\\n4242 1 4242 Mon node\\n",
+  changes: { status: null, added: [], suspect: false, untrailed: [] },
+}))()""",
+            self.root,
+        )
+        self.assertIn("## drzewo procesów przy zabiciu", result)
+        self.assertIn("4242 1 4242 Mon node", result)
+
 
 if __name__ == "__main__":
     unittest.main()
