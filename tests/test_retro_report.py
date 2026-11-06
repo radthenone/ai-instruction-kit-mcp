@@ -10,6 +10,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from guides import retro_report
 
@@ -41,6 +42,18 @@ def _write_session(
     return path
 
 
+def _issues(*bodies: str) -> str:
+    return json.dumps([{"body": body} for body in bodies], ensure_ascii=False)
+
+
+def _marker(fingerprint: str) -> str:
+    return f"Opis karty\n\n<!-- retro-fingerprint: {fingerprint} -->\n"
+
+
+def _no_open_issues(argv: list[str], cwd: Path) -> str:
+    return "[]"
+
+
 class ThresholdTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -53,7 +66,7 @@ class ThresholdTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def _report(self) -> str:
-        return retro_report.report_command(self.workspace, cache_root=self.cache)
+        return retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=_no_open_issues)
 
     def test_empty_cache_says_so(self) -> None:
         self.assertIn("brak znalezisk", self._report())
@@ -109,6 +122,95 @@ class ThresholdTests(unittest.TestCase):
         report = self._report()
         self.assertIn(FP_GUARD, report)
         self.assertNotIn(FP_TOOL, report)
+
+
+class DedupTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.cache = self.root / "cache"
+        self.workspace = self.root / "kit"
+        self.workspace.mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _report(self, open_issues: str = "[]") -> str:
+        return retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=lambda argv, cwd: open_issues)
+
+    def _three_sessions(self, *fingerprints: str) -> None:
+        for session in ("s1", "s2", "s3"):
+            _write_session(self.cache, "alpha", session, [_finding(fp) for fp in fingerprints])
+
+    def test_open_issue_with_marker_drops_the_proposal(self) -> None:
+        self._three_sessions(FP_GUARD)
+        report = self._report(_issues(_marker(FP_GUARD)))
+        self.assertNotIn(FP_GUARD, report)
+        self.assertIn("pominięte (otwarte issue): 1", report)
+        self.assertIn("propozycje 0", report)
+
+    def test_other_fingerprints_are_still_proposed(self) -> None:
+        self._three_sessions(FP_GUARD, FP_TOOL)
+        report = self._report(_issues(_marker(FP_GUARD)))
+        self.assertNotIn(FP_GUARD, report)
+        self.assertIn(FP_TOOL, report)
+        self.assertIn("pominięte (otwarte issue): 1", report)
+
+    def test_marker_must_carry_a_full_fingerprint(self) -> None:
+        self._three_sessions(FP_GUARD)
+        self.assertIn(FP_GUARD, self._report(_issues("<!-- retro-fingerprint: 0123 -->")))
+
+    def test_github_is_asked_for_open_issues_only(self) -> None:
+        self._three_sessions(FP_GUARD)
+        gh_run = mock.Mock(return_value="[]")
+        retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=gh_run)
+        gh_run.assert_called_once()
+        argv, cwd = gh_run.call_args.args
+        self.assertEqual(argv[:3], ["gh", "issue", "list"])
+        self.assertEqual(argv[argv.index("--state") + 1], "open")
+        self.assertEqual(argv[argv.index("--json") + 1], "body")
+        self.assertEqual(cwd, self.workspace)
+
+    def test_github_is_not_asked_without_candidates(self) -> None:
+        _write_session(self.cache, "alpha", "s1", [_finding(FP_GUARD)])
+        gh_run = mock.Mock(return_value="[]")
+        retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=gh_run)
+        gh_run.assert_not_called()
+
+    def test_missing_gh_refuses_the_report_instead_of_listing_duplicates(self) -> None:
+        self._three_sessions(FP_GUARD)
+        with mock.patch("guides.retro_report.subprocess.run", side_effect=OSError("brak gh")):
+            with self.assertRaises(ValueError) as context:
+                retro_report.report_command(self.workspace, cache_root=self.cache)
+        self.assertIn("gh", str(context.exception))
+
+    def test_unreadable_github_answer_is_refused(self) -> None:
+        self._three_sessions(FP_GUARD)
+        with self.assertRaises(ValueError):
+            self._report("nie json")
+
+    def test_proposal_carries_marker_for_the_card(self) -> None:
+        self._three_sessions(FP_GUARD)
+        self.assertIn(f"<!-- retro-fingerprint: {FP_GUARD} -->", self._report())
+
+    def test_proposal_names_both_card_routes(self) -> None:
+        self._three_sessions(FP_GUARD)
+        report = self._report()
+        self.assertIn("/create-task", report)
+        self.assertIn("/kit-project-edit", report)
+
+
+class ParseOpenIssuesTests(unittest.TestCase):
+    def test_collects_markers_from_every_issue_body(self) -> None:
+        payload = _issues(_marker(FP_GUARD), "bez markera", _marker(FP_TOOL))
+        self.assertEqual(retro_report.parse_open_issues(payload), {FP_GUARD, FP_TOOL})
+
+    def test_issues_without_text_body_contribute_nothing(self) -> None:
+        self.assertEqual(retro_report.parse_open_issues('[{"title": "x"}, {"body": null}]'), set())
+
+    def test_non_list_answer_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            retro_report.parse_open_issues('{"body": "x"}')
 
 
 if __name__ == "__main__":
