@@ -1298,9 +1298,16 @@ do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoru
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
-(bez zabijania; to robi `--timeout`). Liczy to Node, nie model — zero tokenów. Podgląd na żywo
+(tylko ostrzeżenie; zabija dopiero kontrola postępu, niżej, albo `--timeout`). Liczy to Node, nie model — zero tokenów. Podgląd na żywo
 w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 `grep '^\[headless\]' <log> | tail -1`.
+
+**Kontrola postępu co 30 min (#397).** Postęp to nowe bajty wyjścia wykonawcy, zmiana `HEAD` albo
+`git status`, albo wzrost CPU jego potomków (`/proc/<pid>/stat`; bez `/proc` liczą log i git). Brak postępu
+w oknie 30 min → zrzut drzewa procesów do logu, checker z `models.claude.light` z Profilu opisuje stan w 1–3 zdaniach
+(ostatnie 40 linii wyjścia, `git status`, czas bez postępu; timeout 60 s; nie decyduje o zabiciu), drzewo zabite
+łagodnie jak przy `--timeout` (SIGTERM, po 2 s SIGKILL), klasa `HANG`, kod `124`, zadanie idzie 1:1 dalej.
+Opis trafia do raportu końcowego jako `## zacięcie: …`. Brak klucza `models.claude.light` wyłącza checker, nie kontrolę.
 
 **Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
@@ -1311,8 +1318,8 @@ wrapper ich nie przepisuje, poprawia je orkiestrator na branchu ticketu przed pu
 
 **Wiersz wywołania i raport nocy (#396).** Wywołanie z poprawnymi flagami kończy się jedną linią
 JSON jako ostatnią linią wyjścia: `ticket`, `wykonawca`, `lancuch`, `model`, `kod`, `klasa`, `start`,
-`koniec`, `log`, `sprawdz`, `dzialanie`. Klasy: `OK`; `LIMIT` (pauza, kod `75`); `HANG` (timeout albo
-sygnał w trakcie pracy wykonawcy); `ERROR` (kod ≠ 0 albo błąd wywołania); `MODEL` (nieznany model agy);
+`koniec`, `log`, `sprawdz`, `dzialanie`. Klasy: `OK`; `LIMIT` (pauza, kod `75`); `HANG` (timeout, brak
+postępu 30 min albo sygnał w trakcie pracy wykonawcy); `ERROR` (kod ≠ 0 albo błąd wywołania); `MODEL` (nieznany model agy);
 `SUSPECT` (exit 0 bez zmian w repo); `POLITYKA` (wpis stasha, commit bez trailera `Co-Authored-By` z hashem w `dzialanie` albo odmowa wykonawcy spoza zasad kitu; nie uruchamia zastępcy, praca zostaje). `POLITYKA` ustępuje `LIMIT`, `MODEL`, `HANG` i `ERROR`.
 `node .ai/headless.mjs --report --ctx <katalog>` składa z bufora HEADLESS REPORT po tickecie oraz listę
 wszystkich wywołań w kolejności; bufor kasuje dopiero po wypisaniu, więc przerwany raport go zostawia.
@@ -1327,10 +1334,12 @@ dozwolonych wykonawców.
 | `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
 | `antigravity` (alias `gemini`) | `agy -p "<treść>" --dangerously-skip-permissions --model … [--effort …]` (agy 1.4.8) | `--model` → `.agents/agy.json` → `gemini-3.8-flash-medium`; `--effort` tylko z `.agents/agy.json` | argument |
 
-**Fallback przy limicie.** Limit dostawcy albo brak binarki u wykonawcy → wrapper przekazuje
-tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
-w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Limit u ostatniego →
-kod `75` i zadanie przejmuje host (agent `/headless`, krok 2). Z Claude:
+**Przekazanie zadania (fallback).** Limit (`75`), `HANG`, inny kod wyjścia ≠ 0 albo brak binarki u wykonawcy →
+wrapper przekazuje tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
+w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Klasa `MODEL` (zły model agy) nie przechodzi dalej,
+bo to błąd konfiguracji. Limit u ostatniego → kod `75` i zadanie przejmuje host (agent `/headless`, krok 2).
+Inny błąd albo `HANG` u ostatniego → kod wyjścia wykonawcy (`124` przy zabiciu), wiersz `HANG`/`ERROR`; night-run
+przejmuje ticket subagentem przejęcia (`models.claude.takeover`), a porażka przejęcia kończy się needs-human. Z Claude:
 `/headless opencode "…"` → `gemini` → Claude sam; `/headless gemini "…"` → `opencode` → Claude sam.
 Limit rozpoznaje tekst w ogonie wyjścia; agy po błędzie dodatkowo `agy -p "/quota"` — grupa
 `Gemini Models` na 0% = limit, reset z najwcześniejszego wyczerpanego wiersza.
