@@ -6,13 +6,16 @@ w ``<cache>/<repo>/<sesja>.jsonl``. Żadna prawdziwa wiadomość z sesji nie tra
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from guides import retro_report
+from guides import cli, retro_report
 
 FP_GUARD = "0123456789abcdef"
 FP_TOOL = "fedcba9876543210"
@@ -211,6 +214,49 @@ class ParseOpenIssuesTests(unittest.TestCase):
     def test_non_list_answer_is_refused(self) -> None:
         with self.assertRaises(ValueError):
             retro_report.parse_open_issues('{"body": "x"}')
+
+
+def _run_cli(*argv: str, env: dict[str, str]) -> tuple[int, str]:
+    out = io.StringIO()
+    with mock.patch.dict(os.environ, env, clear=False):
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = cli.main(list(argv))
+    return code, out.getvalue()
+
+
+class RetroReportCliTests(unittest.TestCase):
+    def test_report_reads_every_repo_cache_under_xdg_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            xdg = Path(tmp) / "xdg"
+            workspace = Path(tmp) / "kit"
+            workspace.mkdir()
+            cache = xdg / "kit-ai" / "retro"
+            _write_session(cache, "alpha", "s1", [_finding(FP_GUARD)])
+            _write_session(cache, "beta", "s2", [_finding(FP_GUARD)])
+            with mock.patch("guides.retro_report.open_issue_fingerprints", return_value=set()) as dedup:
+                code, out = _run_cli("retro", "report", str(workspace), env={"XDG_CACHE_HOME": str(xdg)})
+            self.assertEqual(code, 0, out)
+            self.assertIn(FP_GUARD, out)
+            dedup.assert_called_once()
+
+    def test_report_without_findings_exits_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = _run_cli("retro", "report", tmp, env={"XDG_CACHE_HOME": tmp})
+            self.assertEqual(code, 0, out)
+            self.assertIn("brak znalezisk", out)
+
+    def test_github_refusal_exits_with_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            xdg = Path(tmp) / "xdg"
+            workspace = Path(tmp) / "kit"
+            workspace.mkdir()
+            cache = xdg / "kit-ai" / "retro"
+            for session in ("s1", "s2", "s3"):
+                _write_session(cache, "alpha", session, [_finding(FP_GUARD)])
+            with mock.patch("guides.retro_report.subprocess.run", side_effect=OSError("brak gh")):
+                code, out = _run_cli("retro", "report", str(workspace), env={"XDG_CACHE_HOME": str(xdg)})
+            self.assertEqual(code, 1)
+            self.assertIn("gh", out)
 
 
 if __name__ == "__main__":
