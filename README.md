@@ -63,6 +63,7 @@ kit-ai reload | kit-ai status | kit-ai doctor | kit-ai remove [--dry-run]
 kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --apply = plan)
 kit-ai host                                # profil hosta: vps | local (detect_host_profile)
 kit-ai night-ctx [ścieżka]                 # nagłówek CTX dla /night-run (Host z kit-ai host)
+kit-ai retro scan [ścieżka] [--session ID] [--since YYYY-MM-DD|Nd]  # sygnały sesji → ~/.cache/kit-ai/retro/<repo>/
 
 # jednorazowo, bez instalowania narzędzia:
 uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp kit-ai install
