@@ -1,6 +1,6 @@
 ---
 mode: "agent"
-description: "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, zapisy JSONL w ~/.cache/kit-ai/retro/<repo>/) na kategorie kit / projekt / agent / zewnętrzne z oceną. Użyj zawsze, gdy użytkownik pisze `/retro`, „retro”, „przejrzyj sesję”, „co poszło źle w sesji”, „sklasyfikuj znaleziska”, „sygnały z guardów”, „co wyszło z nocy”, albo gdy po sesji lub przebiegu headless czeka wynik skanu do oceny — także wtedy, gdy użytkownik nie użyje słowa „retro”. Nie edytuje plików."
+description: "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, zapisy JSONL w ~/.cache/kit-ai/retro/<repo>/) na kategorie kit / projekt / agent / zewnętrzne z oceną. Z flagą `/retro --kit` (w repo kita) klasyfikuje propozycje z agregacji `kit-ai retro report` z wielu repo. Użyj zawsze, gdy użytkownik pisze `/retro`, „retro”, „przejrzyj sesję”, „co poszło źle w sesji”, „sklasyfikuj znaleziska”, „sygnały z guardów”, „co wyszło z nocy”, albo gdy po sesji lub przebiegu headless czeka wynik skanu do oceny — także wtedy, gdy użytkownik nie użyje słowa „retro”. Nie edytuje plików."
 ---
 
 # Retro — klasyfikacja znalezisk
@@ -82,11 +82,31 @@ Na końcu jedna linia podsumowania:
 `Retro: <N> znalezisk — kit <n> · projekt <n> · agent <n> · zewnętrzne <n>.`
 Gdy wynik skanu nie ma Znalezisk, podajesz tylko `Retro: 0 znalezisk.`
 
+## Tryb `--kit`
+
+`/retro --kit` uruchamiasz w repo kita. Zamiast jednego skanu czytasz agregację z wielu repo:
+
+1. Uruchom `kit-ai retro report` w repo kita. Komenda czyta zapisy z cache każdego repo, grupuje
+   znaleziska po `fingerprint`, stosuje progi (co najmniej 3 sesje albo 2 repo) i pomija te,
+   których marker `<!-- retro-fingerprint: … -->` jest już w otwartym issue.
+2. Każdą propozycję klasyfikujesz jak w sekcji Kategorie. Dowód bierz z `evidence`, `replay`
+   i `kit` (commit kita z chwili skanu). Przy sprzeczności czytasz zapis sesji jak w punkcie 3
+   z Wejścia. Starszy `kit` przy `replay=deny` oznacza, że problem mógł już zniknąć: „do
+   potwierdzenia”.
+3. Trasa karty: `kit` i `agent` → `/create-task` w repo kita; `projekt` → `/kit-project-edit`
+   w repo tego projektu; `zewnętrzne` → bez karty.
+4. Wynik: jedna tabela z kolumnami Kategoria, Fingerprint, Sesje, Repo, Trasa karty, Ocena,
+   Pewność. Marker z raportu wklej do karty, żeby kolejny raport tę propozycję pominął.
+
+Propozycje to tylko propozycje: karty tworzy człowiek przez `/create-task` albo
+`/kit-project-edit` po akceptacji.
+
 ## Zasady
 
 - Nie edytuje plików: ani kodu, ani konfiguracji, ani wyniku skanu. Nie czyścisz katalogu cache.
 - Skill nie zakłada issue i nie pisze w GitHubie. Każda poprawka to Propozycja, którą człowiek
-  akceptuje przed jakimkolwiek zapisem (karty robi `/create-task`).
+  akceptuje przed jakimkolwiek zapisem (karty robi `/create-task` albo `/kit-project-edit`).
+  Jedynym kontaktem z GitHubem jest odczyt otwartych issue przez `kit-ai retro report` w trybie `--kit`.
 - Dane zamaskowane zostają zamaskowane. Nie odtwarzaj sekretów, adresów e-mail ani ścieżek
   domowych, nawet gdy je widzisz w zapisie sesji.
 - Nie wysyłasz treści sesji na zewnątrz: bez zapytań sieciowych i bez wklejania fragmentów do
