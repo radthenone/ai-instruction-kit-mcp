@@ -64,6 +64,7 @@ kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --
 kit-ai host                                # profil hosta: vps | local (detect_host_profile)
 kit-ai night-ctx [ścieżka]                 # nagłówek CTX dla /night-run (Host z kit-ai host)
 kit-ai retro scan [ścieżka] [--session ID] [--since YYYY-MM-DD|Nd]  # sygnały sesji → ~/.cache/kit-ai/retro/<repo>/
+kit-ai retro report [ścieżka]              # propozycje z wielu repo (≥3 sesje albo ≥2 repo), bez znalezisk z otwartym issue
 
 # jednorazowo, bez instalowania narzędzia:
 uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp kit-ai install
@@ -976,7 +977,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu / naprawa doctora | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"`, `/kit-project-edit "napraw zgłoszenia doctora"` |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
-| `/retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); nic nie zmienia | `kit-ai retro scan`, potem `/retro` |
+| `/retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); `--kit` w repo kita: propozycje z wielu repo; nic nie zmienia | `kit-ai retro scan`, potem `/retro`; w repo kita `kit-ai retro report`, potem `/retro --kit` |
 | `/night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
 
 

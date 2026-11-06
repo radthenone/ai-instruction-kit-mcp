@@ -70,6 +70,24 @@ class RetroSkillSourceTests(unittest.TestCase):
     def test_body_forbids_issue_creation(self) -> None:
         self.assertIn("nie zakłada issue", self.body)
 
+    def test_description_names_kit_trigger(self) -> None:
+        """Tryb `--kit` ma być w opisie, inaczej skill nie odpali się na `/retro --kit`."""
+        self.assertIn("--kit", self.meta.get("description", ""))
+
+    def test_body_describes_kit_mode_over_the_report(self) -> None:
+        """`/retro --kit` czyta agregację z `kit-ai retro report`, a nie pojedynczy skan."""
+        self.assertIn("`/retro --kit`", self.body)
+        self.assertIn("`kit-ai retro report`", self.body)
+
+    def test_kit_mode_routes_cards_and_keeps_dedup_marker(self) -> None:
+        """Karty idą przez `/create-task` albo `/kit-project-edit`, a marker z raportu trafia do karty."""
+        for needle in ("/create-task", "/kit-project-edit", "retro-fingerprint"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, self.body)
+
+    def test_kit_mode_leaves_card_creation_to_the_human(self) -> None:
+        self.assertIn("karty tworzy człowiek", self.body)
+
 
 class RetroSkillDegradationTests(unittest.TestCase):
     def test_degraded_clients_get_one_complete_file(self) -> None:
