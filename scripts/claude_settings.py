@@ -59,6 +59,7 @@ GUARD_MARKERS: tuple[str, ...] = (
     "language-reminder.mjs",
     "kit-doctor-reminder.mjs",
     "retro-session-end.mjs",
+    "subagent-remote-guard.mjs",
     # Guards v1 — tylko do prune przy reinstalacji.
     "invoke-hook.js",
     "gate-file-writes.mjs",

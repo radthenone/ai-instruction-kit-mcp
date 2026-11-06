@@ -330,6 +330,63 @@ class BashGuardTest(unittest.TestCase):
 
 
 @unittest.skipUnless(NODE, "brak node")
+class SubagentRemoteGuardTest(unittest.TestCase):
+    GUARD = "subagent-remote-guard.mjs"
+    REMOTE_TOOLS = (
+        "mcp__claude-code-remote__confirm_repository_trust",
+        "mcp__claude-code-remote__archive_session",
+        "mcp__claude-code-remote__send_message",
+        "mcp__claude-code-remote__list_sessions",
+    )
+
+    def test_denies_every_remote_tool_for_subagent(self) -> None:
+        for tool in self.REMOTE_TOOLS:
+            with self.subTest(tool=tool):
+                out = run_guard(self.GUARD, {"tool_name": tool, "agent_id": "a1", "agent_type": "git-end"})
+                self.assertEqual(out.get("permissionDecision"), "deny")
+
+    def test_denies_on_any_host(self) -> None:
+        payload = {"tool_name": self.REMOTE_TOOLS[0], "agent_id": "a1"}
+        for host in ("vps", "local"):
+            out = run_guard(self.GUARD, payload, {"KIT_HOST_PROFILE": host})
+            self.assertEqual(out.get("permissionDecision"), "deny", host)
+
+    def test_abstains_in_main_session(self) -> None:
+        """Bez decyzji, nie `allow`: jawne allow zatwierdzałoby narzędzie bez pytania o zgodę."""
+        for tool in self.REMOTE_TOOLS:
+            self.assertEqual(run_guard(self.GUARD, {"tool_name": tool}), {}, tool)
+
+    def test_abstains_for_main_session_started_with_agent_flag(self) -> None:
+        """`--agent` daje sesji głównej `agent_type`, ale subagenta poznajemy tylko po `agent_id`."""
+        out = run_guard(self.GUARD, {"tool_name": self.REMOTE_TOOLS[0], "agent_type": "night-run"})
+        self.assertEqual(out, {})
+
+    def test_abstains_for_other_tools_in_subagent(self) -> None:
+        out = run_guard(self.GUARD, {"tool_name": "mcp__github__get_me", "agent_id": "a1"})
+        self.assertEqual(out, {})
+
+    def test_denies_unreadable_payload(self) -> None:
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / self.GUARD)],
+            input="not json",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_claude_template_routes_whole_namespace_to_guard(self) -> None:
+        settings = json.loads((ROOT / "templates" / "claude" / "settings.json").read_text(encoding="utf-8"))
+        entries = [
+            e
+            for e in settings["hooks"]["PreToolUse"]
+            if any(self.GUARD in h["command"] for h in e["hooks"])
+        ]
+        self.assertEqual([e["matcher"] for e in entries], ["mcp__claude-code-remote__.*"])
+
+
+@unittest.skipUnless(NODE, "brak node")
 class SensitiveFilesGuardTest(unittest.TestCase):
     def test_read(self) -> None:
         for path, expected in SENSITIVE_READ:

@@ -60,7 +60,14 @@ class ClaudeSettingsMergeTest(unittest.TestCase):
         run("install", str(self.target), str(TEMPLATE))
         hooks = self.load()["hooks"]
         commands = [h["command"] for event in hooks.values() for e in event for h in e["hooks"]]
-        for name in ("git-guard.mjs", "bash-guard.mjs", "sensitive-files-guard.mjs", "linters-guard.mjs", "rtk-check.mjs"):
+        for name in (
+            "git-guard.mjs",
+            "bash-guard.mjs",
+            "sensitive-files-guard.mjs",
+            "linters-guard.mjs",
+            "rtk-check.mjs",
+            "subagent-remote-guard.mjs",
+        ):
             self.assertTrue(any(name in c for c in commands), name)
         self.assertIn("PostToolUse", hooks)
         self.assertIn("SessionStart", hooks)
