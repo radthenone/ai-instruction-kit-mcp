@@ -16,7 +16,8 @@ import re
 import shutil
 import subprocess
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -401,3 +402,206 @@ def build_findings(signals: list[Signal], *, replay: Callable[[Signal], str]) ->
             )
         )
     return sorted(findings, key=lambda finding: (finding.kind, finding.fingerprint))
+
+
+SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
+_PROJECT_CHARS = re.compile(r"[^A-Za-z0-9]")
+_REPO_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+_SINCE_DAYS = re.compile(r"(\d+)d")
+
+
+def project_dir_name(workspace: Path) -> str:
+    """Nazwa katalogu projektu w ``~/.claude/projects``: każdy znak spoza ``[A-Za-z0-9]`` to ``-``."""
+    return _PROJECT_CHARS.sub("-", str(workspace.resolve()))
+
+
+def repo_name(workspace: Path) -> str:
+    """Nazwa repo w ścieżce cache (nazwa katalogu roboczego, bez znaków ze ścieżek)."""
+    return _REPO_CHARS.sub("-", workspace.resolve().name) or "repo"
+
+
+def default_projects_root() -> Path:
+    return Path.home() / ".claude" / "projects"
+
+
+def default_cache_root() -> Path:
+    """``$XDG_CACHE_HOME/kit-ai/retro`` albo ``~/.cache/kit-ai/retro``."""
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "retro"
+
+
+def parse_since(value: str, *, now: datetime) -> float:
+    """``Nd`` (ostatnie N dni) albo ``YYYY-MM-DD`` (północ czasu lokalnego) jako znacznik czasu."""
+    days = _SINCE_DAYS.fullmatch(value)
+    if days:
+        return (now - timedelta(days=int(days.group(1)))).timestamp()
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").timestamp()
+    except ValueError as exc:
+        raise ValueError(f"nieznany format --since: {value} (oczekiwano YYYY-MM-DD albo Nd)") from exc
+
+
+def kit_sha(workspace: Path) -> str:
+    """Commit kita, z którego działa serwer MCP (argument ``--kit-root`` w ``.mcp.json``); inaczej ``unknown``."""
+    try:
+        config = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "unknown"
+    servers = config.get("mcpServers") if isinstance(config, dict) else None
+    if not isinstance(servers, dict):
+        return "unknown"
+    for server in servers.values():
+        args = server.get("args") if isinstance(server, dict) else None
+        if not isinstance(args, list):
+            continue
+        for flag, value in zip(args, args[1:]):
+            if flag != "--kit-root" or not isinstance(value, str):
+                continue
+            try:
+                result = subprocess.run(
+                    ["git", "-C", value, "rev-parse", "--short=12", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            except OSError:
+                continue
+            sha = result.stdout.strip()
+            if result.returncode == 0 and sha:
+                return sha
+    return "unknown"
+
+
+def find_session_files(projects_root: Path, session_id: str) -> list[Path]:
+    """Plik JSONL sesji i pliki jej subagentów; pusta lista, gdy sesji nie ma."""
+    if not SESSION_ID.fullmatch(session_id):
+        raise ValueError(f"nieprawidłowy identyfikator sesji: {session_id!r}")
+    matches = sorted(projects_root.glob(f"*/{session_id}.jsonl"), key=_mtime, reverse=True)
+    if not matches:
+        return []
+    return [matches[0], *_subagent_files(matches[0].parent, session_id)]
+
+
+def _subagent_files(project_dir: Path, session_id: str) -> list[Path]:
+    return sorted((project_dir / session_id / "subagents").glob("*.jsonl"))
+
+
+def _mtime(path: Path) -> float:
+    return path.stat().st_mtime
+
+
+def _scan_files(
+    files: list[Path],
+    *,
+    session_id: str,
+    workspace: Path,
+    cache_root: Path,
+    kit_root: Path,
+    runner: Callable[[Signal], str] | None,
+    now: datetime | None,
+) -> tuple[Path, int]:
+    """Parsuje pliki sesji, odtwarza deny i zapisuje wpisy do ``cache_root/<repo>/<sesja>.jsonl``.
+
+    Plik powstaje przez zapis tymczasowy i podmianę, więc ponowny skan tej samej sesji
+    zastępuje wynik zamiast go dublować.
+    """
+    parsed = parse_session(files, session_id=session_id)
+    replay = runner or (
+        lambda signal: replay_guard(signal.guard, signal.tool_name, signal.tool_input, kit_root=kit_root, cwd=workspace)
+    )
+    findings = build_findings(parsed.signals, replay=replay)
+    repo = repo_name(workspace)
+    base = {"schema": SCHEMA_VERSION, "repo": repo, "kit_sha": kit_sha(workspace), "session": session_id}
+    stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    records: list[dict] = [
+        {
+            "type": "session",
+            **base,
+            "scanned_at": stamp,
+            "files": parsed.files,
+            "metrics": asdict(parsed.metrics),
+            "findings": len(findings),
+        }
+    ]
+    for finding in findings:
+        records.append(
+            {
+                "type": "finding",
+                **base,
+                "kind": finding.kind,
+                "fingerprint": finding.fingerprint,
+                "guard": finding.guard,
+                "tool": finding.tool_name,
+                "count": finding.count,
+                "replay": finding.replay,
+                "evidence": finding.evidence,
+            }
+        )
+    target_dir = cache_root / repo
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{session_id}.jsonl"
+    staging = target.with_name(f"{target.name}.tmp")
+    staging.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
+    os.replace(staging, target)
+    return target, len(findings)
+
+
+def scan_session(
+    session_id: str,
+    *,
+    workspace: Path,
+    projects_root: Path,
+    cache_root: Path,
+    kit_root: Path,
+    runner: Callable[[Signal], str] | None = None,
+    now: datetime | None = None,
+) -> Path:
+    """Skanuje jedną sesję razem z subagentami i zwraca ścieżkę wpisów w cache repo."""
+    files = find_session_files(projects_root, session_id)
+    if not files:
+        raise ValueError(f"nie znaleziono sesji {session_id} w {projects_root}")
+    target, _ = _scan_files(
+        files,
+        session_id=session_id,
+        workspace=workspace,
+        cache_root=cache_root,
+        kit_root=kit_root,
+        runner=runner,
+        now=now,
+    )
+    return target
+
+
+def scan_command(
+    workspace: Path,
+    *,
+    session: str | None,
+    since: str | None,
+    projects_root: Path,
+    cache_root: Path,
+    kit_root: Path,
+    runner: Callable[[Signal], str] | None = None,
+    now: datetime | None = None,
+) -> str:
+    """Tekst wyniku ``kit-ai retro scan``: jedna sesja (``session``) albo sesje repo, opcjonalnie od ``since``."""
+    stamp = now or datetime.now(timezone.utc)
+    options = {"workspace": workspace, "cache_root": cache_root, "kit_root": kit_root, "runner": runner, "now": stamp}
+    if session is not None:
+        files = find_session_files(projects_root, session)
+        if not files:
+            raise ValueError(f"nie znaleziono sesji {session} w {projects_root}")
+        target, found = _scan_files(files, session_id=session, **options)
+        return f"retro: sesja {session} → {target} (znaleziska: {found})"
+    cutoff = parse_since(since, now=stamp) if since else None
+    base = projects_root / project_dir_name(workspace)
+    mains = [
+        main
+        for main in sorted(base.glob("*.jsonl"))
+        if SESSION_ID.fullmatch(main.stem) and (cutoff is None or _mtime(main) >= cutoff)
+    ]
+    if not mains:
+        return f"retro: brak sesji w {base}"
+    found_total = 0
+    for main in mains:
+        _, found = _scan_files([main, *_subagent_files(base, main.stem)], session_id=main.stem, **options)
+        found_total += found
+    return f"retro: sesje: {len(mains)}, znaleziska: {found_total} → {cache_root / repo_name(workspace)}"

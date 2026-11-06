@@ -6,13 +6,19 @@ wiadomość z sesji nie trafia do repo.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
 import shutil
+import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
-from guides import retro
+from guides import cli, retro
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 NODE = shutil.which("node")
@@ -277,6 +283,201 @@ class ReplayWithGuardsTests(unittest.TestCase):
             retro.replay_guard("../git-guard", "Bash", {"command": "x"}, kit_root=KIT_ROOT, cwd=KIT_ROOT), "unknown"
         )
         self.assertEqual(retro.replay_guard("git-guard", "Bash", None, kit_root=KIT_ROOT, cwd=KIT_ROOT), "unknown")
+
+
+SECRET = "ghp_" + "Q" * 36
+OLD_SESSION = "22222222-2222-4333-8444-555555555555"
+
+
+def _run_cli(*argv: str, env: dict[str, str]) -> tuple[int, str]:
+    out = io.StringIO()
+    with mock.patch.dict(os.environ, env, clear=False):
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = cli.main(list(argv))
+    return code, out.getvalue()
+
+
+class ScanTests(unittest.TestCase):
+    NOW = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.projects = self.root / "projects"
+        self.cache = self.root / "cache"
+        self.workspace = self.root / "work" / "my-repo"
+        self.workspace.mkdir(parents=True)
+        self.project_dir = self.projects / retro.project_dir_name(self.workspace)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _write_main(self, session_id: str = SESSION, records: list[dict] | None = None) -> Path:
+        if records is None:
+            records = [
+                _assistant(
+                    "m1",
+                    _tool_use("t1", "Bash", {"command": "git checkout ."}),
+                    usage={"input_tokens": 5, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 0},
+                ),
+                _tool_result("t1", GUARD_DENY, is_error=True),
+                _assistant("m2", _tool_use("t2", "Read", {"file_path": "/home/alice/x/notes.md"})),
+                _tool_result("t2", f"token={SECRET} at /home/alice/x/notes.md " + "y" * 400, is_error=True),
+            ]
+        return _write_jsonl(self.project_dir / f"{session_id}.jsonl", records)
+
+    def _scan(self, runner=None) -> Path:
+        return retro.scan_session(
+            SESSION,
+            workspace=self.workspace,
+            projects_root=self.projects,
+            cache_root=self.cache,
+            kit_root=KIT_ROOT,
+            runner=runner or (lambda signal: "deny"),
+            now=self.NOW,
+        )
+
+    def test_writes_session_record_and_findings_to_repo_cache(self) -> None:
+        self._write_main()
+        out = self._scan()
+        self.assertEqual(out, self.cache / "my-repo" / f"{SESSION}.jsonl")
+        records = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+        head, findings = records[0], records[1:]
+        self.assertEqual(head["type"], "session")
+        self.assertEqual(head["session"], SESSION)
+        self.assertEqual(head["files"], 1)
+        self.assertEqual(head["findings"], len(findings))
+        self.assertEqual(head["metrics"], {"api_calls": 1, "cache_read_sum": 100, "max_context": 105})
+        deny = next(record for record in findings if record["kind"] == "guard_deny")
+        self.assertEqual((deny["guard"], deny["tool"], deny["replay"]), ("git-guard", "Bash", "deny"))
+        self.assertIn("tool_error", [record["kind"] for record in findings])
+
+    def test_never_stores_raw_secrets_home_paths_or_long_messages(self) -> None:
+        self._write_main()
+        text = self._scan().read_text(encoding="utf-8")
+        self.assertNotIn(SECRET, text)
+        self.assertNotIn("/home/alice", text)
+        self.assertNotIn("y" * 300, text)
+        for line in text.splitlines():
+            self.assertLessEqual(len(json.loads(line).get("evidence", "")), retro.EVIDENCE_LIMIT)
+
+    def test_fixed_deny_is_not_written(self) -> None:
+        self._write_main()
+        text = self._scan(runner=lambda signal: "allow").read_text(encoding="utf-8")
+        self.assertNotIn('"guard_deny"', text)
+        self.assertIn('"tool_error"', text)
+
+    def test_subagent_transcripts_are_part_of_the_session(self) -> None:
+        self._write_main(records=[_assistant("m1", _tool_use("t1", "Read", {"file_path": "/x/a.md"}))])
+        _write_jsonl(
+            self.project_dir / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant("s1", _tool_use("u1", "Edit", {"file_path": "src/guides/x.py"}))],
+        )
+        out = self._scan()
+        self.assertEqual(json.loads(out.read_text(encoding="utf-8").splitlines()[0])["files"], 2)
+        self.assertIn('"mcp_compliance"', out.read_text(encoding="utf-8"))
+
+    def test_rescan_overwrites_instead_of_duplicating(self) -> None:
+        self._write_main()
+        first = self._scan().read_text(encoding="utf-8")
+        self.assertEqual(self._scan().read_text(encoding="utf-8"), first)
+
+    def test_unknown_session_is_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "nie znaleziono sesji"):
+            self._scan()
+
+    def test_unsafe_session_id_is_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "nieprawidłowy identyfikator sesji"):
+            retro.find_session_files(self.projects, "../escape")
+
+    def test_batch_scan_honours_since_by_file_mtime(self) -> None:
+        self._write_main(session_id=SESSION)
+        old = self._write_main(session_id=OLD_SESSION)
+        os.utime(old, (0, 0))
+        message = retro.scan_command(
+            self.workspace,
+            session=None,
+            since="2020-01-01",
+            projects_root=self.projects,
+            cache_root=self.cache,
+            kit_root=KIT_ROOT,
+            runner=lambda signal: "deny",
+            now=self.NOW,
+        )
+        self.assertIn("sesje: 1", message)
+        self.assertTrue((self.cache / "my-repo" / f"{SESSION}.jsonl").is_file())
+        self.assertFalse((self.cache / "my-repo" / f"{OLD_SESSION}.jsonl").exists())
+
+
+class HelperTests(unittest.TestCase):
+    def test_project_dir_name_replaces_non_alphanumerics(self) -> None:
+        self.assertEqual(
+            retro.project_dir_name(Path("/home/alice/projects/my.repo_x")),
+            "-home-alice-projects-my-repo-x",
+        )
+
+    def test_since_accepts_days_and_iso_date(self) -> None:
+        now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+        self.assertEqual(retro.parse_since("2d", now=now), (now - timedelta(days=2)).timestamp())
+        self.assertEqual(retro.parse_since("2026-11-01", now=now), datetime(2026, 11, 1).timestamp())
+        with self.assertRaisesRegex(ValueError, "--since"):
+            retro.parse_since("last week", now=now)
+
+    def test_kit_sha_is_unknown_without_mcp_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(retro.kit_sha(Path(tmp)), "unknown")
+
+    def test_kit_sha_reads_commit_of_kit_root_from_mcp_args(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = Path(tmp) / "kit"
+            kit.mkdir()
+            git = ["git", "-C", str(kit), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+            subprocess.run(["git", "init", "-q", str(kit)], check=True)
+            (kit / "f.txt").write_text("x", encoding="utf-8")
+            subprocess.run([*git, "add", "f.txt"], check=True)
+            subprocess.run([*git, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"], check=True)
+            expected = subprocess.run(
+                ["git", "-C", str(kit), "rev-parse", "--short=12", "HEAD"], capture_output=True, text=True, check=True
+            ).stdout.strip()
+            work = Path(tmp) / "repo"
+            work.mkdir()
+            config = {"mcpServers": {"project-guides": {"command": "uv", "args": ["run", "--kit-root", str(kit)]}}}
+            (work / ".mcp.json").write_text(json.dumps(config), encoding="utf-8")
+            self.assertEqual(retro.kit_sha(work), expected)
+
+
+class RetroCliTests(unittest.TestCase):
+    def test_scan_session_writes_cache_and_reports_location(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, cache = Path(tmp) / "home", Path(tmp) / "cache"
+            workspace = Path(tmp) / "my-repo"
+            workspace.mkdir()
+            project = home / ".claude" / "projects" / retro.project_dir_name(workspace)
+            _write_jsonl(
+                project / f"{SESSION}.jsonl",
+                [
+                    _assistant("m1", _tool_use("t1", "Bash", {"command": "git checkout ."})),
+                    _tool_result("t1", GUARD_DENY, is_error=True),
+                ],
+            )
+            code, out = _run_cli(
+                "retro", "scan", "--session", SESSION, str(workspace),
+                env={"HOME": str(home), "XDG_CACHE_HOME": str(cache)},
+            )
+            self.assertEqual(code, 0, out)
+            target = cache / "kit-ai" / "retro" / "my-repo" / f"{SESSION}.jsonl"
+            self.assertTrue(target.is_file())
+            self.assertIn(str(target), out)
+            self.assertIn('"replay": "deny"', target.read_text(encoding="utf-8"))
+
+    def test_unknown_session_exits_with_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = _run_cli(
+                "retro", "scan", "--session", SESSION, tmp,
+                env={"HOME": tmp, "XDG_CACHE_HOME": tmp},
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("nie znaleziono sesji", out)
 
 
 if __name__ == "__main__":

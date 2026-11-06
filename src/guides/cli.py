@@ -42,6 +42,7 @@ from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
 from guides.night_ctx import render_night_ctx
 from guides.resolver import PROFILE_REL_PATH, normalize_language
+from guides.retro import default_cache_root, default_projects_root, scan_command
 
 DEFAULT_GIT_SOURCE = "git+https://github.com/radthenone/ai-instruction-kit-mcp.git"
 SERVER_NAME = "project-guides"
@@ -654,6 +655,17 @@ def main(argv: list[str] | None = None) -> int:
         "--verbose", action="store_true", help="Kandydaci, gdy ścieżka pasuje do kilku miejsc"
     )
 
+    retro = sub.add_parser("retro", help="Skaner sesji agentów do ~/.cache/kit-ai/retro (#371)")
+    retro_sub = retro.add_subparsers(dest="retro_command", required=True)
+    retro_scan = retro_sub.add_parser(
+        "scan", help="Przeskanuj sesje Claude tego repo albo jedną sesję (--session)"
+    )
+    retro_scan.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+    retro_scan.add_argument("--session", help="ID sesji Claude (np. z hooka SessionEnd)")
+    retro_scan.add_argument(
+        "--since", help="Bez --session: tylko sesje zmienione od YYYY-MM-DD albo w ostatnich Nd"
+    )
+
     args = parser.parse_args(argv)
     if args.command == "host":
         print(get_host_profile())
@@ -685,6 +697,17 @@ def main(argv: list[str] | None = None) -> int:
             print(render_night_ctx(workspace))
         elif args.command == "doctor":
             print(doctor_report(workspace, kit_root, as_json=args.json, verbose=args.verbose))
+        elif args.command == "retro":
+            print(
+                scan_command(
+                    workspace,
+                    session=args.session,
+                    since=args.since,
+                    projects_root=default_projects_root(),
+                    cache_root=default_cache_root(),
+                    kit_root=kit_root,
+                )
+            )
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
             print(doctor_report(workspace, kit_root))
