@@ -1629,5 +1629,121 @@ clients: claude,opencode
         self.assertIsNone(node_export('h.profileModel("claude", "light")', self.root))
 
 
+# Szkielet sprawdzenia postępu: `read` zwraca kolejne migawki (pierwsza przy starcie, potem po jednej
+# na kontrolę), `now` to wstrzyknięty zegar w ms. Wynik: czy kontrola widziała postęp i czasy zacięć.
+WATCH_JS = """(() => {
+  const reads = __SNAPSHOTS__;
+  const clock = { t: 0 };
+  const stalls = [];
+  const watch = h.watchProgress({
+    read: () => reads.shift(),
+    onStall: ({ idleMs }) => stalls.push(idleMs),
+    now: () => clock.t,
+    schedule: () => 0,
+    unschedule: () => {},
+  });
+  const results = __TICKS__.map((t) => { clock.t = t; return watch.tick().progressed; });
+  return { results, stalls };
+})()"""
+
+
+def run_watch(snapshots: list[dict], ticks: list[int], root: Path) -> dict:
+    js = WATCH_JS.replace("__SNAPSHOTS__", json.dumps(snapshots)).replace("__TICKS__", json.dumps(ticks))
+    return node_export(js, root)
+
+
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+class HeadlessProgressSourcesTest(unittest.TestCase):
+    """Źródła postępu (CPU z /proc, log, git) i kontrola co 30 min na wstrzykniętym zegarze (#397)."""
+
+    MIN = 60_000
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def fake_proc(self, rows: dict[int, tuple[int, int, int]]) -> Path:
+        """Fałszywy /proc: pid → (ppid, utime, stime); reszta pól `stat` jak w Linuksie."""
+        proc = self.root / "proc"
+        for pid, (ppid, utime, stime) in rows.items():
+            (proc / str(pid)).mkdir(parents=True, exist_ok=True)
+            (proc / str(pid) / "stat").write_text(
+                f"{pid} (node) S {ppid} {pid} {pid} 0 -1 4194304 0 0 0 0 {utime} {stime} 0 0 20 0 1 0 1 0 0\n",
+                encoding="utf-8",
+            )
+        (proc / "self").mkdir(parents=True, exist_ok=True)  # wpis nie-PID jest pomijany
+        return proc
+
+    def test_cpu_ticks_sum_only_the_executor_tree(self) -> None:
+        proc = self.fake_proc({100: (1, 10, 5), 101: (100, 7, 3), 102: (101, 1, 1), 200: (1, 999, 999)})
+        self.assertEqual(node_export(f"h.cpuTicksOfTree(100, {json.dumps(str(proc))})", self.root), 27)
+
+    def test_cpu_ticks_are_null_without_proc(self) -> None:
+        self.assertIsNone(node_export('h.cpuTicksOfTree(100, "/nonexistent-proc")', self.root))
+
+    def test_check_threshold_is_thirty_minutes(self) -> None:
+        self.assertEqual(node_export("h.STALL_CHECK_MIN", self.root), 30)
+
+    def test_output_growth_counts_as_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 12, "git": "a", "cpu": 10}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True], "stalls": []})
+
+    def test_git_head_or_status_change_counts_as_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "b", "cpu": 10}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True], "stalls": []})
+
+    def test_cpu_growth_counts_as_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "a", "cpu": 11}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True], "stalls": []})
+
+    def test_cpu_drop_when_child_exits_is_not_progress(self) -> None:
+        result = run_watch(
+            [{"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "a", "cpu": 4}],
+            [30 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [False], "stalls": [30 * self.MIN]})
+
+    def test_no_progress_in_window_is_stall_with_idle_time(self) -> None:
+        same = {"output": 0, "git": "a", "cpu": 10}
+        result = run_watch([same, dict(same)], [30 * self.MIN], self.root)
+        self.assertEqual(result, {"results": [False], "stalls": [30 * self.MIN]})
+
+    def test_idle_time_counts_from_last_progress(self) -> None:
+        same = {"output": 0, "git": "a", "cpu": 10}
+        result = run_watch(
+            [same, {"output": 5, "git": "a", "cpu": 10}, {"output": 5, "git": "a", "cpu": 10}],
+            [30 * self.MIN, 60 * self.MIN], self.root,
+        )
+        self.assertEqual(result, {"results": [True, False], "stalls": [30 * self.MIN]})
+
+    def test_check_is_scheduled_every_interval_and_stop_unschedules(self) -> None:
+        result = node_export(
+            """(() => {
+  const scheduled = [];
+  const unscheduled = [];
+  const watch = h.watchProgress({
+    read: () => ({ output: 0, git: "a", cpu: 0 }),
+    onStall: () => {},
+    schedule: (fn, ms) => { scheduled.push(ms); return "timer"; },
+    unschedule: (token) => unscheduled.push(token),
+  });
+  watch.stop();
+  return { scheduled, unscheduled };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"scheduled": [30 * self.MIN], "unscheduled": ["timer"]})
+
+
 if __name__ == "__main__":
     unittest.main()

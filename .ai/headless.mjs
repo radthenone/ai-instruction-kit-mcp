@@ -499,6 +499,72 @@ function git(...args) {
 
 const lines = (text) => (text ? text.split("\n") : [])
 
+// Kontrola postępu co 30 min (#397): jeden próg dla całego wywołania.
+export const STALL_CHECK_MIN = 30
+
+// Czas CPU (utime + stime, w tickach) procesu wykonawcy i jego potomków z /proc. Bez /proc
+// (macOS, Windows) — null: wtedy postęp liczą log i git. Rodzic liczymy z pola ppid, nie z grupy
+// procesów, bo serwer opencode ma własną grupę.
+export function cpuTicksOfTree(rootPid, proc = "/proc") {
+  let names
+  try {
+    names = readdirSync(proc)
+  } catch {
+    return null
+  }
+  const children = new Map()
+  const ticks = new Map()
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue
+    let stat
+    try {
+      stat = readFileSync(join(proc, name, "stat"), "utf8")
+    } catch {
+      continue // proces zniknął między listą katalogu a odczytem
+    }
+    // Po `)` zamykającym nazwę: stan (0), ppid (1), …, utime (11), stime (12).
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+    const pid = Number(name)
+    children.set(Number(fields[1]), [...(children.get(Number(fields[1])) || []), pid])
+    ticks.set(pid, Number(fields[11]) + Number(fields[12]))
+  }
+  let total = 0
+  const queue = [rootPid]
+  for (const pid of queue) {
+    total += ticks.get(pid) ?? 0
+    queue.push(...(children.get(pid) || []))
+  }
+  return total
+}
+
+// Kontrola postępu co `intervalMs` (#397). Postęp = wzrost bajtów wyjścia wykonawcy, zmiana HEAD
+// albo git status, wzrost CPU potomków (spadek to koniec procesu, nie praca). Brak postępu w oknie
+// → `onStall({ idleMs })`, czyli czas od ostatniej zmiany. Źródła, zegar i harmonogram są wstrzyknięte.
+export function watchProgress({
+  read,
+  onStall,
+  intervalMs = STALL_CHECK_MIN * 60_000,
+  now = Date.now,
+  schedule = setInterval,
+  unschedule = clearInterval,
+}) {
+  let previous = read()
+  let changedAt = now()
+  const tick = () => {
+    const current = read()
+    const progressed = current.output > previous.output
+      || current.git !== previous.git
+      || (current.cpu ?? 0) > (previous.cpu ?? 0)
+    previous = current
+    if (progressed) changedAt = now()
+    const idleMs = now() - changedAt
+    if (!progressed) onStall({ idleMs })
+    return { progressed, idleMs }
+  }
+  const timer = schedule(tick, intervalMs)
+  return { tick, stop: () => unschedule(timer) }
+}
+
 // Wiersz wywołania (#396): jedna linia JSON na końcu każdego wywołania, także przy sygnale, błędzie
 // i odmowie przed startem. Stan wywołania zbiera się po drodze, wiersz składa się na końcu.
 // Klasy: OK, LIMIT (pauza), HANG (timeout albo sygnał), ERROR (kod ≠ 0 albo błąd wywołania),
