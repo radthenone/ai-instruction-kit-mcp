@@ -253,7 +253,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    Język wyjścia: <language> (wartość z `get_language`).
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
-   bez zmian) + potwierdzony/niepewny. Nie edytuj.” Zapisz jego id w `## Stan`.
+   bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Nie edytuj.” Zapisz jego id w `## Stan`.
    Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
    przekłada na język Profilu: nagłówki sekcji, etykiety werdyktów i podsumowanie (np. `## Standardy` /
    `## Spec`, `TWARDE` / `OCENA`). Bez zmian: nagłówek tabeli `Severity | Location | Finding | Fix`
@@ -278,6 +278,7 @@ Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, z
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
 Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
 `gh issue view <N> --comments`.
+Body issue bez sekcji `Kryterium ukończenia` ani `Kryteria akceptacji` → hand-back needs-human przed pierwszym krokiem, bez kodu.
 Frontend: po kroku 1 plik `docs/design/<N>.md` jest w drzewie (z <BASE> albo z istniejącego
 brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżność = hand-back
 needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
@@ -311,8 +312,8 @@ Kroki:
    **subagenta przejęcia** (Agent z parametrem `model` = model z `PRZEJĘCIE`) z DOSŁOWNIE tą samą treścią z
    cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem wrappera (commity,
    `git status`, ostatnie linie) i stanem brancha. Effort: bez parametru — subagent przejęcia
-   dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; skill z `disable-model-invocation`
-   przez odczyt jego `SKILL.md` i wykonanie treści. Przejęcie nie rusza niezacommitowanych zmian
+   dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; gdy Skill odrzuci wywołanie skilla z `disable-model-invocation`
+   → needs-human (nie czytasz jego `SKILL.md` i nie odtwarzasz kroków innym sposobem). Przejęcie nie rusza niezacommitowanych zmian
    (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limicie zagnieżdżenia 3
    (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
    Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
@@ -335,6 +336,7 @@ Kroki:
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
    hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 3
    próby); nadal czerwone → needs-human.
+**Sprawdzenie przed merge (przed krokiem 7):** świeży subagent uruchomiony przez Ciebie (nie ten, który pisał poprawki) dostaje tylko wiersze Spec: z tabeli, a gdy review nie miało osi Spec, każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`) z body issue. Zwraca `spełnione` albo `niespełnione` dla każdego wiersza. Wiersz High nadal niespełniony = **finding blokujący**: nie merguj, PR zostaje otwarty, hand-back needs-human z tym wierszem (przypadek E). Nawet zielone CI nie znosi finding blokującego; wyjątek tylko przez tekst celu.
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
@@ -380,6 +382,7 @@ Reguły:
   weryfikowalną, zakładasz dziecko `needs-local` podpięte jako sub-issue i zablokowane
   (`blocked_by`) przez bieżące issue, z opisem co zostaje i dlaczego, i kontynuujesz łańcuch
   dla części głównej.
+- Commity: prefiks Conventional po angielsku (`fix:`, `feat:`), opis i body w języku z `get_language`.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
@@ -426,7 +429,7 @@ szybkich, krok 6 promptu), nigdy push.
 
 ### Wyzwalacze
 
-**needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
+**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
 po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
 błąd builda przy aktualizacji samego lockfile → etykieta
@@ -459,7 +462,9 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
+- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej.
+
+Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
 - blokujący deny `server-guard:` → nadaj `needs-local` zamiast `ready-for-human` (nie zdejmuj
   `ready-for-agent`, `needs-local` to warunek wykonania):
@@ -603,6 +608,8 @@ Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule język
 | --- | --- |
 | #<PR> | <plik dodany w routes-web / routes-mobile> |
 ```
+
+**Kontrakt raportu:** przed wysłaniem sprawdź każde pole powyższego bloku. Pole, którego nie dotyczy (np. `Pauzy limitu`, `Orkiestrator` poza Claude Code, `Wznowienia per ticket` bez wznowień), dostaje `n/d — <powód>`. Dane, których brak mimo wysiłku, dostają `brak danych: <powód>`. Pola nie wolno pominąć.
 
 **Nowe ekrany:** pliki dodane w katalogach `routes-web` / `routes-mobile` (`.ai/project.md
 ## Ścieżki`) przez PR-y zmergowane tej nocy — tylko pliki nowe:
