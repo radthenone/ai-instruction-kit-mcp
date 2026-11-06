@@ -1579,5 +1579,55 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.argv()[0], "opencode2")
 
 
+def node_export(expression: str, cwd: Path) -> object:
+    """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
+    script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify({expression}));"
+    result = subprocess.run(
+        [NODE, "--input-type=module", "-e", script],
+        cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr)
+    return json.loads(result.stdout)
+
+
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+class HeadlessStallProfileTest(unittest.TestCase):
+    """Tani model checkera zacięcia z `models.claude.light` w Profilu (#397)."""
+
+    PROFILE = """name: app
+agents:
+  light: cleanup,headless
+models:
+  claude:
+    light: haiku # tani model checkera
+    takeover: haiku
+  opencode:
+    light: gpt-mini
+clients: claude,opencode
+"""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / ".ai").mkdir()
+        (self.root / ".ai/project.profile.yaml").write_text(self.PROFILE, encoding="utf-8")
+
+    def test_reads_claude_light_from_models_block(self) -> None:
+        self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
+
+    def test_agents_light_list_is_not_a_model(self) -> None:
+        self.assertIsNone(node_export('h.profileModel("agents", "light")', self.root))
+
+    def test_missing_tier_or_client_is_null(self) -> None:
+        self.assertIsNone(node_export('h.profileModel("claude", "heavy")', self.root))
+        self.assertIsNone(node_export('h.profileModel("codex", "light")', self.root))
+
+    def test_missing_profile_is_null(self) -> None:
+        (self.root / ".ai/project.profile.yaml").unlink()
+        self.assertIsNone(node_export('h.profileModel("claude", "light")', self.root))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -309,6 +309,37 @@ function profileLanguage() {
   }
 }
 
+function profileText() {
+  try {
+    return readFileSync(join(".ai", "project.profile.yaml"), "utf8")
+  } catch {
+    return ""
+  }
+}
+
+// `models.<klient>.<tier>` z Profilu (#397): tani model checkera zacięcia. Bez klucza albo pliku — null.
+// Klucze klienta na wcięciu 2, tier na 4; `agents: light:` to inna sekcja i nie jest modelem.
+export function profileModel(client, tier, text = profileText()) {
+  let inModels = false
+  let inClient = false
+  for (const raw of lines(text)) {
+    const line = raw.replace(/\s+#.*$/, "")
+    if (/^\S/.test(line)) {
+      inModels = line.trimEnd() === "models:"
+      inClient = false
+      continue
+    }
+    const key = /^(\s+)([\w-]+):(?:[ \t]+(.*?))?[ \t]*$/.exec(line)
+    if (!inModels || !key) continue
+    if (key[1].length <= 2) {
+      inClient = key[2] === client
+    } else if (inClient && key[2] === tier) {
+      return key[3]?.replace(/^["']|["']$/g, "") || null
+    }
+  }
+  return null
+}
+
 const KEEP_RUNS = 5
 
 // Plik wycinka runu w CTX (#396).
