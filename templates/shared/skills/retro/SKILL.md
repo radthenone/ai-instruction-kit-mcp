@@ -34,8 +34,10 @@ same kroki; zasobów do wczytania nie ma.
      albo `n/a` (nie dotyczy),
    - `evidence` — dowód po maskowaniu.
 3. Zapis sesji czytasz tylko przy oznaczonych miejscach. Weź fragment `evidence` (bez
-   zamaskowanych wartości), wyszukaj go w plikach z pola `files` rekordu `session` i przeczytaj
-   10–20 wierszy wokół trafienia. Reszty zapisu nie czytasz.
+   zamaskowanych wartości), wyszukaj go w zapisie sesji i przeczytaj
+   10–20 wierszy wokół trafienia. Reszty zapisu nie czytasz. Pole `files` to tylko liczba plików;
+   zapis wskazuje `session` i `source`: dla `claude` to `~/.claude/projects/<projekt>/<session>.jsonl`
+   (plus `<session>/subagents/*.jsonl`), dla `headless` to `.ai/headless-runs/<session>/headless.log`.
 
 `replay=allow` oznacza, że aktualny guard przepuściłby to wejście: odrzucenie pochodzi z
 przeszłości. `replay=deny` oznacza, że guard nadal odrzuca je, a ocena zależy od tego, czy
@@ -66,7 +68,7 @@ Wskazówki dla rodzajów `kind`. Dowód z zapisu sesji rozstrzyga przy sprzeczno
 | `tool_error` | projekt albo zewnętrzne | błąd ścieżki, zależności albo konfiguracji → projekt; błąd sieci lub usługi → zewnętrzne |
 | `api_error` | zewnętrzne | limit, przeciążenie, błąd po stronie dostawcy |
 | `harness_block` | zewnętrzne | blokada harnessu, nie guard kitu |
-| `headless_exit` | zależnie od przyczyny | ostatnie wiersze `headless.log` podają przyczynę; kod wyjścia bez przyczyny → wykonawca albo kit |
+| `headless_exit` | zależnie od przyczyny | ostatnie wiersze `headless.log` podają przyczynę; kod wyjścia bez przyczyny → kit, pewność niska |
 | `headless_no_change` | agent | kod 0 i czyste drzewo po przebiegu: zadanie niewykonane |
 
 ## Ocena
