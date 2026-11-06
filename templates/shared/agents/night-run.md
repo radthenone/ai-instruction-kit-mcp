@@ -253,7 +253,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    Język wyjścia: <language> (wartość z `get_language`).
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
-   bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Nie edytuj.” Zapisz jego id w `## Stan`.
+   bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`; nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Linie `Ręcznie:` / `Recznie:` są niesprawdzalne w diffie: wiersz Spec ze statusem `niesprawdzalne`, nie High. Nie edytuj.” Zapisz jego id w `## Stan`.
    Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
    przekłada na język Profilu: nagłówki sekcji, etykiety werdyktów i podsumowanie (np. `## Standardy` /
    `## Spec`, `TWARDE` / `OCENA`). Bez zmian: nagłówek tabeli `Severity | Location | Finding | Fix`
@@ -278,7 +278,7 @@ Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, z
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
 Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
 `gh issue view <N> --comments`.
-Body issue bez sekcji `Kryterium ukończenia` ani `Kryteria akceptacji` → hand-back needs-human przed pierwszym krokiem, bez kodu.
+Body issue bez sekcji `Kryterium ukończenia` ani `Kryteria akceptacji` (nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) → hand-back needs-human przed pierwszym krokiem, bez kodu.
 Frontend: po kroku 1 plik `docs/design/<N>.md` jest w drzewie (z <BASE> albo z istniejącego
 brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżność = hand-back
 needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
@@ -336,7 +336,7 @@ Kroki:
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
    hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 3
    próby); nadal czerwone → needs-human.
-**Sprawdzenie przed merge (przed krokiem 7):** świeży subagent uruchomiony przez Ciebie (nie ten, który pisał poprawki) dostaje tylko wiersze Spec: z tabeli, a gdy review nie miało osi Spec, każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`) z body issue. Zwraca `spełnione` albo `niespełnione` dla każdego wiersza. Wiersz High nadal niespełniony = **finding blokujący**: nie merguj, PR zostaje otwarty, hand-back needs-human z tym wierszem (przypadek E). Nawet zielone CI nie znosi finding blokującego; wyjątek tylko przez tekst celu.
+**Sprawdzenie przed merge (przed krokiem 7):** świeży subagent uruchomiony przez Ciebie (nie ten, który pisał poprawki) dostaje tylko wiersze Spec: z tabeli, a gdy review nie miało osi Spec, każde kryterium z sekcji `Kryterium ukończenia` / `Kryterium ukonczenia` / `Kryteria akceptacji` z body issue (niespełnione = High; linie `Ręcznie:` / `Recznie:` jako `niesprawdzalne`). Zwraca `spełnione`, `niespełnione` albo `niesprawdzalne` dla każdego wiersza; `niesprawdzalne` nie blokuje, trafia do opisu PR. Wiersz High nadal niespełniony = **finding blokujący**: nie merguj, PR zostaje otwarty, hand-back needs-human z tym wierszem (przypadek E). Nawet zielone CI nie znosi finding blokującego; wyjątek tylko przez tekst celu (orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo spec”).
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
@@ -462,7 +462,7 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej.
+- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
 
 Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):

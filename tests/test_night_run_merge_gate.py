@@ -88,6 +88,13 @@ class TestNightRunMergeGate(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, self.report)
 
+    def test_criteria_heading_without_diacritics_and_manual_lines_do_not_block(self) -> None:
+        self.assertIn("Kryterium ukonczenia", self.prompt)
+        self.assertIn("Recznie:", self.prompt)
+        self.assertIn("`niesprawdzalne` nie blokuje", self.prompt)
+        self.assertIn("niespełnione = High", self.prompt)
+        self.assertIn("merge mimo spec", self.prompt)
+
     def test_report_contract_rule_for_missing_fields(self) -> None:
         self.assertIn("brak danych:", self.report)
         self.assertIn("n/d —", self.report)
