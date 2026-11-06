@@ -50,6 +50,8 @@ skills-lock.json
 .claude/skills/*
 !.claude/skills/skill-authoring/
 !.claude/skills/skill-authoring/**
+!.claude/skills/retro/
+!.claude/skills/retro/**
 !.claude/settings.json
 # Prywatne nadpisania: uprawnienia, włączone serwery MCP. Per maszyna, nie per repo.
 .claude/settings.local.json
