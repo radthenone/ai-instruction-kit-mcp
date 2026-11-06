@@ -572,9 +572,19 @@ export function watchProgress({
 // Nie decyduje o zabiciu — brak postępu zabija zawsze, a opis trafia do raportu.
 export const CHECKER_TIMEOUT_MS = 60_000
 export const CHECKER_LOG_LINES = 40
-const runChecker = (args, input, options) => spawnSync("claude", args, { ...options, input, encoding: "utf8", windowsHide: true, killSignal: "SIGKILL" })
+// Asynchronicznie: spawnSync wstrzymałby event loop na czas checkera — sygnały hosta i SIGKILL po
+// SIGTERM czekałyby do 60 s. Bez narzędzi i MCP: checker tylko pisze, niczego nie wywołuje i o nic nie pyta.
+const runChecker = (args, input, { timeout }) => new Promise((done) => {
+  const child = spawn("claude", args, { stdio: ["pipe", "pipe", "ignore"], timeout, killSignal: "SIGKILL", windowsHide: true })
+  let stdout = ""
+  child.stdout.setEncoding("utf8").on("data", (text) => { stdout += text })
+  child.on("error", (error) => done({ error, status: null, stdout }))
+  child.on("close", (status, signal) => done({ status: status ?? signal, stdout }))
+  child.stdin.on("error", () => {})
+  child.stdin.end(input)
+})
 
-export function describeStall({ tail, status, idleMs, model, run = runChecker }) {
+export async function describeStall({ tail, status, idleMs, model, run = runChecker }) {
   if (!model) return "checker wyłączony: brak models.claude.light w Profilu"
   const log = (Array.isArray(tail) ? tail : lines(tail)).slice(-CHECKER_LOG_LINES).join("\n")
   const prompt = [
@@ -587,7 +597,7 @@ export function describeStall({ tail, status, idleMs, model, run = runChecker })
     `ostatnie ${CHECKER_LOG_LINES} linii wyjścia:`,
     log,
   ].join("\n")
-  const r = run(["-p", "--model", model], prompt, { timeout: CHECKER_TIMEOUT_MS })
+  const r = await run(["-p", "--model", model, "--tools", "", "--strict-mcp-config"], prompt, { timeout: CHECKER_TIMEOUT_MS })
   if (r.error || r.status !== 0) return `checker niedostępny: ${r.error?.message ?? `kod ${r.status}`}`
   const text = lines(r.stdout).map((l) => l.trim()).filter(Boolean).slice(0, 3).join(" ")
   return text.slice(0, 600) || "checker bez odpowiedzi"
@@ -928,7 +938,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     log(`[headless] ♥ ${minutes(Date.now() - started)} min | pliki: ${status === null ? "?" : lines(status).length}`
       + ` | commity: ${commits ?? "?"} | ostatnio: ${lastLine() || "—"}\n`)
     const silent = Date.now() - lastOutput
-    // Tylko ostrzeżenie — zabija `--timeout`. Raz na okres ciszy, żeby host budził się raz.
+    // Tylko ostrzeżenie — zabija kontrola postępu albo `--timeout`. Raz na okres ciszy, żeby host budził się raz.
     if (silent >= 2 * heartbeatMs && !stallReported) {
       stallReported = true
       log(`[headless] możliwe zacięcie: brak wyjścia od ${minutes(silent)} min\n`)
@@ -949,18 +959,24 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     killTree(child)
   }, opts.timeoutMin * 60_000)
   // Brak postępu przez STALL_CHECK_MIN min: zrzut drzewa i zabicie jak przy timeoucie, klasa HANG (#397).
+  // Najpierw zrzut i zabicie, potem opis checkera w tle; raport końcowy czeka na `stallDescribed`.
   let stalled = false
   let stallNote = null
   let stallTree = null
+  let stallDescribed = null
   const progress = watchProgress({
     read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
     onStall: ({ idleMs }) => {
       stalled = true
-      stallNote = describeStall({ tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") })
+      const checkerInput = { tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") }
       stallTree = processSnapshot(child.pid)
-      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}: ${stallNote}\n`)
+      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
       log(stallTree)
       killTree(child)
+      stallDescribed = describeStall(checkerInput).then((note) => {
+        stallNote = note
+        log(`[headless] zacięcie: ${note}\n`)
+      })
     },
   })
 
@@ -989,6 +1005,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     call.actions.push(`zabito drzewo procesów (timeout ${opts.timeoutMin} min)`)
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   }
+  await stallDescribed
   if (stalled) call.actions.push(`zabito drzewo procesów (brak postępu ${STALL_CHECK_MIN} min)`)
   const hung = timedOut || stalled
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.

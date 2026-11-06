@@ -1641,7 +1641,7 @@ class HeadlessWrapperTest(unittest.TestCase):
 
 def node_export(expression: str, cwd: Path) -> object:
     """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
-    script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify({expression}));"
+    script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify(await ({expression})));"
     result = subprocess.run(
         [NODE, "--input-type=module", "-e", script],
         cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=30, check=False,
@@ -1816,14 +1816,14 @@ class HeadlessStallCheckerTest(unittest.TestCase):
 
     def test_checker_gets_last_40_lines_status_and_idle_time(self) -> None:
         result = node_export(
-            """(() => {
+            """(async () => {
   const calls = [];
   const run = (args, input, options) => {
     calls.push({ args, input, timeout: options.timeout });
     return { status: 0, stdout: "Wykonawca czeka na wejście.\\nDrugie zdanie." };
   };
   const tail = Array.from({ length: 60 }, (_, i) => `linia ${i + 1}`);
-  const note = h.describeStall({ tail, status: " M plik.txt", idleMs: 30 * 60_000, model: "haiku", run });
+  const note = await h.describeStall({ tail, status: " M plik.txt", idleMs: 30 * 60_000, model: "haiku", run });
   const [call] = calls;
   const inputLines = call.input.split("\\n");
   return {
@@ -1841,7 +1841,7 @@ class HeadlessStallCheckerTest(unittest.TestCase):
         )
         self.assertEqual(result, {
             "note": "Wykonawca czeka na wejście. Drugie zdanie.",
-            "args": ["-p", "--model", "haiku"],
+            "args": ["-p", "--model", "haiku", "--tools", "", "--strict-mcp-config"],
             "timeoutPositive": True,
             "hasLastLine": True,
             "hasLine21": True,
@@ -1852,9 +1852,9 @@ class HeadlessStallCheckerTest(unittest.TestCase):
 
     def test_missing_light_model_disables_checker_without_running_it(self) -> None:
         result = node_export(
-            """(() => {
+            """(async () => {
   let called = false;
-  const note = h.describeStall({ tail: [], status: "", idleMs: 1, model: null, run: () => { called = true; return {}; } });
+  const note = await h.describeStall({ tail: [], status: "", idleMs: 1, model: null, run: () => { called = true; return {}; } });
   return { note, called };
 })()""",
             self.root,
@@ -1863,9 +1863,9 @@ class HeadlessStallCheckerTest(unittest.TestCase):
 
     def test_checker_failure_is_described_not_thrown(self) -> None:
         result = node_export(
-            """(() => {
-  const exited = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku", run: () => ({ status: 1, stdout: "" }) });
-  const missing = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+            """(async () => {
+  const exited = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku", run: () => ({ status: 1, stdout: "" }) });
+  const missing = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
     run: () => ({ status: null, error: { message: "spawn claude ENOENT" } }) });
   return { exited, missing };
 })()""",
@@ -1878,10 +1878,10 @@ class HeadlessStallCheckerTest(unittest.TestCase):
 
     def test_checker_note_is_at_most_three_lines_and_capped(self) -> None:
         result = node_export(
-            """(() => {
-  const many = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+            """(async () => {
+  const many = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
     run: () => ({ status: 0, stdout: "a\\nb\\nc\\nd\\ne" }) });
-  const long = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+  const long = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
     run: () => ({ status: 0, stdout: "x".repeat(1000) }) });
   return { many, longLength: long.length };
 })()""",
@@ -1891,8 +1891,8 @@ class HeadlessStallCheckerTest(unittest.TestCase):
 
     def test_wait_verdict_of_checker_does_not_stop_stall_kill(self) -> None:
         result = node_export(
-            """(() => {
-  const note = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+            """(async () => {
+  const note = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
     run: () => ({ status: 0, stdout: "czekaj" }) });
   let killed = false;
   const watch = h.watchProgress({
