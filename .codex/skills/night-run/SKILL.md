@@ -543,6 +543,18 @@ z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej�
 **Orkiestrator:** ten sam snippet na transkrypcie sesji głównej
 (`$HOME/.claude/projects/<projekt>/<sesja>.jsonl`, nie `subagents/`); do raportu idą jego tury i `cache_read`.
 
+## Retro
+
+Ostatni krok przed raportem, raz na noc. Nie blokuje raportu: gdy skan albo klasyfikacja się nie uda, wpisz `Retro: pominięte — <powód>` i idź dalej.
+
+1. Skan sesji i przebiegów headless tego repo od daty nocy (`YYYY-MM-DD` z nazwy katalogu CTX):
+   `kit-ai retro scan --since <YYYY-MM-DD>`. Wynik podaje liczby i katalog z zapisami JSONL.
+2. Zero znalezisk → `Retro: 0 znalezisk.` i koniec kroku.
+3. Są znaleziska → uruchom skill `/retro` na zapisach z tej nocy (ścieżki z kroku 1). Tabelę z ocenami zostaw w rozmowie, nie zapisuj jej do pliku.
+4. Do raportu wpisz linię `Retro: …` z liczbami per kategoria (w bloku raportu poniżej).
+
+Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i raportu. Issue zakłada człowiek po akceptacji (`/create-task`), więc nie zakładasz issue ani nie piszesz w GitHubie z tego kroku.
+
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
 Zaczynasz od `CronDelete` i zatrzymania watchdoga. Pod `/goal` raport i dowody muszą paść
@@ -562,6 +574,7 @@ Odnowienia watchdoga: <liczba> (powód: życie / pauza / ręcznie) · Tiki crona
 Wybudzenia orkiestratora: <liczba> (watchdog: anomalia / pauza / życie; cron: tik) · Ostatnie wznowienie: <godzina>
 Wznowienia per ticket: <#N: liczba>
 Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja główna)
+Retro: <liczba znalezisk> (kit <n> · projekt <n> · agent <n> · zewnętrzne <n>) · skan od <YYYY-MM-DD> · pominięte: <powód albo —>
 
 | Ticket | Stan | Wykonawca | Review | Model | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- | --- | --- | --- |
