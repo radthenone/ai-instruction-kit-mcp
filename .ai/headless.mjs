@@ -568,6 +568,31 @@ export function watchProgress({
   return { tick, stop: () => unschedule(timer) }
 }
 
+// Checker zacięcia (#397): tani model z `models.claude.light` tylko opisuje, co robi wykonawca.
+// Nie decyduje o zabiciu — brak postępu zabija zawsze, a opis trafia do raportu.
+export const CHECKER_TIMEOUT_MS = 60_000
+export const CHECKER_LOG_LINES = 40
+const runChecker = (args, input, options) => spawnSync("claude", args, { ...options, input, encoding: "utf8", windowsHide: true, killSignal: "SIGKILL" })
+
+export function describeStall({ tail, status, idleMs, model, run = runChecker }) {
+  if (!model) return "checker wyłączony: brak models.claude.light w Profilu"
+  const log = (Array.isArray(tail) ? tail : lines(tail)).slice(-CHECKER_LOG_LINES).join("\n")
+  const prompt = [
+    `Wykonawca headless nie dał postępu przez ${Math.round(idleMs / 60_000)} min (bez nowych bajtów wyjścia, zmiany HEAD i git status, wzrostu CPU).`,
+    "Opisz po polsku w 1–3 zdaniach, co wykonawca robi i czy wygląda na zawieszonego. Nie decyduj o zabiciu.",
+    "",
+    "git status --short:",
+    status || "(czysto)",
+    "",
+    `ostatnie ${CHECKER_LOG_LINES} linii wyjścia:`,
+    log,
+  ].join("\n")
+  const r = run(["-p", "--model", model], prompt, { timeout: CHECKER_TIMEOUT_MS })
+  if (r.error || r.status !== 0) return `checker niedostępny: ${r.error?.message ?? `kod ${r.status}`}`
+  const text = lines(r.stdout).map((l) => l.trim()).filter(Boolean).slice(0, 3).join(" ")
+  return text.slice(0, 600) || "checker bez odpowiedzi"
+}
+
 // Wiersz wywołania (#396): jedna linia JSON na końcu każdego wywołania, także przy sygnale, błędzie
 // i odmowie przed startem. Stan wywołania zbiera się po drodze, wiersz składa się na końcu.
 // Klasy: OK, LIMIT (pauza), HANG (timeout albo sygnał), ERROR (kod ≠ 0 albo błąd wywołania),
@@ -891,6 +916,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     startHead,
     tail: fullTail(),
     config: config?.line,
+    stall: stallNote,
     changes: noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: false })),
   })
 
@@ -923,11 +949,13 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   }, opts.timeoutMin * 60_000)
   // Brak postępu przez STALL_CHECK_MIN min: zrzut drzewa i zabicie jak przy timeoucie, klasa HANG (#397).
   let stalled = false
+  let stallNote = null
   const progress = watchProgress({
     read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
     onStall: ({ idleMs }) => {
       stalled = true
-      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
+      stallNote = describeStall({ tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") })
+      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}: ${stallNote}\n`)
       log(processSnapshot(child.pid))
       killTree(child)
     },
@@ -988,7 +1016,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
-  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, changes }))
+  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, changes }))
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
@@ -1032,11 +1060,12 @@ function repoChanges({ startHead, startStash, checkNoChanges }) {
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-function finalReport({ startHead, tail, pause, config, invalidModel, changes }) {
+export function finalReport({ startHead, tail, pause, config, invalidModel, stall, changes }) {
   const { status, added, suspect, untrailed } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
+  if (stall) out.push(`## zacięcie: ${stall}`)
   if (suspect) out.push("## SUSPECT=no-changes")
   // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
   if (config) out.push(`## ${config}`)

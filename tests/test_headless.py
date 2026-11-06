@@ -1805,5 +1805,125 @@ class HeadlessProgressSourcesTest(unittest.TestCase):
         self.assertEqual(result, {"scheduled": [30 * self.MIN], "unscheduled": ["timer"]})
 
 
+@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+class HeadlessStallCheckerTest(unittest.TestCase):
+    """Checker zacięcia tylko opisuje stan (tani model z Profilu), nie decyduje o zabiciu (#397)."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def test_checker_gets_last_40_lines_status_and_idle_time(self) -> None:
+        result = node_export(
+            """(() => {
+  const calls = [];
+  const run = (args, input, options) => {
+    calls.push({ args, input, timeout: options.timeout });
+    return { status: 0, stdout: "Wykonawca czeka na wejście.\\nDrugie zdanie." };
+  };
+  const tail = Array.from({ length: 60 }, (_, i) => `linia ${i + 1}`);
+  const note = h.describeStall({ tail, status: " M plik.txt", idleMs: 30 * 60_000, model: "haiku", run });
+  const [call] = calls;
+  const inputLines = call.input.split("\\n");
+  return {
+    note,
+    args: call.args,
+    timeoutPositive: call.timeout > 0,
+    hasLastLine: inputLines.includes("linia 60"),
+    hasLine21: inputLines.includes("linia 21"),
+    hasLine20: inputLines.includes("linia 20"),
+    hasStatus: inputLines.includes(" M plik.txt"),
+    hasIdle: call.input.includes("30 min"),
+  };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {
+            "note": "Wykonawca czeka na wejście. Drugie zdanie.",
+            "args": ["-p", "--model", "haiku"],
+            "timeoutPositive": True,
+            "hasLastLine": True,
+            "hasLine21": True,
+            "hasLine20": False,
+            "hasStatus": True,
+            "hasIdle": True,
+        })
+
+    def test_missing_light_model_disables_checker_without_running_it(self) -> None:
+        result = node_export(
+            """(() => {
+  let called = false;
+  const note = h.describeStall({ tail: [], status: "", idleMs: 1, model: null, run: () => { called = true; return {}; } });
+  return { note, called };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"note": "checker wyłączony: brak models.claude.light w Profilu", "called": False})
+
+    def test_checker_failure_is_described_not_thrown(self) -> None:
+        result = node_export(
+            """(() => {
+  const exited = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku", run: () => ({ status: 1, stdout: "" }) });
+  const missing = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: null, error: { message: "spawn claude ENOENT" } }) });
+  return { exited, missing };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {
+            "exited": "checker niedostępny: kod 1",
+            "missing": "checker niedostępny: spawn claude ENOENT",
+        })
+
+    def test_checker_note_is_at_most_three_lines_and_capped(self) -> None:
+        result = node_export(
+            """(() => {
+  const many = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: 0, stdout: "a\\nb\\nc\\nd\\ne" }) });
+  const long = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: 0, stdout: "x".repeat(1000) }) });
+  return { many, longLength: long.length };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"many": "a b c", "longLength": 600})
+
+    def test_wait_verdict_of_checker_does_not_stop_stall_kill(self) -> None:
+        result = node_export(
+            """(() => {
+  const note = h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
+    run: () => ({ status: 0, stdout: "czekaj" }) });
+  let killed = false;
+  const watch = h.watchProgress({
+    read: () => ({ output: 0, git: "a", cpu: 0 }),
+    onStall: () => { killed = true; },
+    now: () => 0,
+    schedule: () => 0,
+    unschedule: () => {},
+  });
+  watch.tick();
+  return { note, killed };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"note": "czekaj", "killed": True})
+
+    def test_stall_note_is_in_final_report(self) -> None:
+        result = node_export(
+            """(() => h.finalReport({
+  startHead: null,
+  tail: ["ostatnia linia"],
+  pause: null,
+  config: null,
+  invalidModel: null,
+  stall: "Wykonawca czeka na wejście.",
+  changes: { status: null, added: [], suspect: false, untrailed: [] },
+}))()""",
+            self.root,
+        )
+        self.assertIn("## zacięcie: Wykonawca czeka na wejście.", result)
+
+
 if __name__ == "__main__":
     unittest.main()
