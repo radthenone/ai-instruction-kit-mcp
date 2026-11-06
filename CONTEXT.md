@@ -166,6 +166,10 @@ _Avoid_: handover, handoff, return value
 The outcome of a Ticket that cannot be finished without a person, stated in a report. A status, never a label: the issue itself gets `ready-for-human`, `needs-info` or `needs-local`.
 _Avoid_: blocked, escalated, needs-human label
 
+**Finding blokujący**:
+A High finding on the Spec axis that is still unresolved after the fixes, re-checked by a fresh Subagent. It blocks the merge of its Ticket; a green CI does not lift it, and only the goal text can waive it.
+_Avoid_: blocker, spec failure, blocking review
+
 ### Retro
 
 **Sesja**:
