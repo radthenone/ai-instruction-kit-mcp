@@ -521,21 +521,21 @@ class HeadlessRunTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         self.workspace = self.root / "my-repo"
-        self.run = self.workspace / ".ai" / "headless-runs" / self.RUN
-        self.run.mkdir(parents=True)
+        self.run_dir = self.workspace / ".ai" / "headless-runs" / self.RUN
+        self.run_dir.mkdir(parents=True)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
     def _log(self, text: str) -> None:
-        (self.run / "headless.log").write_text(text, encoding="utf-8")
+        (self.run_dir / "headless.log").write_text(text, encoding="utf-8")
 
     def _signals(self) -> list[tuple[str, str]]:
-        return [(signal.kind, signal.key) for signal in retro.parse_headless_run(self.run).signals]
+        return [(signal.kind, signal.key) for signal in retro.parse_headless_run(self.run_dir).signals]
 
     def test_nonzero_exit_is_reported_with_its_code(self) -> None:
         self._log("[headless] ticket #365\n[headless] kod wyjścia: 1\n")
-        [signal] = retro.parse_headless_run(self.run).signals
+        [signal] = retro.parse_headless_run(self.run_dir).signals
         self.assertEqual((signal.kind, signal.key), ("headless_exit", "exit-nonzero"))
         self.assertIn("kod wyjścia: 1", signal.evidence)
 

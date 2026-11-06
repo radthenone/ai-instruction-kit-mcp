@@ -83,7 +83,7 @@ class SessionEndScriptTests(unittest.TestCase):
             "RETRO_RECORD": str(self.record),
         }
         return subprocess.run(
-            [NODE, str(HOOK_TEMPLATE)], input=payload, capture_output=True, text=True, env=env, timeout=30, check=False
+            [str(NODE), str(HOOK_TEMPLATE)], input=payload, capture_output=True, text=True, env=env, timeout=30, check=False
         )
 
     def test_passes_session_and_repo_to_kit_ai_retro_scan(self) -> None:
