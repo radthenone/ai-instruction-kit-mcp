@@ -16,8 +16,9 @@ from pathlib import Path
 # Próg propozycji z #338 (część (c)): znalezisko w co najmniej tylu sesjach albo tylu repo.
 REPORT_SESSION_THRESHOLD = 3
 REPORT_REPO_THRESHOLD = 2
-# Dedup po markerze z ADR-0015: fingerprint w body otwartego issue jako ukryty komentarz HTML.
+# Górna granica `gh issue list`; pełna strona oznacza, że część issue mogła zostać ucięta.
 ISSUE_LIMIT = 1000
+# Dedup po markerze z ADR-0015: fingerprint w body otwartego issue jako ukryty komentarz HTML.
 _MARKER = re.compile(r"<!--\s*retro-fingerprint:\s*([0-9a-f]{16})\s*-->")
 
 GhRun = Callable[[list[str], Path], str]
@@ -108,6 +109,9 @@ def parse_open_issues(payload: str) -> set[str]:
         raise ValueError("gh zwrócił nieczytelną listę issue (oczekiwano JSON)") from exc
     if not isinstance(issues, list):
         raise ValueError("gh zwrócił listę issue w nieoczekiwanym kształcie")
+    if len(issues) >= ISSUE_LIMIT:
+        # Ucięta lista mogłaby pominąć marker i pokazać duplikat — odmawiamy jak przy braku gh.
+        raise ValueError(f"otwartych issue jest co najmniej {ISSUE_LIMIT}; dedup byłby niepełny")
     found: set[str] = set()
     for issue in issues:
         body = issue.get("body") if isinstance(issue, dict) else None

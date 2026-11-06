@@ -30,7 +30,7 @@ def _finding(fingerprint: str, *, count: int = 1, replay: str = "deny") -> dict:
         "tool": "Bash",
         "count": count,
         "replay": replay,
-        "evidence": "git-guard: git checkout . — kasuje niezacommitowane zmiany",
+        "evidence": "git-guard: syntetyczna odmowa z fikstury",
     }
 
 
@@ -214,6 +214,10 @@ class ParseOpenIssuesTests(unittest.TestCase):
     def test_non_list_answer_is_refused(self) -> None:
         with self.assertRaises(ValueError):
             retro_report.parse_open_issues('{"body": "x"}')
+
+    def test_full_page_of_issues_is_refused_as_possibly_truncated(self) -> None:
+        with self.assertRaises(ValueError):
+            retro_report.parse_open_issues(_issues(*["x"] * retro_report.ISSUE_LIMIT))
 
 
 def _run_cli(*argv: str, env: dict[str, str]) -> tuple[int, str]:
