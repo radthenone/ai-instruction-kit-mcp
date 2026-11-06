@@ -627,7 +627,7 @@ def _write_entries(
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f"{session_id}.jsonl"
     staging = target.with_name(f"{target.name}.tmp")
-    staging.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
+    staging.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8", newline="\n")
     os.replace(staging, target)
     return target, findings
 
