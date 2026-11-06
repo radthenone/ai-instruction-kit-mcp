@@ -11,6 +11,7 @@ import json
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = KIT_ROOT / "templates/shared/headless/headless.mjs"
@@ -1639,7 +1640,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.argv()[0], "opencode2")
 
 
-def node_export(expression: str, cwd: Path) -> object:
+def node_export(expression: str, cwd: Path) -> Any:
     """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
     script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify(await ({expression})));"
     result = subprocess.run(
