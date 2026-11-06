@@ -480,5 +480,82 @@ class RetroCliTests(unittest.TestCase):
             self.assertIn("nie znaleziono sesji", out)
 
 
+class HeadlessRunTests(unittest.TestCase):
+    """Przebieg headless (``.ai/headless-runs/<run>/headless.log``) to osobna sesja (GLOSSARY: Sesja)."""
+
+    RUN = "2026-11-05T00-02-27-147Z-antigravity"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.workspace = self.root / "my-repo"
+        self.run = self.workspace / ".ai" / "headless-runs" / self.RUN
+        self.run.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _log(self, text: str) -> None:
+        (self.run / "headless.log").write_text(text, encoding="utf-8")
+
+    def _signals(self) -> list[tuple[str, str]]:
+        return [(signal.kind, signal.key) for signal in retro.parse_headless_run(self.run).signals]
+
+    def test_nonzero_exit_is_reported_with_its_code(self) -> None:
+        self._log("[headless] ticket #365\n[headless] kod wyjścia: 1\n")
+        [signal] = retro.parse_headless_run(self.run).signals
+        self.assertEqual((signal.kind, signal.key), ("headless_exit", "exit-nonzero"))
+        self.assertIn("kod wyjścia: 1", signal.evidence)
+
+    def test_zero_exit_with_clean_tree_is_reported_as_no_change(self) -> None:
+        self._log(
+            "[headless] kod wyjścia: 0\n[headless] raport końcowy\n## git status --short\n(czysto)\n"
+            "## git log 472c5d3..HEAD --oneline\n(brak commitów)\n"
+        )
+        self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
+
+    def test_zero_exit_with_commits_is_not_reported(self) -> None:
+        self._log(
+            "[headless] kod wyjścia: 0\n## git status --short\n(czysto)\n"
+            "## git log 472c5d3..HEAD --oneline\na1b2c3d feat: coś\n"
+        )
+        self.assertEqual(self._signals(), [])
+
+    def test_zero_exit_with_changes_is_not_reported(self) -> None:
+        self._log("[headless] kod wyjścia: 0\n[headless] raport końcowy\n## git status --short\n M src/x.py\n")
+        self.assertEqual(self._signals(), [])
+
+    def test_run_without_exit_line_is_reported(self) -> None:
+        self._log("[headless] sygnał SIGTERM po 1837.7 s\n")
+        self.assertEqual(self._signals(), [("headless_exit", "exit-missing")])
+
+    def test_last_exit_line_decides(self) -> None:
+        self._log(
+            "[headless] kod wyjścia: 1\n[headless] claude → antigravity\n"
+            "[headless] kod wyjścia: 0\n## git status --short\n(czysto)\n"
+            "## git log 472c5d3..HEAD --oneline\n(brak commitów)\n"
+        )
+        self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
+
+    def test_batch_scan_writes_headless_runs_as_sessions(self) -> None:
+        self._log("[headless] kod wyjścia: 2\n")
+        message = retro.scan_command(
+            self.workspace,
+            session=None,
+            since=None,
+            projects_root=self.root / "no-claude-projects",
+            cache_root=self.root / "cache",
+            kit_root=KIT_ROOT,
+            runner=lambda signal: "deny",
+            now=datetime(2026, 11, 6, tzinfo=timezone.utc),
+        )
+        target = self.root / "cache" / "my-repo" / f"{self.RUN}.jsonl"
+        self.assertTrue(target.is_file(), message)
+        records = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(records[0]["source"], "headless")
+        self.assertEqual([record["kind"] for record in records[1:]], ["headless_exit"])
+        self.assertIn("przebiegi headless: 1", message)
+
+
 if __name__ == "__main__":
     unittest.main()

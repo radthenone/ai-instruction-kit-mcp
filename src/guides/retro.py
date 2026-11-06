@@ -489,6 +489,39 @@ def _mtime(path: Path) -> float:
     return path.stat().st_mtime
 
 
+HEADLESS_EXIT = re.compile(r"^\[headless\] kod wyjścia: (-?\d+)\s*$", re.MULTILINE)
+HEADLESS_CLEAN = re.compile(
+    r"^## git status --short\n\(czysto\)\n## git log [^\n]*\n\(brak commitów\)", re.MULTILINE
+)
+
+
+def headless_runs(workspace: Path) -> list[Path]:
+    """Przebiegi ``.ai/headless-runs/<run>/`` z plikiem ``headless.log`` (każdy to osobna sesja)."""
+    root = workspace / ".ai" / "headless-runs"
+    return [
+        run
+        for run in sorted(root.glob("*"))
+        if run.is_dir() and SESSION_ID.fullmatch(run.name) and (run / "headless.log").is_file()
+    ]
+
+
+def parse_headless_run(run_dir: Path) -> ParsedSession:
+    """Sygnały przebiegu headless: ostatni kod wyjścia z ``headless.log`` i czystość drzewa po wyjściu 0."""
+    try:
+        text = (run_dir / "headless.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    exits = HEADLESS_EXIT.findall(text)
+    signals: list[Signal] = []
+    if not exits:
+        signals.append(Signal("headless_exit", "exit-missing", "brak linii kod wyjścia w headless.log"))
+    elif exits[-1] != "0":
+        signals.append(Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}")))
+    elif HEADLESS_CLEAN.search(text):
+        signals.append(Signal("headless_no_change", "exit0-clean-tree", "kod wyjścia: 0, czyste drzewo po przebiegu"))
+    return ParsedSession(session_id=run_dir.name, files=1, signals=signals)
+
+
 def _scan_files(
     files: list[Path],
     *,
@@ -499,18 +532,40 @@ def _scan_files(
     runner: Callable[[Signal], str] | None,
     now: datetime | None,
 ) -> tuple[Path, int]:
-    """Parsuje pliki sesji, odtwarza deny i zapisuje wpisy do ``cache_root/<repo>/<sesja>.jsonl``.
+    """Sesja Claude: parsuje jej pliki razem z subagentami i zapisuje wpisy."""
+    return _write_entries(
+        parse_session(files, session_id=session_id),
+        source="claude",
+        workspace=workspace,
+        cache_root=cache_root,
+        kit_root=kit_root,
+        runner=runner,
+        now=now,
+    )
+
+
+def _write_entries(
+    parsed: ParsedSession,
+    *,
+    source: str,
+    workspace: Path,
+    cache_root: Path,
+    kit_root: Path,
+    runner: Callable[[Signal], str] | None,
+    now: datetime | None,
+) -> tuple[Path, int]:
+    """Odtwarza deny, buduje Znaleziska i zapisuje wpisy do ``cache_root/<repo>/<sesja>.jsonl``.
 
     Plik powstaje przez zapis tymczasowy i podmianę, więc ponowny skan tej samej sesji
     zastępuje wynik zamiast go dublować.
     """
-    parsed = parse_session(files, session_id=session_id)
+    session_id = parsed.session_id
     replay = runner or (
         lambda signal: replay_guard(signal.guard, signal.tool_name, signal.tool_input, kit_root=kit_root, cwd=workspace)
     )
     findings = build_findings(parsed.signals, replay=replay)
     repo = repo_name(workspace)
-    base = {"schema": SCHEMA_VERSION, "repo": repo, "kit_sha": kit_sha(workspace), "session": session_id}
+    base = {"schema": SCHEMA_VERSION, "source": source, "repo": repo, "kit_sha": kit_sha(workspace), "session": session_id}
     stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
     records: list[dict] = [
         {
@@ -598,10 +653,21 @@ def scan_command(
         for main in sorted(base.glob("*.jsonl"))
         if SESSION_ID.fullmatch(main.stem) and (cutoff is None or _mtime(main) >= cutoff)
     ]
-    if not mains:
-        return f"retro: brak sesji w {base}"
+    runs = [
+        run
+        for run in headless_runs(workspace)
+        if cutoff is None or _mtime(run / "headless.log") >= cutoff
+    ]
+    if not mains and not runs:
+        return f"retro: brak sesji i przebiegów headless w {base}"
     found_total = 0
     for main in mains:
         _, found = _scan_files([main, *_subagent_files(base, main.stem)], session_id=main.stem, **options)
         found_total += found
-    return f"retro: sesje: {len(mains)}, znaleziska: {found_total} → {cache_root / repo_name(workspace)}"
+    for run in runs:
+        _, found = _write_entries(parse_headless_run(run), source="headless", **options)
+        found_total += found
+    return (
+        f"retro: sesje: {len(mains)}, przebiegi headless: {len(runs)}, znaleziska: {found_total} "
+        f"→ {cache_root / repo_name(workspace)}"
+    )
