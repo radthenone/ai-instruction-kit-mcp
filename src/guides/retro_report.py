@@ -1,0 +1,114 @@
+"""``kit-ai retro report`` — agregacja znalezisk z wielu repo i progi propozycji (#373, część (c) #338).
+
+Czyta zapisy ``kit-ai retro scan`` w ``<cache>/<repo>/<sesja>.jsonl``. Raport niczego nie zapisuje
+i niczego nie zakłada: pokazuje propozycje, które człowiek musi zaakceptować.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# Próg propozycji z #338 (część (c)): znalezisko w co najmniej tylu sesjach albo tylu repo.
+REPORT_SESSION_THRESHOLD = 3
+REPORT_REPO_THRESHOLD = 2
+
+
+@dataclass
+class Group:
+    """Znalezisko z wielu repo: wszystkie zapisy o tym samym fingerprincie (termin „Znalezisko”)."""
+
+    fingerprint: str
+    kind: str
+    evidence: str
+    guard: str | None = None
+    tool: str | None = None
+    sessions: set[tuple[str, str]] = field(default_factory=set)
+    repos: set[str] = field(default_factory=set)
+    replays: set[str] = field(default_factory=set)
+    kit_shas: set[str] = field(default_factory=set)
+    count: int = 0
+
+
+def read_findings(cache_root: Path) -> list[tuple[str, dict]]:
+    """Rekordy ``finding`` jako pary (repo, rekord). Uszkodzone linie i obce typy są pomijane."""
+    found: list[tuple[str, dict]] = []
+    for path in sorted(cache_root.glob("*/*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict) and record.get("type") == "finding":
+                found.append((path.parent.name, record))
+    return found
+
+
+def group_findings(findings: list[tuple[str, dict]]) -> list[Group]:
+    """Grupuje zapisy po fingerprincie; każda sesja liczy się raz na znalezisko."""
+    groups: dict[str, Group] = {}
+    for repo, record in findings:
+        fingerprint = record.get("fingerprint")
+        kind = record.get("kind")
+        if not isinstance(fingerprint, str) or not isinstance(kind, str):
+            continue
+        group = groups.get(fingerprint)
+        if group is None:
+            guard, tool = record.get("guard"), record.get("tool")
+            group = Group(
+                fingerprint=fingerprint,
+                kind=kind,
+                evidence=str(record.get("evidence", "")),
+                guard=guard if isinstance(guard, str) else None,
+                tool=tool if isinstance(tool, str) else None,
+            )
+            groups[fingerprint] = group
+        group.sessions.add((repo, str(record.get("session", ""))))
+        group.repos.add(repo)
+        group.replays.add(str(record.get("replay", "n/a")))
+        group.kit_shas.add(str(record.get("kit_sha", "unknown")))
+        count = record.get("count")
+        group.count += count if isinstance(count, int) else 1
+    return sorted(groups.values(), key=lambda group: (group.kind, group.fingerprint))
+
+
+def is_candidate(group: Group) -> bool:
+    """Próg z #338: co najmniej 3 sesje albo co najmniej 2 repo."""
+    return len(group.sessions) >= REPORT_SESSION_THRESHOLD or len(group.repos) >= REPORT_REPO_THRESHOLD
+
+
+def _proposal_lines(group: Group) -> list[str]:
+    lines = [f"Propozycja {group.kind} · fingerprint {group.fingerprint}"]
+    lines.append(
+        f"  sesje: {len(group.sessions)} · repo: {', '.join(sorted(group.repos))} · "
+        f"wystąpienia: {group.count} · replay: {', '.join(sorted(group.replays))} · "
+        f"kit: {', '.join(sorted(group.kit_shas))}"
+    )
+    if group.guard or group.tool:
+        lines.append(f"  guard: {group.guard or '-'} · narzędzie: {group.tool or '-'}")
+    lines.append(f"  dowód: {group.evidence}")
+    return lines
+
+
+def report_command(workspace: Path, *, cache_root: Path) -> str:
+    """Tekst ``kit-ai retro report``: propozycje ponad progami z cache wszystkich repo."""
+    findings = read_findings(cache_root)
+    if not findings:
+        return f"retro report: brak znalezisk w {cache_root}"
+    groups = group_findings(findings)
+    candidates = [group for group in groups if is_candidate(group)]
+    repos = {repo for repo, _ in findings}
+    lines = [
+        f"retro report: repo {len(repos)} · znaleziska {len(groups)} · "
+        f"powyżej progów {len(candidates)} · propozycje {len(candidates)}"
+    ]
+    if not candidates:
+        lines.append("Brak propozycji ponad progami (sesje ≥3 albo repo ≥2).")
+    for group in candidates:
+        lines += _proposal_lines(group)
+    return "\n".join(lines)
