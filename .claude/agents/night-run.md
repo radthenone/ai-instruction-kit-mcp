@@ -130,7 +130,8 @@ Lokalnie tylko **szybkie**; pełny zestaw — CI.
 ### 3. Baza zielona
 
 Ostatni CI na bazie: `gh run list --branch $BASE --limit 1 --json conclusion,headSha`.
-Czerwony → **halt** (przypadek C). Brak CI → bramki szybkie na `origin/$BASE` odpala krótki subagent.
+Porównaj `headSha` z `git rev-parse origin/$BASE`. Zgodne (run na HEAD bazy): czerwony → **halt** (przypadek C), zielony → baza zielona.
+Różne (run z innego commita, np. push na `dev` bez workflow): ani zielony, ani czerwony nie rozstrzyga → bramki szybkie na `origin/$BASE` odpala krótki subagent. Brak CI → to samo.
 
 ### 4. Kolejka
 

@@ -20,8 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "claude_settings.py"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
-from claude_settings import build_ponytail_matcher  # noqa: E402
-from guides.bootstrap import run_bootstrap  # noqa: E402
+from claude_settings import build_ponytail_matcher
+
+from guides.bootstrap import run_bootstrap
 
 STALE = "^(?!(?:git-commit|git-end)$).*"
 
@@ -36,6 +37,10 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.target = Path(self._tmp.name) / "settings.local.json"
+        # Host z maszyny testu nie może zmieniać oczekiwań (VPS dopisuje UV_NO_SYNC); testy VPS ustawiają go same.
+        env_patch = mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "local"})
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
 
     def load(self) -> dict:
         if not self.target.is_file():

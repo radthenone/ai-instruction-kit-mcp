@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -314,14 +314,17 @@ OLD_SESSION = "22222222-2222-4333-8444-555555555555"
 
 def _run_cli(*argv: str, env: dict[str, str]) -> tuple[int, str]:
     out = io.StringIO()
-    with mock.patch.dict(os.environ, env, clear=False):
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            code = cli.main(list(argv))
+    with (
+        mock.patch.dict(os.environ, env, clear=False),
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(out),
+    ):
+        code = cli.main(list(argv))
     return code, out.getvalue()
 
 
 class ScanTests(unittest.TestCase):
-    NOW = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+    NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -434,13 +437,16 @@ class ScanTests(unittest.TestCase):
 
 class HelperTests(unittest.TestCase):
     def test_project_dir_name_replaces_non_alphanumerics(self) -> None:
+        # resolve() na Windows dokleja dysk, więc nazwa zaczyna się od „M--”; na POSIX od „-”.
+        drive = Path("/home/alice").resolve().drive
+        prefix = f"{drive[:1]}--" if drive else "-"
         self.assertEqual(
             retro.project_dir_name(Path("/home/alice/projects/my.repo_x")),
-            "-home-alice-projects-my-repo-x",
+            f"{prefix}home-alice-projects-my-repo-x",
         )
 
     def test_since_accepts_days_and_iso_date(self) -> None:
-        now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
         self.assertEqual(retro.parse_since("2d", now=now), (now - timedelta(days=2)).timestamp())
         self.assertEqual(retro.parse_since("2026-11-01", now=now), datetime(2026, 11, 1).timestamp())
         with self.assertRaisesRegex(ValueError, "--since"):
@@ -493,7 +499,8 @@ class RetroCliTests(unittest.TestCase):
             )
             code, out = _run_cli(
                 "retro", "scan", "--session", SESSION, str(workspace),
-                env={"HOME": str(home), "XDG_CACHE_HOME": str(cache)},
+                # Na Windows Path.home() czyta USERPROFILE, nie HOME.
+                env={"HOME": str(home), "USERPROFILE": str(home), "XDG_CACHE_HOME": str(cache)},
             )
             self.assertEqual(code, 0, out)
             target = cache / "kit-ai" / "retro" / "my-repo" / f"{SESSION}.jsonl"
@@ -579,7 +586,7 @@ class HeadlessRunTests(unittest.TestCase):
             cache_root=self.root / "cache",
             kit_root=KIT_ROOT,
             runner=lambda signal: "deny",
-            now=datetime(2026, 11, 6, tzinfo=timezone.utc),
+            now=datetime(2026, 11, 6, tzinfo=UTC),
         )
         target = self.root / "cache" / "my-repo" / f"{self.RUN}.jsonl"
         self.assertTrue(target.is_file(), message)
