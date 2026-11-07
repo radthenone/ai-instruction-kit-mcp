@@ -69,9 +69,26 @@ class SessionEndScriptTests(unittest.TestCase):
         self.record = self.root / "args.txt"
         self.repo = self.root / "repo"
         self.repo.mkdir()
-        fake = self.bin / "kit-ai"
-        fake.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$RETRO_RECORD"\n', encoding="utf-8")
-        fake.chmod(0o755)
+        if os.name == "nt":
+            # spawnSync bez powłoki na Windows nie uruchomi skryptu `sh`. Fałszywy kit-ai to kopia binarki Node,
+            # a preload z NODE_OPTIONS zapisuje argumenty i kończy proces. Działa tylko dla argv0 „kit-ai”,
+            # więc hook (argv0 „node”) przechodzi bez zmian.
+            shutil.copy2(NODE, self.bin / "kit-ai.exe")
+            self.preload = self.bin / "record-args.cjs"
+            self.preload.write_text(
+                'const path = require("node:path");\n'
+                'if (path.basename(process.argv0).toLowerCase().startsWith("kit-ai")) {\n'
+                # Node rozwija argv[1] („retro”, traktowane jako skrypt) do ścieżki; nazwę odtwarzamy z basename.
+                '  const args = [path.basename(process.argv[1]), ...process.argv.slice(2)];\n'
+                '  require("node:fs").writeFileSync(process.env.RETRO_RECORD, args.join("\\n") + "\\n");\n'
+                "  process.exit(0);\n"
+                "}\n",
+                encoding="utf-8",
+            )
+        else:
+            fake = self.bin / "kit-ai"
+            fake.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$RETRO_RECORD"\n', encoding="utf-8")
+            fake.chmod(0o755)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -82,6 +99,8 @@ class SessionEndScriptTests(unittest.TestCase):
             "PATH": path if path is not None else f"{self.bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "RETRO_RECORD": str(self.record),
         }
+        if os.name == "nt":
+            env["NODE_OPTIONS"] = f"--require {self.preload}"
         return subprocess.run(
             [str(NODE), str(HOOK_TEMPLATE)], input=payload, capture_output=True, text=True, env=env, timeout=30, check=False
         )

@@ -434,9 +434,12 @@ class ScanTests(unittest.TestCase):
 
 class HelperTests(unittest.TestCase):
     def test_project_dir_name_replaces_non_alphanumerics(self) -> None:
+        # resolve() na Windows dokleja dysk, więc nazwa zaczyna się od „M--”; na POSIX od „-”.
+        drive = Path("/home/alice").resolve().drive
+        prefix = f"{drive[:1]}--" if drive else "-"
         self.assertEqual(
             retro.project_dir_name(Path("/home/alice/projects/my.repo_x")),
-            "-home-alice-projects-my-repo-x",
+            f"{prefix}home-alice-projects-my-repo-x",
         )
 
     def test_since_accepts_days_and_iso_date(self) -> None:
@@ -493,7 +496,8 @@ class RetroCliTests(unittest.TestCase):
             )
             code, out = _run_cli(
                 "retro", "scan", "--session", SESSION, str(workspace),
-                env={"HOME": str(home), "XDG_CACHE_HOME": str(cache)},
+                # Na Windows Path.home() czyta USERPROFILE, nie HOME.
+                env={"HOME": str(home), "USERPROFILE": str(home), "XDG_CACHE_HOME": str(cache)},
             )
             self.assertEqual(code, 0, out)
             target = cache / "kit-ai" / "retro" / "my-repo" / f"{SESSION}.jsonl"
