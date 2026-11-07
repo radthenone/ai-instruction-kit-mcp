@@ -20,8 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "claude_settings.py"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
-from claude_settings import build_ponytail_matcher  # noqa: E402
-from guides.bootstrap import run_bootstrap  # noqa: E402
+from claude_settings import build_ponytail_matcher
+
+from guides.bootstrap import run_bootstrap
 
 STALE = "^(?!(?:git-commit|git-end)$).*"
 

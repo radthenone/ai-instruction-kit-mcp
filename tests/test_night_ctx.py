@@ -23,9 +23,12 @@ KIT_ROOT = Path(__file__).resolve().parents[1]
 
 def _run(*argv: str, env: dict[str, str] | None = None) -> tuple[int, str]:
     out = io.StringIO()
-    with mock.patch.dict(os.environ, env or {}, clear=False):
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            code = cli.main(list(argv))
+    with (
+        mock.patch.dict(os.environ, env or {}, clear=False),
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(out),
+    ):
+        code = cli.main(list(argv))
     return code, out.getvalue()
 
 

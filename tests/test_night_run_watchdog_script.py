@@ -17,9 +17,9 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from guides.bootstrap import run_bootstrap
-
 from _shell import is_ci, posix_path, resolve_bash
+
+from guides.bootstrap import run_bootstrap
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = KIT_ROOT / "templates" / "shared" / "night-run" / "watchdog.sh"
@@ -58,7 +58,7 @@ def _wait_for(predicate, timeout: float = 120.0) -> bool:
 def _kill_tree(proc: subprocess.Popen) -> None:
     # Na Windows `proc` to launcher Git Bash: `kill` zostawia właściwy bash z otwartym pipe.
     if os.name == "nt":
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False)
     else:
         proc.kill()
     proc.communicate()
@@ -134,6 +134,7 @@ class TestWatchdogScript(unittest.TestCase):
             env=self._env(tick=tick, recheck=recheck) if env is None else env,
             capture_output=True,
             encoding="utf-8",
+            check=False,
             timeout=240,
         )
 
@@ -229,6 +230,7 @@ class TestWatchdogScript(unittest.TestCase):
             env=env,
             capture_output=True,
             encoding="utf-8",
+            check=False,
             timeout=240,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
