@@ -36,6 +36,10 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.target = Path(self._tmp.name) / "settings.local.json"
+        # Host z maszyny testu nie może zmieniać oczekiwań (VPS dopisuje UV_NO_SYNC); testy VPS ustawiają go same.
+        env_patch = mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "local"})
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
 
     def load(self) -> dict:
         if not self.target.is_file():

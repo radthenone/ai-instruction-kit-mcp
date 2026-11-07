@@ -115,7 +115,7 @@ class TestWatchdogScript(unittest.TestCase):
             env=self._env(tick=tick, recheck=recheck),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            encoding="utf-8",  # bash pisze UTF-8; locale Windows (cp1250) psuje „życie”
         )
         # Linia limitu dopisana przed policzeniem offsetu jest „stara” i watchdog jej nie widzi.
         # Start (bash + kit-ai) bywa wolniejszy niż sleep w teście, więc czekamy na sygnał.
@@ -133,7 +133,7 @@ class TestWatchdogScript(unittest.TestCase):
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), *args],
             env=self._env(tick=tick, recheck=recheck) if env is None else env,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             timeout=240,
         )
 
@@ -228,7 +228,7 @@ class TestWatchdogScript(unittest.TestCase):
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), "60", "110"],
             env=env,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             timeout=240,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -300,7 +300,9 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertLess(abs(epoch - expected), 120, (epoch, expected))
 
     def test_no_hour_pause_extends_while_new_limit_lines_arrive(self) -> None:
-        proc = self._start("60", "110", recheck="1")
+        # Recheck 3 s daje margines na drugą linię limitu przed sprawdzeniem pauzy. Wyścig zmniejszony, nie usunięty:
+        # bez hooka w skrypcie nie ma warunku deterministycznego.
+        proc = self._start("60", "110", recheck="3")
         time.sleep(1.5)
         self._append_transcript(LIMIT_LINE)
         self.assertTrue(_wait_for(lambda: bool(self._pause_lines())))
