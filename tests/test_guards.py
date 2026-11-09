@@ -843,6 +843,8 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("uv run ruff --no-sync", "deny"),
     ("uv run --no-sync-foo ruff", "deny"),
     ("uv run --no-sync python -c \"print('--with x')\"", "allow"),
+    # #384 — `--no-sync` stoi przed nazwą narzędzia `x`, więc uv nie synchronizuje (allow).
+    ("uv --color never run --no-sync x", "allow"),
     # #384 — cudzysłów w wartości nie ukrywa flagi; cudzysłów przy `=` jest dozwolony.
     ('uv lock --config-setting "a=b --no-build c"', "deny"),
     ('uv add x --group="dev" --no-sync --no-build', "allow"),
