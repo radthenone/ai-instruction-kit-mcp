@@ -16,9 +16,7 @@ from pathlib import Path
 # Próg propozycji z #338 (część (c)): znalezisko w co najmniej tylu sesjach albo tylu repo.
 REPORT_SESSION_THRESHOLD = 3
 REPORT_REPO_THRESHOLD = 2
-# Górna granica `gh issue list`; pełna strona oznacza, że część issue mogła zostać ucięta.
-ISSUE_LIMIT = 1000
-# Dedup po markerze z ADR-0015: fingerprint w body otwartego issue jako ukryty komentarz HTML.
+# Dedup po markerze z ADR-0015 i ADR-0017: fingerprint w body issue (w każdym stanie) jako ukryty komentarz HTML.
 _MARKER = re.compile(r"<!--\s*retro-fingerprint:\s*([0-9a-f]{16})\s*-->")
 
 GhRun = Callable[[list[str], Path], str]
@@ -93,37 +91,44 @@ def is_candidate(group: Group) -> bool:
 
 def _run_gh(argv: list[str], cwd: Path) -> str:
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=str(cwd))
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, cwd=str(cwd)
+        )
     except OSError as exc:
-        raise ValueError(f"dedup z otwartymi issue wymaga gh, a nie udało się go uruchomić: {exc}") from exc
+        raise ValueError(f"dedup z issue wymaga gh, a nie udało się go uruchomić: {exc}") from exc
     if proc.returncode != 0:
-        raise ValueError(f"gh issue list nie powiódł się: {proc.stderr.strip() or proc.returncode}")
+        raise ValueError(f"gh nie powiódł się: {proc.stderr.strip() or proc.returncode}")
     return proc.stdout
 
 
-def parse_open_issues(payload: str) -> set[str]:
-    """Fingerprinty z markerów w body issue; issue bez tekstu w body nic nie wnoszą."""
-    try:
-        issues = json.loads(payload)
-    except ValueError as exc:
-        raise ValueError("gh zwrócił nieczytelną listę issue (oczekiwano JSON)") from exc
-    if not isinstance(issues, list):
-        raise ValueError("gh zwrócił listę issue w nieoczekiwanym kształcie")
-    if len(issues) >= ISSUE_LIMIT:
-        # Ucięta lista mogłaby pominąć marker i pokazać duplikat — odmawiamy jak przy braku gh.
-        raise ValueError(f"otwartych issue jest co najmniej {ISSUE_LIMIT}; dedup byłby niepełny")
-    found: set[str] = set()
-    for issue in issues:
-        body = issue.get("body") if isinstance(issue, dict) else None
-        if isinstance(body, str):
-            found.update(_MARKER.findall(body))
-    return found
+def parse_issue_markers(output: str) -> set[str]:
+    """Fingerprinty z markerów w wyjściu ``gh api --jq '.[].body'`` (body issue linia po linii).
+
+    Args:
+        output: Sklejone body issue ze wszystkich stron.
+
+    Returns:
+        Zbiór fingerprintów z pełnych markerów; tekst bez markera nic nie wnosi.
+    """
+    return set(_MARKER.findall(output))
 
 
-def open_issue_fingerprints(workspace: Path, *, gh_run: GhRun | None = None) -> set[str]:
-    """Fingerprinty z markerem w body otwartych issue repo w ``workspace`` (ADR-0015)."""
-    argv = ["gh", "issue", "list", "--state", "open", "--limit", str(ISSUE_LIMIT), "--json", "body"]
-    return parse_open_issues((gh_run or _run_gh)(argv, workspace))
+def issue_fingerprints(workspace: Path, *, gh_run: GhRun | None = None) -> set[str]:
+    """Fingerprinty z markerem w body issue repo w ``workspace``, w każdym stanie (ADR-0017).
+
+    Args:
+        workspace: Klon repo, z którego ``gh`` bierze ``{owner}/{repo}``.
+        gh_run: Uruchamianie ``gh`` (w testach podmiana); domyślnie podproces.
+
+    Returns:
+        Fingerprinty z otwartych i zamkniętych issue, ze wszystkich stron listy.
+    """
+    argv = [
+        "gh", "api", "--paginate",
+        "repos/{owner}/{repo}/issues?state=all&per_page=100",
+        "--jq", ".[].body",
+    ]
+    return parse_issue_markers((gh_run or _run_gh)(argv, workspace))
 
 
 def _proposal_lines(group: Group) -> list[str]:
@@ -141,20 +146,20 @@ def _proposal_lines(group: Group) -> list[str]:
 
 
 def report_command(workspace: Path, *, cache_root: Path, gh_run: GhRun | None = None) -> str:
-    """Tekst ``kit-ai retro report``: propozycje ponad progami, bez znalezisk z otwartym issue."""
+    """Tekst ``kit-ai retro report``: propozycje ponad progami, bez znalezisk z issue z markerem."""
     findings = read_findings(cache_root)
     if not findings:
         return f"retro report: brak znalezisk w {cache_root}"
     groups = group_findings(findings)
     candidates = [group for group in groups if is_candidate(group)]
     # gh pytamy tylko przy kandydatach; bez dedupu nie pokazujemy propozycji (fail-closed).
-    open_fingerprints = open_issue_fingerprints(workspace, gh_run=gh_run) if candidates else set()
-    proposals = [group for group in candidates if group.fingerprint not in open_fingerprints]
+    known = issue_fingerprints(workspace, gh_run=gh_run) if candidates else set()
+    proposals = [group for group in candidates if group.fingerprint not in known]
     skipped = len(candidates) - len(proposals)
     repos = {repo for repo, _ in findings}
     lines = [
         f"retro report: repo {len(repos)} · znaleziska {len(groups)} · powyżej progów {len(candidates)} · "
-        f"pominięte (otwarte issue): {skipped} · propozycje {len(proposals)}"
+        f"pominięte (issue z markerem): {skipped} · propozycje {len(proposals)}"
     ]
     if not proposals:
         lines.append("Brak propozycji do zaakceptowania (progi: sesje ≥3 albo repo ≥2).")

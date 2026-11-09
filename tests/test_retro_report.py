@@ -10,6 +10,7 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,7 +47,8 @@ def _write_session(
 
 
 def _issues(*bodies: str) -> str:
-    return json.dumps([{"body": body} for body in bodies], ensure_ascii=False)
+    """Wyjście ``gh api --jq '.[].body'``: body kolejnych issue, linia po linii."""
+    return "\n".join(bodies)
 
 
 def _marker(fingerprint: str) -> str:
@@ -54,7 +56,7 @@ def _marker(fingerprint: str) -> str:
 
 
 def _no_open_issues(argv: list[str], cwd: Path) -> str:
-    return "[]"
+    return ""
 
 
 class ThresholdTests(unittest.TestCase):
@@ -138,18 +140,18 @@ class DedupTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def _report(self, open_issues: str = "[]") -> str:
-        return retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=lambda argv, cwd: open_issues)
+    def _report(self, issues: str = "") -> str:
+        return retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=lambda argv, cwd: issues)
 
     def _three_sessions(self, *fingerprints: str) -> None:
         for session in ("s1", "s2", "s3"):
             _write_session(self.cache, "alpha", session, [_finding(fp) for fp in fingerprints])
 
-    def test_open_issue_with_marker_drops_the_proposal(self) -> None:
+    def test_issue_with_marker_drops_the_proposal(self) -> None:
         self._three_sessions(FP_GUARD)
         report = self._report(_issues(_marker(FP_GUARD)))
         self.assertNotIn(FP_GUARD, report)
-        self.assertIn("pominięte (otwarte issue): 1", report)
+        self.assertIn("pominięte (issue z markerem): 1", report)
         self.assertIn("propozycje 0", report)
 
     def test_other_fingerprints_are_still_proposed(self) -> None:
@@ -157,26 +159,40 @@ class DedupTests(unittest.TestCase):
         report = self._report(_issues(_marker(FP_GUARD)))
         self.assertNotIn(FP_GUARD, report)
         self.assertIn(FP_TOOL, report)
-        self.assertIn("pominięte (otwarte issue): 1", report)
+        self.assertIn("pominięte (issue z markerem): 1", report)
 
     def test_marker_must_carry_a_full_fingerprint(self) -> None:
         self._three_sessions(FP_GUARD)
         self.assertIn(FP_GUARD, self._report(_issues("<!-- retro-fingerprint: 0123 -->")))
 
-    def test_github_is_asked_for_open_issues_only(self) -> None:
+    def test_github_is_asked_for_issues_in_every_state_across_pages(self) -> None:
+        """ADR-0017: zamknięte issue też wyciszają, a lista nie jest ucinana na jednej stronie."""
         self._three_sessions(FP_GUARD)
-        gh_run = mock.Mock(return_value="[]")
+        gh_run = mock.Mock(return_value="")
         retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=gh_run)
         gh_run.assert_called_once()
         argv, cwd = gh_run.call_args.args
-        self.assertEqual(argv[:3], ["gh", "issue", "list"])
-        self.assertEqual(argv[argv.index("--state") + 1], "open")
-        self.assertEqual(argv[argv.index("--json") + 1], "body")
+        self.assertEqual(argv[:3], ["gh", "api", "--paginate"])
+        self.assertIn("state=all", argv[3])
+        self.assertEqual(argv[argv.index("--jq") + 1], ".[].body")
         self.assertEqual(cwd, self.workspace)
+
+    def test_markers_from_every_page_drop_their_proposals(self) -> None:
+        """``--paginate`` skleja strony; marker z drugiej strony liczy się tak samo."""
+        self._three_sessions(FP_GUARD, FP_TOOL)
+        pages = _issues(_marker(FP_GUARD), *["x"] * 99) + "\n" + _issues(_marker(FP_TOOL))
+        report = self._report(pages)
+        self.assertNotIn(FP_GUARD, report)
+        self.assertNotIn(FP_TOOL, report)
+        self.assertIn("pominięte (issue z markerem): 2", report)
+
+    def test_large_issue_list_is_not_refused(self) -> None:
+        self._three_sessions(FP_GUARD)
+        self.assertIn(FP_GUARD, self._report(_issues(*["x"] * 1500)))
 
     def test_github_is_not_asked_without_candidates(self) -> None:
         _write_session(self.cache, "alpha", "s1", [_finding(FP_GUARD)])
-        gh_run = mock.Mock(return_value="[]")
+        gh_run = mock.Mock(return_value="")
         retro_report.report_command(self.workspace, cache_root=self.cache, gh_run=gh_run)
         gh_run.assert_not_called()
 
@@ -187,10 +203,15 @@ class DedupTests(unittest.TestCase):
                 retro_report.report_command(self.workspace, cache_root=self.cache)
         self.assertIn("gh", str(context.exception))
 
-    def test_unreadable_github_answer_is_refused(self) -> None:
+    def test_gh_output_is_decoded_as_utf8_whatever_the_locale(self) -> None:
+        """Body issue mają polskie znaki; dekodowanie kodowaniem systemu (cp1250) wywracało raport."""
         self._three_sessions(FP_GUARD)
-        with self.assertRaises(ValueError):
-            self._report("nie json")
+        done = subprocess.CompletedProcess([], 0, stdout=_marker(FP_GUARD), stderr="")
+        with mock.patch("guides.retro_report.subprocess.run", return_value=done) as run:
+            report = retro_report.report_command(self.workspace, cache_root=self.cache)
+        self.assertEqual(run.call_args.kwargs.get("encoding"), "utf-8")
+        self.assertEqual(run.call_args.kwargs.get("errors"), "replace")
+        self.assertNotIn(f"fingerprint {FP_GUARD}", report)
 
     def test_proposal_carries_marker_for_the_card(self) -> None:
         self._three_sessions(FP_GUARD)
@@ -203,21 +224,13 @@ class DedupTests(unittest.TestCase):
         self.assertIn("/kit-project-edit", report)
 
 
-class ParseOpenIssuesTests(unittest.TestCase):
+class ParseIssueMarkersTests(unittest.TestCase):
     def test_collects_markers_from_every_issue_body(self) -> None:
         payload = _issues(_marker(FP_GUARD), "bez markera", _marker(FP_TOOL))
-        self.assertEqual(retro_report.parse_open_issues(payload), {FP_GUARD, FP_TOOL})
+        self.assertEqual(retro_report.parse_issue_markers(payload), {FP_GUARD, FP_TOOL})
 
-    def test_issues_without_text_body_contribute_nothing(self) -> None:
-        self.assertEqual(retro_report.parse_open_issues('[{"title": "x"}, {"body": null}]'), set())
-
-    def test_non_list_answer_is_refused(self) -> None:
-        with self.assertRaises(ValueError):
-            retro_report.parse_open_issues('{"body": "x"}')
-
-    def test_full_page_of_issues_is_refused_as_possibly_truncated(self) -> None:
-        with self.assertRaises(ValueError):
-            retro_report.parse_open_issues(_issues(*["x"] * retro_report.ISSUE_LIMIT))
+    def test_output_without_markers_contributes_nothing(self) -> None:
+        self.assertEqual(retro_report.parse_issue_markers("null\nbez markera"), set())
 
 
 def _run_cli(*argv: str, env: dict[str, str]) -> tuple[int, str]:
@@ -237,7 +250,7 @@ class RetroReportCliTests(unittest.TestCase):
             cache = xdg / "kit-ai" / "retro"
             _write_session(cache, "alpha", "s1", [_finding(FP_GUARD)])
             _write_session(cache, "beta", "s2", [_finding(FP_GUARD)])
-            with mock.patch("guides.retro_report.open_issue_fingerprints", return_value=set()) as dedup:
+            with mock.patch("guides.retro_report.issue_fingerprints", return_value=set()) as dedup:
                 code, out = _run_cli("retro", "report", str(workspace), env={"XDG_CACHE_HOME": str(xdg)})
             self.assertEqual(code, 0, out)
             self.assertIn(FP_GUARD, out)
