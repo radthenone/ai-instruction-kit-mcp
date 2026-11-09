@@ -172,6 +172,30 @@ class SignalTests(unittest.TestCase):
         edit = _tool_use("t1", "Edit", {"file_path": "src/guides/x.py", "old_string": "a", "new_string": "b"})
         self.assertIn("mcp_compliance", self._kinds(self._parse(_assistant("m1", edit))))
 
+    def test_mcp_compliance_per_subagent_are_distinct_findings(self) -> None:
+        main_path = _write_jsonl(self.root / f"{SESSION}.jsonl", [])
+        sub1_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant("s1", _tool_use("t1", "Edit", {"file_path": "src/guides/x.py"}))],
+        )
+        sub2_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-2.jsonl",
+            [_assistant("s2", _tool_use("t2", "Edit", {"file_path": "src/guides/y.py"}))],
+        )
+        sub3_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-3.jsonl",
+            [
+                _assistant("s3_1", _tool_use("t3_1", "mcp__project-guides__get_overlay", {})),
+                _assistant("s3_2", _tool_use("t3_2", "Edit", {"file_path": "src/guides/z.py"})),
+            ],
+        )
+        parsed = retro.parse_session([main_path, sub1_path, sub2_path, sub3_path], session_id=SESSION)
+        findings = retro.build_findings(parsed.signals, replay=lambda _: "n/a")
+        compliance_findings = [f for f in findings if f.kind == "mcp_compliance"]
+        self.assertEqual(len(compliance_findings), 2)
+        fingerprints = {f.fingerprint for f in compliance_findings}
+        self.assertEqual(len(fingerprints), 2)
+
     def test_overlay_read_before_edit_clears_mcp_compliance(self) -> None:
         parsed = self._parse(
             _assistant("m1", _tool_use("t0", "mcp__project-guides__get_overlay", {})),

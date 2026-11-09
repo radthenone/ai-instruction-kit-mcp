@@ -138,7 +138,7 @@ def parse_session(paths: list[Path], session_id: str) -> ParsedSession:
     """Wyciąga sygnały i metryki z plików sesji (główny JSONL i jego subagenty)."""
     scan = _Scan()
     for path in paths:
-        _scan_file(path, scan)
+        _scan_file(path, scan, session_id=session_id)
     return ParsedSession(session_id=session_id, files=len(paths), signals=scan.signals, metrics=scan.metrics)
 
 
@@ -160,7 +160,8 @@ def _read_records(path: Path) -> Iterator[dict]:
                 yield data
 
 
-def _scan_file(path: Path, scan: _Scan) -> None:
+def _scan_file(path: Path, scan: _Scan, *, session_id: str = "") -> None:
+    agent_id = path.stem if path.stem != session_id else "main"
     state = _FileState()
     for record in _read_records(path):
         if record.get("isApiErrorMessage") is True:
@@ -181,11 +182,13 @@ def _scan_file(path: Path, scan: _Scan) -> None:
             elif block.get("type") == "tool_result":
                 _on_tool_result(block, scan)
     if state.unseen_edits:
+        key = f"missing-get_overlay-before-edit:{agent_id}"
+        ev = f"{agent_id}: {state.first_unseen}"
         scan.signals.append(
             Signal(
                 "mcp_compliance",
-                "missing-get_overlay-before-edit",
-                evidence(state.first_unseen),
+                key,
+                evidence(ev),
                 count=state.unseen_edits,
             )
         )
