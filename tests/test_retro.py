@@ -503,6 +503,28 @@ class ScanTests(unittest.TestCase):
         self.assertEqual((deny["guard"], deny["tool"], deny["replay"]), ("git-guard", "Bash", "deny"))
         self.assertIn("tool_error", [record["kind"] for record in findings])
 
+    def test_scan_command_reports_full_session_cost(self) -> None:
+        self._write_main()
+        text = retro.scan_command(
+            self.workspace,
+            session=SESSION,
+            since=None,
+            projects_root=self.projects,
+            cache_root=self.cache,
+            kit_root=KIT_ROOT,
+            runner=lambda signal: "deny",
+            now=self.NOW,
+        )
+        for part in (
+            "koszt: 1 tury",
+            "5 in",
+            "0 cache_creation",
+            "100 cache_read",
+            "0 out",
+            "105 maks. kontekst",
+        ):
+            self.assertIn(part, text)
+
     def test_never_stores_raw_secrets_home_paths_or_long_messages(self) -> None:
         self._write_main()
         text = self._scan().read_text(encoding="utf-8")

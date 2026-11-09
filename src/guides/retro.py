@@ -769,7 +769,10 @@ def scan_command(
         )
         parsed = parse_session(files, session_id=session)
         m = parsed.metrics
-        cost_str = f"koszt: {m.api_calls} tury · {m.input_tokens + m.cache_creation_sum} in · {m.cache_read_sum} cache · {m.output_tokens} out"
+        cost_str = (
+            f"koszt: {m.api_calls} tury · {m.input_tokens} in · {m.cache_creation_sum} cache_creation · "
+            f"{m.cache_read_sum} cache_read · {m.output_tokens} out · {m.max_context} maks. kontekst"
+        )
         lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)}, {cost_str})"]
         lines += [
             f"  {f.kind} ×{f.count} replay={f.replay}" + (f" [{f.guard}]" if f.guard else "") + f": {f.evidence}"
