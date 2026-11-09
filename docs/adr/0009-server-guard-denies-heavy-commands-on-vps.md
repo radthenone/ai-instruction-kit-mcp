@@ -68,22 +68,20 @@ z PR #321 (#317).
 **Kompromis.** Dłuższa lista to więcej miejsc na fałszywą blokadę, a wyjątki
 siedzą w długich wyrażeniach regularnych z lookahead. Reguła `uvx` działa tylko
 dla flag przed nazwą narzędzia, bo flaga po nazwie należy do narzędzia, a
-najdłuższa reguła (`npm-install-lock-only`) ma 321 znaków. Guard dopasowuje tekst,
+najdłuższa reguła (`npm-install-lock-only`) ma 378 znaków. Guard dopasowuje tekst,
 nie parsuje argumentów, więc myli się w obie strony:
 
 | Komenda | Wynik | Dlaczego | Co zrobić |
 | --- | --- | --- | --- |
 | `uvx --python 3.12 --offline ruff` | deny | wartość flagi przerywa ciąg flag przed `--offline` | `uvx --offline --python 3.12 ruff` albo `UV_OFFLINE=1` |
 | `npx -p typescript --no tsc` | deny | jak wyżej, dla `--no` | `npx --no -p typescript tsc` |
-| `webpack --version`, `tsup --help`, `docker --version` | deny | reguła obejmuje całe narzędzie | `server.allow` |
-| `cargo build --help`, `apt-get -s install curl` | deny | reguła nie rozpoznaje form bez efektu | `server.allow` |
-| `uv run ruff --no-sync` | allow | reguła liczy `--no-sync` w dowolnym miejscu, a po nazwie narzędzia flaga trafia do narzędzia i uv synchronizuje (sprawdzone na uv 0.5.25) | znana luka (#384) |
-| `uv --color never sync`, `npm --loglevel silent install x` | allow | pomijanie flag nie zna ich wartości, więc `never` i `silent` biorą za podkomendę | znana luka (#384) |
+| `apt-get -s install curl` | deny | reguła nie rozpoznaje form bez efektu | `server.allow` |
+| `pnpm add x --lockfile-only --ignore-scripts` | deny | dokumentacja `pnpm add` nie wymienia `--lockfile-only` (sprawdzone w docs pnpm) | `pnpm install --lockfile-only --ignore-scripts` po ręcznej zmianie `package.json` |
 
 Większość deny niesie powód z alternatywą (linter zamiast builda,
 `uv run --no-sync` zamiast `uv run`, CI zamiast e2e), a `server.allow` odblokowuje
-konkretną formę bez zdejmowania reguły: wpis `webpack --version` przepuszcza tę
-formę, a `webpack` nadal dostaje deny.
+konkretną formę bez zdejmowania reguły: wpis `apt-get -s install` przepuszcza tę
+formę, a `apt-get install` nadal dostaje deny.
 Ryzyko, którego pilnujemy, to agent uczący się obchodzić guarda. Dlatego nową
 regułę dodajemy razem z przypadkami w tabeli `SERVER_GUARD` w `tests/test_guards.py`:
 regexa z lookahead nie da się ocenić bez przykładów allow i deny.
@@ -100,10 +98,31 @@ wersje i zapisują lockfile:
 | uv | `uv add` / `uv remove` | `--no-sync` **i** `--no-build` |
 | npm | `npm install` | `--package-lock-only` **i** `--ignore-scripts` |
 | pnpm | `pnpm install` | `--lockfile-only` **i** `--ignore-scripts` |
-| bun | `bun install` | `--lockfile-only` **i** `--ignore-scripts` |
+| bun | `bun install` / `bun i` | `--lockfile-only` **i** `--ignore-scripts` |
+| bun | `bun add` / `bun remove` | `--lockfile-only` **i** `--ignore-scripts` |
 
-Inne formy tych komend zostają deny, a powód wskazuje dozwoloną formę; wyjątki
-od tej zasady opisuje tabela w „Zakres listy i jej koszt” i #384.
+Inne formy tych komend zostają deny, a powód wskazuje dozwoloną formę.
+`pnpm add` zostaje deny: dokumentacja `pnpm add` nie zna `--lockfile-only`, więc
+zmiany zależności pnpm idą przez `package.json` i `pnpm install --lockfile-only`.
+
+**Parser flag (#384).** Guard tnie komendę na tokeny z uwzględnieniem cudzysłowów
+i czyta ją tak, jak uruchomi ją narzędzie:
+
+- flaga z wartością przed podkomendą (`uv --color never sync`, `npm --loglevel silent install`)
+  jest czytana w obu odczytaniach, z wartością i bez; deny z któregokolwiek wygrywa;
+- `--no-sync` i `--with*` w `uv run` liczą się tylko w strefie flag przed nazwą
+  narzędzia: `uv run ruff --no-sync` to deny, `uv run --no-sync python -c "…--with…"` to allow;
+- cudzysłów przy wartości po `=` jest dozwolony (`--group="dev"`), a cytowany tekst
+  z białą spacją w środku nie może ukryć flagi (`"a=b --no-build c"` to deny);
+- cudzysłów w nazwie menedżera albo podkomendzie (`uv "sync"`, `"npm" install x`) jest zdejmowany
+  jak przez powłokę, więc nie omija guarda; forma surowa zostaje dla lockfile-only, gdzie
+  cudzysłów przy nazwie flagi (`--no-build`) daje deny;
+- `--ignore-scripts=true` (także `="true"`) to samo co `--ignore-scripts`; `npx --no-install` to `--no`
+  przed nazwą pakietu; `bun i` to `bun install`;
+- `--help` / `--version` w strefie flag przed nazwą narzędzia to pomoc, nie instalacja:
+  `webpack --version`, `cargo build --help`, `uv --version` są allow, a `npx cowsay --help`
+  i `uv run ruff --version` zostają deny, bo flaga należy do narzędzia z launchera.
+  Taka forma wygrywa z deny tej samej komendy (uv i bun kończą się na pomocy, bez instalacji).
 `server.deny` w Profilu może te formy z powrotem zablokować (precedencja:
 `server.allow` > `server.deny` > allow kita > deny kita), a `server.guard: off`
 dalej wyłącza cały guard.

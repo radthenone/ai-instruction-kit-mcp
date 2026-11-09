@@ -118,6 +118,10 @@ _Avoid_: IDE, editor, agent, tool
 A hook script the Bootstrap installs into a Workspace so a Client refuses or reports an agent action — a destructive git command, a write to a secret, a lint failure. One policy source in the Kit, translated per Client; a Guard either allows or denies, it never asks the human.
 _Avoid_: guardrail, gate, hook, blocker
 
+**Lock-only Form**:
+A package-manager command that only resolves versions and rewrites the lockfile, with no dependency installed. It is the one way to change dependencies that the server Guard lets through on a weak server host (ADR-0009), and it can still run project code (`.pnpmfile.cjs`) or compile a backend while reading metadata.
+_Avoid_: dry run, offline install, lock update
+
 **Bootstrap Stamp**:
 The record a Bootstrap leaves in a Workspace of which Kit commit produced the copied files, so drift can be detected without reading any instruction text.
 _Avoid_: lockfile, manifest, version file
