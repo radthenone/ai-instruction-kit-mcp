@@ -283,7 +283,7 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(parsed.metrics.cache_read_sum, 4000)
         self.assertEqual(parsed.metrics.max_context, 3000 + 10 + 50)
 
-    def test_cost_parity_with_session_usage_fixture(self) -> None:
+    def test_cost_totals_deduplicate_calls_by_message_id(self) -> None:
         records = [
             _assistant("msg_001", {"type": "text", "text": "a"}, usage={"input_tokens": 100, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50, "output_tokens": 20}),
             _assistant("msg_001", {"type": "text", "text": "a"}, usage={"input_tokens": 100, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50, "output_tokens": 20}),
