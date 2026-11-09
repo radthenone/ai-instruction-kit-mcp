@@ -141,6 +141,33 @@ class SignalTests(unittest.TestCase):
         parsed = self._parse(_assistant("m1", block), _assistant("m1", block), _assistant("m1", block))
         self.assertNotIn("repeated_tool_use", self._kinds(parsed))
 
+    def test_repeated_tool_use_split_across_subagents_is_not_a_signal(self) -> None:
+        main_path = _write_jsonl(
+            self.root / f"{SESSION}.jsonl",
+            [_assistant(f"m{i}", _tool_use(f"tm{i}", "Read", {"file_path": "context.md"})) for i in range(2)],
+        )
+        sub1_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant(f"s1_{i}", _tool_use(f"ts1_{i}", "Read", {"file_path": "context.md"})) for i in range(2)],
+        )
+        sub2_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-2.jsonl",
+            [_assistant(f"s2_{i}", _tool_use(f"ts2_{i}", "Read", {"file_path": "context.md"})) for i in range(2)],
+        )
+        parsed = retro.parse_session([main_path, sub1_path, sub2_path], session_id=SESSION)
+        self.assertNotIn("repeated_tool_use", self._kinds(parsed))
+
+    def test_repeated_tool_use_within_single_subagent_is_a_signal(self) -> None:
+        main_path = _write_jsonl(self.root / f"{SESSION}.jsonl", [])
+        sub1_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant(f"s1_{i}", _tool_use(f"ts1_{i}", "Read", {"file_path": "context.md"})) for i in range(3)],
+        )
+        parsed = retro.parse_session([main_path, sub1_path], session_id=SESSION)
+        self.assertIn("repeated_tool_use", self._kinds(parsed))
+        [signal] = [s for s in parsed.signals if s.kind == "repeated_tool_use"]
+        self.assertEqual(signal.count, 3)
+
     def test_code_edit_without_overlay_is_mcp_compliance_signal(self) -> None:
         edit = _tool_use("t1", "Edit", {"file_path": "src/guides/x.py", "old_string": "a", "new_string": "b"})
         self.assertIn("mcp_compliance", self._kinds(self._parse(_assistant("m1", edit))))

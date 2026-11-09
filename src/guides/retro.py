@@ -118,20 +118,20 @@ class _Scan:
     """Stan przebiegu przez wszystkie pliki sesji (główny plik i subagenty)."""
 
     tool_uses: dict[str, tuple[str, dict]] = field(default_factory=dict)
-    seen_tool_ids: set[str] = field(default_factory=set)
     seen_message_ids: set[str] = field(default_factory=set)
-    repeats: dict[str, int] = field(default_factory=dict)
     signals: list[Signal] = field(default_factory=list)
     metrics: SessionMetrics = field(default_factory=SessionMetrics)
 
 
 @dataclass
 class _FileState:
-    """Stan jednego pliku: ``get_overlay`` obowiązuje w kontekście agenta, który go zawołał."""
+    """Stan jednego pliku (subagenta): reguły i liczniki obowiązują w kontekście agenta."""
 
     overlay_seen: bool = False
     unseen_edits: int = 0
     first_unseen: str = ""
+    seen_tool_ids: set[str] = field(default_factory=set)
+    repeats: dict[str, int] = field(default_factory=dict)
 
 
 def parse_session(paths: list[Path], session_id: str) -> ParsedSession:
@@ -139,12 +139,6 @@ def parse_session(paths: list[Path], session_id: str) -> ParsedSession:
     scan = _Scan()
     for path in paths:
         _scan_file(path, scan)
-    for key, count in sorted(scan.repeats.items()):
-        if count >= REPEAT_THRESHOLD:
-            name = key.split(" ", 1)[0]
-            scan.signals.append(
-                Signal("repeated_tool_use", normalize(mask(key)), evidence(key), tool_name=name, count=count)
-            )
     return ParsedSession(session_id=session_id, files=len(paths), signals=scan.signals, metrics=scan.metrics)
 
 
@@ -195,6 +189,12 @@ def _scan_file(path: Path, scan: _Scan) -> None:
                 count=state.unseen_edits,
             )
         )
+    for key, count in sorted(state.repeats.items()):
+        if count >= REPEAT_THRESHOLD:
+            name = key.split(" ", 1)[0]
+            scan.signals.append(
+                Signal("repeated_tool_use", normalize(mask(key)), evidence(key), tool_name=name, count=count)
+            )
 
 
 def _content(record: dict) -> Any:
@@ -218,9 +218,9 @@ def _count_usage(message: dict, scan: _Scan) -> None:
 def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
     tool_id = str(block.get("id") or "")
     if tool_id:
-        if tool_id in scan.seen_tool_ids:
+        if tool_id in state.seen_tool_ids:
             return
-        scan.seen_tool_ids.add(tool_id)
+        state.seen_tool_ids.add(tool_id)
     name = str(block.get("name") or "")
     raw_input = block.get("input")
     tool_input = raw_input if isinstance(raw_input, dict) else {}
@@ -233,7 +233,7 @@ def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
         state.unseen_edits += 1
         state.first_unseen = state.first_unseen or path
     repeat_key = f"{name} {json.dumps(tool_input, sort_keys=True, ensure_ascii=False)}"
-    scan.repeats[repeat_key] = scan.repeats.get(repeat_key, 0) + 1
+    state.repeats[repeat_key] = state.repeats.get(repeat_key, 0) + 1
 
 
 _QUESTIONING_TOOLS = frozenset({
