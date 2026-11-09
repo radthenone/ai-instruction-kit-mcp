@@ -191,6 +191,25 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(self._kinds(parsed), ["tool_error"])
         self.assertNotIn("harness_block", self._kinds(parsed))
 
+    def test_confirm_repository_trust_has_its_own_questioning_tool_class(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "confirm_repository_trust", {"content_digest": "000"})),
+            _tool_result("t1", "Denied by user", is_error=True),
+        )
+        self.assertIn("questioning_tool", self._kinds(parsed))
+        self.assertNotIn("tool_error", self._kinds(parsed))
+        [signal] = [s for s in parsed.signals if s.kind == "questioning_tool"]
+        self.assertEqual(signal.tool_name, "confirm_repository_trust")
+        self.assertIn("Denied by user", signal.evidence)
+
+    def test_remote_confirm_repository_trust_also_classified_as_questioning_tool(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "mcp__claude-code-remote__confirm_repository_trust", {})),
+            _tool_result("t1", "Denied by user", is_error=True),
+        )
+        self.assertIn("questioning_tool", self._kinds(parsed))
+        self.assertNotIn("tool_error", self._kinds(parsed))
+
     def test_bash_exit_code_errors_are_grouped_by_stderr(self) -> None:
         parsed = self._parse(
             _tool_result("t1", "Exit code 1\nfatal: not a git repository", is_error=True),

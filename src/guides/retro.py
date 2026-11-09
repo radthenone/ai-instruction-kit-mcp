@@ -236,6 +236,24 @@ def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
     scan.repeats[repeat_key] = scan.repeats.get(repeat_key, 0) + 1
 
 
+_QUESTIONING_TOOLS = frozenset({
+    "confirm_repository_trust",
+    "askfollowupquestion",
+    "askuserquestion",
+    "ask_followup_question",
+    "ask_user",
+    "ask_question",
+})
+
+
+def _is_questioning_tool(name: str) -> bool:
+    if not name:
+        return False
+    lower = name.lower()
+    base = lower.rsplit("__", 1)[-1]
+    return base in _QUESTIONING_TOOLS or "confirm_repository_trust" in lower
+
+
 def _is_json(text: str) -> bool:
     stripped = text.strip()
     if (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
@@ -252,9 +270,10 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
     lines = text.strip().splitlines()
     first = lines[0] if lines else ""
     is_error = block.get("is_error") is True
+    tool_use_id = str(block.get("tool_use_id") or "")
+    tool_name, tool_input = scan.tool_uses.get(tool_use_id, ("", None))
     hook = _HOOK_DENY.match(first)
     if hook and is_error:
-        name, tool_input = scan.tool_uses.get(str(block.get("tool_use_id") or ""), (hook.group("tool"), None))
         guard = hook.group("guard")
         message = _TRAILING_TAG.sub("", hook.group("msg"))
         scan.signals.append(
@@ -263,7 +282,7 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
                 f"{guard}: {normalize(mask(message))}",
                 evidence(message),
                 guard=guard,
-                tool_name=name or hook.group("tool"),
+                tool_name=tool_name or hook.group("tool"),
                 tool_input=tool_input,
             )
         )
@@ -273,6 +292,18 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
             if first and pattern.search(first):
                 scan.signals.append(Signal("harness_block", label, evidence(first)))
                 return
+    if _is_questioning_tool(tool_name):
+        ev = f"{tool_name}: {first}" if first else tool_name
+        scan.signals.append(
+            Signal(
+                "questioning_tool",
+                normalize(mask(ev)),
+                evidence(ev),
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+        )
+        return
     if is_error and first:
         # Bash zaczyna błąd od „Exit code N” — bez tego wszystkie błędy Bash zlałyby się w jedno Znalezisko.
         detail = next((line for line in lines[1:] if line.strip()), "") if _EXIT_CODE.match(first) else ""
