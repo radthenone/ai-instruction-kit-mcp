@@ -296,8 +296,8 @@ Kroki:
    Gdy używasz worktree: zakładasz przez `node .ai/worktree.mjs add [<ścieżka>] <branch>` (zgodnie z regułą git-branch-pr).
    Po merge ticketu usuwasz je przez `node .ai/worktree.mjs remove <ścieżka>`.
    Przy ostrzeżeniu `deps differ from main checkout` oznacz ticket jako „weryfikacja w CI” i nie ufaj lokalnym testom.
-2–3. (z `/headless`) `/headless <wykonawca> [flagi] --ctx <CTX_DIR> "<treść>"` z flagami i treścią bez zmian;
-   `--ctx <CTX_DIR>` dopisuje orkiestrator (pełna ścieżka katalogu CTX z `$HOME`), a wrapper zapisuje
+2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
+   orkiestrator dopisuje `--ctx <CTX_DIR>` (pełna ścieżka katalogu CTX z `$HOME`), a wrapper zapisuje
    wiersz wywołania do bufora nocy. Reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
    (kod ≠ 0, w tym HANG po 30 min bez postępu) → nie ponawiasz go tym samym wykonawcą: wrapper
