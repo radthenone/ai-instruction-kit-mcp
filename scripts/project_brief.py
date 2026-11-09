@@ -8,6 +8,7 @@ Bootstrap calls this with ``WORKSPACE`` (real repo) and ``LANGUAGE`` in the envi
 
 from __future__ import annotations
 
+import io
 import os
 import sys
 from pathlib import Path
@@ -18,7 +19,9 @@ if __name__ == "__main__":
     from guides.resolver import resolve_workspace_profile
 
     # Windows: stdout konsoli/potoku to cp1250 bez tego — brief ma znaki spoza niego (np. `→`).
-    sys.stdout.reconfigure(encoding="utf-8")
+    stdout = sys.stdout
+    if isinstance(stdout, io.TextIOWrapper):
+        stdout.reconfigure(encoding="utf-8")
     workspace = Path(os.environ["WORKSPACE"])
     resolved = resolve_workspace_profile(
         workspace,
