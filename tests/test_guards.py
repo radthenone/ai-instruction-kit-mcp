@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GUARDS = ROOT / "templates" / "shared" / "guards"
 NODE = shutil.which("node")
+GIT = shutil.which("git")
 
 HOME = "/home/tester"
 
@@ -268,7 +269,9 @@ SENSITIVE_SHELL: list[tuple[str, str]] = [
 ]
 
 
-def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> dict:
+def run_guard(
+    name: str, payload: object, env: dict[str, str] | None = None, cwd: str | Path | None = None
+) -> dict:
     """
     Odpal Guard przez node z payloadem w kontrakcie Claude Code.
 
@@ -276,6 +279,7 @@ def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> 
         name: Nazwa pliku w ``templates/shared/guards``.
         payload: Obiekt podawany na stdin (``tool_name``, ``tool_input``).
         env: Dodatkowe zmienne środowiska (nadpisują odziedziczone).
+        cwd: Katalog procesu guarda; domyślnie bieżący katalog testów.
 
     Returns:
         dict: Zdekodowany ``hookSpecificOutput`` albo ``{}`` przy pustym stdout.
@@ -287,6 +291,7 @@ def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> 
         text=True,
         encoding="utf-8",
         env={**os.environ, **(env or {})},
+        cwd=cwd,
         check=False,
     )
     assert proc.returncode == 0, f"{name}: exit {proc.returncode}: {proc.stderr}"
@@ -298,11 +303,18 @@ def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> 
 
 @unittest.skipUnless(NODE, "brak node")
 class GitGuardTest(unittest.TestCase):
+    # Tabela nie może zależeć od gałęzi, na której stoi uruchamiający testy (np. CI na dev):
+    # guard czyta bieżącą gałąź z gita, więc proces startuje poza repo, a GIT_BRANCH jest pusty.
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.cwd = self._tmp.name
+
     def test_table(self) -> None:
-        env = {"HOME": HOME, "USERPROFILE": HOME, "SystemDrive": "C:"}
+        env = {"HOME": HOME, "USERPROFILE": HOME, "SystemDrive": "C:", "GIT_BRANCH": ""}
         for command, expected in GIT_GUARD:
             with self.subTest(command=command):
-                out = run_guard("git-guard.mjs", {"tool_input": {"command": command}}, env)
+                out = run_guard("git-guard.mjs", {"tool_input": {"command": command}}, env, cwd=self.cwd)
                 self.assertEqual(out.get("permissionDecision"), expected, out.get("permissionDecisionReason"))
 
     def test_cursor_shape_and_empty(self) -> None:
@@ -311,8 +323,40 @@ class GitGuardTest(unittest.TestCase):
 
     def test_never_asks(self) -> None:
         for command, _ in GIT_GUARD:
-            out = run_guard("git-guard.mjs", {"tool_input": {"command": command}})
+            out = run_guard("git-guard.mjs", {"tool_input": {"command": command}}, {"GIT_BRANCH": ""}, cwd=self.cwd)
             self.assertIn(out.get("permissionDecision"), {"allow", "deny"})
+
+
+@unittest.skipUnless(NODE and GIT, "brak node albo git")
+class GitGuardCurrentBranchTest(unittest.TestCase):
+    """Zwykły ``git push`` oceniany po bieżącej gałęzi: z payloadu (replay) albo z gita (żywy hook)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def _repo_on(self, branch: str) -> Path:
+        repo = self.root / branch.replace("/", "-")
+        repo.mkdir()
+        subprocess.run([GIT or "git", "init", "-q", "-b", branch, str(repo)], check=True)
+        return repo
+
+    def _decision(self, command: str, cwd: Path, **fields: object) -> str | None:
+        payload = {"tool_input": {"command": command}, "cwd": str(cwd), **fields}
+        return run_guard("git-guard.mjs", payload, {"GIT_BRANCH": ""}, cwd=cwd).get("permissionDecision")
+
+    def test_plain_push_on_dev_without_branch_field_is_denied(self) -> None:
+        self.assertEqual(self._decision("git push", self._repo_on("dev")), "deny")
+
+    def test_plain_push_on_feature_branch_without_branch_field_is_allowed(self) -> None:
+        self.assertEqual(self._decision("git push", self._repo_on("feat/x")), "allow")
+
+    def test_branch_field_wins_over_checkout(self) -> None:
+        self.assertEqual(self._decision("git push", self._repo_on("feat/x"), branch="dev"), "deny")
+
+    def test_plain_push_outside_git_repo_is_allowed(self) -> None:
+        self.assertEqual(self._decision("git push", self.root), "allow")
 
 
 @unittest.skipUnless(NODE, "brak node")

@@ -24,6 +24,7 @@
  * Kontrakt: Claude Code (`hookSpecificOutput.permissionDecision`). Cursor dostaje
  * tłumaczenie z invoke-hook.js --to cursor. Wejście: `.tool_input.command` albo `.command`.
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 
@@ -211,7 +212,21 @@ function stripSingleQuotes(text) {
 // Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
 // `rm -f` obok pusha na feature branch to nie push na master ani force.
 const segments = code.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
-const currentBranch = String(payload.branch || process.env.GIT_BRANCH || "").trim();
+// Gałąź z payloadu albo GIT_BRANCH (replay retro), inaczej z gita w `cwd` hooka — żywy hook
+// i replay decydują wtedy tak samo (#409). Git tylko przy zwykłym pushu; błąd = brak gałęzi.
+let branchCache;
+function currentBranch() {
+  if (branchCache !== undefined) return branchCache;
+  const given = String(payload.branch || process.env.GIT_BRANCH || "").trim();
+  if (given) return (branchCache = given);
+  const r = spawnSync("git", ["branch", "--show-current"], {
+    cwd: payload.cwd || process.cwd(),
+    encoding: "utf8",
+    timeout: 3000,
+    windowsHide: true,
+  });
+  return (branchCache = r.status === 0 ? String(r.stdout || "").trim() : "");
+}
 
 function targetsProtectedRef(has, seg) {
   const checks = [
@@ -233,21 +248,13 @@ function targetsProtectedRef(has, seg) {
     "git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[/:][^ ]*[ ]+\\+?dev[ ]*$",
   ];
   if (checks.some(has)) return true;
-  if (["main", "master", "dev"].includes(currentBranch)) {
-    const m = seg.match(/(?:^|[ ])git[ ]+push\b(.*)$/i);
-    if (m) {
-      const rest = m[1].trim();
-      const tokens = rest ? rest.split(/\s+/).filter((t) => !t.startsWith("-")) : [];
-      if (tokens.length <= 1) return true;
-      if (tokens.length >= 2) {
-        const ref = tokens[1];
-        if (["main", "master", "dev"].some((p) => ref === p || ref.endsWith("/" + p) || ref.endsWith(":" + p))) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  const m = seg.match(/(?:^|[ ])git[ ]+push\b(.*)$/i);
+  if (!m || !["main", "master", "dev"].includes(currentBranch())) return false;
+  const tokens = m[1].trim().split(/\s+/).filter((t) => t && !t.startsWith("-"));
+  // `git push` / `git push <remote>` wypycha bieżącą gałąź; dalej liczy się pierwszy refspec.
+  if (tokens.length <= 1) return true;
+  const ref = tokens[1];
+  return ["main", "master", "dev"].some((p) => ref === p || ref.endsWith("/" + p) || ref.endsWith(":" + p));
 }
 
 for (const seg of segments) {
