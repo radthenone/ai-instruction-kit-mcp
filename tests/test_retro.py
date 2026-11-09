@@ -283,6 +283,12 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(parsed.metrics.cache_read_sum, 4000)
         self.assertEqual(parsed.metrics.max_context, 3000 + 10 + 50)
 
+    def test_parse_session_reads_git_branch(self) -> None:
+        record = _assistant("m1", _tool_use("t1", "Read", {"file_path": "x.py"}))
+        record["gitBranch"] = "dev"
+        parsed = self._parse(record)
+        self.assertEqual(parsed.branch, "dev")
+
 
 class ReplayTests(unittest.TestCase):
     """Deny z transkryptu odtwarza się na aktualnych guardach; naprawiony odpada."""
@@ -366,6 +372,18 @@ class ReplayWithGuardsTests(unittest.TestCase):
     def test_checkout_dot_is_still_denied_by_current_git_guard(self) -> None:
         status = retro.replay_guard("git-guard", "Bash", {"command": "git checkout ."}, kit_root=KIT_ROOT, cwd=KIT_ROOT)
         self.assertEqual(status, "deny")
+
+    def test_git_push_on_dev_branch_is_denied_by_current_git_guard(self) -> None:
+        status = retro.replay_guard(
+            "git-guard", "Bash", {"command": "git push"}, kit_root=KIT_ROOT, cwd=KIT_ROOT, branch="dev"
+        )
+        self.assertEqual(status, "deny")
+
+    def test_git_push_on_feature_branch_is_allowed_by_current_git_guard(self) -> None:
+        status = retro.replay_guard(
+            "git-guard", "Bash", {"command": "git push"}, kit_root=KIT_ROOT, cwd=KIT_ROOT, branch="feat/foo"
+        )
+        self.assertEqual(status, "allow")
 
     def test_deny_decision_from_guard_output_is_deny(self) -> None:
         body = 'process.stdout.write(JSON.stringify({hookSpecificOutput:{permissionDecision:"deny"}}));\n'
@@ -455,6 +473,7 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(head["session"], SESSION)
         self.assertEqual(head["files"], 1)
         self.assertEqual(head["findings"], len(findings))
+        self.assertIn("branch", head)
         self.assertEqual(head["metrics"], {"api_calls": 1, "cache_read_sum": 100, "max_context": 105})
         deny = next(record for record in findings if record["kind"] == "guard_deny")
         self.assertEqual((deny["guard"], deny["tool"], deny["replay"]), ("git-guard", "Bash", "deny"))

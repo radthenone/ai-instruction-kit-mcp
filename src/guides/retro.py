@@ -109,6 +109,7 @@ class SessionMetrics:
 class ParsedSession:
     session_id: str
     files: int
+    branch: str | None = None
     signals: list[Signal] = field(default_factory=list)
     metrics: SessionMetrics = field(default_factory=SessionMetrics)
 
@@ -117,6 +118,7 @@ class ParsedSession:
 class _Scan:
     """Stan przebiegu przez wszystkie pliki sesji (główny plik i subagenty)."""
 
+    branch: str | None = None
     tool_uses: dict[str, tuple[str, dict]] = field(default_factory=dict)
     seen_message_ids: set[str] = field(default_factory=set)
     signals: list[Signal] = field(default_factory=list)
@@ -139,7 +141,13 @@ def parse_session(paths: list[Path], session_id: str) -> ParsedSession:
     scan = _Scan()
     for path in paths:
         _scan_file(path, scan, session_id=session_id)
-    return ParsedSession(session_id=session_id, files=len(paths), signals=scan.signals, metrics=scan.metrics)
+    return ParsedSession(
+        session_id=session_id,
+        files=len(paths),
+        branch=scan.branch,
+        signals=scan.signals,
+        metrics=scan.metrics,
+    )
 
 
 def _read_records(path: Path) -> Iterator[dict]:
@@ -164,6 +172,8 @@ def _scan_file(path: Path, scan: _Scan, *, session_id: str = "") -> None:
     agent_id = path.stem if path.stem != session_id else "main"
     state = _FileState()
     for record in _read_records(path):
+        if not scan.branch and isinstance(record.get("gitBranch"), str) and record["gitBranch"]:
+            scan.branch = record["gitBranch"]
         if record.get("isApiErrorMessage") is True:
             scan.signals.append(_api_signal(_flatten(_content(record))))
             continue
@@ -370,6 +380,7 @@ def replay_guard(
     *,
     kit_root: Path,
     cwd: Path,
+    branch: str | None = None,
     timeout: float = REPLAY_TIMEOUT,
 ) -> str:
     """Odtwarza decyzję aktualnego guarda z ``templates/shared/guards`` dla zapisanego wywołania.
@@ -385,10 +396,18 @@ def replay_guard(
     if not script.is_file():
         return "unknown"
     payload = json.dumps(
-        {"hook_event_name": "PreToolUse", "tool_name": tool_name or "", "tool_input": tool_input, "cwd": str(cwd)},
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool_name or "",
+            "tool_input": tool_input,
+            "cwd": str(cwd),
+            "branch": branch,
+        },
         ensure_ascii=False,
     )
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(cwd)}
+    if branch:
+        env["GIT_BRANCH"] = branch
     try:
         proc = subprocess.run(
             [node, str(script)],
@@ -418,7 +437,9 @@ def replay_guard(
     return decision if decision in ("allow", "deny") else "unknown"
 
 
-def budgeted_replay(*, kit_root: Path, cwd: Path, budget: float = REPLAY_BUDGET) -> Callable[[Signal], str]:
+def budgeted_replay(
+    *, kit_root: Path, cwd: Path, branch: str | None = None, budget: float = REPLAY_BUDGET
+) -> Callable[[Signal], str]:
     """Replay guardów z łącznym limitem czasu; po jego wyczerpaniu zwraca ``unknown``."""
     deadline = time.monotonic() + budget
 
@@ -432,6 +453,7 @@ def budgeted_replay(*, kit_root: Path, cwd: Path, budget: float = REPLAY_BUDGET)
             signal.tool_input,
             kit_root=kit_root,
             cwd=cwd,
+            branch=branch,
             timeout=min(REPLAY_TIMEOUT, remaining),
         )
 
@@ -608,17 +630,20 @@ def _scan_files(
     session_id: str,
     workspace: Path,
     cache_root: Path,
-    replay: Callable[[Signal], str],
+    replay: Callable[[Signal], str] | None = None,
+    kit_root: Path,
     sha: str,
     now: datetime | None,
 ) -> tuple[Path, list[Finding]]:
     """Sesja Claude: parsuje jej pliki razem z subagentami i zapisuje wpisy."""
+    parsed = parse_session(files, session_id=session_id)
+    replay_fn = replay or budgeted_replay(kit_root=kit_root, cwd=workspace, branch=parsed.branch)
     return _write_entries(
-        parse_session(files, session_id=session_id),
+        parsed,
         source="claude",
         workspace=workspace,
         cache_root=cache_root,
-        replay=replay,
+        replay=replay_fn,
         sha=sha,
         now=now,
     )
@@ -649,6 +674,7 @@ def _write_entries(
             "type": "session",
             **base,
             "scanned_at": stamp,
+            "branch": parsed.branch,
             "files": parsed.files,
             "metrics": asdict(parsed.metrics),
             "findings": len(findings),
@@ -696,7 +722,8 @@ def scan_session(
         session_id=session_id,
         workspace=workspace,
         cache_root=cache_root,
-        replay=runner or budgeted_replay(kit_root=kit_root, cwd=workspace),
+        replay=runner,
+        kit_root=kit_root,
         sha=kit_sha(workspace),
         now=now,
     )
@@ -716,18 +743,21 @@ def scan_command(
 ) -> str:
     """Tekst wyniku ``kit-ai retro scan``: jedna sesja (``session``) albo sesje repo, opcjonalnie od ``since``."""
     stamp = now or datetime.now(timezone.utc)
-    options = {
-        "workspace": workspace,
-        "cache_root": cache_root,
-        "replay": runner or budgeted_replay(kit_root=kit_root, cwd=workspace),
-        "sha": kit_sha(workspace),
-        "now": stamp,
-    }
+    sha = kit_sha(workspace)
     if session is not None:
         files = find_session_files(projects_root, session)
         if not files:
             raise ValueError(f"nie znaleziono sesji {session} w {projects_root}")
-        target, findings = _scan_files(files, session_id=session, **options)
+        target, findings = _scan_files(
+            files,
+            session_id=session,
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=runner,
+            kit_root=kit_root,
+            sha=sha,
+            now=stamp,
+        )
         lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)})"]
         lines += [
             f"  {f.kind} ×{f.count} replay={f.replay}" + (f" [{f.guard}]" if f.guard else "") + f": {f.evidence}"
@@ -750,10 +780,29 @@ def scan_command(
         return f"retro: brak sesji i przebiegów headless w {base}"
     found_total = 0
     for main in mains:
-        _, findings = _scan_files([main, *_subagent_files(base, main.stem)], session_id=main.stem, **options)
+        _, findings = _scan_files(
+            [main, *_subagent_files(base, main.stem)],
+            session_id=main.stem,
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=runner,
+            kit_root=kit_root,
+            sha=sha,
+            now=stamp,
+        )
         found_total += len(findings)
     for run in runs:
-        _, findings = _write_entries(parse_headless_run(run), source="headless", **options)
+        parsed_run = parse_headless_run(run)
+        replay_fn = runner or budgeted_replay(kit_root=kit_root, cwd=workspace, branch=parsed_run.branch)
+        _, findings = _write_entries(
+            parsed_run,
+            source="headless",
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=replay_fn,
+            sha=sha,
+            now=stamp,
+        )
         found_total += len(findings)
     return (
         f"retro: sesje: {len(mains)}, przebiegi headless: {len(runs)}, znaleziska: {found_total} "

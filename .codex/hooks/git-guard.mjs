@@ -211,8 +211,9 @@ function stripSingleQuotes(text) {
 // Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
 // `rm -f` obok pusha na feature branch to nie push na master ani force.
 const segments = code.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
+const currentBranch = String(payload.branch || process.env.GIT_BRANCH || "").trim();
 
-function targetsProtectedRef(has) {
+function targetsProtectedRef(has, seg) {
   const checks = [
     "origin[ ]+\\+?(main|master|dev)([ ]|$|:)",
     "origin/\\+?(main|master|dev)([ ]|$|:)",
@@ -231,12 +232,27 @@ function targetsProtectedRef(has) {
     "git[ ]+push([ ]+-[^ ]+)*[ ]+(origin|upstream)[ ]+\\+?dev[ ]*$",
     "git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[/:][^ ]*[ ]+\\+?dev[ ]*$",
   ];
-  return checks.some(has);
+  if (checks.some(has)) return true;
+  if (["main", "master", "dev"].includes(currentBranch)) {
+    const m = seg.match(/(?:^|[ ])git[ ]+push\b(.*)$/i);
+    if (m) {
+      const rest = m[1].trim();
+      const tokens = rest ? rest.split(/\s+/).filter((t) => !t.startsWith("-")) : [];
+      if (tokens.length <= 1) return true;
+      if (tokens.length >= 2) {
+        const ref = tokens[1];
+        if (["main", "master", "dev"].some((p) => ref === p || ref.endsWith("/" + p) || ref.endsWith(":" + p))) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 for (const seg of segments) {
   const hasIn = (re) => new RegExp(re, "i").test(seg);
-  if (!hasIn(`${B}git[ ]+push([ ]|$)`) || !targetsProtectedRef(hasIn)) continue;
+  if (!hasIn(`${B}git[ ]+push([ ]|$)`) || !targetsProtectedRef(hasIn, seg)) continue;
   const isForcePush =
     hasIn("--force([ =]|$)|--force-with-lease") ||
     hasIn("(^|[ ])-f([ ]|$)") ||
