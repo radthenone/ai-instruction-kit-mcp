@@ -146,6 +146,7 @@ To szkic kierunku, nie specyfikacja.
 
 ## Kontekst
 <skad sie wzielo> + <konkret z repo: numer issue, sciezka, commit>
+<!-- retro-fingerprint: <fingerprint> -->     [tylko z propozycji retro]
 ╰──────────────────────────────────────────────────────────────╯
 
 ## Gotowość
@@ -166,6 +167,11 @@ Użytkownik może nadpisać stan w FAZIE 4.
 **Zakres** działa dopiero razem z „poza zakresem". **Kryterium** to jedyny sposób zamknąć
 issue bez kłótni z sobą. **Plan** (3–5 punktów) dowodzi, że wiadomo **jak**, nie tylko **co**.
 `Kontekst` z ogólnikiem („pasuje do architektury projektu") = sygnał, że FAZA 0 nie zadziałała.
+
+**Marker retro.** Gdy pomysł przyszedł z propozycji `kit-ai retro report` i wejście zawiera
+linię `<!-- retro-fingerprint: … -->`, przepisz ją dosłownie jako ostatnią linię `## Kontekst`.
+Po tym markerze raport rozpozna issue i przestanie proponować to znalezisko (ADR-0015, ADR-0017).
+Bez takiej linii na wejściu markera nie ma: nigdy go nie zgadujesz ani nie liczysz sam.
 
 ## FAZA 4 — pętla akceptacji
 
@@ -257,6 +263,9 @@ Gdy ticket ma część weryfikowalną (na VPS + CI) i część niesprawdzalną (
 1. Główne (bez `needs-local`) — obejmuje część weryfikowalną.
 2. Dziecko z `needs-local` — obejmuje część niesprawdzalną, podpięte jako sub-issue i zablokowane (`blocked_by`) przez główne.
 Karta pokazuje proponowany podział, a użytkownik go akceptuje lub zmienia.
+
+Marker `retro-fingerprint` z propozycji retro trafia tylko do jednej karty: tej, która
+usuwa problem.
 
 Karta jest jedna na issue, z własnym blokiem Gotowość, i akceptujesz je **pojedynczo**. Zbiorcze „tak" na trzy karty naraz
 znaczy, że przeczytana została jedna.

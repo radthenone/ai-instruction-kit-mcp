@@ -88,6 +88,36 @@ class RetroSkillSourceTests(unittest.TestCase):
     def test_kit_mode_leaves_card_creation_to_the_human(self) -> None:
         self.assertIn("karty tworzy człowiek", self.body)
 
+    def test_kit_mode_proposes_only_kit_and_agent(self) -> None:
+        """`/kit-project-edit` nie zakłada issue, więc propozycja `projekt` wracałaby w każdym raporcie (#410)."""
+        kit_mode = self.body[self.body.index("## Tryb `--kit`") : self.body.index("## Zasady")]
+        self.assertIn("tylko dla `kit` i `agent`", kit_mode)
+        self.assertIn("znalezisk projektowych, uruchom `/retro` w repo", kit_mode)
+
+    def test_kit_mode_dedups_against_issues_in_every_state(self) -> None:
+        self.assertIn("otwartym albo zamkniętym", self.body)
+        self.assertNotIn("otwartych issue", self.body)
+
+
+class CreateTaskRetroMarkerTests(unittest.TestCase):
+    """`/create-task` przenosi marker z propozycji do body issue — bez tego dedup z ADR-0015 nie działa (#410)."""
+
+    def setUp(self) -> None:
+        self.text = (KIT_ROOT / "templates" / "shared" / "agents" / "create-task.md").read_text(encoding="utf-8")
+        self.card = self.text[self.text.index("## FAZA 3") : self.text.index("## FAZA 4")]
+
+    def test_card_shows_the_marker_at_the_end_of_context(self) -> None:
+        context = self.card[self.card.index("## Kontekst") :]
+        self.assertIn("<!-- retro-fingerprint: <fingerprint> -->", context)
+
+    def test_marker_comes_only_from_the_report(self) -> None:
+        self.assertIn("kit-ai retro report", self.card)
+        self.assertIn("nigdy go nie zgadujesz", self.card)
+
+    def test_split_stamps_one_card_only(self) -> None:
+        split = self.text[self.text.index("## `--split`") : self.text.index("## Etykiety")]
+        self.assertIn("retro-fingerprint", split)
+
 
 class RetroSkillDegradationTests(unittest.TestCase):
     def test_degraded_clients_get_one_complete_file(self) -> None:
