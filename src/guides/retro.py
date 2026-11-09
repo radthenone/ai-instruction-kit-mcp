@@ -101,7 +101,10 @@ class SessionMetrics:
     """Koszt sesji liczony z ``message.usage`` (każde wywołanie API raz)."""
 
     api_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     cache_read_sum: int = 0
+    cache_creation_sum: int = 0
     max_context: int = 0
 
 
@@ -222,9 +225,15 @@ def _count_usage(message: dict, scan: _Scan) -> None:
         return
     scan.seen_message_ids.add(msg_id)
     cache_read = _int(usage.get("cache_read_input_tokens"))
-    context = _int(usage.get("input_tokens")) + cache_read + _int(usage.get("cache_creation_input_tokens"))
+    cache_creation = _int(usage.get("cache_creation_input_tokens"))
+    input_tokens = _int(usage.get("input_tokens"))
+    output_tokens = _int(usage.get("output_tokens"))
+    context = input_tokens + cache_read + cache_creation
     scan.metrics.api_calls += 1
+    scan.metrics.input_tokens += input_tokens
+    scan.metrics.output_tokens += output_tokens
     scan.metrics.cache_read_sum += cache_read
+    scan.metrics.cache_creation_sum += cache_creation
     scan.metrics.max_context = max(scan.metrics.max_context, context)
 
 
@@ -758,7 +767,10 @@ def scan_command(
             sha=sha,
             now=stamp,
         )
-        lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)})"]
+        parsed = parse_session(files, session_id=session)
+        m = parsed.metrics
+        cost_str = f"koszt: {m.api_calls} tury · {m.input_tokens + m.cache_creation_sum} in · {m.cache_read_sum} cache · {m.output_tokens} out"
+        lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)}, {cost_str})"]
         lines += [
             f"  {f.kind} ×{f.count} replay={f.replay}" + (f" [{f.guard}]" if f.guard else "") + f": {f.evidence}"
             for f in findings

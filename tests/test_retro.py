@@ -283,6 +283,20 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(parsed.metrics.cache_read_sum, 4000)
         self.assertEqual(parsed.metrics.max_context, 3000 + 10 + 50)
 
+    def test_cost_parity_with_session_usage_fixture(self) -> None:
+        records = [
+            _assistant("msg_001", {"type": "text", "text": "a"}, usage={"input_tokens": 100, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50, "output_tokens": 20}),
+            _assistant("msg_001", {"type": "text", "text": "a"}, usage={"input_tokens": 100, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50, "output_tokens": 20}),
+            _assistant("msg_002", {"type": "text", "text": "b"}, usage={"input_tokens": 200, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 100, "output_tokens": 40}),
+        ]
+        parsed = self._parse(*records)
+        self.assertEqual(parsed.metrics.api_calls, 2)
+        self.assertEqual(parsed.metrics.cache_read_sum, 1500)
+        self.assertEqual(parsed.metrics.input_tokens, 300)
+        self.assertEqual(parsed.metrics.cache_creation_sum, 150)
+        self.assertEqual(parsed.metrics.output_tokens, 60)
+        self.assertEqual(parsed.metrics.max_context, 1300)
+
     def test_parse_session_reads_git_branch(self) -> None:
         record = _assistant("m1", _tool_use("t1", "Read", {"file_path": "x.py"}))
         record["gitBranch"] = "dev"
@@ -474,7 +488,17 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(head["files"], 1)
         self.assertEqual(head["findings"], len(findings))
         self.assertIn("branch", head)
-        self.assertEqual(head["metrics"], {"api_calls": 1, "cache_read_sum": 100, "max_context": 105})
+        self.assertEqual(
+            head["metrics"],
+            {
+                "api_calls": 1,
+                "input_tokens": 5,
+                "output_tokens": 0,
+                "cache_read_sum": 100,
+                "cache_creation_sum": 0,
+                "max_context": 105,
+            },
+        )
         deny = next(record for record in findings if record["kind"] == "guard_deny")
         self.assertEqual((deny["guard"], deny["tool"], deny["replay"]), ("git-guard", "Bash", "deny"))
         self.assertIn("tool_error", [record["kind"] for record in findings])
