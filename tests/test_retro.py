@@ -141,9 +141,60 @@ class SignalTests(unittest.TestCase):
         parsed = self._parse(_assistant("m1", block), _assistant("m1", block), _assistant("m1", block))
         self.assertNotIn("repeated_tool_use", self._kinds(parsed))
 
+    def test_repeated_tool_use_split_across_subagents_is_not_a_signal(self) -> None:
+        main_path = _write_jsonl(
+            self.root / f"{SESSION}.jsonl",
+            [_assistant(f"m{i}", _tool_use(f"tm{i}", "Read", {"file_path": "context.md"})) for i in range(2)],
+        )
+        sub1_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant(f"s1_{i}", _tool_use(f"ts1_{i}", "Read", {"file_path": "context.md"})) for i in range(2)],
+        )
+        sub2_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-2.jsonl",
+            [_assistant(f"s2_{i}", _tool_use(f"ts2_{i}", "Read", {"file_path": "context.md"})) for i in range(2)],
+        )
+        parsed = retro.parse_session([main_path, sub1_path, sub2_path], session_id=SESSION)
+        self.assertNotIn("repeated_tool_use", self._kinds(parsed))
+
+    def test_repeated_tool_use_within_single_subagent_is_a_signal(self) -> None:
+        main_path = _write_jsonl(self.root / f"{SESSION}.jsonl", [])
+        sub1_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant(f"s1_{i}", _tool_use(f"ts1_{i}", "Read", {"file_path": "context.md"})) for i in range(3)],
+        )
+        parsed = retro.parse_session([main_path, sub1_path], session_id=SESSION)
+        self.assertIn("repeated_tool_use", self._kinds(parsed))
+        [signal] = [s for s in parsed.signals if s.kind == "repeated_tool_use"]
+        self.assertEqual(signal.count, 3)
+
     def test_code_edit_without_overlay_is_mcp_compliance_signal(self) -> None:
         edit = _tool_use("t1", "Edit", {"file_path": "src/guides/x.py", "old_string": "a", "new_string": "b"})
         self.assertIn("mcp_compliance", self._kinds(self._parse(_assistant("m1", edit))))
+
+    def test_mcp_compliance_per_subagent_are_distinct_findings(self) -> None:
+        main_path = _write_jsonl(self.root / f"{SESSION}.jsonl", [])
+        sub1_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-1.jsonl",
+            [_assistant("s1", _tool_use("t1", "Edit", {"file_path": "src/guides/x.py"}))],
+        )
+        sub2_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-2.jsonl",
+            [_assistant("s2", _tool_use("t2", "Edit", {"file_path": "src/guides/y.py"}))],
+        )
+        sub3_path = _write_jsonl(
+            self.root / SESSION / "subagents" / "agent-3.jsonl",
+            [
+                _assistant("s3_1", _tool_use("t3_1", "mcp__project-guides__get_overlay", {})),
+                _assistant("s3_2", _tool_use("t3_2", "Edit", {"file_path": "src/guides/z.py"})),
+            ],
+        )
+        parsed = retro.parse_session([main_path, sub1_path, sub2_path, sub3_path], session_id=SESSION)
+        findings = retro.build_findings(parsed.signals, replay=lambda _: "n/a")
+        compliance_findings = [f for f in findings if f.kind == "mcp_compliance"]
+        self.assertEqual(len(compliance_findings), 2)
+        fingerprints = {f.fingerprint for f in compliance_findings}
+        self.assertEqual(len(fingerprints), 2)
 
     def test_overlay_read_before_edit_clears_mcp_compliance(self) -> None:
         parsed = self._parse(
@@ -166,18 +217,49 @@ class SignalTests(unittest.TestCase):
         [signal] = [s for s in self._parse(record).signals if s.kind == "api_error"]
         self.assertEqual(signal.key, "api:rate_limit")
 
-    def test_harness_block_only_at_start_of_result(self) -> None:
+    def test_harness_block_safety_check_on_error(self) -> None:
         blocked = self._parse(
-            _assistant("m1", _tool_use("t1", "Bash", {"command": "sleep 600"})),
-            _tool_result("t1", "Blocked: sleep 600 is not allowed in this environment"),
+            _assistant("m1", _tool_use("t1", "Bash", {"command": "sudo rm -rf /"})),
+            _tool_result("t1", "built-in safety check blocked this command", is_error=True),
         )
         self.assertIn("harness_block", self._kinds(blocked))
-        quoted = self._parse(_tool_result("t2", "docs say: Blocked: sleep is a harness rule"))
+        quoted = self._parse(_tool_result("t2", "docs say: built-in safety check is active", is_error=False))
         self.assertNotIn("harness_block", self._kinds(quoted))
 
-    def test_harness_block_error_is_not_also_a_tool_error(self) -> None:
-        parsed = self._parse(_tool_result("t1", "Blocked: sleep 600 is not allowed", is_error=True))
-        self.assertEqual(self._kinds(parsed), ["harness_block"])
+    def test_json_with_blocked_issue_content_is_not_harness_block(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "Bash", {"command": "gh issue view 335 --json title,body"})),
+            _tool_result("t1", '{"title": "Blocked: sleep 60 is forbidden", "body": "Blocked: sleep"}', is_error=False),
+        )
+        self.assertNotIn("harness_block", self._kinds(parsed))
+        self.assertNotIn("tool_error", self._kinds(parsed))
+
+    def test_true_blocked_sleep_gives_tool_error(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "Bash", {"command": "sleep 60"})),
+            _tool_result("t1", "Blocked: sleep 60 is not allowed in this environment", is_error=True),
+        )
+        self.assertEqual(self._kinds(parsed), ["tool_error"])
+        self.assertNotIn("harness_block", self._kinds(parsed))
+
+    def test_confirm_repository_trust_has_its_own_questioning_tool_class(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "confirm_repository_trust", {"content_digest": "000"})),
+            _tool_result("t1", "Denied by user", is_error=True),
+        )
+        self.assertIn("questioning_tool", self._kinds(parsed))
+        self.assertNotIn("tool_error", self._kinds(parsed))
+        [signal] = [s for s in parsed.signals if s.kind == "questioning_tool"]
+        self.assertEqual(signal.tool_name, "confirm_repository_trust")
+        self.assertIn("Denied by user", signal.evidence)
+
+    def test_remote_confirm_repository_trust_also_classified_as_questioning_tool(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "mcp__claude-code-remote__confirm_repository_trust", {})),
+            _tool_result("t1", "Denied by user", is_error=True),
+        )
+        self.assertIn("questioning_tool", self._kinds(parsed))
+        self.assertNotIn("tool_error", self._kinds(parsed))
 
     def test_bash_exit_code_errors_are_grouped_by_stderr(self) -> None:
         parsed = self._parse(
@@ -200,6 +282,26 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(parsed.metrics.api_calls, 2)
         self.assertEqual(parsed.metrics.cache_read_sum, 4000)
         self.assertEqual(parsed.metrics.max_context, 3000 + 10 + 50)
+
+    def test_cost_totals_deduplicate_calls_by_message_id(self) -> None:
+        records = [
+            _assistant("msg_001", {"type": "text", "text": "a"}, usage={"input_tokens": 100, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50, "output_tokens": 20}),
+            _assistant("msg_001", {"type": "text", "text": "a"}, usage={"input_tokens": 100, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50, "output_tokens": 20}),
+            _assistant("msg_002", {"type": "text", "text": "b"}, usage={"input_tokens": 200, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 100, "output_tokens": 40}),
+        ]
+        parsed = self._parse(*records)
+        self.assertEqual(parsed.metrics.api_calls, 2)
+        self.assertEqual(parsed.metrics.cache_read_sum, 1500)
+        self.assertEqual(parsed.metrics.input_tokens, 300)
+        self.assertEqual(parsed.metrics.cache_creation_sum, 150)
+        self.assertEqual(parsed.metrics.output_tokens, 60)
+        self.assertEqual(parsed.metrics.max_context, 1300)
+
+    def test_parse_session_reads_git_branch(self) -> None:
+        record = _assistant("m1", _tool_use("t1", "Read", {"file_path": "x.py"}))
+        record["gitBranch"] = "dev"
+        parsed = self._parse(record)
+        self.assertEqual(parsed.branch, "dev")
 
 
 class ReplayTests(unittest.TestCase):
@@ -284,6 +386,18 @@ class ReplayWithGuardsTests(unittest.TestCase):
     def test_checkout_dot_is_still_denied_by_current_git_guard(self) -> None:
         status = retro.replay_guard("git-guard", "Bash", {"command": "git checkout ."}, kit_root=KIT_ROOT, cwd=KIT_ROOT)
         self.assertEqual(status, "deny")
+
+    def test_git_push_on_dev_branch_is_denied_by_current_git_guard(self) -> None:
+        status = retro.replay_guard(
+            "git-guard", "Bash", {"command": "git push"}, kit_root=KIT_ROOT, cwd=KIT_ROOT, branch="dev"
+        )
+        self.assertEqual(status, "deny")
+
+    def test_git_push_on_feature_branch_is_allowed_by_current_git_guard(self) -> None:
+        status = retro.replay_guard(
+            "git-guard", "Bash", {"command": "git push"}, kit_root=KIT_ROOT, cwd=KIT_ROOT, branch="feat/foo"
+        )
+        self.assertEqual(status, "allow")
 
     def test_deny_decision_from_guard_output_is_deny(self) -> None:
         body = 'process.stdout.write(JSON.stringify({hookSpecificOutput:{permissionDecision:"deny"}}));\n'
@@ -373,10 +487,43 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(head["session"], SESSION)
         self.assertEqual(head["files"], 1)
         self.assertEqual(head["findings"], len(findings))
-        self.assertEqual(head["metrics"], {"api_calls": 1, "cache_read_sum": 100, "max_context": 105})
+        self.assertIn("branch", head)
+        self.assertEqual(
+            head["metrics"],
+            {
+                "api_calls": 1,
+                "input_tokens": 5,
+                "output_tokens": 0,
+                "cache_read_sum": 100,
+                "cache_creation_sum": 0,
+                "max_context": 105,
+            },
+        )
         deny = next(record for record in findings if record["kind"] == "guard_deny")
         self.assertEqual((deny["guard"], deny["tool"], deny["replay"]), ("git-guard", "Bash", "deny"))
         self.assertIn("tool_error", [record["kind"] for record in findings])
+
+    def test_scan_command_reports_full_session_cost(self) -> None:
+        self._write_main()
+        text = retro.scan_command(
+            self.workspace,
+            session=SESSION,
+            since=None,
+            projects_root=self.projects,
+            cache_root=self.cache,
+            kit_root=KIT_ROOT,
+            runner=lambda signal: "deny",
+            now=self.NOW,
+        )
+        for part in (
+            "koszt: 1 tury",
+            "5 in",
+            "0 cache_creation",
+            "100 cache_read",
+            "0 out",
+            "105 maks. kontekst",
+        ):
+            self.assertIn(part, text)
 
     def test_never_stores_raw_secrets_home_paths_or_long_messages(self) -> None:
         self._write_main()

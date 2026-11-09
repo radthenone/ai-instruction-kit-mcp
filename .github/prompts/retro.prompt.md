@@ -59,6 +59,7 @@ Wskazówki dla rodzajów `kind`. Dowód z zapisu sesji rozstrzyga przy sprzeczno
 | `guard_deny` | kit albo agent | `replay=deny` przy poleceniu zgodnym z procedurą → kit (guard za ostry); niezgodnym → agent; `replay=allow` → kit, prawdopodobnie już naprawione |
 | `mcp_compliance` | agent | edycja kodu bez wcześniejszego `get_overlay`; sprawdź, czy procedura w kontekście to wymagała |
 | `repeated_tool_use` | agent | to samo wywołanie co najmniej 3 razy; gdy wynik się zmieniał → agent; gdy narzędzie zwraca stale błąd → projekt albo zewnętrzne |
+| `questioning_tool` | agent | wywołanie narzędzia pytającego człowieka (np. `confirm_repository_trust`, `AskFollowupQuestion`); w trybie autonomicznym niedozwolone |
 | `tool_error` | projekt albo zewnętrzne | błąd ścieżki, zależności albo konfiguracji → projekt; błąd sieci lub usługi → zewnętrzne |
 | `api_error` | zewnętrzne | limit, przeciążenie, błąd po stronie dostawcy |
 | `harness_block` | zewnętrzne | blokada harnessu, nie guard kitu |

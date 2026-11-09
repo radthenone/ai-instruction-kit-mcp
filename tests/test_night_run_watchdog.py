@@ -94,7 +94,8 @@ class TestNightRunWatchdog(unittest.TestCase):
         report = self.text.split("## NIGHT-RUN REPORT", 1)[1]
         self.assertIn("Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read", report)
         measurement = self._section("## Pomiar kosztu ticketu", "## NIGHT-RUN REPORT")
-        self.assertIn("transkrypcie sesji głównej", measurement)
+        self.assertIn("kit-ai retro scan --session <sesja_orkiestratora>", measurement)
+        self.assertIn("na sesji głównej", measurement)
 
     def test_claude_only_rules_are_labelled(self) -> None:
         watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")

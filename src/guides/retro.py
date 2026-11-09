@@ -33,7 +33,6 @@ KIT_CODE_PATH = re.compile(r"(?:^|/)(?:src|tests|templates|modules)/")
 _HOOK_DENY = re.compile(r"^PreToolUse:(?P<tool>[\w-]+) hook error: (?P<guard>[\w.-]+): (?P<msg>.*)$")
 _TRAILING_TAG = re.compile(r"\s*\[[\w.-]+\]\s*$")
 _HARNESS_BLOCKS = (
-    ("sleep", re.compile(r"^Blocked: sleep\b")),
     ("safety-check", re.compile(r"built-in safety check", re.IGNORECASE)),
 )
 _SECRETS = (
@@ -102,7 +101,10 @@ class SessionMetrics:
     """Koszt sesji liczony z ``message.usage`` (każde wywołanie API raz)."""
 
     api_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     cache_read_sum: int = 0
+    cache_creation_sum: int = 0
     max_context: int = 0
 
 
@@ -110,6 +112,7 @@ class SessionMetrics:
 class ParsedSession:
     session_id: str
     files: int
+    branch: str | None = None
     signals: list[Signal] = field(default_factory=list)
     metrics: SessionMetrics = field(default_factory=SessionMetrics)
 
@@ -118,35 +121,36 @@ class ParsedSession:
 class _Scan:
     """Stan przebiegu przez wszystkie pliki sesji (główny plik i subagenty)."""
 
+    branch: str | None = None
     tool_uses: dict[str, tuple[str, dict]] = field(default_factory=dict)
-    seen_tool_ids: set[str] = field(default_factory=set)
     seen_message_ids: set[str] = field(default_factory=set)
-    repeats: dict[str, int] = field(default_factory=dict)
     signals: list[Signal] = field(default_factory=list)
     metrics: SessionMetrics = field(default_factory=SessionMetrics)
 
 
 @dataclass
 class _FileState:
-    """Stan jednego pliku: ``get_overlay`` obowiązuje w kontekście agenta, który go zawołał."""
+    """Stan jednego pliku (subagenta): reguły i liczniki obowiązują w kontekście agenta."""
 
     overlay_seen: bool = False
     unseen_edits: int = 0
     first_unseen: str = ""
+    seen_tool_ids: set[str] = field(default_factory=set)
+    repeats: dict[str, int] = field(default_factory=dict)
 
 
 def parse_session(paths: list[Path], session_id: str) -> ParsedSession:
     """Wyciąga sygnały i metryki z plików sesji (główny JSONL i jego subagenty)."""
     scan = _Scan()
     for path in paths:
-        _scan_file(path, scan)
-    for key, count in sorted(scan.repeats.items()):
-        if count >= REPEAT_THRESHOLD:
-            name = key.split(" ", 1)[0]
-            scan.signals.append(
-                Signal("repeated_tool_use", normalize(mask(key)), evidence(key), tool_name=name, count=count)
-            )
-    return ParsedSession(session_id=session_id, files=len(paths), signals=scan.signals, metrics=scan.metrics)
+        _scan_file(path, scan, session_id=session_id)
+    return ParsedSession(
+        session_id=session_id,
+        files=len(paths),
+        branch=scan.branch,
+        signals=scan.signals,
+        metrics=scan.metrics,
+    )
 
 
 def _read_records(path: Path) -> Iterator[dict]:
@@ -167,9 +171,12 @@ def _read_records(path: Path) -> Iterator[dict]:
                 yield data
 
 
-def _scan_file(path: Path, scan: _Scan) -> None:
+def _scan_file(path: Path, scan: _Scan, *, session_id: str = "") -> None:
+    agent_id = path.stem if path.stem != session_id else "main"
     state = _FileState()
     for record in _read_records(path):
+        if not scan.branch and isinstance(record.get("gitBranch"), str) and record["gitBranch"]:
+            scan.branch = record["gitBranch"]
         if record.get("isApiErrorMessage") is True:
             scan.signals.append(_api_signal(_flatten(_content(record))))
             continue
@@ -188,14 +195,22 @@ def _scan_file(path: Path, scan: _Scan) -> None:
             elif block.get("type") == "tool_result":
                 _on_tool_result(block, scan)
     if state.unseen_edits:
+        key = f"missing-get_overlay-before-edit:{agent_id}"
+        ev = f"{agent_id}: {state.first_unseen}"
         scan.signals.append(
             Signal(
                 "mcp_compliance",
-                "missing-get_overlay-before-edit",
-                evidence(state.first_unseen),
+                key,
+                evidence(ev),
                 count=state.unseen_edits,
             )
         )
+    for key, count in sorted(state.repeats.items()):
+        if count >= REPEAT_THRESHOLD:
+            name = key.split(" ", 1)[0]
+            scan.signals.append(
+                Signal("repeated_tool_use", normalize(mask(key)), evidence(key), tool_name=name, count=count)
+            )
 
 
 def _content(record: dict) -> Any:
@@ -210,18 +225,24 @@ def _count_usage(message: dict, scan: _Scan) -> None:
         return
     scan.seen_message_ids.add(msg_id)
     cache_read = _int(usage.get("cache_read_input_tokens"))
-    context = _int(usage.get("input_tokens")) + cache_read + _int(usage.get("cache_creation_input_tokens"))
+    cache_creation = _int(usage.get("cache_creation_input_tokens"))
+    input_tokens = _int(usage.get("input_tokens"))
+    output_tokens = _int(usage.get("output_tokens"))
+    context = input_tokens + cache_read + cache_creation
     scan.metrics.api_calls += 1
+    scan.metrics.input_tokens += input_tokens
+    scan.metrics.output_tokens += output_tokens
     scan.metrics.cache_read_sum += cache_read
+    scan.metrics.cache_creation_sum += cache_creation
     scan.metrics.max_context = max(scan.metrics.max_context, context)
 
 
 def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
     tool_id = str(block.get("id") or "")
     if tool_id:
-        if tool_id in scan.seen_tool_ids:
+        if tool_id in state.seen_tool_ids:
             return
-        scan.seen_tool_ids.add(tool_id)
+        state.seen_tool_ids.add(tool_id)
     name = str(block.get("name") or "")
     raw_input = block.get("input")
     tool_input = raw_input if isinstance(raw_input, dict) else {}
@@ -234,7 +255,36 @@ def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
         state.unseen_edits += 1
         state.first_unseen = state.first_unseen or path
     repeat_key = f"{name} {json.dumps(tool_input, sort_keys=True, ensure_ascii=False)}"
-    scan.repeats[repeat_key] = scan.repeats.get(repeat_key, 0) + 1
+    state.repeats[repeat_key] = state.repeats.get(repeat_key, 0) + 1
+
+
+_QUESTIONING_TOOLS = frozenset({
+    "confirm_repository_trust",
+    "askfollowupquestion",
+    "askuserquestion",
+    "ask_followup_question",
+    "ask_user",
+    "ask_question",
+})
+
+
+def _is_questioning_tool(name: str) -> bool:
+    if not name:
+        return False
+    lower = name.lower()
+    base = lower.rsplit("__", 1)[-1]
+    return base in _QUESTIONING_TOOLS or "confirm_repository_trust" in lower
+
+
+def _is_json(text: str) -> bool:
+    stripped = text.strip()
+    if (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
+        try:
+            json.loads(stripped)
+            return True
+        except ValueError:
+            return False
+    return False
 
 
 def _on_tool_result(block: dict, scan: _Scan) -> None:
@@ -242,9 +292,10 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
     lines = text.strip().splitlines()
     first = lines[0] if lines else ""
     is_error = block.get("is_error") is True
+    tool_use_id = str(block.get("tool_use_id") or "")
+    tool_name, tool_input = scan.tool_uses.get(tool_use_id, ("", None))
     hook = _HOOK_DENY.match(first)
     if hook and is_error:
-        name, tool_input = scan.tool_uses.get(str(block.get("tool_use_id") or ""), (hook.group("tool"), None))
         guard = hook.group("guard")
         message = _TRAILING_TAG.sub("", hook.group("msg"))
         scan.signals.append(
@@ -253,15 +304,28 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
                 f"{guard}: {normalize(mask(message))}",
                 evidence(message),
                 guard=guard,
-                tool_name=name or hook.group("tool"),
+                tool_name=tool_name or hook.group("tool"),
                 tool_input=tool_input,
             )
         )
         return
-    for label, pattern in _HARNESS_BLOCKS:
-        if first and pattern.search(first):
-            scan.signals.append(Signal("harness_block", label, evidence(first)))
-            return
+    if is_error and not _is_json(text):
+        for label, pattern in _HARNESS_BLOCKS:
+            if first and pattern.search(first):
+                scan.signals.append(Signal("harness_block", label, evidence(first)))
+                return
+    if _is_questioning_tool(tool_name):
+        ev = f"{tool_name}: {first}" if first else tool_name
+        scan.signals.append(
+            Signal(
+                "questioning_tool",
+                normalize(mask(ev)),
+                evidence(ev),
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+        )
+        return
     if is_error and first:
         # Bash zaczyna błąd od „Exit code N” — bez tego wszystkie błędy Bash zlałyby się w jedno Znalezisko.
         detail = next((line for line in lines[1:] if line.strip()), "") if _EXIT_CODE.match(first) else ""
@@ -325,6 +389,7 @@ def replay_guard(
     *,
     kit_root: Path,
     cwd: Path,
+    branch: str | None = None,
     timeout: float = REPLAY_TIMEOUT,
 ) -> str:
     """Odtwarza decyzję aktualnego guarda z ``templates/shared/guards`` dla zapisanego wywołania.
@@ -340,10 +405,18 @@ def replay_guard(
     if not script.is_file():
         return "unknown"
     payload = json.dumps(
-        {"hook_event_name": "PreToolUse", "tool_name": tool_name or "", "tool_input": tool_input, "cwd": str(cwd)},
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool_name or "",
+            "tool_input": tool_input,
+            "cwd": str(cwd),
+            "branch": branch,
+        },
         ensure_ascii=False,
     )
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(cwd)}
+    if branch:
+        env["GIT_BRANCH"] = branch
     try:
         proc = subprocess.run(
             [node, str(script)],
@@ -373,7 +446,9 @@ def replay_guard(
     return decision if decision in ("allow", "deny") else "unknown"
 
 
-def budgeted_replay(*, kit_root: Path, cwd: Path, budget: float = REPLAY_BUDGET) -> Callable[[Signal], str]:
+def budgeted_replay(
+    *, kit_root: Path, cwd: Path, branch: str | None = None, budget: float = REPLAY_BUDGET
+) -> Callable[[Signal], str]:
     """Replay guardów z łącznym limitem czasu; po jego wyczerpaniu zwraca ``unknown``."""
     deadline = time.monotonic() + budget
 
@@ -387,6 +462,7 @@ def budgeted_replay(*, kit_root: Path, cwd: Path, budget: float = REPLAY_BUDGET)
             signal.tool_input,
             kit_root=kit_root,
             cwd=cwd,
+            branch=branch,
             timeout=min(REPLAY_TIMEOUT, remaining),
         )
 
@@ -563,17 +639,20 @@ def _scan_files(
     session_id: str,
     workspace: Path,
     cache_root: Path,
-    replay: Callable[[Signal], str],
+    replay: Callable[[Signal], str] | None = None,
+    kit_root: Path,
     sha: str,
     now: datetime | None,
 ) -> tuple[Path, list[Finding]]:
     """Sesja Claude: parsuje jej pliki razem z subagentami i zapisuje wpisy."""
+    parsed = parse_session(files, session_id=session_id)
+    replay_fn = replay or budgeted_replay(kit_root=kit_root, cwd=workspace, branch=parsed.branch)
     return _write_entries(
-        parse_session(files, session_id=session_id),
+        parsed,
         source="claude",
         workspace=workspace,
         cache_root=cache_root,
-        replay=replay,
+        replay=replay_fn,
         sha=sha,
         now=now,
     )
@@ -604,6 +683,7 @@ def _write_entries(
             "type": "session",
             **base,
             "scanned_at": stamp,
+            "branch": parsed.branch,
             "files": parsed.files,
             "metrics": asdict(parsed.metrics),
             "findings": len(findings),
@@ -651,7 +731,8 @@ def scan_session(
         session_id=session_id,
         workspace=workspace,
         cache_root=cache_root,
-        replay=runner or budgeted_replay(kit_root=kit_root, cwd=workspace),
+        replay=runner,
+        kit_root=kit_root,
         sha=kit_sha(workspace),
         now=now,
     )
@@ -671,19 +752,28 @@ def scan_command(
 ) -> str:
     """Tekst wyniku ``kit-ai retro scan``: jedna sesja (``session``) albo sesje repo, opcjonalnie od ``since``."""
     stamp = now or datetime.now(timezone.utc)
-    options = {
-        "workspace": workspace,
-        "cache_root": cache_root,
-        "replay": runner or budgeted_replay(kit_root=kit_root, cwd=workspace),
-        "sha": kit_sha(workspace),
-        "now": stamp,
-    }
+    sha = kit_sha(workspace)
     if session is not None:
         files = find_session_files(projects_root, session)
         if not files:
             raise ValueError(f"nie znaleziono sesji {session} w {projects_root}")
-        target, findings = _scan_files(files, session_id=session, **options)
-        lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)})"]
+        target, findings = _scan_files(
+            files,
+            session_id=session,
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=runner,
+            kit_root=kit_root,
+            sha=sha,
+            now=stamp,
+        )
+        parsed = parse_session(files, session_id=session)
+        m = parsed.metrics
+        cost_str = (
+            f"koszt: {m.api_calls} tury · {m.input_tokens} in · {m.cache_creation_sum} cache_creation · "
+            f"{m.cache_read_sum} cache_read · {m.output_tokens} out · {m.max_context} maks. kontekst"
+        )
+        lines = [f"retro: sesja {session} → {target} (znaleziska: {len(findings)}, {cost_str})"]
         lines += [
             f"  {f.kind} ×{f.count} replay={f.replay}" + (f" [{f.guard}]" if f.guard else "") + f": {f.evidence}"
             for f in findings
@@ -705,10 +795,29 @@ def scan_command(
         return f"retro: brak sesji i przebiegów headless w {base}"
     found_total = 0
     for main in mains:
-        _, findings = _scan_files([main, *_subagent_files(base, main.stem)], session_id=main.stem, **options)
+        _, findings = _scan_files(
+            [main, *_subagent_files(base, main.stem)],
+            session_id=main.stem,
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=runner,
+            kit_root=kit_root,
+            sha=sha,
+            now=stamp,
+        )
         found_total += len(findings)
     for run in runs:
-        _, findings = _write_entries(parse_headless_run(run), source="headless", **options)
+        parsed_run = parse_headless_run(run)
+        replay_fn = runner or budgeted_replay(kit_root=kit_root, cwd=workspace, branch=parsed_run.branch)
+        _, findings = _write_entries(
+            parsed_run,
+            source="headless",
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=replay_fn,
+            sha=sha,
+            now=stamp,
+        )
         found_total += len(findings)
     return (
         f"retro: sesje: {len(mains)}, przebiegi headless: {len(runs)}, znaleziska: {found_total} "

@@ -523,36 +523,17 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 
 ## Pomiar kosztu ticketu (tylko Claude Code)
 
-Po tickecie liczysz jego subagentów (ticket + review) — `python3`, bez `jq`. Wiersz: agent | model | tury | input | cache_creation | cache_read | output | maks. kontekst | czas.
-Model per krok: `meta.json` subagenta
-(`$HOME/.claude/projects/<projekt>/<sesja>/subagents/agent-<id>.meta.json`) i transkrypt
-(`message.model`) → kolumna `Model` w NIGHT-RUN REPORT; fallback jako `<komenda>: skill (sesja)`.
+Po tickecie mierzysz koszt sesji pojedynczym poleceniem `kit-ai retro scan`:
 
 ```bash
-python3 -c '
-import json, sys, datetime as dt
-K = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
-for p in sys.argv[1:]:
-    use, ts, mod = {}, [], set()
-    for line in filter(str.strip, open(p, encoding="utf-8")):
-        d = json.loads(line); m = d.get("message") or {}
-        if d.get("timestamp"): ts.append(dt.datetime.fromisoformat(d["timestamp"].replace("Z", "+00:00")))
-        if d.get("type") == "assistant" and m.get("usage") and m.get("model") != "<synthetic>":
-            u = use.setdefault(m.get("id"), {}); mod.add(m.get("model") or "?")
-            for k in K: u[k] = max(u.get(k, 0), m["usage"].get(k, 0))
-    tot = [sum(u.get(k, 0) for u in use.values()) for k in K]
-    ctx = max((sum(u.get(k, 0) for k in K[:3]) for u in use.values()), default=0)
-    mins = (max(ts) - min(ts)).total_seconds() / 60 if ts else 0
-    row = [p.replace("\\", "/").rsplit("/", 1)[-1], ",".join(sorted(mod)), len(use), *tot, ctx, f"{mins:.0f} min"]
-    print("| " + " | ".join(map(str, row)) + " |")
-' $HOME/.claude/projects/*/*/subagents/agent-{<id1>,<id2>}.jsonl
+kit-ai retro scan --session <sesja>
 ```
 
-Tura = unikalne `message.id` (`output_tokens` rośnie — bierz maks.). Czas = wall-clock. Inny klient → „brak transkryptu”. Z `/headless` albo review
-z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
+Wynik podaje koszt tokenów Sesji (tury, wejście, cache, wyjście, maks. kontekst) i zapisuje metryki w `${XDG_CACHE_HOME:-~/.cache}/kit-ai/retro/<repo>/<sesja>.jsonl` jako jedyne źródło kosztu Sesji (#409).
+Model per krok: `meta.json` subagenta (`$HOME/.claude/projects/<projekt>/<sesja>/subagents/agent-<id>.meta.json`) i transkrypt (`message.model`) → kolumna `Model` w NIGHT-RUN REPORT; fallback jako `<komenda>: skill (sesja)`.
+Czas = wall-clock. Inny klient → „brak transkryptu”. Z `/headless` albo review z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
 
-**Orkiestrator:** ten sam snippet na transkrypcie sesji głównej
-(`$HOME/.claude/projects/<projekt>/<sesja>.jsonl`, nie `subagents/`); do raportu idą jego tury i `cache_read`.
+**Orkiestrator:** to samo wywołanie `kit-ai retro scan --session <sesja_orkiestratora>` na sesji głównej; do raportu idą jego tury i `cache_read`.
 
 ## Retro
 

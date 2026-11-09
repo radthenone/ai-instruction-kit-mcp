@@ -180,6 +180,10 @@ _Avoid_: blocker, spec failure, blocking review
 Jeden zapis rozmowy agenta (plik JSONL wraz z jego subagentami) albo jeden przebieg headless lub nocny ticket, traktowany jako całość przy analizie.
 _Avoid_: Transkrypt, run, rozmowa
 
+**Koszt**:
+Liczba tokenów zużytych przez jedną Sesję: wejście, cache i wyjście. Nie jest kwotą w pieniądzach.
+_Avoid_: usage, zużycie, cena
+
 **Sygnał**:
 Pojedyncze wykrycie w logu sesji, na przykład odrzucenie przez guard albo błąd narzędzia.
 _Avoid_: Błąd, event, alert
