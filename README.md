@@ -64,7 +64,7 @@ kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --
 kit-ai host                                # profil hosta: vps | local (detect_host_profile)
 kit-ai night-ctx [ścieżka]                 # nagłówek CTX dla /night-run (Host z kit-ai host)
 kit-ai retro scan [ścieżka] [--session ID] [--since YYYY-MM-DD|Nd]  # sygnały i koszt sesji → ~/.cache/kit-ai/retro/<repo>/
-kit-ai retro report [ścieżka]              # propozycje z wielu repo (≥3 sesje albo ≥2 repo), bez znalezisk z otwartym issue
+kit-ai retro report [ścieżka]              # propozycje z wielu repo (≥3 sesje albo ≥2 repo), bez znalezisk z issue z markerem (otwartym lub zamkniętym)
 
 # jednorazowo, bez instalowania narzędzia:
 uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp kit-ai install

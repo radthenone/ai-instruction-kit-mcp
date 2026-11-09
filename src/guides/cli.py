@@ -667,10 +667,10 @@ def main(argv: list[str] | None = None) -> int:
         "--since", help="Bez --session: tylko sesje zmienione od YYYY-MM-DD albo w ostatnich Nd"
     )
     retro_report_parser = retro_sub.add_parser(
-        "report", help="Propozycje z wielu repo ponad progami, bez znalezisk z otwartym issue (#373)"
+        "report", help="Propozycje z wielu repo ponad progami, bez znalezisk, które mają już issue z markerem (#373, ADR-0017)"
     )
     retro_report_parser.add_argument(
-        "path", nargs="?", default=".", help="Repo, z którego czytane są otwarte issue (domyślnie: .)"
+        "path", nargs="?", default=".", help="Repo, z którego czytane są issue z markerem, w każdym stanie (domyślnie: .)"
     )
 
     args = parser.parse_args(argv)

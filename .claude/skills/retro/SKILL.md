@@ -97,25 +97,31 @@ Gdy wynik skanu nie ma Znalezisk, podajesz tylko `Retro: 0 znalezisk.`
 
 1. Uruchom `kit-ai retro report` w repo kita. Komenda czyta zapisy z cache każdego repo, grupuje
    znaleziska po `fingerprint`, stosuje progi (co najmniej 3 sesje albo 2 repo) i pomija te,
-   których marker `<!-- retro-fingerprint: … -->` jest już w otwartym issue.
+   których marker `<!-- retro-fingerprint: … -->` jest już w issue, otwartym albo zamkniętym
+   (ADR-0017). Zamknięte issue, także odrzucone, wycisza propozycję na stałe.
 2. Każdą propozycję klasyfikujesz jak w sekcji Kategorie. Dowód bierz z `evidence`, `replay`
    i `kit` (commit kita z chwili skanu). Przy sprzeczności czytasz zapis sesji jak w punkcie 3
    z Wejścia. Starszy `kit` przy `replay=deny` oznacza, że problem mógł już zniknąć: „do
    potwierdzenia”.
-3. Trasa karty: `kit` i `agent` → `/create-task` w repo kita; `projekt` → `/kit-project-edit`
-   w repo tego projektu; `zewnętrzne` → bez karty.
+3. Propozycje robisz tylko dla `kit` i `agent`, z trasą `/create-task` w repo kita. Marker
+   z raportu idzie do karty, żeby kolejny raport tę propozycję pominął. `projekt` nie dostaje
+   propozycji, bo `/kit-project-edit` nie zakłada issue i marker nie miałby gdzie trafić.
+   Zamiast tego jedna linijka na repo: „<N> znalezisk projektowych, uruchom `/retro` w repo <repo>”.
+   `zewnętrzne` → bez karty i bez linijki.
 4. Wynik: jedna tabela z kolumnami Kategoria, Fingerprint, Sesje, Repo, Trasa karty, Ocena,
-   Pewność. Marker z raportu wklej do karty, żeby kolejny raport tę propozycję pominął.
+   Pewność, pod nią linijki odesłania dla `projekt`.
 
-Propozycje to tylko propozycje: karty tworzy człowiek przez `/create-task` albo
-`/kit-project-edit` po akceptacji.
+Propozycje to tylko propozycje: karty tworzy człowiek przez `/create-task` po akceptacji.
+Zmianę w projekcie robi `/kit-project-edit` po lokalnym `/retro` w tym repo.
 
 ## Zasady
 
 - Nie edytuje plików: ani kodu, ani konfiguracji, ani wyniku skanu. Nie czyścisz katalogu cache.
 - Skill nie zakłada issue i nie pisze w GitHubie. Każda poprawka to Propozycja, którą człowiek
-  akceptuje przed jakimkolwiek zapisem (karty robi `/create-task` albo `/kit-project-edit`).
-  Jedynym kontaktem z GitHubem jest odczyt otwartych issue przez `kit-ai retro report` w trybie `--kit`.
+  akceptuje przed jakimkolwiek zapisem (karty robi `/create-task` albo `/kit-project-edit`;
+  w trybie `--kit` tylko `/create-task`).
+  Jedynym kontaktem z GitHubem jest odczyt issue (w każdym stanie) przez `kit-ai retro report`
+  w trybie `--kit`.
 - Dane zamaskowane zostają zamaskowane. Nie odtwarzaj sekretów, adresów e-mail ani ścieżek
   domowych, nawet gdy je widzisz w zapisie sesji.
 - Nie wysyłasz treści sesji na zewnątrz: bez zapytań sieciowych i bez wklejania fragmentów do
