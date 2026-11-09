@@ -45,6 +45,9 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
 - `--timeout` — minuty, domyślnie 60; liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
+- `--ctx <katalog>` — katalog nocy (CTX z `/night-run`); bez flagi wrapper nic nie zapisuje. Z nią
+  dopisuje wiersz wywołania (ostatnia linia wyjścia, JSON) do `<katalog>/headless-rows.jsonl`, a przy
+  klasie innej niż OK także wycinek logu. Bufor czyta `--report --ctx <katalog>`. Ręczny `/headless` tej flagi nie potrzebuje.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
 
 ## Kroki
@@ -53,7 +56,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    cudzysłowów wokół, bez własnych dopisków); wrapper sam doda stopkę z zasadami:
 
    ```bash
-   node .ai/headless.mjs --host claude <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] <<'HEADLESS_EOF'
+   node .ai/headless.mjs --host claude <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] <<'HEADLESS_EOF'
    <treść>
    HEADLESS_EOF
    ```
