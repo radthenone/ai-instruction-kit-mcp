@@ -409,7 +409,7 @@ Poziomy: **unit** (bez bazy) · **integration-db** (`django_db`: ORM, endpointy,
   `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`,
   `npm install --package-lock-only --ignore-scripts`,
   `pnpm install --lockfile-only --ignore-scripts`,
-  `bun install --lockfile-only --ignore-scripts`. Każda inna forma to deny; nie
+  `bun install` / `i` / `add` / `remove` z `--lockfile-only --ignore-scripts`. Każda inna forma to deny; nie
   obchodzisz go instalacją. Yarn nie ma trybu lock-only — nowa zależność yarn idzie
   przez `needs-local`.
 - Gdy aktualizacja samego locka pada, bo paczka wymaga builda (uv „no build”,

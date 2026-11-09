@@ -681,7 +681,7 @@ SERVER_GUARD: list[tuple[str, str]] = [
     # Zagnieżdżenie ponad limit to deny, nie crash hooka (fail-open).
     ("rtk " * 8000 + "bun install", "deny"),
     ("npx " * 8000 + "bun install", "deny"),
-    # CLI, które same instalują paczki (ADR 0009: krótka lista) (#227).
+    # CLI, które same instalują paczki (ADR 0009: lista domyślna) (#227).
     ("bunx shadcn@latest init -y", "deny"),
     ("pnpm dlx shadcn add button", "deny"),
     ("npx shadcn@latest add button", "deny"),
@@ -832,6 +832,62 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("astro dev", "allow"),
     ("apt list --installed", "allow"),
     ("corepack use pnpm@9", "allow"),
+    # #384 — flagi z wartością przed podkomendą: guard czyta komendę tak jak uruchamia ją narzędzie.
+    ("uv --color never sync", "deny"),
+    ("uv --color never lock", "deny"),
+    ("uv --color never lock --no-build", "allow"),
+    ("npm --loglevel silent install x", "deny"),
+    ("npm --registry https://r install x", "deny"),
+    ("pnpm --reporter silent install", "deny"),
+    # #384 — `--no-sync` i `--with` liczą się tylko przed nazwą narzędzia (uv run).
+    ("uv run ruff --no-sync", "deny"),
+    ("uv run --no-sync-foo ruff", "deny"),
+    ("uv run --no-sync python -c \"print('--with x')\"", "allow"),
+    # #384 — `--no-sync` stoi przed nazwą narzędzia `x`, więc uv nie synchronizuje (allow).
+    ("uv --color never run --no-sync x", "allow"),
+    # #384 — cudzysłów w wartości nie ukrywa flagi; cudzysłów przy `=` jest dozwolony.
+    ('uv lock --config-setting "a=b --no-build c"', "deny"),
+    ('uv add x --group="dev" --no-sync --no-build', "allow"),
+    # #384 — bun i/add/remove w formie lock-only; `pnpm add` zostaje deny (brak --lockfile-only w docs add).
+    ("bun i --lockfile-only --ignore-scripts", "allow"),
+    ("bun add x --lockfile-only --ignore-scripts", "allow"),
+    ("bun remove x --lockfile-only --ignore-scripts", "allow"),
+    ("bun add x", "deny"),
+    ("pnpm add x --lockfile-only --ignore-scripts", "deny"),
+    ("npm install --package-lock-only --ignore-scripts=true", "allow"),
+    # #384 — `--no-install` to alias `--no` przed nazwą pakietu.
+    ("npx --no-install tsc", "allow"),
+    ("npx cowsay --no-install", "deny"),
+    # #384 — `--help` / `--version` w strefie flag (przed nazwą narzędzia launchera).
+    ("webpack --version", "allow"),
+    ("tsup --help", "allow"),
+    ("docker --version", "allow"),
+    ("cargo build --help", "allow"),
+    ("uv --version", "allow"),
+    ("npx --help", "allow"),
+    ("uv run ruff --version", "deny"),
+    ("npx cowsay --help", "deny"),
+    ("docker compose up --help", "deny"),
+    # #384 — parser: cytowana flaga w `uv run` nadal działa; cicha flaga nie przesuwa podkomendy.
+    ('uv run "--with" requests python x.py', "deny"),
+    ('uv run "--no-sync" ruff', "allow"),
+    ("npm -s install x", "deny"),
+    ("uv --quiet run ruff", "deny"),
+    ("uv --quiet run --no-sync ruff", "allow"),
+    ("bun --cwd app install --lockfile-only --ignore-scripts", "allow"),
+    # #384 — cudzysłów w podkomendzie lub nazwie menedżera nie omija guarda (forma odcudzysłowiona).
+    ('uv "sync"', "deny"),
+    ('"uv" sync', "deny"),
+    ('npm "install" x', "deny"),
+    ('"npm" install x', "deny"),
+    ('pnpm "add" x', "deny"),
+    # #384 — `--with` i `--no-sync` po nazwie narzędzia są argumentami narzędzia, nie uv.
+    ("uv run --no-sync python --with x", "allow"),
+    # #384 — `--help` / `--version` przed podkomendą (flaga zone) to pomoc.
+    ("uv --help run ruff", "allow"),
+    ("npm --help install x", "allow"),
+    # #384 — `--ignore-scripts="true"`: cudzysłów przy wartości po `=`.
+    ('npm install --package-lock-only --ignore-scripts="true" x', "allow"),
 ]
 
 VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": "", "UV_OFFLINE": ""}

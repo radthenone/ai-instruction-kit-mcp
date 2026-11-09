@@ -186,6 +186,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("[worktree] path: " + str(wt_dir), res.stdout)
@@ -200,6 +201,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_fail.returncode, 2)
             self.assertTrue(wt_dir.exists())
@@ -210,6 +212,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_force.returncode, 0)
             self.assertFalse(wt_dir.exists())
@@ -242,6 +245,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("[worktree] copied: .env", res.stdout)
@@ -286,6 +290,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 env=env,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("setup skipped: uv sync", res.stdout)
@@ -313,6 +318,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 1)
             self.assertTrue(wt_dir.exists())
@@ -334,6 +340,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0)
 
@@ -345,6 +352,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_sync.returncode, 0)
             self.assertIn("deps differ from main checkout — VPS tests unreliable, verify in CI", res_sync.stdout)
@@ -361,6 +369,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0)
             self.assertTrue(wt_dir.exists())
@@ -378,6 +387,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_prune.returncode, 0)
             self.assertIn("[worktree] pruned", res_prune.stdout)
@@ -430,6 +440,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("[worktree] venv: overlay", res.stdout)
@@ -447,6 +458,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=wt_dir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(check_res.returncode, 0, f"stdout: {check_res.stdout}, stderr: {check_res.stderr}")
 
@@ -460,6 +472,7 @@ class TestWorktreeCLI(unittest.TestCase):
                     cwd=wt_dir,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                 )
                 if uv_res.returncode == 0:
                     self.assertTrue(uv_res.stdout.strip().startswith(str(wt_dir / "src")))
@@ -479,7 +492,7 @@ class TestWorktreeCLI(unittest.TestCase):
 
 
 def _run_wt(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([NODE, str(WRAPPER), *args], cwd=repo, capture_output=True, text=True)
+    return subprocess.run([NODE, str(WRAPPER), *args], cwd=repo, capture_output=True, text=True, encoding="utf-8")
 
 
 def _write_config(repo: Path, cfg: dict) -> None:
@@ -609,5 +622,5 @@ class TestWorktreeSafety(unittest.TestCase):
             wt = repo / ".worktrees" / "remote-only"
             res = _run_wt(repo, "add", str(wt), "remote-only", "--plain")
             self.assertEqual(res.returncode, 0, res.stderr)
-            branch = subprocess.run(["git", "branch", "--show-current"], cwd=wt, capture_output=True, text=True).stdout.strip()
+            branch = subprocess.run(["git", "branch", "--show-current"], cwd=wt, capture_output=True, text=True, encoding="utf-8").stdout.strip()
             self.assertEqual(branch, "remote-only")

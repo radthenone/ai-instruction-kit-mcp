@@ -73,6 +73,8 @@ class SessionEndScriptTests(unittest.TestCase):
             # spawnSync bez powłoki na Windows nie uruchomi skryptu `sh`. Fałszywy kit-ai to kopia binarki Node,
             # a preload z NODE_OPTIONS zapisuje argumenty i kończy proces. Działa tylko dla argv0 „kit-ai”,
             # więc hook (argv0 „node”) przechodzi bez zmian.
+            if NODE is None:
+                self.skipTest("brak node")
             shutil.copy2(NODE, self.bin / "kit-ai.exe")
             self.preload = self.bin / "record-args.cjs"
             self.preload.write_text(

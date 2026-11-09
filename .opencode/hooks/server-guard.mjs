@@ -53,23 +53,26 @@ const EMBEDDED_DEFAULTS = [
   {"id": "docker-compose-config", "kind": "deny", "pattern": "^\\s*docker\\s+compose\\s+config(?=\\s|$)", "reason": "kontenery tylko w CI — na hoście działają cudze kontenery"},
   {"id": "docker-compose-ps", "kind": "allow", "pattern": "^\\s*(?:docker|podman)(?:\\s+|-)compose\\s+ps(?=\\s|$)", "reason": "odczyt stanu kontenerów"},
   {"id": "uv-sync", "kind": "deny", "pattern": "^\\s*uv\\s+sync(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
+  {"id": "help-launcher", "kind": "allow", "pattern": "^\\s*(?:npx|bunx|uvx|pnpx)(?:\\s+-\\S+)*?\\s+--(?:help|version)(?=\\s|$)", "reason": "`--help` / `--version` przed nazwą narzędzia launchera — tylko pomoc, bez pobierania"},
+  {"id": "help-info", "kind": "allow", "pattern": "^\\s*(?!(?:npx|bunx|uvx|pnpx)(?=\\s|$))(?!(?:npm|pnpm|yarn|bun)\\s+(?:exec|x|dlx)(?=\\s|$))\\S+(?:\\s+(?!-)[A-Za-z][\\w:.-]*)?(?:\\s+-\\S+)*?\\s+--(?:help|version)(?=\\s|$)", "reason": "`--help` / `--version` w strefie flag — pomoc, bez uruchomienia"},
   {"id": "uv-add", "kind": "deny", "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)", "reason": "`uv add`/`uv remove` instaluje i kompiluje — tylko `uv add|remove <pkg> --no-sync --no-build` zmienia sam lockfile; inaczej zależności zmieniają się na PC albo w CI"},
-  {"id": "uv-lock", "kind": "deny", "pattern": "^\\s*uv\\s+lock(?=\\s|$)", "reason": "`uv lock` bez `--no-build` buduje projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"},
-  {"id": "uv-add-lock-only", "kind": "allow", "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:sync|build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-sync(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))", "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"},
-  {"id": "uv-lock-only", "kind": "allow", "pattern": "^\\s*uv\\s+lock(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))", "reason": "rozwiązanie wersji tylko do lockfile — bez builda"},
+  {"id": "uv-lock", "kind": "deny", "pattern": "^\\s*uv\\s+lock(?=\\s|$)", "reason": "`uv lock` bez `--no-build` może budować zależności i projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"},
+  {"id": "uv-add-lock-only", "kind": "allow", "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--(?:sync|build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-sync(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))", "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"},
+  {"id": "uv-lock-only", "kind": "allow", "pattern": "^\\s*uv\\s+lock(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--(?:build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))", "reason": "rozwiązanie wersji tylko do lockfile — bez builda"},
   {"id": "uv-pip-install", "kind": "deny", "pattern": "^\\s*uv\\s+pip\\s+(?:install|sync)(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
   {"id": "uv-tool-install", "kind": "deny", "pattern": "^\\s*uv\\s+tool\\s+install(?=\\s|$)", "reason": "`uv tool install` pobiera paczkę z sieci — narzędzia instaluj na PC albo w CI"},
   {"id": "pip-install", "kind": "deny", "pattern": "^\\s*pip(?:3(?:\\.\\d+)?)?\\s+install(?=\\s|$)", "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"},
-  {"id": "uv-run", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$))", "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"},
-  {"id": "uv-run-no-sync", "kind": "allow", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$)).*?--no-sync", "reason": "uruchomienie bez synchronizacji"},
+  {"id": "uv-run", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync(?=\\s|$))(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$))", "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"},
+  {"id": "uv-run-no-sync", "kind": "allow", "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$)).*?--no-sync(?=\\s|$)", "reason": "uruchomienie bez synchronizacji"},
   {"id": "uv-run-with", "kind": "deny", "pattern": "^\\s*uv\\s+run(?=\\s|$).*--with(?:-requirements|-editable)?(?=[\\s=]|$)", "reason": "`uv run --with` pobiera paczkę z sieci, także z `--no-sync` — zależności instaluj na PC albo w CI"},
   {"id": "uvx", "kind": "deny", "pattern": "^\\s*uvx(?=\\s|$)(?!(?:\\s+-\\S+)*\\s+--offline(?=\\s|$))", "reason": "`uvx` pobiera narzędzie z sieci — użyj `uvx --offline` / `UV_OFFLINE=1` albo `uv run --no-sync python -m …`"},
   {"id": "bun-pkg", "kind": "deny", "pattern": "^\\s*bun\\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\\s|$)", "reason": "instalacja paczek na serwerze — tylko `bun install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
-  {"id": "bun-install-lock-only", "kind": "allow", "pattern": "^\\s*bun\\s+install(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))", "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"},
+  {"id": "bun-install-lock-only", "kind": "allow", "pattern": "^\\s*bun\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))", "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"},
+  {"id": "bun-add-lock-only", "kind": "allow", "pattern": "^\\s*bun\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))", "reason": "zmiana zależności tylko w `bun.lock` — bez instalacji i bez skryptów"},
   {"id": "npm-pkg", "kind": "deny", "pattern": "^\\s*npm\\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\\s|$)", "reason": "instalacja paczek na serwerze — tylko `npm install --package-lock-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
-  {"id": "npm-install-lock-only", "kind": "allow", "pattern": "^\\s*npm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:package-lock-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:package-lock-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--package-lock-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))", "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"},
+  {"id": "npm-install-lock-only", "kind": "allow", "pattern": "^\\s*npm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:package-lock-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:package-lock-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--package-lock-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))", "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"},
   {"id": "pnpm-pkg", "kind": "deny", "pattern": "^\\s*pnpm\\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\\s|$)", "reason": "instalacja paczek na serwerze — tylko `pnpm install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
-  {"id": "pnpm-install-lock-only", "kind": "allow", "pattern": "^\\s*pnpm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))", "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"},
+  {"id": "pnpm-install-lock-only", "kind": "allow", "pattern": "^\\s*pnpm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))", "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"},
   {"id": "yarn-pkg", "kind": "deny", "pattern": "^\\s*yarn\\s+(?:global\\s+add|install|add|update|up|upgrade|remove)(?=\\s|$)", "reason": "instalacja paczek na serwerze — Yarn nie ma trybu „tylko lockfile” bez skryptów, więc zależności zmieniają się na PC albo w CI"},
   {"id": "yarn-bare", "kind": "deny", "pattern": "^\\s*yarn(?=(?:\\s+(?:--cwd(?:=|\\s+)\\S+|-\\S+))*\\s*$)(?!.*\\s(?:-v|--version|-h|--help)(?=\\s|$))", "reason": "goły `yarn` instaluje zależności — instalacja tylko na PC albo w CI"},
   {"id": "shadcn", "kind": "deny", "pattern": "^\\s*shadcn(?:@\\S+)?\\s+(?:init|add)(?=\\s|$)", "reason": "`shadcn init|add` instaluje paczki sam — instalacja tylko na PC albo w CI"},
@@ -90,7 +93,7 @@ const EMBEDDED_DEFAULTS = [
   {"id": "turbo-build", "kind": "deny", "pattern": "^\\s*turbo(?:\\s+run)?(?:\\s+[^-\\s]\\S*)*?\\s+build(?=\\s|$)", "reason": "build produkcyjny tylko w CI — na VPS `turbo run lint` / `typecheck`"},
   {"id": "turbo-lint", "kind": "allow", "pattern": "^\\s*turbo\\s+run(?:\\s+(?:lint|typecheck))+(?:\\s+-\\S+(?:\\s+[^-\\s]\\S*)?)*\\s*$", "reason": "lekkie bramki na VPS"},
   {"id": "npx-launcher", "kind": "deny", "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=\\s|$)", "reason": "`npx` / `npm exec` pobiera paczkę z sieci — użyj `npx --no <bin>`, `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
-  {"id": "npx-no", "kind": "allow", "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=(?:\\s+-\\S+)*\\s+--no(?=\\s|$))(?!(?:\\s+-\\S+)*\\s+(?:-y|--yes)(?=\\s|$))", "reason": "`--no` przed nazwą: tylko pakiet już w node_modules/.bin, bez pobierania"},
+  {"id": "npx-no", "kind": "allow", "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=(?:\\s+-\\S+)*\\s+--no(?:-install)?(?=\\s|$))(?!(?:\\s+-\\S+)*\\s+(?:-y|--yes)(?=\\s|$))", "reason": "`--no` przed nazwą: tylko pakiet już w node_modules/.bin, bez pobierania"},
   {"id": "bunx-launcher", "kind": "deny", "pattern": "^\\s*(?:bunx|bun\\s+x)(?=\\s|$)", "reason": "`bunx` pobiera paczkę z sieci — użyj `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
   {"id": "bunx-no-install", "kind": "allow", "pattern": "^\\s*(?:bunx|bun\\s+x)(?=(?:\\s+-\\S+)*\\s+--no-install(?=\\s|$))", "reason": "`--no-install` przed nazwą: tylko pakiet już zainstalowany"},
   {"id": "dlx-launcher", "kind": "deny", "pattern": "^\\s*(?:pnpm\\s+dlx|yarn\\s+dlx|pnpx)(?=\\s|$)", "reason": "`pnpm dlx` / `yarn dlx` / `pnpx` zawsze pobiera paczkę — użyj skryptu projektu (`bun run typecheck`) albo `npx --no <bin>`"},
@@ -170,10 +173,23 @@ const PREFIXES = [
   [/^\s*["']+/, ""],
   [/^(\s*)(?:[^\s/'"]*\/)+(?=\S)/, "$1"],
 ];
-const UV_GLOBAL_ARG = new Set(["--directory", "--project", "--config-file", "--cache-dir", "--python", "-p"]);
-const UV_RUN_ARG = new Set(["--with", "--with-requirements", "--python", "-p", "--package", "--env-file", "--group", "--extra", "--directory", "--project", "--index", "--index-url"]);
-const JS_PM_ARG = new Set(["--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"]);
+const UV_GLOBAL_ARG = new Set([
+  "--directory", "--project", "--config-file", "--cache-dir", "--python", "-p",
+  "--color", "--index", "--index-url", "--python-preference",
+]);
+const UV_RUN_ARG = new Set([
+  "--with", "--with-requirements", "--python", "-p", "--package", "--env-file", "--group",
+  "--extra", "--directory", "--project", "--index", "--index-url", "--color", "--python-preference",
+]);
+// Flagi uv bez wartości: `--no-sync` nie zjada tokenu (jak `_UV_BOOL` w server_guard.py).
+const UV_BOOL = new Set(["--no-sync", "--frozen", "--locked", "--quiet", "-q", "--verbose", "-v", "--no-project", "--isolated"]);
+const JS_PM_ARG = new Set([
+  "--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir", "--loglevel", "--registry",
+  "--reporter", "--cache", "--cache-dir", "--userconfig", "--globalconfig", "--store-dir", "--modules-dir",
+]);
 const NPX_ARG = new Set(["-p", "--package"]);
+// Launchery i `rtk` nie dostają skrótu „--help przed podkomendą” (jak `_HELP_EXEMPT`).
+const HELP_EXEMPT = new Set(["npx", "bunx", "uvx", "pnpx", "rtk"]);
 const PYTHON = /^python(?:\d+(?:\.\d+)?)?$/;
 // `rtk` to globalna wtyczka przepisująca komendę (opencode/Claude/Codex/Cursor):
 // `bun install` → `rtk bun install`, `next build` → `rtk next`. Traktujemy go jak
@@ -363,32 +379,90 @@ function skipFlags(toks, i, withArg) {
   return i;
 }
 
+// Tokeny komendy z uwzględnieniem cudzysłowów (jak `_WORDS` w server_guard.py).
+const WORDS = /(?:"[^"]*"|'[^']*'|\S)+/g;
+const wordsOf = (text) => text.match(WORDS) || [];
+
+// Token tak, jak dostanie go narzędzie: bez zewnętrznych cudzysłowów; słowo z białą spacją → `_`.
+function unquoteWord(tok) {
+  if (/"[^"]*\s[^"]*"|'[^']*\s[^']*'/.test(tok)) return "_";
+  return tok.replace(/["']/g, "");
+}
+
+// Indeksy pierwszego argumentu pozycyjnego po flagach (jak `_flag_ends` w Pythonie).
+function flagEnds(words, i, withArg, boolFlags = new Set()) {
+  const ends = new Set();
+  const seen = new Set();
+  const todo = [i];
+  while (todo.length) {
+    const j = todo.pop();
+    if (seen.has(j)) continue;
+    seen.add(j);
+    if (j >= words.length || !words[j].startsWith("-")) ends.add(Math.min(j, words.length));
+    else if (withArg.has(words[j])) todo.push(j + 2);
+    else if (words[j].includes("=") || boolFlags.has(words[j])) todo.push(j + 1);
+    else todo.push(j + 1, j + 2);
+  }
+  return [...ends].sort((a, b) => a - b);
+}
+
+// Forma `uv run`: `--no-sync` i `--with*` liczą się tylko przed nazwą narzędzia (jak `_uv_run_form`).
+function uvRunForm(words, zoneEnd) {
+  const tail = words
+    .slice(zoneEnd)
+    .map((w) => (w.startsWith("--with") || w.startsWith("--no-sync") ? "_" : w));
+  return [...words.slice(0, zoneEnd), ...tail].join(" ");
+}
+
 function commandForms(segment, depth = 0) {
   if (depth > MAX_DEPTH) throw new TooDeep();
   const [command, assigns] = stripPrefixes(segment);
-  let toks = command.split(/\s+/).filter(Boolean);
+  let toks = wordsOf(command);
   if (!toks.length) return [[], assigns];
-  const head = toks[0];
-  let forms = [command];
+  const words = toks.map(unquoteWord);
+  const head = words[0];
+  if (words.length > 1 && (words[1] === "--help" || words[1] === "--version") && !HELP_EXEMPT.has(head)) {
+    // Pomoc przed podkomendą (`npm --help install x`) wypisuje pomoc i nic nie instaluje.
+    return [[words.join(" ")], assigns];
+  }
+  // Forma surowa (pilnuje cudzysłowów w lockfile-only) i odcudzysłowiona (nazwy podkomend).
+  let forms = [command, words.join(" ")];
   let rest = [];
+  const rests = [];
   if (head === "uv") {
-    toks = ["uv", ...toks.slice(skipFlags(toks, 1, UV_GLOBAL_ARG))];
-    forms = [toks.join(" ")];
-    if (toks[1] === "run") rest = toks.slice(skipFlags(toks, 2, UV_RUN_ARG));
-  } else if (head === "npx" || head === "bunx") {
-    rest = toks.slice(skipFlags(toks, 1, NPX_ARG));
-  } else if (["bun", "npm", "pnpm", "yarn"].includes(head)) {
-    const i = skipFlags(toks, 1, JS_PM_ARG);
-    const sub = toks[i];
-    if (sub === "run" || sub === "run-script") {
-      toks = [head, sub, ...toks.slice(skipFlags(toks, i + 1, JS_PM_ARG))];
-      forms = [toks.join(" ")];
-    } else if (i < toks.length) {
-      // Same flagi (`yarn --version`) to nie uruchomienie skryptu — zostaw oryginał.
-      toks = [head, ...toks.slice(i)];
-      forms = [toks.join(" ")];
+    // Każdy odczyt flag przed podkomendą daje osobną formę; deny z dowolnego wygrywa.
+    forms = [];
+    for (const e of flagEnds(words, 1, UV_GLOBAL_ARG, UV_BOOL)) {
+      const raw = ["uv", ...toks.slice(e)];
+      const cooked = ["uv", ...words.slice(e)];
+      if (cooked.length > 1 && cooked[1] === "run") {
+        for (const e2 of flagEnds(cooked, 2, UV_RUN_ARG, UV_BOOL)) {
+          forms.push(uvRunForm(cooked, e2));
+          rests.push(raw.slice(e2));
+        }
+      } else {
+        forms.push(raw.join(" "), cooked.join(" "));
+      }
     }
-    if (["dlx", "exec", "x"].includes(toks[1])) rest = toks.slice(skipFlags(toks, 2, NPX_ARG));
+  } else if (head === "npx" || head === "bunx") {
+    for (const e of flagEnds(words, 1, NPX_ARG)) rests.push(toks.slice(e));
+  } else if (["bun", "npm", "pnpm", "yarn"].includes(head)) {
+    for (const e of flagEnds(words, 1, JS_PM_ARG)) {
+      const sub = e < words.length ? words[e] : "";
+      if (sub === "run" || sub === "run-script") {
+        for (const e2 of flagEnds(words, e + 1, JS_PM_ARG)) {
+          forms.push([head, sub, ...toks.slice(e2)].join(" "));
+        }
+      } else if (e < toks.length) {
+        // Same flagi (`yarn --version`) to nie uruchomienie skryptu — zostaw oryginał.
+        forms.push([head, ...toks.slice(e)].join(" "));
+      } else {
+        forms.push(command);
+      }
+      if (["dlx", "exec", "x"].includes(sub)) {
+        for (const e2 of flagEnds(words, e + 1, NPX_ARG)) rests.push(toks.slice(e2));
+      }
+    }
   } else if (PYTHON.test(head) && toks.length > 2 && toks[1] === "-m") {
     rest = toks.slice(2);
   } else if (head === "rtk") {
@@ -444,8 +518,10 @@ function commandForms(segment, depth = 0) {
       Object.assign(assigns, innerAssigns);
     }
   }
-  if (rest.length) {
-    const [inner, innerAssigns] = commandForms(rest.join(" "), depth + 1);
+  if (rest.length) rests.push(rest);
+  for (const part of rests) {
+    if (!part.length) continue;
+    const [inner, innerAssigns] = commandForms(part.join(" "), depth + 1);
     forms.push(...inner);
     Object.assign(assigns, innerAssigns);
   }

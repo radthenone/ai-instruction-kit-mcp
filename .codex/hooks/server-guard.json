@@ -63,6 +63,18 @@
       "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"
     },
     {
+      "id": "help-launcher",
+      "kind": "allow",
+      "pattern": "^\\s*(?:npx|bunx|uvx|pnpx)(?:\\s+-\\S+)*?\\s+--(?:help|version)(?=\\s|$)",
+      "reason": "`--help` / `--version` przed nazwą narzędzia launchera — tylko pomoc, bez pobierania"
+    },
+    {
+      "id": "help-info",
+      "kind": "allow",
+      "pattern": "^\\s*(?!(?:npx|bunx|uvx|pnpx)(?=\\s|$))(?!(?:npm|pnpm|yarn|bun)\\s+(?:exec|x|dlx)(?=\\s|$))\\S+(?:\\s+(?!-)[A-Za-z][\\w:.-]*)?(?:\\s+-\\S+)*?\\s+--(?:help|version)(?=\\s|$)",
+      "reason": "`--help` / `--version` w strefie flag — pomoc, bez uruchomienia"
+    },
+    {
       "id": "uv-add",
       "kind": "deny",
       "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)",
@@ -72,18 +84,18 @@
       "id": "uv-lock",
       "kind": "deny",
       "pattern": "^\\s*uv\\s+lock(?=\\s|$)",
-      "reason": "`uv lock` bez `--no-build` buduje projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"
+      "reason": "`uv lock` bez `--no-build` może budować zależności i projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"
     },
     {
       "id": "uv-add-lock-only",
       "kind": "allow",
-      "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:sync|build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-sync(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))",
+      "pattern": "^\\s*uv\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--(?:sync|build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-sync(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))",
       "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"
     },
     {
       "id": "uv-lock-only",
       "kind": "allow",
-      "pattern": "^\\s*uv\\s+lock(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--(?:build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))",
+      "pattern": "^\\s*uv\\s+lock(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--(?:build)(?=[\\s=]|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--no-build(?=\\s|$))",
       "reason": "rozwiązanie wersji tylko do lockfile — bez builda"
     },
     {
@@ -107,13 +119,13 @@
     {
       "id": "uv-run",
       "kind": "deny",
-      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$))",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--no-sync(?=\\s|$))(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$))",
       "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"
     },
     {
       "id": "uv-run-no-sync",
       "kind": "allow",
-      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$)).*?--no-sync",
+      "pattern": "^\\s*uv\\s+run(?=\\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\\s=]|$)).*?--no-sync(?=\\s|$)",
       "reason": "uruchomienie bez synchronizacji"
     },
     {
@@ -137,8 +149,14 @@
     {
       "id": "bun-install-lock-only",
       "kind": "allow",
-      "pattern": "^\\s*bun\\s+install(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))",
+      "pattern": "^\\s*bun\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))",
       "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"
+    },
+    {
+      "id": "bun-add-lock-only",
+      "kind": "allow",
+      "pattern": "^\\s*bun\\s+(?:add|remove)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))",
+      "reason": "zmiana zależności tylko w `bun.lock` — bez instalacji i bez skryptów"
     },
     {
       "id": "npm-pkg",
@@ -149,7 +167,7 @@
     {
       "id": "npm-install-lock-only",
       "kind": "allow",
-      "pattern": "^\\s*npm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:package-lock-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:package-lock-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--package-lock-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))",
+      "pattern": "^\\s*npm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:package-lock-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:package-lock-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--package-lock-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))",
       "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"
     },
     {
@@ -161,7 +179,7 @@
     {
       "id": "pnpm-install-lock-only",
       "kind": "allow",
-      "pattern": "^\\s*pnpm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s(?:[\"']+-|-\\S*[\"']))(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?=\\s|$))",
+      "pattern": "^\\s*pnpm\\s+(?:install|i)(?=\\s|$)(?!.*[`$\\\\{])(?!.*\\s[\"']+-)(?!.*\\s-[^\\s=]*[\"'])(?!.*\"[^\"]*\\s[^\"]*\")(?!.*'[^']*\\s[^']*')(?!.*\\s--no-(?:lockfile-only|ignore-scripts)(?=[\\s=]|$))(?!.*\\s--(?:lockfile-only|ignore-scripts)=(?![\"']?true[\"']?(?=\\s|$)))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--lockfile-only(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))(?!#)\\S+)*?\\s+--ignore-scripts(?:=[\"']?true[\"']?)?(?=\\s|$))",
       "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"
     },
     {
@@ -287,7 +305,7 @@
     {
       "id": "npx-no",
       "kind": "allow",
-      "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=(?:\\s+-\\S+)*\\s+--no(?=\\s|$))(?!(?:\\s+-\\S+)*\\s+(?:-y|--yes)(?=\\s|$))",
+      "pattern": "^\\s*(?:npx|npm\\s+(?:exec|x))(?=(?:\\s+-\\S+)*\\s+--no(?:-install)?(?=\\s|$))(?!(?:\\s+-\\S+)*\\s+(?:-y|--yes)(?=\\s|$))",
       "reason": "`--no` przed nazwą: tylko pakiet już w node_modules/.bin, bez pobierania"
     },
     {
