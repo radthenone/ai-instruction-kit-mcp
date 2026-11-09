@@ -142,13 +142,21 @@ fi
 # (`uv tool install`) tylko on widzi pakiet `guides` — klonu z `src/` nie ma.
 if [[ -n "${KIT_PYTHON:-}" ]]; then
   PYTHON_BIN="$KIT_PYTHON"
-elif command -v python3 >/dev/null 2>&1; then
+elif command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python3
-elif command -v python >/dev/null 2>&1; then
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python
 else
   echo "Brak interpretera Python (python3 lub python) w PATH" >&2
   exit 1
+fi
+
+# Shim (np. pyenv-win) psuje wielolinijkowe `-c` — od tej chwili prawdziwy interpreter (#420).
+if [[ -z "${KIT_PYTHON:-}" ]]; then
+  REAL_PYTHON="$("$PYTHON_BIN" -c 'import sys; print(sys.executable)' 2>/dev/null || true)"
+  if [[ -n "$REAL_PYTHON" ]]; then
+    PYTHON_BIN="${REAL_PYTHON//\\//}"
+  fi
 fi
 
 # Bootstrap wymaga Pythona 3 (f-stringi / pathlib / type hints w guides.clients).
