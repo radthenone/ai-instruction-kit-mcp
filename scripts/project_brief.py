@@ -17,6 +17,8 @@ if __name__ == "__main__":
     sys.path.insert(0, str(kit_root / "src"))
     from guides.resolver import resolve_workspace_profile
 
+    # Windows: stdout konsoli/potoku to cp1250 bez tego — brief ma znaki spoza niego (np. `→`).
+    sys.stdout.reconfigure(encoding="utf-8")
     workspace = Path(os.environ["WORKSPACE"])
     resolved = resolve_workspace_profile(
         workspace,

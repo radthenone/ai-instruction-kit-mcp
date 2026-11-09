@@ -130,6 +130,8 @@ class RenderTest(unittest.TestCase):
             ],
             capture_output=True,
             text=True,
+            # Windows dekoduje stdout dzieci Pythona jako cp1250 — jak w `run_bootstrap`.
+            env={**os.environ, "PYTHONUTF8": "1"},
         )
         if result.returncode != 0:
             shutil.rmtree(tmp, ignore_errors=True)

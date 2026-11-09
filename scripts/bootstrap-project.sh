@@ -14,6 +14,8 @@
 #         albo komenda /nazwa u pozostałych (patrz scripts/install_shared_skills.py).
 
 set -euo pipefail
+# Windows: bez tego Pythony piszą stdout w cp1250 (reguły briefu mają znaki spoza niego).
+export PYTHONUTF8=1
 
 usage() {
   cat <<'EOF'

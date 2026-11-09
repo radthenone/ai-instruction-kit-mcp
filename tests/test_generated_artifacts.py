@@ -17,6 +17,7 @@ jego błędy.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -129,6 +130,8 @@ class TestDogfoodCopies(unittest.TestCase):
             ],
             capture_output=True,
             text=True,
+            # Windows dekoduje stdout dzieci Pythona jako cp1250 — jak w `run_bootstrap`.
+            env={**os.environ, "PYTHONUTF8": "1"},
         )
         if result.returncode != 0:
             shutil.rmtree(cls._tmp, ignore_errors=True)
