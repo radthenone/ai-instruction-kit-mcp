@@ -33,7 +33,6 @@ KIT_CODE_PATH = re.compile(r"(?:^|/)(?:src|tests|templates|modules)/")
 _HOOK_DENY = re.compile(r"^PreToolUse:(?P<tool>[\w-]+) hook error: (?P<guard>[\w.-]+): (?P<msg>.*)$")
 _TRAILING_TAG = re.compile(r"\s*\[[\w.-]+\]\s*$")
 _HARNESS_BLOCKS = (
-    ("sleep", re.compile(r"^Blocked: sleep\b")),
     ("safety-check", re.compile(r"built-in safety check", re.IGNORECASE)),
 )
 _SECRETS = (
@@ -237,6 +236,17 @@ def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
     scan.repeats[repeat_key] = scan.repeats.get(repeat_key, 0) + 1
 
 
+def _is_json(text: str) -> bool:
+    stripped = text.strip()
+    if (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
+        try:
+            json.loads(stripped)
+            return True
+        except ValueError:
+            return False
+    return False
+
+
 def _on_tool_result(block: dict, scan: _Scan) -> None:
     text = _flatten(block.get("content"))
     lines = text.strip().splitlines()
@@ -258,10 +268,11 @@ def _on_tool_result(block: dict, scan: _Scan) -> None:
             )
         )
         return
-    for label, pattern in _HARNESS_BLOCKS:
-        if first and pattern.search(first):
-            scan.signals.append(Signal("harness_block", label, evidence(first)))
-            return
+    if is_error and not _is_json(text):
+        for label, pattern in _HARNESS_BLOCKS:
+            if first and pattern.search(first):
+                scan.signals.append(Signal("harness_block", label, evidence(first)))
+                return
     if is_error and first:
         # Bash zaczyna błąd od „Exit code N” — bez tego wszystkie błędy Bash zlałyby się w jedno Znalezisko.
         detail = next((line for line in lines[1:] if line.strip()), "") if _EXIT_CODE.match(first) else ""

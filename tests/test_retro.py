@@ -166,18 +166,30 @@ class SignalTests(unittest.TestCase):
         [signal] = [s for s in self._parse(record).signals if s.kind == "api_error"]
         self.assertEqual(signal.key, "api:rate_limit")
 
-    def test_harness_block_only_at_start_of_result(self) -> None:
+    def test_harness_block_safety_check_on_error(self) -> None:
         blocked = self._parse(
-            _assistant("m1", _tool_use("t1", "Bash", {"command": "sleep 600"})),
-            _tool_result("t1", "Blocked: sleep 600 is not allowed in this environment"),
+            _assistant("m1", _tool_use("t1", "Bash", {"command": "sudo rm -rf /"})),
+            _tool_result("t1", "built-in safety check blocked this command", is_error=True),
         )
         self.assertIn("harness_block", self._kinds(blocked))
-        quoted = self._parse(_tool_result("t2", "docs say: Blocked: sleep is a harness rule"))
+        quoted = self._parse(_tool_result("t2", "docs say: built-in safety check is active", is_error=False))
         self.assertNotIn("harness_block", self._kinds(quoted))
 
-    def test_harness_block_error_is_not_also_a_tool_error(self) -> None:
-        parsed = self._parse(_tool_result("t1", "Blocked: sleep 600 is not allowed", is_error=True))
-        self.assertEqual(self._kinds(parsed), ["harness_block"])
+    def test_json_with_blocked_issue_content_is_not_harness_block(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "Bash", {"command": "gh issue view 335 --json title,body"})),
+            _tool_result("t1", '{"title": "Blocked: sleep 60 is forbidden", "body": "Blocked: sleep"}', is_error=False),
+        )
+        self.assertNotIn("harness_block", self._kinds(parsed))
+        self.assertNotIn("tool_error", self._kinds(parsed))
+
+    def test_true_blocked_sleep_gives_tool_error(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t1", "Bash", {"command": "sleep 60"})),
+            _tool_result("t1", "Blocked: sleep 60 is not allowed in this environment", is_error=True),
+        )
+        self.assertEqual(self._kinds(parsed), ["tool_error"])
+        self.assertNotIn("harness_block", self._kinds(parsed))
 
     def test_bash_exit_code_errors_are_grouped_by_stderr(self) -> None:
         parsed = self._parse(

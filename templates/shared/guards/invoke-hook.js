@@ -343,10 +343,10 @@ if (target === ANTIGRAVITY) {
     toolInput = { file_path: args.AbsolutePath ?? args.file_path ?? args.path };
   } else if (lower === "write_to_file") {
     name = "Write";
-    toolInput = { file_path: args.TargetFile ?? args.file_path ?? args.path };
+    toolInput = { file_path: args.TargetFile ?? args.AbsolutePath ?? args.Path ?? args.file_path ?? args.path };
   } else if (["replace_file_content", "multi_replace_file_content", "edit_file"].includes(lower)) {
     name = "Edit";
-    toolInput = { file_path: args.TargetFile ?? args.file_path ?? args.path };
+    toolInput = { file_path: args.TargetFile ?? args.AbsolutePath ?? args.Path ?? args.file_path ?? args.path };
   } else if (lower === "call_mcp_tool") {
     if (!args.ServerName || !args.ToolName) emitDeny("call_mcp_tool bez ServerName/ToolName");
     name = `mcp__${args.ServerName}__${args.ToolName}`;
