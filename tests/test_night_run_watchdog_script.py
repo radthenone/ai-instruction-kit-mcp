@@ -93,7 +93,7 @@ class TestWatchdogScript(unittest.TestCase):
         header = f"{marker}\n\n" if marker else ""
         self.ctx.write_text(f"# CTX\n{header}## Stan\n{state}\n", encoding="utf-8")
 
-    def _env(self, tick: str = "1", recheck: str = "1") -> dict[str, str]:
+    def _env(self, tick: str = "1", recheck: str = "1", gate: Path | None = None) -> dict[str, str]:
         env = dict(os.environ)
         env.update(
             WATCHDOG_TICK_SEC=tick,
@@ -107,12 +107,16 @@ class TestWatchdogScript(unittest.TestCase):
             GUIDES_HOST_PROFILE="",
             WATCHDOG_READY_FILE=posix_path(self.dir / "ready"),
         )
+        if gate is not None:
+            env["WATCHDOG_RECHECK_GATE_FILE"] = posix_path(gate)
         return env
 
-    def _start(self, *args: str, tick: str = "1", recheck: str = "1") -> subprocess.Popen:
+    def _start(
+        self, *args: str, tick: str = "1", recheck: str = "1", gate: Path | None = None
+    ) -> subprocess.Popen:
         proc = subprocess.Popen(
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), *args],
-            env=self._env(tick=tick, recheck=recheck),
+            env=self._env(tick=tick, recheck=recheck, gate=gate),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             encoding="utf-8",  # bash pisze UTF-8; locale Windows (cp1250) psuje „życie”
@@ -302,13 +306,14 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertLess(abs(epoch - expected), 120, (epoch, expected))
 
     def test_no_hour_pause_extends_while_new_limit_lines_arrive(self) -> None:
-        # Recheck 3 s daje margines na drugą linię limitu przed sprawdzeniem pauzy. Wyścig zmniejszony, nie usunięty:
-        # bez hooka w skrypcie nie ma warunku deterministycznego.
-        proc = self._start("60", "110", recheck="3")
-        time.sleep(1.5)
+        # Bramka WATCHDOG_RECHECK_GATE_FILE (#418): recheck czeka na plik, więc druga linia limitu
+        # jest w transkrypcie przed sprawdzeniem niezależnie od obciążenia.
+        gate = self.dir / "recheck-gate"
+        proc = self._start("60", "110", recheck="1", gate=gate)
         self._append_transcript(LIMIT_LINE)
         self.assertTrue(_wait_for(lambda: bool(self._pause_lines())))
         self._append_transcript(LIMIT_LINE)  # nowa linia przed sprawdzeniem: pauza ma trwać dalej
+        gate.touch()
         stdout, stderr = proc.communicate(timeout=240)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         open_lines = [ln for ln in self._pause_lines() if " do " not in ln]
