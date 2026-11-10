@@ -92,7 +92,11 @@ def iter_skills(src_dir: Path) -> list[Path]:
 
 def install_native(skill_dir: Path, dest_dir: Path) -> None:
     dest = dest_dir / skill_dir.name
-    if dest.exists():
+    if dest.is_symlink():
+        # Usuwamy sam link: rmtree na symlinku odmawia, a przejście przez niego
+        # skasowałoby cel (np. źródło skilla). Dotyczy też linku wiszącego.
+        dest.unlink()
+    elif dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(skill_dir, dest)
 
