@@ -32,6 +32,15 @@
         ]
       },
       {
+        "matcher": "mcp__claude-code-remote__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-remote-guard.mjs\""
+          }
+        ]
+      },
+      {
         "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
@@ -67,6 +76,17 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/kit-doctor-reminder.mjs\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/retro-session-end.mjs\"",
+            "timeout": 120
           }
         ]
       }

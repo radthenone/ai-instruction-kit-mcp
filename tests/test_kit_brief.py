@@ -1,4 +1,4 @@
-"""Testy weryfikujące reguły briefu kita: get_overlay, docstringi, Host i klasyfikację (#324)."""
+"""Testy weryfikujące reguły briefu kita: get_overlay, docstringi, Host i klasyfikację (#324, #355)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ NODE = shutil.which("node")
 
 
 class TestKitBrief(unittest.TestCase):
-    """Brief i instrukcje MCP zawierają wymóg get_overlay, regułę docstringów i Host (#324)."""
+    """Brief i instrukcje MCP zawierają wymóg get_overlay, regułę docstringów i Host (#324, #355)."""
 
     def _build_test_resolved(self, workspace: Path, language: str = "pl"):
         """
@@ -73,6 +73,23 @@ class TestKitBrief(unittest.TestCase):
 
         self.assertIn("lockfile-only", instructions)
         self.assertIn("VPS", instructions)
+        self.assertIn("po polsku", instructions)
+
+    def test_mcp_instructions_en_contain_english_brief_rules(self) -> None:
+        """Instrukcje MCP dla language: en zawierają angielskie reguły briefu (#355)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            resolved = self._build_test_resolved(workspace, language="en")
+
+        instructions = server.build_instructions(resolved)
+
+        self.assertIn("## Task classification and MCP rules (#307, #324)", instructions)
+        self.assertRegex(instructions, r"Coding task:\*\*.*src/.*tests/")
+        self.assertRegex(instructions, r"Procedural task:\*\*.*/git-.*/review-.*/night-run")
+        self.assertIn("get_overlay", instructions)
+        self.assertIn("in English", instructions)
+        self.assertNotIn("Zadanie kodowe", instructions)
+        self.assertNotIn("po polsku", instructions)
 
     def test_language_reminder_contains_overlay_docstring_and_host_rules(self) -> None:
         """Hook language-reminder.mjs wypisuje regułę get_overlay, docstringi, Host i klasyfikację (#324)."""
@@ -89,7 +106,12 @@ class TestKitBrief(unittest.TestCase):
             )
             (ai_dir / "project.md").write_text("# Overlay\n\nbase: dev\n", encoding="utf-8")
 
-            hook_path = KIT_ROOT / "templates" / "claude" / "language-reminder.mjs"
+            # Hook importuje ./host-profile.mjs obok siebie — jak po Bootstrapie (.claude/hooks/).
+            hooks = workspace / ".claude" / "hooks"
+            hooks.mkdir(parents=True)
+            shutil.copy(KIT_ROOT / "templates" / "shared" / "guards" / "host-profile.mjs", hooks / "host-profile.mjs")
+            hook_path = hooks / "language-reminder.mjs"
+            shutil.copy(KIT_ROOT / "templates" / "claude" / "language-reminder.mjs", hook_path)
             env = {
                 **os.environ,
                 "CLAUDE_PROJECT_DIR": str(workspace),

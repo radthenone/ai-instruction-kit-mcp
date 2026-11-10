@@ -14,6 +14,8 @@
 #         albo komenda /nazwa u pozostałych (patrz scripts/install_shared_skills.py).
 
 set -euo pipefail
+# Windows: bez tego Pythony piszą stdout w cp1250 (reguły briefu mają znaki spoza niego).
+export PYTHONUTF8=1
 
 usage() {
   cat <<'EOF'
@@ -140,13 +142,21 @@ fi
 # (`uv tool install`) tylko on widzi pakiet `guides` — klonu z `src/` nie ma.
 if [[ -n "${KIT_PYTHON:-}" ]]; then
   PYTHON_BIN="$KIT_PYTHON"
-elif command -v python3 >/dev/null 2>&1; then
+elif command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python3
-elif command -v python >/dev/null 2>&1; then
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python
 else
   echo "Brak interpretera Python (python3 lub python) w PATH" >&2
   exit 1
+fi
+
+# Shim (np. pyenv-win) psuje wielolinijkowe `-c` — od tej chwili prawdziwy interpreter (#420).
+if [[ -z "${KIT_PYTHON:-}" ]]; then
+  REAL_PYTHON="$("$PYTHON_BIN" -c 'import sys; print(sys.executable)' 2>/dev/null || true)"
+  if [[ -n "$REAL_PYTHON" ]]; then
+    PYTHON_BIN="${REAL_PYTHON//\\//}"
+  fi
 fi
 
 # Bootstrap wymaga Pythona 3 (f-stringi / pathlib / type hints w guides.clients).
@@ -869,6 +879,7 @@ install_agenty_md_once() {
     BLOCK="agents" \
     KIT_ROOT="$KIT_ROOT" \
     BRIEF="${BRIEF_FILE:-}" \
+    BRIEF_RULES="${BRIEF_RULES_FILE:-}" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/bugbot_md.py"
   if [[ "$existed" -eq 0 ]]; then
     echo "  + AGENTS.md"
@@ -891,6 +902,19 @@ agents_pristine() {
 render_project_brief() {
   WORKSPACE="$WORKSPACE_PATH" LANGUAGE="$LANGUAGE" \
     "$PYTHON_BIN" "$KIT_ROOT/scripts/project_brief.py"
+}
+
+# Reguły briefu (#355, ADR-0010): renderowane z wariantu językowego Profilu.
+render_brief_rules() {
+  LANGUAGE="$LANGUAGE" KIT_ROOT="$KIT_ROOT" "$PYTHON_BIN" -c '
+import os, sys
+from pathlib import Path
+kit_root = Path(os.environ["KIT_ROOT"])
+sys.path.insert(0, str(kit_root / "src"))
+from guides.brief_rules import get_brief_rules
+lang = os.environ.get("LANGUAGE", "pl")
+sys.stdout.write(get_brief_rules(lang).strip() + "\n")
+'
 }
 
 
@@ -926,6 +950,8 @@ install_guards() {
   cp "$SHARED_GUARDS/git-guard.mjs" "$dest/git-guard.mjs"
   cp "$SHARED_GUARDS/sensitive-files-guard.mjs" "$dest/sensitive-files-guard.mjs"
   cp "$SHARED_GUARDS/server-guard.mjs" "$dest/server-guard.mjs"
+  # Wspólna detekcja hosta importowana przez server-guard i language-reminder (ADR-0011).
+  cp "$SHARED_GUARDS/host-profile.mjs" "$dest/host-profile.mjs"
   cp "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
   # Lista deny kita + rozwinięte wrappery (Taskfile / package.json / turbo) + sekcja
   # `server:` z Profilu → server-guard.json obok guarda. Guard bez reloadu działa
@@ -1012,22 +1038,20 @@ install_claude() {
   cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
   # Przypomnienie o otwartej partii doctora (#269) — SessionStart, też Codex i Copilot.
   cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
-  # Przypomnienie języka (#248): hook UserPromptSubmit tylko przy language ≠ en.
-  # Reinstalacja zdejmuje stary wpis (marker language-reminder.mjs), więc przy en znika.
-  SETTINGS_TEMPLATE="$KIT_ROOT/templates/claude/settings.json"
-  if [[ "$LANGUAGE" != "en" ]]; then
-    cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
-    SETTINGS_TEMPLATE="$(mktemp)"
-    "$PYTHON_BIN" -c 'import json,sys
+  # Skaner sesji po jej zakończeniu (#371): SessionEnd, tylko Claude Code.
+  cp "$SHARED_GUARDS/retro-session-end.mjs" "$TARGET/.claude/hooks/retro-session-end.mjs"
+  # Blokada narzędzi zdalnej sesji dla subagentów (#403): przestrzeń istnieje tylko w Claude Code.
+  cp "$SHARED_GUARDS/subagent-remote-guard.mjs" "$TARGET/.claude/hooks/subagent-remote-guard.mjs"
+  # Przypomnienie języka (#248, #356): hook UserPromptSubmit dla każdego języka (ADR 0010).
+  cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
+  SETTINGS_TEMPLATE="$(mktemp)"
+  "$PYTHON_BIN" -c 'import json,sys
 t = json.load(open(sys.argv[1], encoding="utf-8"))
 t["hooks"]["UserPromptSubmit"] = json.load(open(sys.argv[2], encoding="utf-8"))["hooks"]["UserPromptSubmit"]
 print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/templates/claude/settings.language.json" > "$SETTINGS_TEMPLATE"
-  else
-    rm -f "$TARGET/.claude/hooks/language-reminder.mjs"
-  fi
   # settings.json nalezy do uzytkownika — scalamy tylko wpisy kita.
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" install     "$TARGET/.claude/settings.json" "$SETTINGS_TEMPLATE"
-  [[ "$SETTINGS_TEMPLATE" == "$KIT_ROOT/templates/claude/settings.json" ]] || rm -f "$SETTINGS_TEMPLATE"
+  rm -f "$SETTINGS_TEMPLATE"
   # Matcher ponytaila poza gitem: lista agentów zależy od wersji kita (#316).
   "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" sync-local  "$TARGET/.claude/settings.local.json"
   # Claude Code czyta CLAUDE.md, nie AGENTS.md: import, żeby reguła języka była w kontekście.
@@ -1348,7 +1372,8 @@ HEADLESS=0
 if headless_enabled; then HEADLESS=1; fi
 STAGED_AGENTS="$(mktemp -d)"
 BRIEF_FILE="$(mktemp)"
-trap 'rm -rf "$STAGED_AGENTS" "$BRIEF_FILE"' EXIT
+BRIEF_RULES_FILE="$(mktemp)"
+trap 'rm -rf "$STAGED_AGENTS" "$BRIEF_FILE" "$BRIEF_RULES_FILE"' EXIT
 SKIPPED_AGENTS="$(stage_shared_agents "$STAGED_AGENTS")"
 # Python na Windowsie kończy linie `\r\n` — `\r` przykleja się do nazwy i `rm -f` chybia.
 SKIPPED_AGENTS="${SKIPPED_AGENTS//$'\r'/}"
@@ -1357,6 +1382,7 @@ echo "  tiers=${PROFILE_TIERS:-brak} (agenci Tierów: backend → *-backend, cli
 
 # Brief to dodatek: błąd renderowania (uszkodzony Profil, manifest) nie zatrzymuje instalacji.
 render_project_brief > "$BRIEF_FILE" || { echo "  ! brief nie wyrenderowany" >&2; : > "$BRIEF_FILE"; }
+render_brief_rules > "$BRIEF_RULES_FILE" || { echo "  ! reguły briefu nie wyrenderowane" >&2; : > "$BRIEF_RULES_FILE"; }
 install_agenty_md_once
 install_bugbot_md_once
 prune_tier_agents

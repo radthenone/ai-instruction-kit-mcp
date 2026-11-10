@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GUARDS = ROOT / "templates" / "shared" / "guards"
 NODE = shutil.which("node")
+GIT = shutil.which("git")
 
 HOME = "/home/tester"
 
@@ -57,6 +58,30 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("git checkout -- src/a.py", "deny"),
     ("git checkout -b feat/y", "allow"),
     ("git checkout feat/x", "allow"),
+    # Reguła checkout patrzy tylko na segment z `git checkout`, nie na całą komendę.
+    ("git checkout -q -b chore/x && kit-ai reload .", "allow"),
+    ("git status && git checkout -- .", "deny"),
+    ("git checkout -- .", "deny"),
+    ("echo `git checkout -- .`", "deny"),
+    ("echo `git reset --hard`", "deny"),
+    ("git reset `true` --hard", "deny"),
+    ("echo `rm -rf ~/`", "deny"),
+    ("echo `rm -rf build`", "allow"),
+    ("rm -rf ~", "deny"),
+    ("r``m -rf ~/", "deny"),
+    ("echo \\\\`git checkout -- .\\\\`", "deny"),
+    ("echo \\\\`rm -rf ~/\\\\`", "deny"),
+    # Backtick w środku nie rozcina zewnętrznej komendy (#349).
+    ("git push `true` origin main", "deny"),
+    ("git checkout `true` -- .", "deny"),
+    ("git commit -m \"fix `foo` bar\"", "allow"),
+    ("git commit -m 'docs: `rm -r ~/x` example'", "allow"),
+    # Globalne opcje gita przed `checkout` nie omijają reguły (#350).
+    ("git -C . checkout -- .", "deny"),
+    ("git -C . checkout .", "deny"),
+    ("git --no-pager checkout -- .", "deny"),
+    ("git -C . checkout -b feat/y", "allow"),
+    ("git -C . status", "allow"),
     ("git stash", "allow"),
     ("git restore src/a.py", "allow"),
     ("git commit --no-verify -m x", "allow"),
@@ -92,6 +117,21 @@ GIT_GUARD: list[tuple[str, str]] = [
     ("cp a.txt ~/notes.txt", "allow"),
     ("sed -i s/a/b/ ~/.bashrc", "allow"),
     ("cat ~/.ssh/config", "allow"),
+    ("cat ~/.claude/settings.json 2>/dev/null", "allow"),
+    ("cat ~/.claude/settings.json >/dev/null", "allow"),
+    ("cat ~/.claude/settings.json >/dev/null 2>&1", "allow"),
+    ("cat ~/.claude/settings.json 2>&1", "allow"),
+    ("cat ~/.claude/settings.json 2>>/dev/null", "allow"),
+    ("cat ~/.claude/settings.json &>/dev/null", "allow"),
+    ("cat ~/.claude/settings.json >| /dev/null", "allow"),
+    ("echo x > ~/.claude/settings.json 2>/dev/null", "deny"),
+    ("echo x >> ~/.claude/settings.json", "deny"),
+    ("echo x >| ~/.claude/settings.json", "deny"),
+    ("echo x 2> ~/.claude/settings.json", "deny"),
+    ("echo x 2>> ~/.claude/settings.json", "deny"),
+    ("echo x &> ~/.claude/settings.json", "deny"),
+    ("echo x >~/.ssh/k", "deny"),
+    ("echo x >&~/.ssh/k", "deny"),
     ("mkdir -p ~/.claude/hooks", "allow"),
 ]
 
@@ -229,7 +269,9 @@ SENSITIVE_SHELL: list[tuple[str, str]] = [
 ]
 
 
-def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> dict:
+def run_guard(
+    name: str, payload: object, env: dict[str, str] | None = None, cwd: str | Path | None = None
+) -> dict:
     """
     Odpal Guard przez node z payloadem w kontrakcie Claude Code.
 
@@ -237,6 +279,7 @@ def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> 
         name: Nazwa pliku w ``templates/shared/guards``.
         payload: Obiekt podawany na stdin (``tool_name``, ``tool_input``).
         env: Dodatkowe zmienne środowiska (nadpisują odziedziczone).
+        cwd: Katalog procesu guarda; domyślnie bieżący katalog testów.
 
     Returns:
         dict: Zdekodowany ``hookSpecificOutput`` albo ``{}`` przy pustym stdout.
@@ -248,6 +291,7 @@ def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> 
         text=True,
         encoding="utf-8",
         env={**os.environ, **(env or {})},
+        cwd=cwd,
         check=False,
     )
     assert proc.returncode == 0, f"{name}: exit {proc.returncode}: {proc.stderr}"
@@ -259,11 +303,18 @@ def run_guard(name: str, payload: object, env: dict[str, str] | None = None) -> 
 
 @unittest.skipUnless(NODE, "brak node")
 class GitGuardTest(unittest.TestCase):
+    # Tabela nie może zależeć od gałęzi, na której stoi uruchamiający testy (np. CI na dev):
+    # guard czyta bieżącą gałąź z gita, więc proces startuje poza repo, a GIT_BRANCH jest pusty.
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.cwd = self._tmp.name
+
     def test_table(self) -> None:
-        env = {"HOME": HOME, "USERPROFILE": HOME, "SystemDrive": "C:"}
+        env = {"HOME": HOME, "USERPROFILE": HOME, "SystemDrive": "C:", "GIT_BRANCH": ""}
         for command, expected in GIT_GUARD:
             with self.subTest(command=command):
-                out = run_guard("git-guard.mjs", {"tool_input": {"command": command}}, env)
+                out = run_guard("git-guard.mjs", {"tool_input": {"command": command}}, env, cwd=self.cwd)
                 self.assertEqual(out.get("permissionDecision"), expected, out.get("permissionDecisionReason"))
 
     def test_cursor_shape_and_empty(self) -> None:
@@ -272,8 +323,40 @@ class GitGuardTest(unittest.TestCase):
 
     def test_never_asks(self) -> None:
         for command, _ in GIT_GUARD:
-            out = run_guard("git-guard.mjs", {"tool_input": {"command": command}})
+            out = run_guard("git-guard.mjs", {"tool_input": {"command": command}}, {"GIT_BRANCH": ""}, cwd=self.cwd)
             self.assertIn(out.get("permissionDecision"), {"allow", "deny"})
+
+
+@unittest.skipUnless(NODE and GIT, "brak node albo git")
+class GitGuardCurrentBranchTest(unittest.TestCase):
+    """Zwykły ``git push`` oceniany po bieżącej gałęzi: z payloadu (replay) albo z gita (żywy hook)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def _repo_on(self, branch: str) -> Path:
+        repo = self.root / branch.replace("/", "-")
+        repo.mkdir()
+        subprocess.run([GIT or "git", "init", "-q", "-b", branch, str(repo)], check=True)
+        return repo
+
+    def _decision(self, command: str, cwd: Path, **fields: object) -> str | None:
+        payload = {"tool_input": {"command": command}, "cwd": str(cwd), **fields}
+        return run_guard("git-guard.mjs", payload, {"GIT_BRANCH": ""}, cwd=cwd).get("permissionDecision")
+
+    def test_plain_push_on_dev_without_branch_field_is_denied(self) -> None:
+        self.assertEqual(self._decision("git push", self._repo_on("dev")), "deny")
+
+    def test_plain_push_on_feature_branch_without_branch_field_is_allowed(self) -> None:
+        self.assertEqual(self._decision("git push", self._repo_on("feat/x")), "allow")
+
+    def test_branch_field_wins_over_checkout(self) -> None:
+        self.assertEqual(self._decision("git push", self._repo_on("feat/x"), branch="dev"), "deny")
+
+    def test_plain_push_outside_git_repo_is_allowed(self) -> None:
+        self.assertEqual(self._decision("git push", self.root), "allow")
 
 
 @unittest.skipUnless(NODE, "brak node")
@@ -288,6 +371,63 @@ class BashGuardTest(unittest.TestCase):
         for command, _ in BASH_GUARD_WIN:
             out = run_guard("bash-guard.mjs", {"tool_input": {"command": command}}, {"GUARD_PLATFORM": "linux"})
             self.assertEqual(out.get("permissionDecision"), "allow")
+
+
+@unittest.skipUnless(NODE, "brak node")
+class SubagentRemoteGuardTest(unittest.TestCase):
+    GUARD = "subagent-remote-guard.mjs"
+    REMOTE_TOOLS = (
+        "mcp__claude-code-remote__confirm_repository_trust",
+        "mcp__claude-code-remote__archive_session",
+        "mcp__claude-code-remote__send_message",
+        "mcp__claude-code-remote__list_sessions",
+    )
+
+    def test_denies_every_remote_tool_for_subagent(self) -> None:
+        for tool in self.REMOTE_TOOLS:
+            with self.subTest(tool=tool):
+                out = run_guard(self.GUARD, {"tool_name": tool, "agent_id": "a1", "agent_type": "git-end"})
+                self.assertEqual(out.get("permissionDecision"), "deny")
+
+    def test_denies_on_any_host(self) -> None:
+        payload = {"tool_name": self.REMOTE_TOOLS[0], "agent_id": "a1"}
+        for host in ("vps", "local"):
+            out = run_guard(self.GUARD, payload, {"KIT_HOST_PROFILE": host})
+            self.assertEqual(out.get("permissionDecision"), "deny", host)
+
+    def test_abstains_in_main_session(self) -> None:
+        """Bez decyzji, nie `allow`: jawne allow zatwierdzałoby narzędzie bez pytania o zgodę."""
+        for tool in self.REMOTE_TOOLS:
+            self.assertEqual(run_guard(self.GUARD, {"tool_name": tool}), {}, tool)
+
+    def test_abstains_for_main_session_started_with_agent_flag(self) -> None:
+        """`--agent` daje sesji głównej `agent_type`, ale subagenta poznajemy tylko po `agent_id`."""
+        out = run_guard(self.GUARD, {"tool_name": self.REMOTE_TOOLS[0], "agent_type": "night-run"})
+        self.assertEqual(out, {})
+
+    def test_abstains_for_other_tools_in_subagent(self) -> None:
+        out = run_guard(self.GUARD, {"tool_name": "mcp__github__get_me", "agent_id": "a1"})
+        self.assertEqual(out, {})
+
+    def test_denies_unreadable_payload(self) -> None:
+        proc = subprocess.run(
+            [NODE or "node", str(GUARDS / self.GUARD)],
+            input="not json",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_claude_template_routes_whole_namespace_to_guard(self) -> None:
+        settings = json.loads((ROOT / "templates" / "claude" / "settings.json").read_text(encoding="utf-8"))
+        entries = [
+            e
+            for e in settings["hooks"]["PreToolUse"]
+            if any(self.GUARD in h["command"] for h in e["hooks"])
+        ]
+        self.assertEqual([e["matcher"] for e in entries], ["mcp__claude-code-remote__.*"])
 
 
 @unittest.skipUnless(NODE, "brak node")
@@ -585,7 +725,7 @@ SERVER_GUARD: list[tuple[str, str]] = [
     # Zagnieżdżenie ponad limit to deny, nie crash hooka (fail-open).
     ("rtk " * 8000 + "bun install", "deny"),
     ("npx " * 8000 + "bun install", "deny"),
-    # CLI, które same instalują paczki (ADR 0009: krótka lista) (#227).
+    # CLI, które same instalują paczki (ADR 0009: lista domyślna) (#227).
     ("bunx shadcn@latest init -y", "deny"),
     ("pnpm dlx shadcn add button", "deny"),
     ("npx shadcn@latest add button", "deny"),
@@ -736,6 +876,62 @@ SERVER_GUARD: list[tuple[str, str]] = [
     ("astro dev", "allow"),
     ("apt list --installed", "allow"),
     ("corepack use pnpm@9", "allow"),
+    # #384 — flagi z wartością przed podkomendą: guard czyta komendę tak jak uruchamia ją narzędzie.
+    ("uv --color never sync", "deny"),
+    ("uv --color never lock", "deny"),
+    ("uv --color never lock --no-build", "allow"),
+    ("npm --loglevel silent install x", "deny"),
+    ("npm --registry https://r install x", "deny"),
+    ("pnpm --reporter silent install", "deny"),
+    # #384 — `--no-sync` i `--with` liczą się tylko przed nazwą narzędzia (uv run).
+    ("uv run ruff --no-sync", "deny"),
+    ("uv run --no-sync-foo ruff", "deny"),
+    ("uv run --no-sync python -c \"print('--with x')\"", "allow"),
+    # #384 — `--no-sync` stoi przed nazwą narzędzia `x`, więc uv nie synchronizuje (allow).
+    ("uv --color never run --no-sync x", "allow"),
+    # #384 — cudzysłów w wartości nie ukrywa flagi; cudzysłów przy `=` jest dozwolony.
+    ('uv lock --config-setting "a=b --no-build c"', "deny"),
+    ('uv add x --group="dev" --no-sync --no-build', "allow"),
+    # #384 — bun i/add/remove w formie lock-only; `pnpm add` zostaje deny (brak --lockfile-only w docs add).
+    ("bun i --lockfile-only --ignore-scripts", "allow"),
+    ("bun add x --lockfile-only --ignore-scripts", "allow"),
+    ("bun remove x --lockfile-only --ignore-scripts", "allow"),
+    ("bun add x", "deny"),
+    ("pnpm add x --lockfile-only --ignore-scripts", "deny"),
+    ("npm install --package-lock-only --ignore-scripts=true", "allow"),
+    # #384 — `--no-install` to alias `--no` przed nazwą pakietu.
+    ("npx --no-install tsc", "allow"),
+    ("npx cowsay --no-install", "deny"),
+    # #384 — `--help` / `--version` w strefie flag (przed nazwą narzędzia launchera).
+    ("webpack --version", "allow"),
+    ("tsup --help", "allow"),
+    ("docker --version", "allow"),
+    ("cargo build --help", "allow"),
+    ("uv --version", "allow"),
+    ("npx --help", "allow"),
+    ("uv run ruff --version", "deny"),
+    ("npx cowsay --help", "deny"),
+    ("docker compose up --help", "deny"),
+    # #384 — parser: cytowana flaga w `uv run` nadal działa; cicha flaga nie przesuwa podkomendy.
+    ('uv run "--with" requests python x.py', "deny"),
+    ('uv run "--no-sync" ruff', "allow"),
+    ("npm -s install x", "deny"),
+    ("uv --quiet run ruff", "deny"),
+    ("uv --quiet run --no-sync ruff", "allow"),
+    ("bun --cwd app install --lockfile-only --ignore-scripts", "allow"),
+    # #384 — cudzysłów w podkomendzie lub nazwie menedżera nie omija guarda (forma odcudzysłowiona).
+    ('uv "sync"', "deny"),
+    ('"uv" sync', "deny"),
+    ('npm "install" x', "deny"),
+    ('"npm" install x', "deny"),
+    ('pnpm "add" x', "deny"),
+    # #384 — `--with` i `--no-sync` po nazwie narzędzia są argumentami narzędzia, nie uv.
+    ("uv run --no-sync python --with x", "allow"),
+    # #384 — `--help` / `--version` przed podkomendą (flaga zone) to pomoc.
+    ("uv --help run ruff", "allow"),
+    ("npm --help install x", "allow"),
+    # #384 — `--ignore-scripts="true"`: cudzysłów przy wartości po `=`.
+    ('npm install --package-lock-only --ignore-scripts="true" x', "allow"),
 ]
 
 VPS = {"KIT_HOST_PROFILE": "vps", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": "", "UV_OFFLINE": ""}
@@ -747,6 +943,7 @@ def run_server_guard(payload: dict, env: dict[str, str], config: dict | None = N
         return run_guard("server-guard.mjs", payload, env)
     with tempfile.TemporaryDirectory() as tmp:
         shutil.copy(GUARDS / "server-guard.mjs", Path(tmp) / "server-guard.mjs")
+        shutil.copy(GUARDS / "host-profile.mjs", Path(tmp) / "host-profile.mjs")
         (Path(tmp) / "server-guard.json").write_text(json.dumps(config), encoding="utf-8")
         proc = subprocess.run(
             [NODE or "node", str(Path(tmp) / "server-guard.mjs")],
@@ -925,7 +1122,8 @@ class ServerGuardTest(unittest.TestCase):
                     "KIT_HOST_PROFILE": "", "GUIDES_HOST_PROFILE": "", "UV_NO_SYNC": "",
                     "GUARD_PLATFORM": plat, "GUARD_CPU_COUNT": str(cpu),
                     "GUARD_MEM_BYTES": str(mem), "GUARD_SWAP_BYTES": str(swap),
-                    "GUARD_VIRT": virt, "GUARD_HAS_DESKTOP": flag[desktop],
+                    # Pusta GUARD_VIRT to brak zmiennej (ADR-0011), więc "" w tabeli to env "none".
+                    "GUARD_VIRT": virt or "none", "GUARD_HAS_DESKTOP": flag[desktop],
                     "GUARD_IS_CI": flag[ci], "GUARD_IS_WSL": flag[wsl],
                 }
                 got = decision("docker compose up", env)

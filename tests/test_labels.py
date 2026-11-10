@@ -306,5 +306,23 @@ class TestCliLabels(unittest.TestCase):
             self.assertEqual(cli.main(["labels", "."]), 1)
 
 
+class TestRunGh(unittest.TestCase):
+    def test_run_gh_subprocess_uses_utf8_and_replace(self) -> None:
+        from unittest import mock
+
+        from guides.labels import _run_gh
+
+        workspace = Path("/fake/workspace")
+        runner = _run_gh(workspace)
+        with mock.patch("subprocess.run") as fake_run:
+            fake_run.return_value = subprocess.CompletedProcess([], 0, "", "")
+            runner(["gh", "label", "list"])
+
+        fake_run.assert_called_once()
+        kwargs = fake_run.call_args.kwargs
+        self.assertEqual(kwargs.get("encoding"), "utf-8")
+        self.assertEqual(kwargs.get("errors"), "replace")
+
+
 if __name__ == "__main__":
     unittest.main()

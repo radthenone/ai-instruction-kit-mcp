@@ -17,9 +17,9 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from guides.bootstrap import run_bootstrap
-
 from _shell import is_ci, posix_path, resolve_bash
+
+from guides.bootstrap import run_bootstrap
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = KIT_ROOT / "templates" / "shared" / "night-run" / "watchdog.sh"
@@ -45,13 +45,23 @@ def _bash_or_skip(test: unittest.TestCase) -> str:
     return bash
 
 
-def _wait_for(predicate, timeout: float = 20.0) -> bool:
+# Budżety czasowe z zapasem: bash + kit-ai (python) startują na Windows wolniej niż na Linux.
+def _wait_for(predicate, timeout: float = 120.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if predicate():
             return True
         time.sleep(0.05)
     return False
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    # Na Windows `proc` to launcher Git Bash: `kill` zostawia właściwy bash z otwartym pipe.
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False)
+    else:
+        proc.kill()
+    proc.communicate()
 
 
 class TestWatchdogScript(unittest.TestCase):
@@ -95,25 +105,37 @@ class TestWatchdogScript(unittest.TestCase):
             ),
             KIT_HOST_PROFILE="local",
             GUIDES_HOST_PROFILE="",
+            WATCHDOG_READY_FILE=posix_path(self.dir / "ready"),
         )
         return env
 
     def _start(self, *args: str, tick: str = "1", recheck: str = "1") -> subprocess.Popen:
-        return subprocess.Popen(
+        proc = subprocess.Popen(
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), *args],
             env=self._env(tick=tick, recheck=recheck),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            encoding="utf-8",  # bash pisze UTF-8; locale Windows (cp1250) psuje „życie”
         )
+        # Linia limitu dopisana przed policzeniem offsetu jest „stara” i watchdog jej nie widzi.
+        # Start (bash + kit-ai) bywa wolniejszy niż sleep w teście, więc czekamy na sygnał.
+        _wait_for(lambda: (self.dir / "ready").exists() or proc.poll() is not None)
+        return proc
 
-    def _run(self, *args: str, tick: str = "1", recheck: str = "1") -> subprocess.CompletedProcess:
+    def _run(
+        self,
+        *args: str,
+        tick: str = "1",
+        recheck: str = "1",
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), *args],
-            env=self._env(tick=tick, recheck=recheck),
+            env=self._env(tick=tick, recheck=recheck) if env is None else env,
             capture_output=True,
-            text=True,
-            timeout=60,
+            encoding="utf-8",
+            check=False,
+            timeout=240,
         )
 
     def _pause_lines(self) -> list[str]:
@@ -161,6 +183,25 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertNotIn("anomalia", result.stdout)
         self.assertIn("halt:", self.ctx.read_text(encoding="utf-8"))
 
+    def test_missing_kit_ai_on_path_halts_night(self) -> None:
+        """Brak kit-ai w PATH kończy noc haltem ze wskazówką (#345)."""
+        self._write_ctx(MARKER)
+        env = self._env()
+        clean_path = os.pathsep.join(
+            p for p in env.get("PATH", "").split(os.pathsep)
+            if not (Path(p) / "kit-ai").exists() and not (Path(p) / "kit-ai.exe").exists()
+        )
+        env["PATH"] = clean_path
+        result = self._run("0", "110", env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("halt:", result.stdout)
+        self.assertIn("kit-ai nie w PATH", result.stdout)
+        self.assertNotIn("anomalia", result.stdout)
+        ctx = self.ctx.read_text(encoding="utf-8")
+        self.assertIn("halt:", ctx)
+        self.assertIn("kit-ai nie w PATH", ctx)
+        self.assertIn("krok: koniec", ctx)
+
     def test_unusable_kit_ai_host_halts_night(self) -> None:
         """Stare/zepsute ``kit-ai`` (kod ≠ 0 albo wynik spoza vps/local) kończy noc haltem."""
         stubs = {
@@ -188,8 +229,9 @@ class TestWatchdogScript(unittest.TestCase):
             [self.bash, posix_path(SCRIPT), posix_path(self.ctx), "60", "110"],
             env=env,
             capture_output=True,
-            text=True,
-            timeout=60,
+            encoding="utf-8",
+            check=False,
+            timeout=240,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("koniec nocy", result.stdout)
@@ -199,7 +241,7 @@ class TestWatchdogScript(unittest.TestCase):
         proc = self._start("60", "110", recheck="1")
         time.sleep(1.5)
         self._append_transcript(LIMIT_LINE)
-        stdout, stderr = proc.communicate(timeout=60)
+        stdout, stderr = proc.communicate(timeout=240)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         self.assertIn("wznowienie po pauzie limitu", stdout)
         open_lines = [ln for ln in self._pause_lines() if " do " not in ln]
@@ -220,7 +262,7 @@ class TestWatchdogScript(unittest.TestCase):
         time.sleep(3)  # kilka tików: fałszywa pauza zdążyłaby się zapisać
         with self.ctx.open("a", encoding="utf-8") as fh:
             fh.write("krok: koniec\n")  # czyste zakończenie pętli (bez kill: osierocony sleep blokuje pipe)
-        stdout, stderr = proc.communicate(timeout=60)
+        stdout, stderr = proc.communicate(timeout=240)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         self.assertEqual(self._pause_lines(), [], self.ctx.read_text(encoding="utf-8"))
 
@@ -231,7 +273,7 @@ class TestWatchdogScript(unittest.TestCase):
             '{"type":"assistant","message":{"model":"<synthetic>"},'
             '"isApiErrorMessage":  true,"error":\t"rate_limit"}\n'
         )
-        stdout, stderr = proc.communicate(timeout=60)
+        stdout, stderr = proc.communicate(timeout=240)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         self.assertIn("wznowienie po pauzie limitu", stdout)
 
@@ -245,7 +287,8 @@ class TestWatchdogScript(unittest.TestCase):
         target = datetime.now() + timedelta(minutes=90)
         if target.date() != datetime.now().date():
             self.skipTest("okno przez północ — godzina resetu nieporównywalna")
-        clock = target.strftime("%-I:%M%p").lower()
+        # `%-I` nie działa na Windows (strftime), więc godzinę bez zera liczymy ręcznie.
+        clock = f"{target.hour % 12 or 12}:{target.minute:02d}{'am' if target.hour < 12 else 'pm'}"
         proc = self._start("60", "110", recheck="1")
         time.sleep(1.5)
         self._append_transcript(
@@ -253,19 +296,20 @@ class TestWatchdogScript(unittest.TestCase):
             f'"message":{{"content":"session limit reached, resets {clock}"}}}}\n'
         )
         self.assertTrue(_wait_for(lambda: bool(self._pause_lines())))
-        proc.kill()
-        proc.communicate()
+        _kill_tree(proc)
         epoch = int(self._pause_lines()[0].rsplit("epoch ", 1)[1].rstrip(")"))
         expected = int(target.timestamp()) + 300
         self.assertLess(abs(epoch - expected), 120, (epoch, expected))
 
     def test_no_hour_pause_extends_while_new_limit_lines_arrive(self) -> None:
-        proc = self._start("60", "110", recheck="1")
+        # Recheck 3 s daje margines na drugą linię limitu przed sprawdzeniem pauzy. Wyścig zmniejszony, nie usunięty:
+        # bez hooka w skrypcie nie ma warunku deterministycznego.
+        proc = self._start("60", "110", recheck="3")
         time.sleep(1.5)
         self._append_transcript(LIMIT_LINE)
         self.assertTrue(_wait_for(lambda: bool(self._pause_lines())))
         self._append_transcript(LIMIT_LINE)  # nowa linia przed sprawdzeniem: pauza ma trwać dalej
-        stdout, stderr = proc.communicate(timeout=60)
+        stdout, stderr = proc.communicate(timeout=240)
         self.assertEqual(proc.returncode, 0, stdout + stderr)
         open_lines = [ln for ln in self._pause_lines() if " do " not in ln]
         closed_lines = [ln for ln in self._pause_lines() if " do " in ln]
@@ -273,7 +317,7 @@ class TestWatchdogScript(unittest.TestCase):
         self.assertEqual(len(closed_lines), 1)
 
     def test_open_pause_on_start_waits_then_exits_0(self) -> None:
-        future = int(time.time()) + 2
+        future = int(time.time()) + 15
         self._write_ctx(
             MARKER,
             state="krok: ticket\n"

@@ -1,0 +1,3 @@
+# Retro scan is the single source of session cost
+
+Session cost was measured in two places: `scripts/session_usage.py` (#323) and a Python snippet in the `night-run` agent, and the two drifted. We decided that `kit-ai retro scan` is the only source: it reads the same session files, deduplicates API calls by message id, and reports cost as token counts (input, cache, output, max context), not money. The script and its test were deleted once a fixture showed both gave the same call and cache totals. The script's extra counters (average context, `grep`/`find`/`ls` and `Read` calls) were dropped, because nothing read them.

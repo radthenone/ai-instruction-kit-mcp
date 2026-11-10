@@ -8,6 +8,7 @@
         "guides-mcp",
         "--language", "pl",
         "--clients", "all",
+        "--client", "vscode",
         "--workspace", "${workspaceFolder}"
       ]
     }

@@ -30,18 +30,61 @@ ADR 0006), aktywny **tylko na słabym hoście serwerowym**, z decyzją w runtime
 3. Heurystyka 1:1 z `host_profile.py` → aktywny na VPS.
 4. W pozostałych przypadkach → allow (PC i CI przepuszczają wszystko).
 
-## Dlaczego lista jest krótka
+## Zakres listy i jej koszt
 
-Guard odrzuca tylko komendy, które w kilka minut zjadają RAM/CPU albo zatrzymują
-cudze usługi: kontenery i ich budowanie, instalację/budowanie paczek, buildy
-produkcyjne, przeglądarki/e2e oraz `pytest -xdist`. Świadomie poza listą:
-dev serwery i watchery, `pytest` bez ścieżki, `eslint .`, `systemctl` / `pkill` —
-na serwerze z kilkoma GB RAM nie zawieszają go same z siebie (projekt dopisuje
-je w `server.deny`, README podaje gotowe propozycje).
+Guard odrzuca komendy, które w kilka minut zjadają RAM/CPU, zatrzymują cudze
+usługi albo pobierają i instalują kod poza lockfile'em. Lista domyślna ma ponad
+50 reguł (`DEFAULTS` w `src/guides/server_guard.py`, wbudowana kopia
+w `server-guard.mjs`) i obejmuje:
 
-Krótka lista = mało fałszywych blokad = agent nie uczy się obchodzić guarda.
-Każdy deny niesie powód z alternatywą (linter zamiast builda, `uv run --no-sync`
-zamiast `uv run`, CI zamiast e2e).
+- **kontenery:** `docker`, `docker compose`, `docker-compose`, `podman`, także
+  `docker logs -f`, który trzyma proces;
+- **instalację:** `uv sync|add|remove|lock`, `uv pip install|sync`,
+  `uv tool install`, `pip install`, instalację i zmianę zależności w
+  bun/npm/pnpm/yarn (także gołe `yarn`), `shadcn init|add`, `expo install`,
+  `cargo install`, `go install`, `apt install`, `corepack enable`;
+- **launchery, które pobierają z sieci:** `uvx`, `npx` / `npm exec` / `npm x`,
+  `bunx` / `bun x`, `pnpm dlx` / `yarn dlx` / `pnpx`, `uv run --with`;
+- **synchronizację w tle:** `uv run` bez `--no-sync`;
+- **buildy produkcyjne:** next, vite, nuxt, astro, tsup, webpack, `cargo build`,
+  `expo prebuild|export`, `eas build`, `turbo build`;
+- **e2e i procesy równoległe:** playwright, cypress, maestro, `pytest -n`.
+
+Część z tych reguł ma wyjątek: odczyt stanu kontenerów, `turbo run lint|typecheck`,
+`uv run --no-sync`, `uvx --offline`, `npx --no`, `bunx --no-install` i formy
+lock-only (niżej). Świadomie poza listą: dev serwery i watchery, `pytest` bez
+ścieżki, `eslint .`, `systemctl` / `pkill` — na serwerze z kilkoma GB RAM nie
+zawieszają go same z siebie (projekt dopisuje je w `server.deny`, README podaje
+gotowe propozycje). Poza listą jest też `uv tool run`, choć pobiera tak samo jak
+`uvx` (decyzja z #303, poza zakresem #301).
+
+**Dlaczego lista urosła.** Pierwsza wersja stawiała na minimum reguł, ale
+zostawiała luki. PR #303 (#301) domknął aliasy launcherów i instalacji, a `uvx`
+przeszedł z allow na deny, bo pobiera narzędzie z sieci. Wybór jest świadomy: wolimy fałszywą
+blokadę niż instalację, która położy serwer. Gdy deny zablokowało legalną pracę,
+dodaliśmy wąski wyjątek zamiast zdejmować regułę: tak powstały formy lock-only
+z PR #321 (#317).
+
+**Kompromis.** Dłuższa lista to więcej miejsc na fałszywą blokadę, a wyjątki
+siedzą w długich wyrażeniach regularnych z lookahead. Reguła `uvx` działa tylko
+dla flag przed nazwą narzędzia, bo flaga po nazwie należy do narzędzia, a
+najdłuższa reguła (`npm-install-lock-only`) ma 378 znaków. Guard dopasowuje tekst,
+nie parsuje argumentów, więc myli się w obie strony:
+
+| Komenda | Wynik | Dlaczego | Co zrobić |
+| --- | --- | --- | --- |
+| `uvx --python 3.12 --offline ruff` | deny | wartość flagi przerywa ciąg flag przed `--offline` | `uvx --offline --python 3.12 ruff` albo `UV_OFFLINE=1` |
+| `npx -p typescript --no tsc` | deny | jak wyżej, dla `--no` | `npx --no -p typescript tsc` |
+| `apt-get -s install curl` | deny | reguła nie rozpoznaje form bez efektu | `server.allow` |
+| `pnpm add x --lockfile-only --ignore-scripts` | deny | dokumentacja `pnpm add` nie wymienia `--lockfile-only` (sprawdzone w docs pnpm) | `pnpm install --lockfile-only --ignore-scripts` po ręcznej zmianie `package.json` |
+
+Większość deny niesie powód z alternatywą (linter zamiast builda,
+`uv run --no-sync` zamiast `uv run`, CI zamiast e2e), a `server.allow` odblokowuje
+konkretną formę bez zdejmowania reguły: wpis `apt-get -s install` przepuszcza tę
+formę, a `apt-get install` nadal dostaje deny.
+Ryzyko, którego pilnujemy, to agent uczący się obchodzić guarda. Dlatego nową
+regułę dodajemy razem z przypadkami w tabeli `SERVER_GUARD` w `tests/test_guards.py`:
+regexa z lookahead nie da się ocenić bez przykładów allow i deny.
 
 ## Wyjątek „tylko lockfile” (#317)
 
@@ -55,9 +98,31 @@ wersje i zapisują lockfile:
 | uv | `uv add` / `uv remove` | `--no-sync` **i** `--no-build` |
 | npm | `npm install` | `--package-lock-only` **i** `--ignore-scripts` |
 | pnpm | `pnpm install` | `--lockfile-only` **i** `--ignore-scripts` |
-| bun | `bun install` | `--lockfile-only` **i** `--ignore-scripts` |
+| bun | `bun install` / `bun i` | `--lockfile-only` **i** `--ignore-scripts` |
+| bun | `bun add` / `bun remove` | `--lockfile-only` **i** `--ignore-scripts` |
 
-Każda inna forma tych komend zostaje deny, a powód wskazuje dozwoloną formę.
+Inne formy tych komend zostają deny, a powód wskazuje dozwoloną formę.
+`pnpm add` zostaje deny: dokumentacja `pnpm add` nie zna `--lockfile-only`, więc
+zmiany zależności pnpm idą przez `package.json` i `pnpm install --lockfile-only`.
+
+**Parser flag (#384).** Guard tnie komendę na tokeny z uwzględnieniem cudzysłowów
+i czyta ją tak, jak uruchomi ją narzędzie:
+
+- flaga z wartością przed podkomendą (`uv --color never sync`, `npm --loglevel silent install`)
+  jest czytana w obu odczytaniach, z wartością i bez; deny z któregokolwiek wygrywa;
+- `--no-sync` i `--with*` w `uv run` liczą się tylko w strefie flag przed nazwą
+  narzędzia: `uv run ruff --no-sync` to deny, `uv run --no-sync python -c "…--with…"` to allow;
+- cudzysłów przy wartości po `=` jest dozwolony (`--group="dev"`), a cytowany tekst
+  z białą spacją w środku nie może ukryć flagi (`"a=b --no-build c"` to deny);
+- cudzysłów w nazwie menedżera albo podkomendzie (`uv "sync"`, `"npm" install x`) jest zdejmowany
+  jak przez powłokę, więc nie omija guarda; forma surowa zostaje dla lockfile-only, gdzie
+  cudzysłów przy nazwie flagi (`--no-build`) daje deny;
+- `--ignore-scripts=true` (także `="true"`) to samo co `--ignore-scripts`; `npx --no-install` to `--no`
+  przed nazwą pakietu; `bun i` to `bun install`;
+- `--help` / `--version` w strefie flag przed nazwą narzędzia to pomoc, nie instalacja:
+  `webpack --version`, `cargo build --help`, `uv --version` są allow, a `npx cowsay --help`
+  i `uv run ruff --version` zostają deny, bo flaga należy do narzędzia z launchera.
+  Taka forma wygrywa z deny tej samej komendy (uv i bun kończą się na pomocy, bez instalacji).
 `server.deny` w Profilu może te formy z powrotem zablokować (precedencja:
 `server.allow` > `server.deny` > allow kita > deny kita), a `server.guard: off`
 dalej wyłącza cały guard.
@@ -118,15 +183,22 @@ integracyjnego.
 
 ## Konsekwencje
 
-- Jedno źródło profilu także dla agentów (#314): `kit-ai host` wypisuje wynik
+- Profil hosta dla agentów (#314): `kit-ai host` wypisuje wynik
   `detect_host_profile()` (z tym samym `KIT_HOST_PROFILE` / `GUIDES_HOST_PROFILE`),
   a `kit-ai night-ctx` składa z niego nagłówek CTX nocy ze znacznikiem generatora.
   Watchdog `/night-run` odrzuca nagłówek bez znacznika albo z `host=` różnym od
   bieżącego `kit-ai host` — nikt już nie wnioskuje Host z treści bundle'a.
+- Hooki nie wołają `kit-ai host`: używają współdzielonego modułu JS (ADR-0011),
+  a parytet z `detect_host_profile()` pilnuje test na tabeli `GUARD_*`. Wyłącznik
+  `config.guard` nie jest częścią detekcji hosta (ADR-0011).
 - `vps-lightweight.md`: sekcja „Bez hooka blokującego" zastąpiona odwołaniem
   do server-guarda i tego ADR-a.
 - Lokalne pluginy guardów w projektach stają się zbędne: podbij wersję kita,
   `kit-ai reload`, usuń własny plugin.
+- Zakaz instalacji na VPS wchodzi do wspólnego szablonu reguł briefu
+  (`templates/shared/rules/brief-rules.md`), dostarczanego agentom przez nośniki
+  briefu (hook Claude, instrukcje MCP, `AGENTS.md`), bez ręcznych kopii
+  ani wklejania overlayu ([ADR-0010](0010-brief-as-artifact.md)).
 - Czego guard tekstowy nie złapie: agent zapisuje własny skrypt i go odpala.
   Dlatego README zaleca też higienę hosta (Playwright MCP wyłączony na serwerze,
   użytkownik agenta poza grupą `docker`, limit pamięci na sesję).

@@ -24,6 +24,7 @@
  * Kontrakt: Claude Code (`hookSpecificOutput.permissionDecision`). Cursor dostaje
  * tłumaczenie z invoke-hook.js --to cursor. Wejście: `.tool_input.command` albo `.command`.
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 
@@ -67,8 +68,10 @@ const SHELL_WORD = /(^|[\s;&|(])(bash|sh|zsh|dash|ksh|ssh|eval)(\s|$)/;
 // `cmd` (bez ciała heredoca) zostaje dla celów mutacji: ścieżka w apostrofach to dalej
 // ścieżka. Skrypty `bash -c '…'` / `eval '…'` są wykonywane — dokładamy je do `code`.
 const commandNoHeredoc = stripHeredocs(command);
-const code = collapse([commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes).join(" ; "));
+const executed = [commandNoHeredoc, ...shellScripts(commandNoHeredoc)].map(stripSingleQuotes);
+const code = collapse(executed.flatMap((s) => [expandBackticks(s, ""), expandBackticks(s, " ")]).join(" ; "));
 const cmd = collapse(commandNoHeredoc);
+const cmdBackticks = [" ", ""].map((pad) => collapse(expandBackticks(commandNoHeredoc, pad)));
 const has = (re) => new RegExp(re, "i").test(cmd);
 
 // Granica tokenu komendy: początek, spacja albo separator shella. `rtk git push`
@@ -153,6 +156,14 @@ function shellScripts(text) {
   return [...text.matchAll(re)].map((m) => m[1] ?? m[2]);
 }
 
+// Podstawienie backticków (#349): bash zastępuje `…` jego treścią. Liczymy dwa warianty:
+// bez odstępu (`r\`\`m` skleja się w `rm`) i z odstępem (przy `\\\`` przed słowem zostaje
+// śmieć, więc `git` nie ma spacji przed sobą). Apostrofów nie ruszamy — w nich bash nie
+// podstawia. Backticka nie robimy separatorem, bo rozciąłby zewnętrzną komendę.
+function expandBackticks(text, pad) {
+  return text.replace(/'[^']*'|`([^`]*)`/g, (m, body) => (body === undefined ? m : `${pad}${body}${pad}`));
+}
+
 // Zamień treść pojedynczych apostrofów (także `$'…'`) na spację — bash nie wykonuje
 // w nich komend ani podstawień, więc zawarty tam tekst nie jest komendą (#206).
 // Wyjątek: pojedyncze słowo (`'master'`) to zwykły argument — zostaje bez apostrofów,
@@ -201,8 +212,23 @@ function stripSingleQuotes(text) {
 // Reguły push sprawdzamy per segment komendy — `git log origin/master` albo
 // `rm -f` obok pusha na feature branch to nie push na master ani force.
 const segments = code.split(/&&|\|\||[;&|()]/).map((s) => s.trim());
+// Gałąź z payloadu albo GIT_BRANCH (replay retro), inaczej z gita w `cwd` hooka — żywy hook
+// i replay decydują wtedy tak samo (#409). Git tylko przy zwykłym pushu; błąd = brak gałęzi.
+let branchCache;
+function currentBranch() {
+  if (branchCache !== undefined) return branchCache;
+  const given = String(payload.branch || process.env.GIT_BRANCH || "").trim();
+  if (given) return (branchCache = given);
+  const r = spawnSync("git", ["branch", "--show-current"], {
+    cwd: payload.cwd || process.cwd(),
+    encoding: "utf8",
+    timeout: 3000,
+    windowsHide: true,
+  });
+  return (branchCache = r.status === 0 ? String(r.stdout || "").trim() : "");
+}
 
-function targetsProtectedRef(has) {
+function targetsProtectedRef(has, seg) {
   const checks = [
     "origin[ ]+\\+?(main|master|dev)([ ]|$|:)",
     "origin/\\+?(main|master|dev)([ ]|$|:)",
@@ -221,12 +247,19 @@ function targetsProtectedRef(has) {
     "git[ ]+push([ ]+-[^ ]+)*[ ]+(origin|upstream)[ ]+\\+?dev[ ]*$",
     "git[ ]+push([ ]+-[^ ]+)*[ ]+[^ ]+[/:][^ ]*[ ]+\\+?dev[ ]*$",
   ];
-  return checks.some(has);
+  if (checks.some(has)) return true;
+  const m = seg.match(/(?:^|[ ])git[ ]+push\b(.*)$/i);
+  if (!m || !["main", "master", "dev"].includes(currentBranch())) return false;
+  const tokens = m[1].trim().split(/\s+/).filter((t) => t && !t.startsWith("-"));
+  // `git push` / `git push <remote>` wypycha bieżącą gałąź; dalej liczy się pierwszy refspec.
+  if (tokens.length <= 1) return true;
+  const ref = tokens[1];
+  return ["main", "master", "dev"].some((p) => ref === p || ref.endsWith("/" + p) || ref.endsWith(":" + p));
 }
 
 for (const seg of segments) {
   const hasIn = (re) => new RegExp(re, "i").test(seg);
-  if (!hasIn(`${B}git[ ]+push([ ]|$)`) || !targetsProtectedRef(hasIn)) continue;
+  if (!hasIn(`${B}git[ ]+push([ ]|$)`) || !targetsProtectedRef(hasIn, seg)) continue;
   const isForcePush =
     hasIn("--force([ =]|$)|--force-with-lease") ||
     hasIn("(^|[ ])-f([ ]|$)") ||
@@ -238,32 +271,57 @@ for (const seg of segments) {
 // --- git: nieodwracalne ---------------------------------------------------------
 
 const hasCode = (re) => new RegExp(re, "i").test(code);
-if (hasCode(`${B}git[ ]+reset[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
+// Token z podstawienia (`true`) może stać między `reset` a `--hard`.
+if (hasCode(`${B}git[ ]+reset([ ]+[^ ]+)*[ ]+--hard`)) deny("git reset --hard — nieodwracalne, użyj git stash albo nowego brancha");
 if (hasCode(`${B}git[ ]+clean[ ].*-[a-zA-Z]*f`)) deny("git clean -f — kasuje nieśledzone pliki bez odzysku");
 // Wielkość litery ma znaczenie: -d kasuje tylko zmergowane, -D wszystko.
 if (new RegExp(`${B}git[ ]+branch([ ]+[^ ]+)*[ ]+-D([ ]|$)`).test(code)) deny("git branch -D — użyj -d (tylko zmergowane)");
-if (hasCode(`${B}git[ ]+checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`)) {
+// Globalne opcje gita (`-C dir`, `--no-pager`, `-c k=v`) przed `checkout` nie omijają
+// reguły. Argument opcji zaczynający się od `-` traktujemy jak kolejną opcję — bez tej
+// granicy łańcuch samych flag dawał wykładniczy backtracking.
+const checkoutDiscards = (seg) =>
+  new RegExp(`(^|[ ])git( +-[^ ]+( +("[^"]*"|[^-][^ ]*))?)* +checkout[ ]+([^ ]+[ ]+)*(\\.|--)([ ]|$)`, "i").test(seg);
+if (segments.some(checkoutDiscards)) {
   deny("git checkout . / checkout -- <ścieżka> — kasuje niezacommitowane zmiany; użyj git stash");
 }
 
 // --- rm rekursywne na szerokiej ścieżce -------------------------------------------
 
-function broadPath() {
+function broadPath(text) {
+  const test = (re) => new RegExp(re, "i").test(text);
   return (
-    has("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
-    has("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
-    has("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
-    has("[ ]/[ ]*$")
+    test("(\\.\\.|/home/|/Users/|[$]HOME|~/)") ||
+    test("[A-Za-z]:[\\\\/]+(Users|Windows|Program)") ||
+    test("[ ][A-Za-z]:[\\\\/]*[ ]*$") ||
+    test("[ ]/[ ]*$") ||
+    test("(^|[ ])~([ ]|$)")
   );
 }
-if (has(`${B}rm[ ]+-[a-zA-Z]*r`) && broadPath()) {
+const RM_RECURSIVE = `${B}rm[ ]+-[a-zA-Z]*r`;
+if ([cmd, ...cmdBackticks].some((text) => new RegExp(RM_RECURSIVE, "i").test(text) && broadPath(text))) {
   deny("rekursywne kasowanie na szerokiej ścieżce (katalog domowy, dysk, ..)");
 }
 
 // --- mutacje w katalogach systemowych -----------------------------------------------
 
+// Bezpieczne przekierowania: do /dev/null lub duplikacja deskryptora (2>&1, 1>&2, >&-).
+// Nie modyfikują systemu plików (#331).
+// Operator przekierowania: >, >>, >|, >&, 2>, 2>>, &>, &>> (wspólny dla trzech regexów).
+const REDIRECT_OP = "(?:[0-9]+|&)?>[>|&]?";
+const SAFE_REDIRECTS = new RegExp(
+  `${REDIRECT_OP}[ ]*["']?/dev/null["']?(?=[ ]|[;&|)]|$)|[0-9]*>&(?:[0-9]+|-)(?=[ ]|[;&|)]|$)`,
+  "gi",
+);
+const cmdClean = cmd.replace(SAFE_REDIRECTS, " ").replace(/ {2,}/g, " ").trim();
+const hasClean = (re) => new RegExp(re, "i").test(cmdClean);
+
 const MUTATING = `${B}(rm|mv|cp|install|ln|dd|shred|truncate|touch|mkdir|rmdir|chmod|chown|chgrp|tee|unlink)([ ]|$)`;
-const mutates = has(MUTATING) || has(`${B}sed[ ]+(-[a-zA-Z]*i|--in-place)`) || has(">[ ]*[~/A-Za-z]");
+// Przekierowanie zapisu do ścieżki:
+const REDIRECT_WRITE = `${REDIRECT_OP}[ ]*["']?[~/A-Za-z]`;
+const mutates =
+  hasClean(MUTATING) ||
+  hasClean(`${B}sed[ ]+(-[a-zA-Z]*i|--in-place)`) ||
+  hasClean(REDIRECT_WRITE);
 
 if (mutates) {
   const home = (process.env.HOME || process.env.USERPROFILE || homedir() || "").replace(/\\/g, "/");
@@ -290,7 +348,8 @@ if (mutates) {
     .filter(Boolean)
     .map(fold);
 
-  for (const tok of cmd.split(" ")) {
+  for (const rawTok of cmdClean.split(" ")) {
+    const tok = rawTok.replace(new RegExp(`^${REDIRECT_OP}`), "");
     if (tok.startsWith("-")) continue;
     // Tylko tokeny wyglądające na ścieżkę — reszta to argumenty, nie cele.
     if (!/^["']?([~/]|[A-Za-z]:[\\/]|\$\{?HOME)/.test(tok)) continue;

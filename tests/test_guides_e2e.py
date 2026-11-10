@@ -26,7 +26,7 @@ import tomllib
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO, cast
 from unittest import mock
 
 import yaml
@@ -166,9 +166,10 @@ _ENV_TOKEN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 def _expand(value: str, workspace: Path) -> str:
     """Rozwiń placeholdery zmiennych środowiskowych używane przez klientów."""
+    # Ścieżki w configu są w formie posix (`mcp_server_entry`), więc rozwijamy tak samo.
     mapping = {
-        "CLAUDE_PROJECT_DIR": str(workspace),
-        "workspaceFolder": str(workspace),
+        "CLAUDE_PROJECT_DIR": workspace.as_posix(),
+        "workspaceFolder": workspace.as_posix(),
     }
 
     def replace(match: re.Match[str]) -> str:
@@ -252,7 +253,9 @@ async def _collect_tools(argv: list[str], workspace: Path) -> dict[str, str]:
         env=_server_env(workspace),
         cwd=str(workspace),
     )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errfile:
+        # TemporaryFile na Windows to _TemporaryFileWrapper, a stub oczekuje TextIO; cast nie zmienia runtime.
+        errlog = cast(TextIO, errfile)
         try:
             async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -286,7 +289,9 @@ async def _ping_language(argv: list[str], workspace: Path) -> str:
         env=_server_env(workspace),
         cwd=str(workspace),
     )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errfile:
+        # TemporaryFile na Windows to _TemporaryFileWrapper, a stub oczekuje TextIO; cast nie zmienia runtime.
+        errlog = cast(TextIO, errfile)
         try:
             async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -306,7 +311,9 @@ async def _init_instructions(argv: list[str], workspace: Path) -> str:
         env=_server_env(workspace),
         cwd=str(workspace),
     )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errfile:
+        # TemporaryFile na Windows to _TemporaryFileWrapper, a stub oczekuje TextIO; cast nie zmienia runtime.
+        errlog = cast(TextIO, errfile)
         try:
             async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -402,13 +409,8 @@ def _brief_lines(workspace: Path) -> list[str]:
 
 
 def _has_brief(item: Workspace) -> bool:
-    """Czy AGENTS.md tego workspace'u niesie brief z wartościami Profilu (zależy od #307)."""
-    brief = "\n".join(_brief_lines(item.root))
-    return bool(brief) and (
-        item.case.sentinel in brief
-        or (item.case.backend != "none" and item.case.backend in brief)
-        or (item.case.effective_codegen != "none" and item.case.effective_codegen in brief)
-    )
+    """Czy AGENTS.md tego workspace'u niesie wyrenderowany brief (zależy od #307)."""
+    return "**Profil:**" in "\n".join(_brief_lines(item.root))
 
 
 def _brief_available(item: Workspace | None = None) -> bool:
@@ -424,23 +426,25 @@ class TestGeneratedClientConfigs(unittest.TestCase):
     def test_every_client_config_points_at_the_same_server(self) -> None:
         """Jeden serwer, jedna flaga języka/klientów, workspace = repo aplikacji."""
         for item in _WORKSPACES.values():
-            expected = [
-                "guides-mcp",
-                "--language",
-                item.case.language,
-                "--clients",
-                item.case.clients,
-                "--kit-root",
-                str(KIT_ROOT),
-                "--workspace",
-                str(item.root),
-            ]
             for client in KNOWN_CLIENTS:
                 with self.subTest(case=item.case.name, client=client):
+                    expected = [
+                        "guides-mcp",
+                        "--language",
+                        item.case.language,
+                        "--clients",
+                        item.case.clients,
+                        "--kit-root",
+                        KIT_ROOT.as_posix(),
+                        "--client",
+                        client,
+                        "--workspace",
+                        item.root.as_posix(),
+                    ]
                     argv = _client_argv(item.root, client)
                     self.assertEqual(argv[0], "uv", argv)
                     self.assertEqual(argv[1:3], ["run", "--project"], argv)
-                    self.assertEqual(argv[3], str(KIT_ROOT), argv)
+                    self.assertEqual(argv[3], KIT_ROOT.as_posix(), argv)
                     self.assertEqual(argv[4:], expected, argv)
 
     def test_server_starts_from_each_client_command_line(self) -> None:
@@ -562,12 +566,12 @@ class TestChannelConsistency(unittest.TestCase):
                 self.assertIn(f"# Language: `{case.language}`", item.tools["language"])
 
                 hook = item.root / ".claude" / "hooks" / "language-reminder.mjs"
+                self.assertTrue(hook.is_file())
+                result = _run_hook(hook, item.root, {})
+                self.assertEqual(result.returncode, 0, result.stderr)
                 if case.language == "en":
-                    self.assertFalse(hook.exists(), "hook języka nie może zostać przy en")
+                    self.assertIn("language: `en`", result.stdout)
                 else:
-                    self.assertTrue(hook.is_file())
-                    result = _run_hook(hook, item.root, {})
-                    self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn("jęz", result.stdout.lower())
 
                 if _brief_available(item):
@@ -652,7 +656,7 @@ class TestBriefDelivery(unittest.TestCase):
             self.skipTest(BRIEF_ISSUE)
 
     def test_agents_md_carries_profile_values(self) -> None:
-        """Brief zawiera język, Tiery, codegen, klientów, overlay i regułę priorytetu."""
+        """Brief zawiera język, Tiery, codegen, klientów, wskaźnik overlayu i regułę priorytetu."""
         self._require_brief()
         for item in _WORKSPACES.values():
             case = item.case
@@ -669,7 +673,8 @@ class TestBriefDelivery(unittest.TestCase):
                     "all" in brief or all(client in brief for client in KNOWN_CLIENTS),
                     "brief nie wymienia klientów",
                 )
-                self.assertTrue(case.sentinel in brief or "project.md" in brief, "brief bez overlayu")
+                self.assertIn("get_overlay", brief)
+                self.assertNotIn(case.sentinel, brief, "brief nie wkleja treści overlayu")
                 self.assertRegex(brief, r"(?i)priorytet")
                 self.assertRegex(brief, r"(?i)(kit|wytyczne)")
 
@@ -707,17 +712,12 @@ class TestContextHooks(unittest.TestCase):
             self.skipTest("brak node w PATH")
 
     def test_expected_context_hooks_are_installed(self) -> None:
-        """Claude ma hook języka (pl), Claude/Codex/VSCode hook doctora."""
+        """Claude ma hook języka (każdy język), Claude/Codex/VSCode hook doctora."""
         for item in _WORKSPACES.values():
             with self.subTest(case=item.case.name):
                 for client, hooks in _CONTEXT_HOOKS.items():
                     for rel in hooks:
-                        exists = (item.root / rel).is_file()
-                        if rel.endswith("language-reminder.mjs"):
-                            expected = item.case.language != "en"
-                        else:
-                            expected = True
-                        self.assertEqual(exists, expected, rel)
+                        self.assertTrue((item.root / rel).is_file(), rel)
 
                 # Klienci bez hooków kontekstu nie dostają obcych plików.
                 # Katalogi klientów są różne (.agents/, .kilocode/, .kiro/, .opencode/…) — szukaj w całym drzewie.
@@ -741,18 +741,15 @@ class TestContextHooks(unittest.TestCase):
                         result = _run_hook(script, item.root, {"cwd": str(item.root)})
                         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_language_hook_is_wired_in_settings_only_for_pl(self) -> None:
-        """``settings.json`` Claude woła hook języka tylko przy language ≠ en."""
+    def test_language_hook_is_wired_in_settings(self) -> None:
+        """``settings.json`` Claude woła hook języka także przy language: en (#356)."""
         for item in _WORKSPACES.values():
             with self.subTest(case=item.case.name):
                 settings = json.loads(
                     (item.root / ".claude" / "settings.json").read_text(encoding="utf-8")
                 )
                 commands = json.dumps(settings.get("hooks", {}).get("UserPromptSubmit", []))
-                self.assertEqual(
-                    "language-reminder.mjs" in commands,
-                    item.case.language != "en",
-                )
+                self.assertIn("language-reminder.mjs", commands)
 
     def test_doctor_reminder_speaks_when_doctor_batch_exists(self) -> None:
         """Hook doctora realnie czyta workspace i zwraca kontekst z trybem naprawy."""

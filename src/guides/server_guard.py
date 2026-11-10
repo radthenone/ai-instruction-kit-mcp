@@ -59,15 +59,21 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     # przejdzie; pełny shlex/bashlex, gdy to stanie się realnym wektorem.
     {"id": "uv-sync", "kind": "deny", "pattern": r"^\s*uv\s+sync(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
+    {"id": "help-launcher", "kind": "allow",
+     "pattern": r"""^\s*(?:npx|bunx|uvx|pnpx)(?:\s+-\S+)*?\s+--(?:help|version)(?=\s|$)""",
+     "reason": "`--help` / `--version` przed nazwą narzędzia launchera — tylko pomoc, bez pobierania"},
+    {"id": "help-info", "kind": "allow",
+     "pattern": r"""^\s*(?!(?:npx|bunx|uvx|pnpx)(?=\s|$))(?!(?:npm|pnpm|yarn|bun)\s+(?:exec|x|dlx)(?=\s|$))\S+(?:\s+(?!-)[A-Za-z][\w:.-]*)?(?:\s+-\S+)*?\s+--(?:help|version)(?=\s|$)""",
+     "reason": "`--help` / `--version` w strefie flag — pomoc, bez uruchomienia"},
     {"id": "uv-add", "kind": "deny", "pattern": r"^\s*uv\s+(?:add|remove)(?=\s|$)",
      "reason": "`uv add`/`uv remove` instaluje i kompiluje — tylko `uv add|remove <pkg> --no-sync --no-build` zmienia sam lockfile; inaczej zależności zmieniają się na PC albo w CI"},
     {"id": "uv-lock", "kind": "deny", "pattern": r"^\s*uv\s+lock(?=\s|$)",
-     "reason": "`uv lock` bez `--no-build` buduje projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"},
+     "reason": "`uv lock` bez `--no-build` może budować zależności i projekt — dozwolone tylko `uv lock --no-build`; inaczej lockfile zmienia się na PC albo w CI"},
     {"id": "uv-add-lock-only", "kind": "allow",
-     "pattern": r"""^\s*uv\s+(?:add|remove)(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--(?:sync|build)(?=[\s=]|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-sync(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-build(?=\s|$))""",
+     "pattern": r"""^\s*uv\s+(?:add|remove)(?=\s|$)(?!.*[`$\\{])(?!.*\s["']+-)(?!.*\s-[^\s=]*["'])(?!.*"[^"]*\s[^"]*")(?!.*'[^']*\s[^']*')(?!.*\s--(?:sync|build)(?=[\s=]|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-sync(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-build(?=\s|$))""",
      "reason": "zmiana zależności tylko w lockfile — bez synchronizacji i bez builda"},
     {"id": "uv-lock-only", "kind": "allow",
-     "pattern": r"""^\s*uv\s+lock(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--(?:build)(?=[\s=]|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-build(?=\s|$))""",
+     "pattern": r"""^\s*uv\s+lock(?=\s|$)(?!.*[`$\\{])(?!.*\s["']+-)(?!.*\s-[^\s=]*["'])(?!.*"[^"]*\s[^"]*")(?!.*'[^']*\s[^']*')(?!.*\s--(?:build)(?=[\s=]|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--no-build(?=\s|$))""",
      "reason": "rozwiązanie wersji tylko do lockfile — bez builda"},
     {"id": "uv-pip-install", "kind": "deny", "pattern": r"^\s*uv\s+pip\s+(?:install|sync)(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — lockfile zmienia się na PC albo w CI"},
@@ -76,10 +82,10 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "pip-install", "kind": "deny", "pattern": r"^\s*pip(?:3(?:\.\d+)?)?\s+install(?=\s|$)",
      "reason": "instalacja kompiluje zależności natywne — zależności zmieniają się na PC albo w CI"},
     {"id": "uv-run", "kind": "deny",
-     "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--no-sync)(?!.*--with(?:-requirements|-editable)?(?=[\s=]|$))",
+     "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--no-sync(?=\s|$))(?!.*--with(?:-requirements|-editable)?(?=[\s=]|$))",
      "reason": "`uv run` bez `--no-sync` synchronizuje i kompiluje — użyj `uv run --no-sync` albo `UV_NO_SYNC=1`"},
     {"id": "uv-run-no-sync", "kind": "allow",
-     "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\s=]|$)).*?--no-sync",
+     "pattern": r"^\s*uv\s+run(?=\s|$)(?!.*--with(?:-requirements|-editable)?(?=[\s=]|$)).*?--no-sync(?=\s|$)",
      "reason": "uruchomienie bez synchronizacji"},
     {"id": "uv-run-with", "kind": "deny",
      "pattern": r"^\s*uv\s+run(?=\s|$).*--with(?:-requirements|-editable)?(?=[\s=]|$)",
@@ -89,18 +95,21 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "bun-pkg", "kind": "deny", "pattern": r"^\s*bun\s+(?:install|add|remove|rm|i|a|update|up|upgrade)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — tylko `bun install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
     {"id": "bun-install-lock-only", "kind": "allow",
-     "pattern": r"""^\s*bun\s+install(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?=\s|$))""",
+     "pattern": r"""^\s*bun\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s["']+-)(?!.*\s-[^\s=]*["'])(?!.*"[^"]*\s[^"]*")(?!.*'[^']*\s[^']*')(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!["']?true["']?(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?:=["']?true["']?)?(?=\s|$))""",
      "reason": "aktualizacja tylko `bun.lock` — bez instalacji i bez skryptów"},
+    {"id": "bun-add-lock-only", "kind": "allow",
+     "pattern": r"""^\s*bun\s+(?:add|remove)(?=\s|$)(?!.*[`$\\{])(?!.*\s["']+-)(?!.*\s-[^\s=]*["'])(?!.*"[^"]*\s[^"]*")(?!.*'[^']*\s[^']*')(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!["']?true["']?(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?:=["']?true["']?)?(?=\s|$))""",
+     "reason": "zmiana zależności tylko w `bun.lock` — bez instalacji i bez skryptów"},
     {"id": "npm-pkg", "kind": "deny",
      "pattern": r"^\s*npm\s+(?:install|i|ci|cit|install-ci-test|add|it|install-test|update|up|upgrade|remove|uninstall|un|rm|r)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — tylko `npm install --package-lock-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
     {"id": "npm-install-lock-only", "kind": "allow",
-     "pattern": r"""^\s*npm\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--no-(?:package-lock-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:package-lock-only|ignore-scripts)=(?!true(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--package-lock-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?=\s|$))""",
+     "pattern": r"""^\s*npm\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s["']+-)(?!.*\s-[^\s=]*["'])(?!.*"[^"]*\s[^"]*")(?!.*'[^']*\s[^']*')(?!.*\s--no-(?:package-lock-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:package-lock-only|ignore-scripts)=(?!["']?true["']?(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--package-lock-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?:=["']?true["']?)?(?=\s|$))""",
      "reason": "aktualizacja tylko `package-lock.json` — bez instalacji i bez skryptów"},
     {"id": "pnpm-pkg", "kind": "deny", "pattern": r"^\s*pnpm\s+(?:install|i|add|update|up|upgrade|remove|rm)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — tylko `pnpm install --lockfile-only --ignore-scripts`, inaczej zależności zmieniają się na PC albo w CI"},
     {"id": "pnpm-install-lock-only", "kind": "allow",
-     "pattern": r"""^\s*pnpm\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s(?:["']+-|-\S*["']))(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!true(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?=\s|$))""",
+     "pattern": r"""^\s*pnpm\s+(?:install|i)(?=\s|$)(?!.*[`$\\{])(?!.*\s["']+-)(?!.*\s-[^\s=]*["'])(?!.*"[^"]*\s[^"]*")(?!.*'[^']*\s[^']*')(?!.*\s--no-(?:lockfile-only|ignore-scripts)(?=[\s=]|$))(?!.*\s--(?:lockfile-only|ignore-scripts)=(?!["']?true["']?(?=\s|$)))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--lockfile-only(?=\s|$))(?=(?:\s+(?!--(?:\s|$))(?!#)\S+)*?\s+--ignore-scripts(?:=["']?true["']?)?(?=\s|$))""",
      "reason": "aktualizacja tylko `pnpm-lock.yaml` — bez instalacji i bez skryptów"},
     {"id": "yarn-pkg", "kind": "deny", "pattern": r"^\s*yarn\s+(?:global\s+add|install|add|update|up|upgrade|remove)(?=\s|$)",
      "reason": "instalacja paczek na serwerze — Yarn nie ma trybu „tylko lockfile” bez skryptów, więc zależności zmieniają się na PC albo w CI"},
@@ -152,7 +161,7 @@ DEFAULTS: tuple[dict[str, str], ...] = (
     {"id": "npx-launcher", "kind": "deny", "pattern": r"^\s*(?:npx|npm\s+(?:exec|x))(?=\s|$)",
      "reason": "`npx` / `npm exec` pobiera paczkę z sieci — użyj `npx --no <bin>`, `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
     {"id": "npx-no", "kind": "allow",
-     "pattern": r"^\s*(?:npx|npm\s+(?:exec|x))(?=(?:\s+-\S+)*\s+--no(?=\s|$))(?!(?:\s+-\S+)*\s+(?:-y|--yes)(?=\s|$))",
+     "pattern": r"^\s*(?:npx|npm\s+(?:exec|x))(?=(?:\s+-\S+)*\s+--no(?:-install)?(?=\s|$))(?!(?:\s+-\S+)*\s+(?:-y|--yes)(?=\s|$))",
      "reason": "`--no` przed nazwą: tylko pakiet już w node_modules/.bin, bez pobierania"},
     {"id": "bunx-launcher", "kind": "deny", "pattern": r"^\s*(?:bunx|bun\s+x)(?=\s|$)",
      "reason": "`bunx` pobiera paczkę z sieci — użyj `bunx --no-install <bin>` albo skryptu projektu (`bun run typecheck`)"},
@@ -194,13 +203,23 @@ _PREFIXES = (
 )
 
 # Opcje z argumentem — reszta po `run` / launcherze to właściwa komenda.
-_UV_GLOBAL_ARG = frozenset(("--directory", "--project", "--config-file", "--cache-dir", "--python", "-p"))
+_UV_GLOBAL_ARG = frozenset((
+    "--directory", "--project", "--config-file", "--cache-dir", "--python", "-p",
+    "--color", "--index", "--index-url", "--python-preference",
+))
 _UV_RUN_ARG = frozenset((
     "--with", "--with-requirements", "--python", "-p", "--package", "--env-file", "--group",
-    "--extra", "--directory", "--project", "--index", "--index-url",
+    "--extra", "--directory", "--project", "--index", "--index-url", "--color", "--python-preference",
 ))
-_JS_PM_ARG = frozenset(("--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir"))
+# Flagi uv bez wartości: `--no-sync` nie zjada tokenu, więc nie ma odczytania „zjada narzędzie”.
+_UV_BOOL = frozenset(("--no-sync", "--frozen", "--locked", "--quiet", "-q", "--verbose", "-v", "--no-project", "--isolated"))
+_JS_PM_ARG = frozenset((
+    "--filter", "-F", "--cwd", "-C", "--workspace", "--prefix", "--dir", "--loglevel", "--registry",
+    "--reporter", "--cache", "--cache-dir", "--userconfig", "--globalconfig", "--store-dir", "--modules-dir",
+))
 _NPX_ARG = frozenset(("-p", "--package"))
+# Launchery i `rtk` nie dostają skrótu „--help przed podkomendą”: ich pierwszy argument to narzędzie.
+_HELP_EXEMPT = frozenset(("npx", "bunx", "uvx", "pnpx", "rtk"))
 _PYTHON = re.compile(r"python(?:\d+(?:\.\d+)?)?")
 # `rtk` to globalna wtyczka przepisująca komendę (opencode/Claude/Codex/Cursor):
 # `bun install` → `rtk bun install`, `next build` → `rtk next`. Traktujemy go jak
@@ -402,12 +421,90 @@ def _skip_flags(toks: list[str], i: int, with_arg: frozenset[str]) -> int:
     return i
 
 
+_WORDS = re.compile(r"""(?:"[^"]*"|'[^']*'|\S)+""")
+# Cytowana biała spacja: dane, nie flagi (`"print('--with x')"`).
+_SPACED_QUOTE = re.compile(r"""\"[^\"]*\s[^\"]*\"|'[^']*\s[^']*'""")
+
+
+def _word(tok: str) -> str:
+    """Token tak, jak dostanie go narzędzie: bez zewnętrznych cudzysłowów.
+
+    Słowo z białą spacją w środku (dane, np. `"print('--with x')"`) zamienia na `_`, żeby
+    nie wyglądało jak flaga w strefie flag.
+
+    Args:
+        tok: Surowy token z komendy.
+
+    Returns:
+        Odcudzysłowiony token albo `_` dla słowa z białą spacją.
+    """
+    if _SPACED_QUOTE.search(tok):
+        return "_"
+    return re.sub(r"[\"']", "", tok)
+
+
+def _uv_run_form(words: list[str], zone_end: int) -> str:
+    """Forma `uv run`: `--no-sync` i `--with*` liczą się tylko przed nazwą narzędzia.
+
+    Argumenty narzędzia (od `zone_end`) dostają `_` zamiast tych flag — uv ich nie
+    przechwytuje, więc reguły `uv run` ich nie widzą.
+
+    Args:
+        words: Odcudzysłowione słowa komendy zaczynające się od `uv run`.
+        zone_end: Indeks pierwszego argumentu narzędzia.
+
+    Returns:
+        Forma komendy dla reguł `uv run`.
+    """
+    tail = ["_" if w.startswith(("--with", "--no-sync")) else w for w in words[zone_end:]]
+    return " ".join([*words[:zone_end], *tail])
+
+
+def _flag_ends(
+    words: list[str], i: int, with_arg: frozenset[str], bool_flags: frozenset[str] = frozenset(),
+) -> set[int]:
+    """Indeksy pierwszego argumentu pozycyjnego po flagach od indeksu `i`.
+
+    Flaga z `with_arg` zjada wartość z następnego tokenu, `--flaga=wartość` jej nie zjada,
+    a flaga nieznana daje oba odczytania. Deny z któregokolwiek odczytania wygrywa, więc
+    niejednoznaczny zapis (`uv --color never sync`) nie przepuszcza podkomendy.
+
+    Args:
+        words: Słowa komendy z `_word`.
+        i: Indeks pierwszego tokenu po launcherze lub podkomendzie.
+        with_arg: Flagi zjadające wartość.
+        bool_flags: Flagi bez wartości — jedno odczytanie, bez zjadania tokenu.
+
+    Returns:
+        Zbiór indeksów (najwyżej `len(words)`), od których zaczyna się argument pozycyjny.
+    """
+    ends: set[int] = set()
+    seen: set[int] = set()
+    todo = [i]
+    while todo:
+        j = todo.pop()
+        if j in seen:
+            continue
+        seen.add(j)
+        if j >= len(words) or not words[j].startswith("-"):
+            ends.add(min(j, len(words)))
+        elif words[j] in with_arg:
+            todo.append(j + 2)
+        elif "=" in words[j] or words[j] in bool_flags:
+            todo.append(j + 1)
+        else:
+            todo.extend((j + 1, j + 2))
+    return ends
+
+
 def command_forms(segment: str, depth: int = 0) -> tuple[list[str], dict[str, str]]:
     """Formy segmentu do dopasowania: sama komenda + to, co uruchamia launcher.
 
     `uv [opcje] run [flagi] X`, `npx`/`bunx X`, `pnpm|yarn|npm dlx|exec X`, `python -m X`
-    dokładają formę `X`; opcje `uv` przed podkomendą i `--filter`/`--cwd` menedżerów JS
-    są zdejmowane, żeby wzorce (`uv run`, wrappery `bun run x`) widziały komendę wprost.
+    dokładają formę `X`. Flagi przed podkomendą (`uv`, `--filter`/`--cwd` menedżerów JS)
+    czytane są w każdym możliwym odczytaniu (`_flag_ends`), więc powstaje forma na każde
+    odczytanie; flagi `--no-sync`/`--with` w `uv run` liczą się tylko w strefie flag
+    przed nazwą narzędzia. Wrappery (`bun run x`) widzą komendę wprost.
     `rtk` jest launcherem wykonania: `rtk X …` daje `X …`, `rtk proxy|err|test|summary X`
     daje `X`, a `rtk run -c "…"` oceniamy jak `sh -c`. Tabela znaczeń dokłada formy,
     w których rtk zgubił słowo: `rtk next` → `next build`, `rtk npm X` → `npm run X`.
@@ -415,32 +512,45 @@ def command_forms(segment: str, depth: int = 0) -> tuple[list[str], dict[str, st
     if depth > _MAX_DEPTH:
         raise _TooDeep
     command, assigns = strip_prefixes(segment)
-    toks = command.split()
+    toks = _WORDS.findall(command)
     if not toks:
         return [], assigns
-    head = toks[0]
-    forms = [command]
+    words = [_word(t) for t in toks]
+    head = words[0]
+    if len(words) > 1 and words[1] in ("--help", "--version") and head not in _HELP_EXEMPT:
+        # Pomoc przed podkomendą (`npm --help install x`) wypisuje pomoc i nic nie instaluje.
+        return [" ".join(words)], assigns
+    # Forma surowa (pilnuje cudzysłowów w lockfile-only) i odcudzysłowiona (nazwy podkomend).
+    forms = [command, " ".join(words)]
     rest: list[str] = []
+    rests: list[list[str]] = []
     if head == "uv":
-        i = _skip_flags(toks, 1, _UV_GLOBAL_ARG)
-        toks = ["uv", *toks[i:]]
-        forms = [" ".join(toks)]
-        if len(toks) > 1 and toks[1] == "run":
-            rest = toks[_skip_flags(toks, 2, _UV_RUN_ARG):]
+        # Każdy odczyt flag przed podkomendą daje osobną formę; deny z dowolnego wygrywa.
+        forms = []
+        for e in sorted(_flag_ends(words, 1, _UV_GLOBAL_ARG, _UV_BOOL)):
+            raw = ["uv", *toks[e:]]
+            cooked = ["uv", *words[e:]]
+            if len(cooked) > 1 and cooked[1] == "run":
+                for e2 in sorted(_flag_ends(cooked, 2, _UV_RUN_ARG, _UV_BOOL)):
+                    forms.append(_uv_run_form(cooked, e2))
+                    rests.append(raw[e2:])
+            else:
+                forms.extend((" ".join(raw), " ".join(cooked)))
     elif head in ("npx", "bunx"):
-        rest = toks[_skip_flags(toks, 1, _NPX_ARG):]
+        rests = [toks[e:] for e in sorted(_flag_ends(words, 1, _NPX_ARG))]
     elif head in ("bun", "npm", "pnpm", "yarn"):
-        i = _skip_flags(toks, 1, _JS_PM_ARG)
-        sub = toks[i:i + 1]
-        if sub in (["run"], ["run-script"]):
-            toks = [head, sub[0], *toks[_skip_flags(toks, i + 1, _JS_PM_ARG):]]
-            forms = [" ".join(toks)]
-        elif i < len(toks):
-            # Same flagi (`yarn --version`) to nie uruchomienie skryptu — zostaw oryginał.
-            toks = [head, *toks[i:]]
-            forms = [" ".join(toks)]
-        if len(toks) > 1 and toks[1] in ("dlx", "exec", "x"):
-            rest = toks[_skip_flags(toks, 2, _NPX_ARG):]
+        for e in sorted(_flag_ends(words, 1, _JS_PM_ARG)):
+            sub = words[e] if e < len(words) else ""
+            if sub in ("run", "run-script"):
+                for e2 in sorted(_flag_ends(words, e + 1, _JS_PM_ARG)):
+                    forms.append(" ".join([head, sub, *toks[e2:]]))
+            elif e < len(toks):
+                # Same flagi (`yarn --version`) to nie uruchomienie skryptu — zostaw oryginał.
+                forms.append(" ".join([head, *toks[e:]]))
+            else:
+                forms.append(command)
+            if sub in ("dlx", "exec", "x"):
+                rests.extend(toks[e2:] for e2 in sorted(_flag_ends(words, e + 1, _NPX_ARG)))
     elif _PYTHON.fullmatch(head) and len(toks) > 2 and toks[1] == "-m":
         rest = toks[2:]
     elif head == "rtk":
@@ -489,9 +599,12 @@ def command_forms(segment: str, depth: int = 0) -> tuple[list[str], dict[str, st
             forms.extend(inner_forms)
             assigns.update(inner_assigns)
     if rest:
-        inner, inner_assigns = command_forms(" ".join(rest), depth + 1)
-        forms.extend(inner)
-        assigns.update(inner_assigns)
+        rests.append(rest)
+    for part in rests:
+        if part:
+            inner, inner_assigns = command_forms(" ".join(part), depth + 1)
+            forms.extend(inner)
+            assigns.update(inner_assigns)
     return forms, assigns
 
 

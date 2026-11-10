@@ -130,7 +130,8 @@ Lokalnie tylko **szybkie**; pełny zestaw — CI.
 ### 3. Baza zielona
 
 Ostatni CI na bazie: `gh run list --branch $BASE --limit 1 --json conclusion,headSha`.
-Czerwony → **halt** (przypadek C). Brak CI → bramki szybkie na `origin/$BASE` odpala krótki subagent.
+Porównaj `headSha` z `git rev-parse origin/$BASE`. Zgodne (run na HEAD bazy): czerwony → **halt** (przypadek C), zielony → baza zielona.
+Różne (run z innego commita, np. push na `dev` bez workflow): ani zielony, ani czerwony nie rozstrzyga → bramki szybkie na `origin/$BASE` odpala krótki subagent. Brak CI → to samo.
 
 ### 4. Kolejka
 
@@ -175,6 +176,10 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 - **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay; brak → „brak danych”.
 - **Przekazanie:** `### #N` + modele, serwisy, endpointy, migracje z hand-backu. Dopisujesz
   **Ty** po każdym MERGED.
+- **Zaległe wywołania headless:** przed pierwszym ticketem przejrzyj `~/.cache/night-run-<repo>-*/`
+  poprzednich nocy. Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
+  raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<data>.md`
+  (wrapper kasuje bufor dopiero po wypisaniu). Plik wpisz do NIGHT-RUN REPORT jako `zaległe wywołania`.
 - **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
   per ticket`, pauzy limitu: otwarta `pauza limitu od <ts>; wznowienie <ts> (epoch N)` (zapisuje
@@ -186,7 +191,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 Orkiestrator budzi się tylko wtedy, gdy jest co robić. Tik kosztuje turę i cały kontekst,
 więc nie jest mechanizmem oczekiwania.
 
-- **Watchdog w tle (`.ai/night-run-watchdog.sh`, instalowany przy kliencie claude):** Bash
+- **Watchdog w tle (`.ai/night-run-watchdog.sh`, instalowany przy kliencie claude):** Wymaga `kit-ai` w PATH (weryfikacja `kit-ai host`; na VPS bez `uvx`). Bash
   `run_in_background` z **jawnym `timeout: 7200000`** i pełną ścieżką repo: `bash "$(git rev-parse --show-toplevel)/.ai/night-run-watchdog.sh" "$CTX" 60 110`
   (domyślnie próg anomalii 60 min, życie 110 min; cel `watchdog: próg N, życie M` (min)
   zamienia te liczby, życie ≤ 110). Bez `timeout` Bash w tle dostaje domyślne 30 min
@@ -196,7 +201,7 @@ więc nie jest mechanizmem oczekiwania.
   w transkrypcie subagenta z `subagent: <id>`. Kończy się, czyli budzi orkiestratora
   powiadomieniem o zakończeniu, tylko gdy:
   - exit 1 `anomalia` — brak postępu > 60 min (subagent failed/bez hand-backu też → tik);
-  - exit 0 `halt` — nagłówek CTX bez znacznika generatora albo `host=` ≠ `kit-ai host`
+  - exit 0 `halt` — nagłówek CTX bez znacznika generatora, brak `kit-ai` w PATH (dodaj do PATH; na VPS bez `uvx kit-ai`) albo `host=` ≠ `kit-ai host`
     (sprawdzane przy każdym starcie i odnowieniu) → halt C z powodem z linii `halt:`;
   - exit 0 `życie` — minęło 110 min → odnów (niżej);
   - exit 0 `koniec nocy` — w `## Stan` jest `krok: koniec`;
@@ -242,15 +247,21 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    uruchomienie review. Ze skillami review z argumentów: uruchamiasz je **Ty** według reguły
    „Komendy kitu uruchamiasz według klienta” (np. `review-bugbot` na modelu z
    frontmattera), każdy na `git diff origin/$BASE...HEAD` brancha ticketu, w kolejności
-   z argumentów. `/code-review` wołasz z numerem ticketu (`/code-review <N>`), bo jego oś
+   z argumentów, dopisując do wywołania linię `Język wyjścia: <language>` (wartość z `get_language`).
+   `/code-review` wołasz z numerem ticketu (`/code-review <N>`), bo jego oś
    Spec czyta issue. Od skilla bierzesz tylko tabelę niżej; skill z `--fix` poprawia sam — subagent ticketu po
    wznowieniu zbiera to `/git-commit`.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
+   Język wyjścia: <language> (wartość z `get_language`).
    `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
-   i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` +
-   potwierdzony/niepewny. Nie edytuj.” Zapisz jego id w `## Stan`.
-3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z
-   findingami: potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
+   i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
+   bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`; nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Linie `Ręcznie:` / `Recznie:` są niesprawdzalne w diffie: wiersz Spec ze statusem `niesprawdzalne`, nie High. Nie edytuj.” Zapisz jego id w `## Stan`.
+   Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
+   przekłada na język Profilu: nagłówki sekcji, etykiety werdyktów i podsumowanie (np. `## Standardy` /
+   `## Spec`, `TWARDE` / `OCENA`). Bez zmian: nagłówek tabeli `Severity | Location | Finding | Fix`
+   i wartości Severity, cytaty kodu, identyfikatory i ścieżki.
+3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z samą
+   tabelą findingów (bez tłumaczenia): potwierdzone → poprawka + test; niepewne → opis PR. Review z kroku 2 **jest**
    potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
    przed CI — krok `ci`. Dalej kroki 6–8 promptu.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
@@ -269,6 +280,7 @@ Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, z
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
 Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
 `gh issue view <N> --comments`.
+Body issue bez sekcji `Kryterium ukończenia` ani `Kryteria akceptacji` (nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) → hand-back needs-human przed pierwszym krokiem, bez kodu.
 Frontend: po kroku 1 plik `docs/design/<N>.md` jest w drzewie (z <BASE> albo z istniejącego
 brancha issue) → layout wyłącznie według `docs/design/<N>.md`; rozbieżność = hand-back
 needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-structure`).
@@ -282,9 +294,13 @@ Kroki:
    Po merge ticketu usuwasz je przez `node .ai/worktree.mjs remove <ścieżka>`.
    Przy ostrzeżeniu `deps differ from main checkout` oznacz ticket jako „weryfikacja w CI” i nie ufaj lokalnym testom.
 2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian —
-   reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
+   orkiestrator dopisuje `--ctx <CTX_DIR>` (pełna ścieżka katalogu CTX z `$HOME`), a wrapper zapisuje
+   wiersz wywołania do bufora nocy. Reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
    (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
-   → maks. 2 próby, potem needs-human. Dalej kroki 4–5.
+   (kod ≠ 0, w tym HANG po 30 min bez postępu) → nie ponawiasz go tym samym wykonawcą: wrapper
+   już przeszedł cały łańcuch 1:1, więc to jedna pełna ścieżka. Wyczerpany łańcuch → przejęcie
+   (niżej), potem needs-human. Dalej kroki 4–5.
+   Linia `SUSPECT=no-changes` w raporcie wrappera (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human (liczy się do 2 prób).
    Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
    w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
    jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (gdy `reset=brak`, wpisz «nieznana»)
@@ -299,11 +315,12 @@ Kroki:
    **subagenta przejęcia** (Agent z parametrem `model` = model z `PRZEJĘCIE`) z DOSŁOWNIE tą samą treścią z
    cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem wrappera (commity,
    `git status`, ostatnie linie) i stanem brancha. Effort: bez parametru — subagent przejęcia
-   dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; skill z `disable-model-invocation`
-   przez odczyt jego `SKILL.md` i wykonanie treści. Przejęcie nie rusza niezacommitowanych zmian
+   dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; gdy Skill odrzuci wywołanie skilla z `disable-model-invocation`
+   → needs-human (nie czytasz jego `SKILL.md` i nie odtwarzasz kroków innym sposobem). Przejęcie nie rusza niezacommitowanych zmian
    (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limicie zagnieżdżenia 3
    (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
    Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
+   Wyczerpany łańcuch bez limitu (kod ≠ 0 i nie 75, klasa `HANG` albo `ERROR`) idzie tą samą drogą: subagent przejęcia z `PRZEJĘCIE`, bez `LIMIT: czekaj`.
 2. Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
 3. Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
    (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
@@ -313,14 +330,16 @@ Kroki:
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
 6. Poprawki z review, potem `/git-end` (review zrobione, nie czekaj). W prompcie `/git-end`
-   przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi. **CI
-   pilnuje agent `git-end`:** `sleep 20; gh pr checks <PR> --watch` wzorcem „Praca w tle” (`sleep`,
-   bo checki rejestrują się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
+   przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi (nagłówki sekcji
+   i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian). **CI
+   pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
+   checki mogą rejestrować się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);
    przy `Host: vps` brak CI = brak merge: kroki 7–8 pomijasz, PR otwarty, hand-back needs-human
    „brak CI na <BASE>”, przypadek A. Inne `EXIT` ≠ 0 → `/git-end` nie naprawia kodu: wraca
    hand-backiem z logiem CI, a Ty (subagent ticketu) poprawiasz i ponawiasz `/git-end` (maks. 3
    próby); nadal czerwone → needs-human.
+**Sprawdzenie przed merge (przed krokiem 7):** świeży subagent uruchomiony przez Ciebie (nie ten, który pisał poprawki) dostaje tylko wiersze Spec: z tabeli, a gdy review nie miało osi Spec, każde kryterium z sekcji `Kryterium ukończenia` / `Kryterium ukonczenia` / `Kryteria akceptacji` z body issue (niespełnione = High; linie `Ręcznie:` / `Recznie:` jako `niesprawdzalne`). Zwraca `spełnione`, `niespełnione` albo `niesprawdzalne` dla każdego wiersza; `niesprawdzalne` nie blokuje, trafia do opisu PR. Wiersz High nadal niespełniony = **finding blokujący**: nie merguj, PR zostaje otwarty, hand-back needs-human z tym wierszem (przypadek E). Nawet zielone CI nie znosi finding blokującego; wyjątek tylko przez tekst celu (orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo spec”).
 7. `gh pr merge <PR> --merge`.
 8. Jeden raport: komentarz na PR `## Final report (night-run) — #<N>`. Na issue tylko link
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
@@ -347,24 +366,32 @@ Reguły:
   wznawiasz po nim pracę.
   Koniec = powiadomienie o zakończeniu albo linia `EXIT=` w logu; wynik = jej wartość. Nie czekasz na tekst narzędzia (`passed`, `All checks…`) ani na stan procesu
   (`ps`, `pgrep`, `kill -0`) — taka pętla wisi bez końca albo staje na prośbie o zgodę.
+  Zakaz `sleep N; <cmd>` (np. `sleep N; cat/tail …`, `sleep N; gh pr checks …`): harness Claude Code
+  blokuje takie polecenia („Blocked: sleep”). Orkiestrator czeka wyłącznie na powiadomienie
+  o zakończeniu zadania w tle. Subagent w Claude czeka w tle (`run_in_background`) pętlą
+  `until grep -q ^EXIT= <log>; do sleep 5; done`; `Monitor` z tą pętlą to opcja, ale wygasa
+  po 30 min i trzeba go uzbroić ponownie. Klienci bez pracy w tle: pierwszoplanowy Bash
+  z limitem czasu (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`).
   Przed hand-backiem żadne Twoje zadanie w tle nie działa, zbędne kończysz.
   (tylko Claude Code) Nie kończysz tury, dopóki `/headless` działa w tle — inaczej
   orkiestrator dostaje powiadomienie „is waiting on its own background work” i płaci turę.
   Czekasz na pierwszoplanowym Bash z limitem czasu, który blokuje do linii `EXIT=` w logu
   wrappera (`timeout 600 sh -c 'until grep -q ^EXIT= <log>; do sleep 5; done'`), i powtarzasz
-  go do skutku. To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
+  go do skutku; `Monitor` ani czekanie w tle nie zwalniają z zakazu kończenia tury.
+  To dozwolone tylko tutaj, u subagenta ticketu; orkiestrator nie blokuje się
   i na powiadomienia nie reaguje narzędziami.
 - Odkrycie części niesprawdzalnej w trakcie pracy: gdy ticket ma część weryfikowalną
   (VPS + CI) i część niesprawdzalną (testy na telefonie, ręczne UI, sprzęt) — robisz część
   weryfikowalną, zakładasz dziecko `needs-local` podpięte jako sub-issue i zablokowane
   (`blocked_by`) przez bieżące issue, z opisem co zostaje i dlaczego, i kontynuujesz łańcuch
   dla części głównej.
+- Commity: prefiks Conventional po angielsku (`fix:`, `feat:`), opis i body w języku z `get_language`.
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
 Hand-back (bez streszczania pracy): stan (do review / MERGED / needs-human / halt); branch, PR,
 link `Final report`; testy unit/x, integration-db/y, integration/z, e2e/w (z komend);
-dodane modele, serwisy, endpointy, migracje; założenia; model: <per komenda: agent
+dodane modele, serwisy, endpointy, migracje; założenia; findingi review w języku Profilu; model: <per komenda: agent
 <nazwa> (<model>) / skill / inline — fallback przy braku agenta>.
 ```
 
@@ -387,7 +414,7 @@ Poziomy: **unit** (bez bazy) · **integration-db** (`django_db`: ORM, endpointy,
   `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`,
   `npm install --package-lock-only --ignore-scripts`,
   `pnpm install --lockfile-only --ignore-scripts`,
-  `bun install --lockfile-only --ignore-scripts`. Każda inna forma to deny; nie
+  `bun install` / `i` / `add` / `remove` z `--lockfile-only --ignore-scripts`. Każda inna forma to deny; nie
   obchodzisz go instalacją. Yarn nie ma trybu lock-only — nowa zależność yarn idzie
   przez `needs-local`.
 - Gdy aktualizacja samego locka pada, bo paczka wymaga builda (uv „no build”,
@@ -405,7 +432,7 @@ szybkich, krok 6 promptu), nigdy push.
 
 ### Wyzwalacze
 
-**needs-human** (przypadek A lub B): kryterium akceptacji niejasne albo sprzeczne
+**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
 po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
 błąd builda przy aktualizacji samego lockfile → etykieta
@@ -438,7 +465,9 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekaza
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-Przy A i B, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
+- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
+
+Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
 - blokujący deny `server-guard:` → nadaj `needs-local` zamiast `ready-for-human` (nie zdejmuj
   `ready-for-agent`, `needs-local` to warunek wykonania):
@@ -470,6 +499,7 @@ Q2. …
 Sprawdzone: <pliki, ADR, testy, komendy z wynikiem>
 Wpływ: blokuje #X, #Y · nie blokuje #Z
 Stan kodu: branch <nazwa> wypchnięty / porzucony
+Wywołanie headless: <wiersz JSON z ostatniej linii wyjścia wrappera; bez wywołania → n/d>
 ```
 
 ## Tick watchdoga i crona (tylko Claude Code)
@@ -498,41 +528,39 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 
 ## Pomiar kosztu ticketu (tylko Claude Code)
 
-Po tickecie liczysz jego subagentów (ticket + review) — `python3`, bez `jq`. Wiersz: agent | model | tury | input | cache_creation | cache_read | output | maks. kontekst | czas.
-Model per krok: `meta.json` subagenta
-(`$HOME/.claude/projects/<projekt>/<sesja>/subagents/agent-<id>.meta.json`) i transkrypt
-(`message.model`) → kolumna `Model` w NIGHT-RUN REPORT; fallback jako `<komenda>: skill (sesja)`.
+Po tickecie mierzysz koszt sesji pojedynczym poleceniem `kit-ai retro scan`:
 
 ```bash
-python3 -c '
-import json, sys, datetime as dt
-K = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
-for p in sys.argv[1:]:
-    use, ts, mod = {}, [], set()
-    for line in filter(str.strip, open(p, encoding="utf-8")):
-        d = json.loads(line); m = d.get("message") or {}
-        if d.get("timestamp"): ts.append(dt.datetime.fromisoformat(d["timestamp"].replace("Z", "+00:00")))
-        if d.get("type") == "assistant" and m.get("usage") and m.get("model") != "<synthetic>":
-            u = use.setdefault(m.get("id"), {}); mod.add(m.get("model") or "?")
-            for k in K: u[k] = max(u.get(k, 0), m["usage"].get(k, 0))
-    tot = [sum(u.get(k, 0) for u in use.values()) for k in K]
-    ctx = max((sum(u.get(k, 0) for k in K[:3]) for u in use.values()), default=0)
-    mins = (max(ts) - min(ts)).total_seconds() / 60 if ts else 0
-    row = [p.replace("\\", "/").rsplit("/", 1)[-1], ",".join(sorted(mod)), len(use), *tot, ctx, f"{mins:.0f} min"]
-    print("| " + " | ".join(map(str, row)) + " |")
-' $HOME/.claude/projects/*/*/subagents/agent-{<id1>,<id2>}.jsonl
+kit-ai retro scan --session <sesja>
 ```
 
-Tura = unikalne `message.id` (`output_tokens` rośnie — bierz maks.). Czas = wall-clock. Inny klient → „brak transkryptu”. Z `/headless` albo review
-z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
+Wynik podaje koszt tokenów Sesji (tury, wejście, cache, wyjście, maks. kontekst) i zapisuje metryki w `${XDG_CACHE_HOME:-~/.cache}/kit-ai/retro/<repo>/<sesja>.jsonl` jako jedyne źródło kosztu Sesji (#409).
+Model per krok: `meta.json` subagenta (`$HOME/.claude/projects/<projekt>/<sesja>/subagents/agent-<id>.meta.json`) i transkrypt (`message.model`) → kolumna `Model` w NIGHT-RUN REPORT; fallback jako `<komenda>: skill (sesja)`.
+Czas = wall-clock. Inny klient → „brak transkryptu”. Z `/headless` albo review z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
 
-**Orkiestrator:** ten sam snippet na transkrypcie sesji głównej
-(`$HOME/.claude/projects/<projekt>/<sesja>.jsonl`, nie `subagents/`); do raportu idą jego tury i `cache_read`.
+**Orkiestrator:** to samo wywołanie `kit-ai retro scan --session <sesja_orkiestratora>` na sesji głównej; do raportu idą jego tury i `cache_read`.
+
+## Retro
+
+Ostatni krok przed raportem, raz na noc. Nie blokuje raportu: gdy skan albo klasyfikacja się nie uda, wpisz `Retro: pominięte — <powód>` i idź dalej.
+
+1. Skan sesji i przebiegów headless tego repo od daty nocy (`YYYY-MM-DD` z nazwy katalogu CTX):
+   `kit-ai retro scan --since <YYYY-MM-DD>`. Wynik podaje liczby i katalog z zapisami JSONL.
+2. Zero znalezisk → `Retro: 0 znalezisk.` i koniec kroku.
+3. Są znaleziska → uruchom skill `/retro` na zapisach z tej nocy: pliki `*.jsonl` z katalogu z kroku 1, których `scanned_at` jest z tego przebiegu. Tabelę z ocenami zostaw w rozmowie, nie zapisuj jej do pliku.
+4. Do raportu wpisz linię `Retro: …` z liczbami per kategoria (w bloku raportu poniżej).
+
+Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i raportu. Issue zakłada człowiek po akceptacji (`/create-task`), więc nie zakładasz issue ani nie piszesz w GitHubie z tego kroku.
 
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
 Zaczynasz od `CronDelete` i zatrzymania watchdoga. Pod `/goal` raport i dowody muszą paść
 w rozmowie (warunek sprawdza transkrypt).
+
+Przed blokiem raportu: `node .ai/headless.mjs --report --ctx "$CTX_DIR"` — wypisz wynik jako
+`## HEADLESS REPORT` pod NIGHT-RUN REPORT (wrapper kasuje bufor dopiero po udanym wypisaniu).
+Pliki zaległych wywołań z kroku 6 dopisz jako `## Zaległe wywołania`. Bez wywołań wrapper
+sam wypisze „brak wywołań headless”.
 
 ```markdown
 ## NIGHT-RUN REPORT
@@ -548,6 +576,7 @@ Odnowienia watchdoga: <liczba> (powód: życie / pauza / ręcznie) · Tiki crona
 Wybudzenia orkiestratora: <liczba> (watchdog: anomalia / pauza / życie; cron: tik) · Ostatnie wznowienie: <godzina>
 Wznowienia per ticket: <#N: liczba>
 Orkiestrator (tylko Claude Code): <tury> tur / <cache_read> cache_read (sesja główna)
+Retro: <liczba znalezisk> (kit <n> · projekt <n> · agent <n> · zewnętrzne <n>) · skan od <YYYY-MM-DD> · pominięte: <powód albo —>
 
 | Ticket | Stan | Wykonawca | Review | Model | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -562,12 +591,15 @@ nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z h
 
 Założenia: <co przyjęto bez danych z repo>
 Pomiar per agent: <wiersze ze snippetu>
+Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule języka: nagłówki sekcji, etykiety werdyktów i podsumowanie w języku Profilu (np. `## Standardy` / `## Spec`, `TWARDE` / `OCENA`); nagłówek tabeli `Severity | Location | Finding | Fix` i wartości Severity bez zmian, cytaty kodu, identyfikatory i ścieżki bez zmian.
 
 ### Nowe ekrany
 | PR | Route |
 | --- | --- |
 | #<PR> | <plik dodany w routes-web / routes-mobile> |
 ```
+
+**Kontrakt raportu:** przed wysłaniem sprawdź każde pole powyższego bloku. Pole, którego nie dotyczy (np. `Pauzy limitu`, `Orkiestrator` poza Claude Code, `Wznowienia per ticket` bez wznowień), dostaje `n/d — <powód>`. Dane, których brak mimo wysiłku, dostają `brak danych: <powód>`. Pola nie wolno pominąć.
 
 **Nowe ekrany:** pliki dodane w katalogach `routes-web` / `routes-mobile` (`.ai/project.md
 ## Ścieżki`) przez PR-y zmergowane tej nocy — tylko pliki nowe:

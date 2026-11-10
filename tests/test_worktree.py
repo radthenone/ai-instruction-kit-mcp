@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 
 from guides.doctor import run_doctor
+from guides.manifest import load_manifest
+from guides.questions import render_catalog
 from guides.worktree import (
     DEFAULT_VENV,
     KNOWN_WORKTREE_KEYS,
@@ -36,6 +38,42 @@ def setUpModule() -> None:
 
 
 class TestWorktreeConfig(unittest.TestCase):
+    def test_profile_template_and_catalog_align_with_known_worktree_keys(self) -> None:
+        """Szablon Profilu i katalog pytań honorują KNOWN_WORKTREE_KEYS i ADR-0014 (#368)."""
+        template_text = (KIT_ROOT / "templates" / "project.profile.yaml").read_text(encoding="utf-8")
+        self.assertIn("# worktree:", template_text)
+        for key in KNOWN_WORKTREE_KEYS:
+            self.assertIn(f"#   {key}:", template_text)
+
+        lines = template_text.splitlines()
+        wt_start = next(i for i, line in enumerate(lines) if line.strip() == "# worktree:")
+        wt_block_lines = []
+        for line in lines[wt_start:]:
+            if not line.startswith("#"):
+                break
+            uncommented = line[2:] if line.startswith("# ") else line[1:]
+            if uncommented.startswith("  ") or uncommented.startswith("worktree:"):
+                wt_block_lines.append(uncommented)
+            elif wt_block_lines and not uncommented.strip():
+                continue
+            elif wt_block_lines:
+                break
+        uncommented_yaml = "\n".join(wt_block_lines)
+        parsed = parse_worktree_section(uncommented_yaml)
+        self.assertEqual(parsed["warnings"], [])
+        self.assertIsNotNone(parsed["copy"])
+        self.assertIsInstance(parsed["link"], list)
+        self.assertIsInstance(parsed["setup"], list)
+        self.assertIn(parsed["venv"], VALID_VENV_VALUES)
+
+        manifest = load_manifest(KIT_ROOT)
+        catalog = render_catalog(manifest, {"backend": "none", "web": "none", "mobile": "none"})
+        self.assertIn("## Sekcja `worktree:`", catalog)
+        self.assertIn("Nie pytaj o nią w wywiadzie", catalog)
+        self.assertIn("na życzenie", catalog)
+        for key in KNOWN_WORKTREE_KEYS:
+            self.assertIn(f"`{key}`", catalog)
+
     def test_parse_valid_worktree_section(self) -> None:
         yaml_text = """\
 name: test
@@ -148,6 +186,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("[worktree] path: " + str(wt_dir), res.stdout)
@@ -162,6 +201,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_fail.returncode, 2)
             self.assertTrue(wt_dir.exists())
@@ -172,6 +212,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_force.returncode, 0)
             self.assertFalse(wt_dir.exists())
@@ -204,6 +245,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("[worktree] copied: .env", res.stdout)
@@ -211,7 +253,10 @@ class TestWorktreeCLI(unittest.TestCase):
             self.assertTrue((wt_dir / ".env").is_file())
             self.assertEqual((wt_dir / ".env").read_text(encoding="utf-8"), "SECRET=123\n")
             self.assertTrue((wt_dir / "node_modules").exists())
-            self.assertTrue((wt_dir / "node_modules").is_symlink())
+            link = wt_dir / "node_modules"
+            # Na Windows katalog linkujemy jako junction (bez trybu dewelopera) — `is_symlink()`
+            # go nie widzi; `is_junction()` jest od Pythona 3.12, a wspieramy 3.11.
+            self.assertTrue(link.is_symlink() or os.path.realpath(link) != os.path.abspath(link))
             self.assertIn("link do node_modules", res.stdout)
 
     def test_cli_setup_guard_denial(self) -> None:
@@ -224,6 +269,7 @@ class TestWorktreeCLI(unittest.TestCase):
             hooks_dir = repo / ".claude" / "hooks"
             hooks_dir.mkdir(parents=True)
             shutil.copy(KIT_ROOT / "templates/shared/guards/server-guard.mjs", hooks_dir / "server-guard.mjs")
+            shutil.copy(KIT_ROOT / "templates/shared/guards/host-profile.mjs", hooks_dir / "host-profile.mjs")
 
             (repo / ".ai").mkdir()
             (repo / ".ai" / "worktree.json").write_text(
@@ -244,6 +290,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 env=env,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("setup skipped: uv sync", res.stdout)
@@ -271,6 +318,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 1)
             self.assertTrue(wt_dir.exists())
@@ -292,6 +340,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0)
 
@@ -303,6 +352,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_sync.returncode, 0)
             self.assertIn("deps differ from main checkout — VPS tests unreliable, verify in CI", res_sync.stdout)
@@ -319,6 +369,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0)
             self.assertTrue(wt_dir.exists())
@@ -336,6 +387,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res_prune.returncode, 0)
             self.assertIn("[worktree] pruned", res_prune.stdout)
@@ -388,6 +440,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=repo,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}, stderr: {res.stderr}")
             self.assertIn("[worktree] venv: overlay", res.stdout)
@@ -405,6 +458,7 @@ class TestWorktreeCLI(unittest.TestCase):
                 cwd=wt_dir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(check_res.returncode, 0, f"stdout: {check_res.stdout}, stderr: {check_res.stderr}")
 
@@ -418,6 +472,7 @@ class TestWorktreeCLI(unittest.TestCase):
                     cwd=wt_dir,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                 )
                 if uv_res.returncode == 0:
                     self.assertTrue(uv_res.stdout.strip().startswith(str(wt_dir / "src")))
@@ -437,7 +492,7 @@ class TestWorktreeCLI(unittest.TestCase):
 
 
 def _run_wt(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([NODE, str(WRAPPER), *args], cwd=repo, capture_output=True, text=True)
+    return subprocess.run([NODE, str(WRAPPER), *args], cwd=repo, capture_output=True, text=True, encoding="utf-8")
 
 
 def _write_config(repo: Path, cfg: dict) -> None:
@@ -567,5 +622,5 @@ class TestWorktreeSafety(unittest.TestCase):
             wt = repo / ".worktrees" / "remote-only"
             res = _run_wt(repo, "add", str(wt), "remote-only", "--plain")
             self.assertEqual(res.returncode, 0, res.stderr)
-            branch = subprocess.run(["git", "branch", "--show-current"], cwd=wt, capture_output=True, text=True).stdout.strip()
+            branch = subprocess.run(["git", "branch", "--show-current"], cwd=wt, capture_output=True, text=True, encoding="utf-8").stdout.strip()
             self.assertEqual(branch, "remote-only")

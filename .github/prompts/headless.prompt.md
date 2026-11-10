@@ -27,9 +27,10 @@ opencode:     /headless gemini "..."
 antigravity:  /headless opencode "..."
 ```
 
-Limit dostawcy albo brak binarki → wrapper sam przekazuje tę samą treść 1:1 drugiemu
-tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta i klientów
-spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
+Limit dostawcy, brak postępu (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje
+tę samą treść 1:1 drugiemu tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta
+i klientów spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
+Ostatni z innym błędem → jego kod wyjścia i wiersz `HANG`/`ERROR` w raporcie.
 Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywołania).
 
 - `<wykonawca>` — klient z `clients:` w `.ai/project.profile.yaml`, inny niż host, z trybem
@@ -42,6 +43,9 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
 - `--timeout` — minuty, domyślnie 60; liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
+- `--ctx <katalog>` — katalog nocy (CTX z `/night-run`); bez flagi wrapper nic nie zapisuje. Z nią
+  dopisuje wiersz wywołania (ostatnia linia wyjścia, JSON) do `<katalog>/headless-rows.jsonl`, a przy
+  klasie innej niż OK także wycinek logu. Bufor czyta `--report --ctx <katalog>`. Ręczny `/headless` tej flagi nie potrzebuje.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
 
 ## Kroki
@@ -50,7 +54,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    cudzysłowów wokół, bez własnych dopisków); wrapper sam doda stopkę z zasadami:
 
    ```bash
-   node .ai/headless.mjs --host vscode <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] <<'HEADLESS_EOF'
+   node .ai/headless.mjs --host vscode <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] <<'HEADLESS_EOF'
    <treść>
    HEADLESS_EOF
    ```
@@ -60,13 +64,17 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    apostrof w treści podwój: `''`).
 
    Zadanie trwa zwykle dłużej niż limit pojedynczej komendy (10 min) — jeśli klient pozwala,
-   uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Wrapper po
-   zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
+   uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Zakaz czekania przez
+   `sleep N; <cmd>` (harness to blokuje) — czekaj na powiadomienie tła; w Claude
+   `run_in_background` z `until grep -q ^EXIT= <log>; do sleep 5; done`. `Monitor` z tą pętlą
+   to opcja, ale wygasa po 30 min i trzeba go uzbroić ponownie.
+   Wrapper po zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
 
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
    `grep '^\[headless\]' <log> | tail -1`. Budzić się (np. Monitor) warto tylko na linię
-   `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija — robi to `--timeout`.
+   `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija. Zabija kontrola postępu co 30 min
+   (brak bajtów wyjścia, zmiany `HEAD`/`git status` i wzrostu CPU), a wrapper przechodzi dalej 1:1; `--timeout` zabija też.
 2. Kod wyjścia `2` = błędne wywołanie (np. wykonawca == host, spoza `clients:`, nieznana
    flaga). Pokaż komunikat wrappera użytkownikowi i zakończ.
    Kod `75` = limit u ostatniego wykonawcy łańcucha, nie błąd: linia
@@ -83,6 +91,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    przenieś do raportu dla użytkownika — tam może leżeć praca wykonawcy; sam go nie zdejmuj.
    Wyjście ucięte przez klienta — raport jest w logu:
    `sed -n '/^\[headless\] raport końcowy/,$p' <log>`.
+   Linia `SUSPECT=no-changes` w raporcie (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human.
 
 4. Raport dla użytkownika:
 

@@ -115,8 +115,14 @@ def _run_gh(workspace: Path) -> Runner:
         # stdin=DEVNULL: pod serwerem MCP dziecko dziedziczy potok bez EOF i `gh`
         # czekające na wejście wisi (ten sam powód co w kit_status._git).
         return subprocess.run(
-            args, cwd=workspace, capture_output=True, text=True, check=False,
-            stdin=subprocess.DEVNULL, timeout=_GH_TIMEOUT_SECONDS,
+            args,
+            cwd=workspace,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            stdin=subprocess.DEVNULL,
+            timeout=_GH_TIMEOUT_SECONDS,
         )
 
     return run

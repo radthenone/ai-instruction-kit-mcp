@@ -10,6 +10,7 @@ from guides.clients import (
     format_clients_arg,
     normalize_client_id,
     parse_clients,
+    parse_codegraph_clients,
 )
 
 
@@ -62,7 +63,49 @@ class TestClientsParse(unittest.TestCase):
         self.assertIn('"--clients"', src)
         self.assertIn("def get_clients", src)
         self.assertIn("GUIDES_CLIENTS", src)
+        self.assertIn('"--client"', src)
+        self.assertIn("GUIDES_CLIENT", src)
 
+
+
+
+class TestCodegraphClientsParse(unittest.TestCase):
+    """Normalizacja listy codegraph_clients z Profilu (#365)."""
+
+    def test_empty_or_none(self) -> None:
+        self.assertEqual(parse_codegraph_clients(None), set())
+        self.assertEqual(parse_codegraph_clients(""), set())
+        self.assertEqual(parse_codegraph_clients([]), set())
+
+    def test_list_of_clients(self) -> None:
+        self.assertEqual(
+            parse_codegraph_clients(["claude", "codex"]),
+            {"claude", "codex"},
+        )
+
+    def test_comma_separated_string(self) -> None:
+        self.assertEqual(
+            parse_codegraph_clients("claude, codex"),
+            {"claude", "codex"},
+        )
+
+    def test_alias_normalization(self) -> None:
+        self.assertEqual(
+            parse_codegraph_clients(["copilot", "agy"]),
+            {"vscode", "antigravity"},
+        )
+
+    def test_all_expands_to_all_known(self) -> None:
+        self.assertEqual(
+            parse_codegraph_clients("all"),
+            set(KNOWN_CLIENTS),
+        )
+
+    def test_invalid_client_returns_empty_set(self) -> None:
+        self.assertEqual(
+            parse_codegraph_clients("not-a-client"),
+            set(),
+        )
 
 if __name__ == "__main__":
     unittest.main()

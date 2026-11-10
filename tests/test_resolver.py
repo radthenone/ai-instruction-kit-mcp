@@ -456,18 +456,19 @@ class TestLanguageAndCodegen(unittest.TestCase):
 class TestProjectBrief(unittest.TestCase):
     """Brief projektu: wartości z Profilu i overlayu, gotowe dla pliku i MCP (#307)."""
 
-    def test_brief_carries_profile_overlay_and_priority(self) -> None:
-        """Język, baza, Tiery, codegen, klienci, overlay, komendy, bundle i moduły."""
+    def test_brief_carries_profile_values_and_priority(self) -> None:
+        """Język, baza, Tiery, codegen, klienci, wskaźnik overlayu, komendy, bundle i moduły."""
         tmp, workspace = _workspace(
             "name: brief-test\nlanguage: pl\nclients: all\n"
             "backend: fastapi\nweb: react\nmobile: none\ncodegen: orval\n"
+            "codegraph_clients:\n  - claude\n"
         )
         try:
             (workspace / ".ai" / "project.md").write_text(
                 "# Overlay\n\nbase: dev\n\n## Komendy\n\n- test: `make test`\n",
                 encoding="utf-8",
             )
-            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT, client="claude")
         finally:
             tmp.cleanup()
 
@@ -495,30 +496,51 @@ class TestProjectBrief(unittest.TestCase):
         self.assertIn("### CodeGraph", brief)
         self.assertIn("codegraph_context", brief)
 
-    def test_brief_for_claude_carries_codegraph_section(self) -> None:
-        """Brief klienta Claude zawiera sekcję codegraph z instrukcją codegraph_context (#322)."""
-        tmp, workspace = _workspace(
-            "name: claude-brief-test\nlanguage: pl\nclients: claude\n"
-        )
+    def test_brief_does_not_paste_overlay_body(self) -> None:
+        """Brief wskazuje get_overlay, ale nie niesie treści overlayu — tę daje get_overlay (#358)."""
+        tmp, workspace = _workspace("name: brief-overlay-test\nlanguage: pl\n")
         try:
+            (workspace / ".ai" / "project.md").write_text(
+                "# Overlay\n\nOVERLAY-BODY-SENTINEL\n", encoding="utf-8"
+            )
             resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
         finally:
             tmp.cleanup()
 
-        brief = resolved.project_brief
-        self.assertIn("\n### CodeGraph\n", brief)
-        self.assertNotIn("\n## CodeGraph", brief)
-        self.assertIn("\n#### Rules of thumb\n", brief)
-        self.assertIn("codegraph_context", brief)
-        self.assertIn("codegraph_explore", brief)
+        self.assertNotIn("OVERLAY-BODY-SENTINEL", resolved.project_brief)
+        self.assertIn("`get_overlay`", resolved.project_brief)
+        self.assertIn("OVERLAY-BODY-SENTINEL", resolved.overlay_content)
 
-    def test_brief_for_cursor_only_does_not_duplicate_codegraph_section(self) -> None:
-        """Brief wyłącznie dla Cursora nie powiela sekcji codegraph, bo ma .cursor/rules (#322)."""
+    def test_brief_for_client_in_codegraph_clients_carries_section(self) -> None:
+        """Brief klienta z listy codegraph_clients zawiera sekcję CodeGraph (#365)."""
+        for client in ("claude", "codex", "antigravity", "opencode"):
+            with self.subTest(client=client):
+                tmp, workspace = _workspace(
+                    f"name: cg-test\nlanguage: pl\nclients: all\ncodegraph_clients:\n  - {client}\n"
+                )
+                try:
+                    resolved = resolve_workspace_profile(
+                        workspace, kit_root=KIT_ROOT, client=client
+                    )
+                finally:
+                    tmp.cleanup()
+
+                brief = resolved.project_brief
+                self.assertIn("\n### CodeGraph\n", brief)
+                self.assertNotIn("\n## CodeGraph", brief)
+                self.assertIn("\n#### Rules of thumb\n", brief)
+                self.assertIn("codegraph_context", brief)
+                self.assertIn("codegraph_explore", brief)
+
+    def test_brief_for_client_not_in_codegraph_clients_omits_section(self) -> None:
+        """Brief klienta spoza listy codegraph_clients nie zawiera sekcji CodeGraph (#365)."""
         tmp, workspace = _workspace(
-            "name: cursor-brief-test\nlanguage: pl\nclients: cursor\n"
+            "name: not-in-cg-test\nlanguage: pl\nclients: all\ncodegraph_clients:\n  - claude\n"
         )
         try:
-            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+            resolved = resolve_workspace_profile(
+                workspace, kit_root=KIT_ROOT, client="cursor"
+            )
         finally:
             tmp.cleanup()
 
@@ -526,10 +548,10 @@ class TestProjectBrief(unittest.TestCase):
         self.assertNotIn("CodeGraph", brief)
         self.assertNotIn("codegraph_context", brief)
 
-    def test_brief_without_core_modules_omits_codegraph_section(self) -> None:
-        """Wyłączony core (``core: false``) wyłącza też sekcję codegraph (#322)."""
+    def test_brief_without_client_omits_codegraph_section(self) -> None:
+        """Brief bez podanego klienta (np. dla AGENTS.md) nie zawiera sekcji CodeGraph (#365)."""
         tmp, workspace = _workspace(
-            "name: no-core-test\nlanguage: pl\nclients: claude\ncore: false\n"
+            "name: no-client-test\nlanguage: pl\nclients: all\ncodegraph_clients:\n  - claude\n  - codex\n"
         )
         try:
             resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
@@ -537,14 +559,45 @@ class TestProjectBrief(unittest.TestCase):
             tmp.cleanup()
 
         self.assertNotIn("CodeGraph", resolved.project_brief)
+        self.assertNotIn("codegraph_context", resolved.project_brief)
 
-    def test_brief_with_unparsable_clients_omits_codegraph_section(self) -> None:
-        """Nieparsowalne ``clients:`` nie dostaje sekcji codegraph (#322)."""
+    def test_brief_with_empty_codegraph_clients_omits_section(self) -> None:
+        """Pusta lista codegraph_clients nie renderuje sekcji dla żadnego klienta (#365)."""
         tmp, workspace = _workspace(
-            "name: bad-clients-test\nlanguage: pl\nclients: not-a-client\n"
+            "name: empty-cg-test\nlanguage: pl\nclients: all\ncodegraph_clients: []\n"
         )
         try:
-            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+            resolved = resolve_workspace_profile(
+                workspace, kit_root=KIT_ROOT, client="claude"
+            )
+        finally:
+            tmp.cleanup()
+
+        self.assertNotIn("CodeGraph", resolved.project_brief)
+
+    def test_brief_without_core_modules_omits_codegraph_section(self) -> None:
+        """Wyłączony core (``core: false``) wyłącza też sekcję codegraph (#322, #365)."""
+        tmp, workspace = _workspace(
+            "name: no-core-test\nlanguage: pl\nclients: all\ncodegraph_clients:\n  - claude\ncore: false\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(
+                workspace, kit_root=KIT_ROOT, client="claude"
+            )
+        finally:
+            tmp.cleanup()
+
+        self.assertNotIn("CodeGraph", resolved.project_brief)
+
+    def test_brief_with_unparsable_clients_omits_codegraph_section(self) -> None:
+        """Nieparsowalne ``codegraph_clients:`` nie dostaje sekcji codegraph (#322, #365)."""
+        tmp, workspace = _workspace(
+            "name: bad-clients-test\nlanguage: pl\nclients: all\ncodegraph_clients: not-a-client\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(
+                workspace, kit_root=KIT_ROOT, client="claude"
+            )
         finally:
             tmp.cleanup()
 

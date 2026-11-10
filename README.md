@@ -63,6 +63,8 @@ kit-ai reload | kit-ai status | kit-ai doctor | kit-ai remove [--dry-run]
 kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --apply = plan)
 kit-ai host                                # profil hosta: vps | local (detect_host_profile)
 kit-ai night-ctx [ścieżka]                 # nagłówek CTX dla /night-run (Host z kit-ai host)
+kit-ai retro scan [ścieżka] [--session ID] [--since YYYY-MM-DD|Nd]  # sygnały i koszt sesji → ~/.cache/kit-ai/retro/<repo>/
+kit-ai retro report [ścieżka]              # propozycje z wielu repo (≥3 sesje albo ≥2 repo), bez znalezisk z issue z markerem (otwartym lub zamkniętym)
 
 # jednorazowo, bez instalowania narzędzia:
 uvx --from git+https://github.com/radthenone/ai-instruction-kit-mcp kit-ai install
@@ -189,7 +191,7 @@ kładzie skille — globalnie widzi tylko `~/.gemini/config/skills/`
 > - **Dlaczego:** nacisk ponytaila na „najkrótszą drogę” sprzyja omijaniu procedur i źródeł prawdy kita (np. grep zamiast `get_bundle`).
 > - **Inni klienci:** mechanizm dotyczy tylko Claude Code — pozostali klienci kita nie mają filtrowania po typie subagenta.
 > - **Własna konfiguracja / wyłączenie:** wpisz własną wartość `PONYTAIL_SUBAGENT_MATCHER` w `env` w `.claude/settings.local.json` (albo `.claude/settings.json`) — kit nie nadpisze wpisu użytkownika w żadnym z nich; matcher kita, który wcześniej trafił do `settings.json`, reload stamtąd usuwa. `kit-ai doctor` zgłosi ostrzeżenie, gdy obowiązujący matcher (najpierw `settings.local.json`) nie wyklucza procedur kita.
-> - **Sesja główna:** ponytail zostaje włączony — kit nigdzie go nie wyłącza. Brief kita (hook `language-reminder`) mówi, że ponytail i podobne pluginy stylu kodu dotyczą kodu aplikacji, nie procedur kita ani edycji plików kita i konfiguracji projektu (`.ai/`, `AGENTS.md`, Profil, `templates/`, `.claude/`).
+> - **Sesja główna:** ponytail zostaje włączony — kit nigdzie go nie wyłącza. Reguły briefu kita (hook `language-reminder`, instrukcje MCP, blok `kit:brief-rules` w `AGENTS.md`; [ADR-0010](docs/adr/0010-brief-as-artifact.md)) mówią, że ponytail i podobne pluginy stylu kodu dotyczą kodu aplikacji, nie procedur kita ani edycji plików kita i konfiguracji projektu (`.ai/`, `AGENTS.md`, Profil, `templates/`, `.claude/`).
 > - **Współdzielony plik trybu:** ponytail trzyma aktywny tryb w jednym pliku na maszynę (`~/.claude/.ponytail-active`), więc różne tryby w równoległych sesjach na jednej maszynie nie są wspierane.
 
 **Context7** ([upstash/context7](https://github.com/upstash/context7)) — docs bibliotek (MCP)
@@ -474,6 +476,19 @@ przepisze `mcp.json`. Bootstrap zapisuje tylko `--language` i `--clients` (z Pro
 **Klienci AI:** MCP tool `get_clients` — tylko metadane instalacji; treść `get_bundle` jest identyczna dla każdego klienta.
 
 **Codegen (Orval):** wyłącznie `codegen:` w `.ai/project.profile.yaml` (`orval` \| `none` \| `graphql`, domyślnie `orval`; ADR-0007), odczyt przez MCP tool `get_codegen`. Bez pary backend + klient (web/mobile) efektywny codegen to zawsze `none`. Reviewery FE/BE to honorują (przy `orval` wymagają regeneracji klienta po zmianie API; `graphql` → moduł `arch:api-contract:graphql` zamiast REST).
+
+### Brief projektu i instrukcje MCP ([ADR-0010](docs/adr/0010-brief-as-artifact.md))
+
+Serwer MCP `project-guides` przy starcie/handshake'u przekazuje klientowi **instrukcje serwera** (`build_instructions`), które niosą **Brief projektu** oraz zwięzłą mapę narzędzi MCP. Ten sam brief trafia przy `kit-ai reload` do bloku `<!-- kit:brief -->` w `AGENTS.md` (czytanego m.in. przez Claude Code przez import `@AGENTS.md`).
+
+- **Zawartość Briefu:** metadane projektu (nazwa i Profil, znormalizowany język, Tiery, codegen, klienci, bundle i moduły, baza i komendy wyciągnięte z overlayu) oraz wskaźnik do `get_overlay()`. Wykryty Host (`vps`/`local`) dokleja tylko serwer MCP w instrukcjach — blok w `AGENTS.md` go nie ma, żeby plik nie starzał się między maszynami.
+- **Overlay nie jest wklejany:** cała treść pliku `.ai/project.md` **nigdy nie jest wklejana** do briefu ani instrukcji MCP (aby nie duplikować pliku i nie starzeć się po lokalnych edycjach). Unikalne fakty repozytorium agent pobiera na żądanie przez MCP tool `get_overlay()`, a reguła nakazuje wywołanie `get_overlay()` przed pierwszą edycją kodu.
+- **Reguły briefu (Brief Rules):** kluczowe wytyczne (klasyfikacja zadań kodowych i proceduralnych, `get_overlay` przed pierwszą edycją, format docstringów `Args/Returns`, zakaz instalacji na VPS poza formami lock-only wg [ADR-0009](docs/adr/0009-server-guard-denies-heavy-commands-on-vps.md)).
+- **Jedno źródło reguł bez ręcznych kopii:** reguły briefu mają dokładnie jedno źródło — szablon `templates/shared/rules/brief-rules.md` z placeholderem języka (`language:` z Profilu). Stamtąd są renderowane do nośników (*Carriers*):
+  1. hooka Claude (`templates/claude/language-reminder.mjs` i `.claude/hooks/language-reminder.mjs`, instalowanego dla każdego języka),
+  2. instrukcji serwera MCP (moduł `src/guides/brief_rules.py` z wariantami `pl` i `en` pieczonymi w pakiet kita; w runtime serwer wybiera wariant wg Profilu),
+  3. bloku `<!-- kit:brief-rules -->` w commitowanym `AGENTS.md`, czytanym przez każdego klienta.
+  Świeżość plików wygenerowanych z szablonu weryfikuje test CI (`TestBriefRulesFreshness` w `tests/test_brief_rules.py`); lokalnie to samo sprawdza `python3 scripts/render_brief_rules.py --check`. Żaden plik repozytorium nie zawiera ręcznej kopii reguł.
 
 ## Profil z Tierami (backend/web/mobile)
 
@@ -962,6 +977,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu / naprawa doctora | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"`, `/kit-project-edit "napraw zgłoszenia doctora"` |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
+| `/retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); `--kit` w repo kita: propozycje z wielu repo; nic nie zmienia | `kit-ai retro scan`, potem `/retro`; w repo kita `kit-ai retro report`, potem `/retro --kit` |
 | `/night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
 
 
@@ -1058,6 +1074,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/git-check`                         | `templates/shared/agents/git-check.md`           |
 | `/git-commit`                        | `templates/shared/agents/git-commit.md`          |
 | `/git-end`                           | `templates/shared/agents/git-end.md`             |
+| `/retro` (skill)                     | `templates/shared/skills/retro/SKILL.md`         |
 | `/compact` (Cursor)                  | `templates/cursor/skills/compact/SKILL.md`       |
 | `/review-architecture`               | `templates/shared/agents/review-architecture.md` |
 | `/review-backend`                    | `templates/shared/agents/review-backend.md`      |
@@ -1165,10 +1182,10 @@ Tańszy token nie znaczy tańszy ticket: mocniejszy model może zrobić mniej tu
 1. Wybierz **jeden** ticket średniej wielkości (kilka kryteriów akceptacji, jedna aplikacja backendu), bez decyzji o pieniądzach i zgodach, żeby needs-human nie zepsuł porównania. Zapisz commit bazowy: `git rev-parse origin/<BASE>`.
 2. Na każdy model osobny worktree z tego commitu i osobna sesja z dokładnym id modelu:
    ```bash
-   git worktree add ../measure-<model> <commit>
+   node .ai/worktree.mjs add ../measure-<model> --detach <commit>
    cd ../measure-<model> && claude -p --model <id> "/night-run #<N>, bez merge"
    ```
-3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `git worktree remove ../measure-<model>`.
+3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `node .ai/worktree.mjs remove ../measure-<model>`.
 4. Metryki: snippet z sekcji „Pomiar kosztu ticketu” w agencie, uruchomiony na transkryptach sesji i jej subagentów (`~/.claude/projects/<projekt>/<sesja>.jsonl` i `…/<sesja>/subagents/*.jsonl`). Koszt liczysz **osobno** dla input, cache_creation, cache_read i output według aktualnego cennika, nie jedną stawką.
 5. Jakość: CI zielone za pierwszym razem (t/n), liczba rund poprawek, potwierdzone findingi review, needs-human (t/n).
 6. Limit: ile ticketów mieści się w jednym oknie limitu sesji. Okno nie jest publiczne, więc szacujesz: zużycie na ticket w stosunku do zużycia skumulowanego w chwili HTTP 429 we wcześniejszym przebiegu.
@@ -1253,7 +1270,7 @@ Z dowolnego klienta kitu (host) zlecasz zadanie innemu klientowi uruchomionemu b
 interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wynik.
 
 ```text
-/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] "<treść>"
+/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] "<treść>"
 ```
 
 | Flaga | Znaczenie |
@@ -1261,14 +1278,15 @@ interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wyn
 | `--model <id>` | Model sesji wykonawcy w jego formacie (`haiku`, `anthropic/claude-haiku-5-5`) |
 | `--timeout <min>` | Limit w minutach, domyślnie 60; po nim drzewo procesów jest zabijane (kod `124`) |
 | `--heartbeat <min>` | Co ile minut linia stanu `[headless] ♥` w wyjściu i logu, domyślnie 10 |
+| `--ctx <katalog>` | Katalog nocy (podaje `/night-run`): wiersz wywołania trafia do `headless-rows.jsonl`, a przy klasie innej niż `OK` wycinek logu do `headless-excerpt-<run>.txt` |
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
 stopka: na branchu `typ/<N>-slug` linia „Ticket #N: przeczytaj `gh issue view N --comments`”
 (branch bez numeru — bez tej linii), katalog runu na logi testów i pliki robocze, zakaz
 `git stash` / `git checkout` / `git reset` (porównanie z bazą przez
-`git worktree add --detach <katalog runu>/base <ref>` i `git worktree remove` na końcu),
+`node .ai/worktree.mjs add <katalog runu>/base --detach <ref> --plain` i `node .ai/worktree.mjs remove <katalog runu>/base` na końcu),
 plan 5–10 kroków przy tickecie z więcej niż 3 kryteriami albo więcej niż jedną aplikacją,
-test-first z lokalnym commitem po każdym zielonym kroku, lokalnie tylko testy dotknięte
+test-first z lokalnym commitem po każdym zielonym kroku, temat commita po polsku wg `language` z Profilu (po angielsku dla `en`), na końcu każdego commita trailer `Co-Authored-By: Claude <noreply@anthropic.com>`, lokalnie tylko testy dotknięte
 zmianą i szybkie bramki (pełny zestaw robi CI), na VPS `uv run --no-sync`, maks. 2 próby
 naprawy tego samego błędu, raport `## Zmiany` / `## Testy` / `## Problemy`. Dlatego
 `/headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza.
@@ -1276,18 +1294,35 @@ W logu runu linia `[headless] ticket #N`.
 Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
-do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie; przy starcie kasuje runy poza 5 najnowszymi);
+do `.ai/headless-runs/<start>-<wykonawca>/headless.log` (katalog sam się ignoruje w gicie; przy starcie kasuje runy poza 5 najnowszymi, z wyjątkiem nieudanych bez wycinka w katalogu nocy);
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
-(bez zabijania; to robi `--timeout`). Liczy to Node, nie model — zero tokenów. Podgląd na żywo
+(tylko ostrzeżenie; zabija dopiero kontrola postępu, niżej, albo `--timeout`). Liczy to Node, nie model — zero tokenów. Podgląd na żywo
 w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 `grep '^\[headless\]' <log> | tail -1`.
+
+**Kontrola postępu co 30 min (#397).** Postęp to nowe bajty wyjścia wykonawcy, zmiana `HEAD` albo
+`git status`, albo wzrost CPU jego potomków (`/proc/<pid>/stat`; bez `/proc` liczą log i git). Brak postępu
+w oknie 30 min → zrzut drzewa procesów do logu, checker z `models.claude.light` z Profilu opisuje stan w 1–3 zdaniach
+(ostatnie 40 linii wyjścia, `git status`, czas bez postępu; timeout 60 s; nie decyduje o zabiciu), drzewo zabite
+łagodnie jak przy `--timeout` (SIGTERM, po 2 s SIGKILL), klasa `HANG`, kod `124`, zadanie idzie 1:1 dalej.
+Opis trafia do raportu końcowego jako `## zacięcie: …`. Brak klucza `models.claude.light` wyłącza checker, nie kontrolę.
 
 **Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
 `git stash list` z ostrzeżeniem `UWAGA` (bez auto-`pop` — konflikt) i ostatnie 20 linii
 wykonawcy. Agent `/headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.
+Commity z zakresu wywołania (`start..HEAD`) bez trailera `Co-Authored-By` trafiają do linii `UWAGA: commity bez trailera` z hashami;
+wrapper ich nie przepisuje, poprawia je orkiestrator na branchu ticketu przed push.
+
+**Wiersz wywołania i raport nocy (#396).** Wywołanie z poprawnymi flagami kończy się jedną linią
+JSON jako ostatnią linią wyjścia: `ticket`, `wykonawca`, `lancuch`, `model`, `kod`, `klasa`, `start`,
+`koniec`, `log`, `sprawdz`, `dzialanie`. Klasy: `OK`; `LIMIT` (pauza, kod `75`); `HANG` (timeout, brak
+postępu 30 min albo sygnał w trakcie pracy wykonawcy); `ERROR` (kod ≠ 0 albo błąd wywołania); `MODEL` (nieznany model agy);
+`SUSPECT` (exit 0 bez zmian w repo); `POLITYKA` (wpis stasha, commit bez trailera `Co-Authored-By` z hashem w `dzialanie` albo odmowa wykonawcy spoza zasad kitu; nie uruchamia zastępcy, praca zostaje). `POLITYKA` ustępuje `LIMIT`, `MODEL`, `HANG` i `ERROR`.
+`node .ai/headless.mjs --report --ctx <katalog>` składa z bufora HEADLESS REPORT po tickecie oraz listę
+wszystkich wywołań w kolejności; bufor kasuje dopiero po wypisaniu, więc przerwany raport go zostawia.
 
 **Reguły.** Wykonawca musi być w `clients:` Profilu, mieć tryb headless z guardami kita
 i być **inny niż host** — `/headless <host>` z tego samego hosta kończy się błędem z listą
@@ -1299,10 +1334,12 @@ dozwolonych wykonawców.
 | `opencode` | `opencode2 run --standalone --auto` (bez `opencode2` w PATH: `opencode run …`) | `--model provider/model` | argument |
 | `antigravity` (alias `gemini`) | `agy -p "<treść>" --dangerously-skip-permissions --model … [--effort …]` (agy 1.4.8) | `--model` → `.agents/agy.json` → `gemini-3.8-flash-medium`; `--effort` tylko z `.agents/agy.json` | argument |
 
-**Fallback przy limicie.** Limit dostawcy albo brak binarki u wykonawcy → wrapper przekazuje
-tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
-w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Limit u ostatniego →
-kod `75` i zadanie przejmuje host (agent `/headless`, krok 2). Z Claude:
+**Przekazanie zadania (fallback).** Limit (`75`), `HANG`, inny kod wyjścia ≠ 0 albo brak binarki u wykonawcy →
+wrapper przekazuje tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
+w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Klasa `MODEL` (zły model agy) nie przechodzi dalej,
+bo to błąd konfiguracji. Limit u ostatniego → kod `75` i zadanie przejmuje host (agent `/headless`, krok 2).
+Inny błąd albo `HANG` u ostatniego → kod wyjścia wykonawcy (`124` przy zabiciu), wiersz `HANG`/`ERROR`; night-run
+przejmuje ticket subagentem przejęcia (`models.claude.takeover`), a porażka przejęcia kończy się needs-human. Z Claude:
 `/headless opencode "…"` → `gemini` → Claude sam; `/headless gemini "…"` → `opencode` → Claude sam.
 Limit rozpoznaje tekst w ogonie wyjścia; agy po błędzie dodatkowo `agy -p "/quota"` — grupa
 `Gemini Models` na 0% = limit, reset z najwcześniejszego wyczerpanego wiersza.
@@ -1382,8 +1419,10 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 | `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity (tylko narzędzia plikowe — bez Basha) | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** oczywisty odczyt sekretu przez Bash — komenda czytająca (`cat`, `head`, `tail`, `less`, `more`, `bat`, `grep`, `rg`, `sed`, `awk`, `xxd`, `base64`, `strings`, `source`/`.`, `rtk read`, `rtk grep`) z argumentem będącym ścieżką sekretu; segmenty po `;`/`&`/`&&`/`||`/`|`, prefiksy `sudo`/`env`/`rtk` (z opcjami, `rtk proxy`, `VAR=1`; i powłoka z `-c`), podstawienia `$(...)`; pierwszy argument `grep`/`rg`/`sed`/`awk` to wzorzec, a cel przekierowania (`> .env`) to zapis — przechodzą; Bash pilnują wszyscy poza Antigravity; **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `bun.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
 | `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek w każdym ekosystemie (`uv`/`pip`/`bun`/`npm`/`pnpm`/`yarn`/`cargo`/`go`/`apt`/`corepack`), pobieranie przez launchery (`npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`uvx`, poza trybem offline), buildy (`next`/`nuxt`/`astro`/`vite`/`webpack`/`tsup`/`cargo`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
+| `subagent-remote-guard.mjs` | Claude | Na każdym Hoście: **deny** całej przestrzeni `mcp__claude-code-remote__*`, gdy woła subagent (payload ma `agent_id`). Sesja główna bez zmian: Guard nie podejmuje wtedy decyzji. Powód: dialog `confirm_repository_trust` zatrzymywał noc `/night-run`, a `archive_session` niszczy sesję (#403) |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
+| `retro-session-end.mjs` | Claude | SessionEnd (#371): `kit-ai retro scan --session <id>` analizuje zakończoną sesję razem z subagentami i zapisuje wpisy do `~/.cache/kit-ai/retro/<repo>/`; zawsze kończy się kodem 0 i nie blokuje zamknięcia sesji |
 | `rtk-rewrite.json` | Copilot | `.github/hooks/`: PreToolUse → `rtk hook copilot` przepisuje komendy bash na `rtk <cmd>`. Copilot nie ma globalnego trybu rtk, stąd per-repo z kita. Pozostali klienci (Claude, Cursor, Codex, OpenCode) mają rtk globalnie per maszyna — instrukcja w `modules/core/tooling-rtk.md` |
 | `kit-guards.json` | Copilot | `.github/hooks/`: PreToolUse → `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` dla git-guard, server-guard i sensitive-files-guard. VS Code czyta PascalCase `PreToolUse` i `hookSpecificOutput.permissionDecision`; dla Copilot CLI zakładamy ten sam plik i top-level `permissionDecision` (niezweryfikowane). `deny` blokuje wywołanie, `allow` = pusty stdout (brak opinii, natywne potwierdzenia VS Code zostają) |
 | `.agents/hooks.json` | Antigravity | `.agents/hooks/`: PreToolUse (nazwany hook `kit-guards`) → `node hooks/invoke-hook.js <guard>.mjs --to antigravity`. Matchery: `run_command` → git-guard + server-guard; `call_mcp_tool\|^mcp_` → server-guard; `^(view_file\|write_to_file\|replace_file_content\|multi_replace_file_content\|edit_file)$` → sensitive-files-guard. Plik dzielimy z użytkownikiem — `antigravity_hooks.py` scala i prune'uje tylko klucz `kit-guards`. `deny` blokuje wywołanie, `allow` tylko deleguje (nie auto-approve'uje) |
@@ -1558,7 +1597,7 @@ nie osobno:
 | Kategoria | Deny | Allow (świadomie) | Powód / alternatywa |
 |---|---|---|---|
 | Kontenery | `docker`, `docker-compose`, `docker compose`, `podman` — każda podkomenda poza allow obok (także `stop`, `rm`, `down`, `kill`, `restart`, `prune`, `compose config`) | `ps`, `images`, `inspect`, `logs` bez `-f`, `version`, `info`, `compose ps` | budowanie i uruchamianie kontenerów tylko w CI; na hoście działają cudze kontenery |
-| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock` (każda forma bez wymaganych flag niżej), `uv pip install` / `uv pip sync`, `uv tool install`, `pip install` (także `pip3.12`), `uv run` bez `--no-sync`, `uv run --with` / `--with-requirements` (także z `--no-sync`), `bun install` / `add` / `remove` / `i` / `a` / `update`, `npm install` / `ci` / `add` / `it` / `update` / `up`, `pnpm install` / `add` / `remove` / `update`, `yarn install` / `add` / `remove` / `upgrade`, goły `yarn` | `uv run --no-sync …`, `uvx --offline …` / `UV_OFFLINE=1`; **tylko lockfile**: `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`, `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`, `bun install --lockfile-only --ignore-scripts` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
+| Paczki | `uv sync`, `uv add`, `uv remove`, `uv lock` (każda forma bez wymaganych flag niżej), `uv pip install` / `uv pip sync`, `uv tool install`, `pip install` (także `pip3.12`), `uv run` bez `--no-sync`, `uv run --with` / `--with-requirements` (także z `--no-sync`), `bun install` / `add` / `remove` / `i` / `a` / `update`, `npm install` / `ci` / `add` / `it` / `update` / `up`, `pnpm install` / `add` / `remove` / `update`, `yarn install` / `add` / `remove` / `upgrade`, goły `yarn` | `uv run --no-sync …`, `uvx --offline …` / `UV_OFFLINE=1`; **tylko lockfile**: `uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`, `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`, `bun install` / `i` / `add` / `remove` z `--lockfile-only --ignore-scripts` | instalacja kompiluje zależności natywne; lockfile zmienia się na PC albo w CI |
 | Inne ekosystemy | `cargo install`, `go install`, `apt install` / `apt-get install` (także po `sudo`), `corepack enable` | `cargo check` | instalacja na serwerze — zależności zmieniają się na PC albo w CI |
 | CLI instalujące paczki | `shadcn init` / `shadcn add` (także przez `bunx` / `npx` / `pnpm dlx`), `expo install` | — | CLI samo dopisuje zależności; instalacja tylko na PC albo w CI |
 | Buildy | `next build`, `nuxt build`, `astro build`, `vite build`, `tsup`, `webpack`, `cargo build`, `expo prebuild`, `expo export`, `eas build --local`, `turbo run build` | `tsc --noEmit`, `turbo run lint` / `typecheck` | buildy produkcyjne tylko w CI |
@@ -1579,7 +1618,9 @@ przechodzą). Backticki i `$( … )` w pojedynczych apostrofach też są danymi 
 ich tam nie wykonuje (``--body 'Blokuje `docker compose up`'`` przechodzi); w podwójnych
 cudzysłowach dalej deny. Dopasowanie po tokenach od początku segmentu (`task` nie łapie
 `taskfoo`). `UV_NO_SYNC=1` w linii działa jak w env; tak samo `UV_OFFLINE=1` zdejmuje
-deny `uvx`. Poza VPS guard dla narzędzi
+deny `uvx`. Flagi przed podkomendą liczone tak jak przez narzędzie (`uv --color never sync`
+to deny); `--no-sync` i `--with` w `uv run` liczą się tylko przed nazwą narzędzia; `--help` /
+`--version` przed nazwą to pomoc (`webpack --version` allow, `npx cowsay --help` deny). Poza VPS guard dla narzędzi
 MCP nie zwraca decyzji (zwykłe pytanie o zgodę), dla Bash jawne `allow` jak
 pozostałe guardy kita.
 
@@ -1587,8 +1628,8 @@ pozostałe guardy kita.
 na VPS odświeżyć lockfile bez instalacji: `uv lock --no-build`,
 `uv add|remove <pkg> --no-sync --no-build`, `npm install --package-lock-only
 --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`,
-`bun install --lockfile-only --ignore-scripts`. Każda inna forma zostaje deny,
-a powód wskazuje dozwoloną. `--no-build` w uv nie zatrzymuje budowania samego
+`bun install` / `i` / `add` / `remove` z `--lockfile-only --ignore-scripts`. Każda inna forma zostaje deny,
+a powód wskazuje dozwoloną. `pnpm add` zostaje deny (dokumentacja `pnpm add` nie zna `--lockfile-only`). `--no-build` w uv nie zatrzymuje budowania samego
 projektu (uv czyta metadane workspace'u, więc ciężki backend maturin /
 scikit-build może coś skompilować) — to wyjątek „bez instalacji zależności”, nie
 „zero kompilacji”. Yarn nie ma wspólnego trybu lock-only dla 1.x i Berry, więc
@@ -1646,10 +1687,13 @@ domyślnej.
 
 **`UV_NO_SYNC` per maszyna.** Task, który w środku woła `uv run` bez flagi,
 przechodzi tylko gdy klient na serwerze ma w env `UV_NO_SYNC=1`. Dla Claude
-miejscem per maszyna jest niecommitowany `.claude/settings.local.json` (`env`).
-OpenCode nie ma pliku env per maszyna — guard widzi środowisko procesu, więc
-zmienna musi być w powłoce serwera (np. `export UV_NO_SYNC=1` w `~/.profile`).
-Bez niej task z `uv run` bez `--no-sync` w środku dostaje deny.
+`kit-ai reload` zapisuje `env.UV_NO_SYNC="1"` do niecommitowanego
+`.claude/settings.local.json` tylko na hoście VPS (`kit-ai host`); na local wpis
+kita jest zdejmowany, a ręczna wartość inna niż `1` zostaje (#334). Ustawienie
+`env` z tego pliku musi docierać do hooka — po stronie VPS sprawdź to ręcznie
+(sekcja niżej). OpenCode nie ma pliku env per maszyna — guard widzi środowisko
+procesu, więc zmienna musi być w powłoce serwera (np. `export UV_NO_SYNC=1` w
+`~/.profile`). Bez niej task z `uv run` bez `--no-sync` w środku dostaje deny.
 
 **Ręczne sprawdzenie guarda:**
 

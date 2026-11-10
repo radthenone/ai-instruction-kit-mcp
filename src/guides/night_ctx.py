@@ -23,7 +23,6 @@ from guides.resolver import (
 )
 
 NIGHT_CTX_VERSION = "v1"
-MARKER_RE = re.compile(r"<!--\s*kit-ai night-ctx v(\d+) host=(vps|local)\s*-->")
 DEFAULT_GATES = ("ruff check", "pytest <pliki dotknięte ticketem>")
 CI_TRIGGERS = ("pull_request", "pull_request_target", "push")
 _CI_EXCLUDE = re.compile(r"\b(deploy|publish|release|secret)\b", re.IGNORECASE)
@@ -40,7 +39,12 @@ def _git(repo: Path, *args: str) -> str | None:
     """Wynik ``git`` w repo albo ``None`` (brak repo / błąd komendy)."""
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=repo, capture_output=True, text=True, check=False
+            ["git", *args],
+            cwd=repo,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
         )
     except OSError:
         return None

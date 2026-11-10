@@ -20,8 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "claude_settings.py"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
-from claude_settings import build_ponytail_matcher  # noqa: E402
-from guides.bootstrap import run_bootstrap  # noqa: E402
+from claude_settings import build_ponytail_matcher
+
+from guides.bootstrap import run_bootstrap
 
 STALE = "^(?!(?:git-commit|git-end)$).*"
 
@@ -36,6 +37,10 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.target = Path(self._tmp.name) / "settings.local.json"
+        # Host z maszyny testu nie może zmieniać oczekiwań (VPS dopisuje UV_NO_SYNC); testy VPS ustawiają go same.
+        env_patch = mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "local"})
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
 
     def load(self) -> dict:
         if not self.target.is_file():
@@ -69,6 +74,53 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"}):
             run("sync-local", str(self.target))
         self.assertNotIn("PONYTAIL_DEFAULT_MODE", self.load()["env"])
+
+    def test_sync_local_sets_uv_no_sync_on_vps(self) -> None:
+        """Na VPS sync-local dopisuje `UV_NO_SYNC=1` obok matchera ponytaila (#334)."""
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"}):
+            run("sync-local", str(self.target))
+        env = self.load()["env"]
+        self.assertEqual(env["UV_NO_SYNC"], "1")
+        self.assertEqual(env["PONYTAIL_SUBAGENT_MATCHER"], build_ponytail_matcher())
+
+    def test_sync_local_skips_uv_no_sync_on_local(self) -> None:
+        """Na local `UV_NO_SYNC` nie jest dopisywany."""
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "local"}):
+            run("sync-local", str(self.target))
+        self.assertNotIn("UV_NO_SYNC", self.load()["env"])
+
+    def test_sync_local_drops_kit_uv_no_sync_when_host_stops_being_vps(self) -> None:
+        """Wartość kita znika, gdy host przestaje być VPS; inne klucze env zostają."""
+        self.target.write_text(json.dumps({"env": {"UV_NO_SYNC": "1", "OTHER": "2"}}), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "local"}):
+            run("sync-local", str(self.target))
+        self.assertEqual(self.load()["env"].keys(), {"OTHER", "PONYTAIL_SUBAGENT_MATCHER"})
+
+    def test_sync_local_keeps_manual_uv_no_sync_on_vps(self) -> None:
+        """Ręczna wartość `UV_NO_SYNC` (inna niż `1`) zostaje na VPS."""
+        self.target.write_text(json.dumps({"env": {"UV_NO_SYNC": "0"}}), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"}):
+            run("sync-local", str(self.target))
+        self.assertEqual(self.load()["env"]["UV_NO_SYNC"], "0")
+
+    def test_sync_local_uv_no_sync_is_idempotent(self) -> None:
+        """Dwa kolejne reloady na VPS nie zmieniają pliku."""
+        with mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"}):
+            run("sync-local", str(self.target))
+            first = self.target.read_text(encoding="utf-8")
+            run("sync-local", str(self.target))
+        self.assertEqual(self.target.read_text(encoding="utf-8"), first)
+
+    def test_prune_local_removes_kit_uv_no_sync(self) -> None:
+        """prune-local zdejmuje `UV_NO_SYNC=1` z kita, a ręczną wartość zostawia."""
+        self.target.write_text(json.dumps({"env": {"UV_NO_SYNC": "1"}}), encoding="utf-8")
+        run("prune-local", str(self.target))
+        self.assertFalse(self.target.exists())
+
+        user = {"env": {"UV_NO_SYNC": "0", "OTHER": "1"}}
+        self.target.write_text(json.dumps(user), encoding="utf-8")
+        run("prune-local", str(self.target))
+        self.assertEqual(self.load(), user)
 
     def test_sync_and_prune_local_leave_unreadable_file_untouched(self) -> None:
         """Nieczytelny prywatny plik użytkownika nie jest nadpisywany ani usuwany."""
@@ -109,10 +161,15 @@ class ClaudeSettingsLocalTest(unittest.TestCase):
 
         tracked = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
         self.assertNotIn("PONYTAIL_SUBAGENT_MATCHER", tracked["env"])
+        self.assertNotIn("UV_NO_SYNC", tracked["env"])
         self.assertEqual(tracked["env"]["INNA"], "2")
         self.assertEqual(
             json.loads(local.read_text(encoding="utf-8"))["env"],
-            {"PONYTAIL_DEFAULT_MODE": "lite", "PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher()},
+            {
+                "PONYTAIL_DEFAULT_MODE": "lite",
+                "PONYTAIL_SUBAGENT_MATCHER": build_ponytail_matcher(),
+                "UV_NO_SYNC": "1",
+            },
         )
         # Plik z matcherem jest poza gitem w projekcie z kitem (sekcja kita w .gitignore).
         gitignore = (app_dir / ".gitignore").read_text(encoding="utf-8").splitlines()

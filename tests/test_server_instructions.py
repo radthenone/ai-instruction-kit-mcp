@@ -48,6 +48,8 @@ class TestServerInstructions(unittest.TestCase):
         self.assertIn("`orval`", text)
         self.assertIn("get_bundle", text)
         self.assertIn("`claude`", text)
+        self.assertNotIn("Użyj get_language", text)
+        self.assertNotIn("Użyj get_language", server._STATIC_INSTRUCTIONS)
 
         saved_instructions = server.mcp._mcp_server.instructions
         try:
@@ -73,6 +75,38 @@ class TestServerInstructions(unittest.TestCase):
         self.assertIn("AttributeError", stderr.getvalue())
         self.assertEqual(stdout.getvalue(), "")
 
+
+
+    def test_instructions_with_client_codegraph(self) -> None:
+        """Instrukcje niosą sekcję codegraph tylko dla dopasowanego klienta (#365)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / ".ai").mkdir()
+            (workspace / ".ai" / "project.profile.yaml").write_text(
+                "name: cg-instructions-app\nlanguage: pl\nclients: all\n"
+                "codegraph_clients:\n  - claude\n",
+                encoding="utf-8",
+            )
+            saved = server._kit_root, server._workspace_root, server._language_override, server._client
+            try:
+                server._kit_root, server._workspace_root, server._language_override = KIT_ROOT, workspace, None
+
+                # Dla klienta claude sekcja jest
+                server._client = "claude"
+                resolved_claude = server._get_resolved()
+                self.assertIn("### CodeGraph", resolved_claude.project_brief)
+
+                # Dla klienta cursor sekcji nie ma
+                server._client = "cursor"
+                resolved_cursor = server._get_resolved()
+                self.assertNotIn("CodeGraph", resolved_cursor.project_brief)
+
+                # Bez klienta sekcji nie ma
+                server._client = None
+                resolved_none = server._get_resolved()
+                self.assertNotIn("CodeGraph", resolved_none.project_brief)
+            finally:
+                server._kit_root, server._workspace_root, server._language_override, server._client = saved
 
 if __name__ == "__main__":
     unittest.main()

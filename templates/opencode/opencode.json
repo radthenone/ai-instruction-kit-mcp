@@ -9,6 +9,7 @@
         "guides-mcp",
         "--language", "pl",
         "--clients", "all",
+        "--client", "opencode",
         "--workspace", "/ABSOLUTNA/SCIEZKA/DO/PROJEKTU"
       ],
       "enabled": true

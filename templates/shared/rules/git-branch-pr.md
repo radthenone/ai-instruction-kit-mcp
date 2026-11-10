@@ -7,7 +7,7 @@ Cel: chronione `main` / `master` / `dev` + jasny podział **kto co robi** (kit �
 
 | Warstwa | Narzędzie | Robi | Nie robi |
 |---------|-----------|------|----------|
-| **Kit** | `/git-start`, `/git-check`, `/git-commit`, `/git-end`, ta reguła | Issue + sync + commit(y) + push/PR + `Closes #N` | Worktree, pętli CI |
+| **Kit** | `/git-start`, `/git-check`, `/git-commit`, `/git-end`, ta reguła | Issue + sync + commit(y) + push/PR + metoda Managed Worktree + `Closes #N` | Decyzji o izolacji (worktree opcjonalny), pętli CI |
 | **Matt** | `/grill-me`, `/tdd` | Scope, TDD feature | Gita / PR |
 | **Superpowers** | `using-git-worktrees`, `finishing-a-development-branch` | Izolacja worktree; domknięcie (testy lokalne → opcje merge/PR) | Konwencji `feat/N-slug` (to kit) |
 | **Autopilot** | skill Autopilot (Cursor) | Po PR: konflikty → komentarze → CI red → fix → push, aż merge-ready | Merge bez Ciebie; force na chronione |
@@ -57,13 +57,14 @@ Tytuły issue/PR/branch: **zawsze EN**. Body / commity / docstringi: język MCP 
 
 ## Superpowers — kiedy i jak
 
-### Worktree (`using-git-worktrees`)
+### Managed Worktree (`.ai/worktree.mjs`)
 
-Użyj gdy: drugi temat równolegle, brudny główny checkout, Cloud/best-of-n, chcesz izolacji jak u „kolegi”.
+Izolacja jest opcjonalna (kit nie decyduje za Ciebie). Użyj gdy: drugi temat równolegle, brudny główny checkout, Cloud/best-of-n, procedura `/headless` lub `/night-run`, chcesz izolacji jak u „kolegi”.
 
-1. Najpierw **`/git-start`** (albo już masz branch `feat/N-…`) — konwencja nazwy z kita.  
-2. Potem worktree: **zawsze** przez `node .ai/worktree.mjs add [<ścieżka>] <branch>` (albo `remove <ścieżka>` po zakończeniu) — nie gołym `git worktree add`. Superpowers `using-git-worktrees` używa tej komendy jako kroku tworzenia. Skrypt przenosi pliki z `.gitignore` i konfiguruje zależności (w tym overlay venv).  
-   Jeśli worktree powstało poza skryptem (natywny Claude, `EnterWorktree`, Superpowers), od razu po utworzeniu wykonaj: `node .ai/worktree.mjs sync [<ścieżka>]`.  
+Każdy worktree agenta lub procedury kita to Managed Worktree zbudowany metodą kita:
+1. Najpierw **`/git-start`** (albo już masz branch `feat/N-…`) — konwencja nazwy zawsze z kita.  
+2. Utworzenie: preferuj `node .ai/worktree.mjs add [<ścieżka>] <branch>` (albo `add <ścieżka> --detach <ref>`) — nie gołym `git worktree add`. Skrypt przenosi pliki z `.gitignore` (w tym konfiguracje MCP, `.env`) i konfiguruje zależności (overlay venv).  
+   Jeśli worktree powstało poza tą komendą (narzędzie natywne klienta, Superpowers `using-git-worktrees`, człowiek), **od razu po utworzeniu** wykonaj: `node .ai/worktree.mjs sync [<ścieżka>]`.  
 3. Koduj w worktree.
 4. Po merge PR (albo przy porzuceniu) usuń worktree: `node .ai/worktree.mjs remove <ścieżka>`.
 
@@ -92,7 +93,7 @@ Wywołanie: skill Autopilot / „doprowadź ten PR do green”.
 | Mit | Prawda |
 |-----|--------|
 | PR przed pushem | Najpierw push, potem PR |
-| Worktree = obowiązek | Opcja Superpowers / Cloud |
+| Worktree = obowiązek | Izolacja opcjonalna; każdy worktree agenta lub procedury kita to Managed Worktree (add / sync / remove) |
 | `/git-start` = cały pipeline | Tylko issue + branch |
 | Autopilot = Matt | Autopilot = CI/PR loop; Matt = proces feature |
 

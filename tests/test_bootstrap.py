@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,8 +21,8 @@ from unittest import mock
 from _shell import is_ci, resolve_bash
 
 from guides import server
-from guides.bootstrap import BootstrapError, find_bash, plan_bootstrap, run_bootstrap
-from guides.bugbot_md import extract_brief, extract_rules, is_pristine
+from guides.bootstrap import BootstrapError, build_args, find_bash, plan_bootstrap, run_bootstrap
+from guides.bugbot_md import extract_brief, extract_brief_rules, extract_rules, is_pristine
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
@@ -174,8 +175,8 @@ class TestRealRun(_BootstrapTestCase):
             for rel in (".codex/config.toml", "opencode.json"):
                 with self.subTest(config=rel):
                     text = (workspace / rel).read_text(encoding="utf-8")
-                    self.assertNotIn(str(other), text)
-                    self.assertIn(str(workspace.resolve()), text)
+                    self.assertNotIn(other.as_posix(), text)
+                    self.assertIn(workspace.resolve().as_posix(), text)
 
     def test_local_source_uses_uv_run_not_uvx(self) -> None:
         """Lokalny klon: `uv run --project` czyta kod i moduły z dysku.
@@ -759,7 +760,7 @@ class TestAgentsBriefBlock(_BootstrapTestCase):
             template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertEqual(extract_brief(text), extract_brief(template))
 
-    def test_bootstrap_renders_profile_brief_with_overlay(self) -> None:
+    def test_bootstrap_renders_profile_brief_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             (workspace / ".ai").mkdir(parents=True)
@@ -815,6 +816,30 @@ class TestAgentsBriefBlock(_BootstrapTestCase):
             self.assertIsNotNone(brief)
             assert brief is not None
             self.assertIn("backend=`fastapi`", brief)
+
+    def test_bootstrap_renders_brief_rules_for_language(self) -> None:
+        """Bootstrap i reload renderują reguły briefu w AGENTS.md w języku Profilu (#355)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            (workspace / ".ai").mkdir(parents=True)
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                "name: brief-rules-app\nlanguage: en\nclients: claude\n"
+                "backend: none\nweb: none\nmobile: none\ncodegen: none\n",
+                encoding="utf-8",
+            )
+            run_bootstrap(
+                target=workspace, kit_root=KIT_ROOT, clients="claude", language="en"
+            )
+
+            agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+            rules = extract_brief_rules(agents_text)
+            self.assertIsNotNone(rules)
+            assert rules is not None
+            self.assertIn("Task classification and MCP rules", rules)
+            self.assertIn("in English", rules)
+            self.assertNotIn("Zadanie kodowe", rules)
+            self.assertNotIn("po polsku", rules)
 
 
 class TestServerTool(_BootstrapTestCase):
@@ -1238,6 +1263,75 @@ class TestHeadlessAgent(_BootstrapTestCase):
             self._install(workspace, "claude,opencode")
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, remove=True)
             self.assertFalse((workspace / ".ai/headless.mjs").exists())
+
+
+# Atrapy shimów pyenv-win (podmieniane na PATH tylko w teście, `{real}` = prawdziwy Python).
+_PLAIN_SHIM = """#!/bin/sh
+exec "{real}" "$@"
+"""
+
+# Wielolinijkowe `-c` nie przechodzi przez shim, reszta idzie do prawdziwego Pythona.
+_MULTILINE_BREAKING_SHIM = """#!/bin/sh
+NL='
+'
+for arg in "$@"; do
+  case "$arg" in *"$NL"*) echo "shim: wielolinijkowe -c" >&2; exit 97 ;; esac
+done
+exec "{real}" "$@"
+"""
+
+# `command -v` go widzi, ale uruchomić się nie da (pyenv-win bez zainstalowanej wersji).
+_DEAD_SHIM = """#!/bin/sh
+echo "'python3' is not recognized as an internal or external command" >&2
+exit 1
+"""
+
+
+class TestPythonShimResolution(_BootstrapTestCase):
+    """Bootstrap uruchomiony bez KIT_PYTHON nie może ufać shimom `python3` / `python` (#420)."""
+
+    def _run_with_shims(self, workspace: Path, shims: dict[str, str]) -> subprocess.CompletedProcess:
+        shim_dir = workspace.parent / "shim"
+        shim_dir.mkdir()
+        real = Path(sys.executable).as_posix()
+        for name, body in shims.items():
+            path = shim_dir / name
+            path.write_text(body.format(real=real), encoding="utf-8", newline="\n")
+            path.chmod(0o755)
+        argv = build_args(kit_root=KIT_ROOT, target=workspace, clients="claude")
+        new_path = os.pathsep.join([str(shim_dir), os.environ.get("PATH", "")])
+        with mock.patch.dict(os.environ, {"PATH": new_path}):
+            os.environ.pop("KIT_PYTHON", None)
+            os.environ.pop("KIT_WORKSPACE", None)
+            return subprocess.run(
+                [find_bash(), "--noprofile", "--norc", *argv],
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                check=False,
+            )
+
+    def test_bootstrap_runs_through_python3_shim_that_breaks_multiline_c(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            result = self._run_with_shims(workspace, {"python3": _MULTILINE_BREAKING_SHIM})
+
+            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+            self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
+
+    def test_bootstrap_skips_python3_that_does_not_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+
+            result = self._run_with_shims(
+                workspace, {"python3": _DEAD_SHIM, "python": _PLAIN_SHIM}
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+            self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
 
 
 if __name__ == "__main__":

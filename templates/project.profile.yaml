@@ -13,6 +13,10 @@ mobile: none
 
 codegen: orval
 
+# Klienci z sekcją CodeGraph w instrukcjach MCP (ADR-0012). Pusta lista = brak sekcji.
+# Dopisz tylko klientów, którzy mają serwer codegraph, np. [claude, codex].
+codegraph_clients: []
+
 # Server guard (VPS) — twarda blokada ciężkich komend tylko na słabym hoście
 # serwerowym (decyzja w runtime, normalnie nic nie ustawiasz). Brak sekcji
 # = `guard: auto`, sama lista kita + rozwinięte wrappery. Po zmianie Taskfile
@@ -30,6 +34,23 @@ codegen: orval
 # models:
 #   claude:
 #     light: haiku
+
+# Git worktree (.ai/worktree.mjs) — konfiguracja Managed Worktree kita (ADR-0014).
+# Worktree jest opcjonalny. Brak sekcji = domyślne kopiowanie plików maszynowych
+# (konfiguracje MCP, .env itp.) i automatyczny overlay venv. Zapisz w Profilu tylko
+# na życzenie użytkownika. Szczegóły: README „Git worktree (.ai/worktree.mjs)”.
+# worktree:
+#   # Dodatkowe pliki ignorowane przez git do skopiowania (poza .env i plikami MCP)
+#   copy:
+#     - ".env.local"
+#   # Foldery lub pliki do symlinkowania (tylko do odczytu)
+#   link:
+#     - "data/"
+#   # Komendy uruchamiane w worktree po copy/link
+#   setup:
+#     - "task build"
+#   # Tryb venv: auto (overlay dla venv pythona) | overlay | none
+#   venv: auto
 
 overlays:
   - .ai/project.md

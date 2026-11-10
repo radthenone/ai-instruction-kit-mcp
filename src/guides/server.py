@@ -9,6 +9,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from guides.brief_rules import get_brief_rules
 from guides.bootstrap import BootstrapError, BootstrapPlan, plan_bootstrap, run_bootstrap
 from guides.cli import (
     DOCTOR_FIX_COMMAND,
@@ -22,6 +23,7 @@ from guides.cli import reload_workspace as reload_workspace_files
 from guides.clients import (
     expand_clients,
     format_clients_arg,
+    normalize_client_id,
     parse_clients,
 )
 from guides.host_profile import get_host_profile
@@ -37,29 +39,14 @@ from guides.resolver import (
     resolve_workspace_profile,
 )
 
-_INSTRUCTIONS_RULES = (
-    "## Klasyfikacja zadań i reguły MCP (#307, #324)\n"
-    "\n"
-    "- **Zadanie kodowe:** tworzenie, edycja lub debug plików w `src/`, `tests/`, `templates/`, `modules/`; "
-    "implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany.\n"
-    "- **Zadanie proceduralne:** każdy slash command z procedury kita (`/git-*`, `/review-*`, `/create-task`, "
-    "`/create-skill`, `/night-run`, `/headless`, `/tdd`, `/kit-project-*`) oraz każda czynność zapisu na GitHub.\n"
-    "- **Wymóg wywołania:** przed pierwszą edycją przy zadaniu kodowym lub proceduralnym wywołaj `get_overlay`, "
-    "a `get_bundle` gdy brief wskazuje moduł. W wątpliwości wywołaj `get_overlay` "
-    "(koszt mały, błędny fix bez overlay kosztuje dużo).\n"
-    "- **Bez wywołań MCP:** pytania o język, bazę lub Tiery (są w briefie), rozmowa, wyjaśnienie, "
-    "odpowiedź tekstowa bez zmiany plików.\n"
-    "- **Docstringi:** format repo (Args/Returns), język wg Profilu.\n"
-    "- **VPS (#317):** na hoście VPS zakaz instalacji pakietów i buildów poza lockfile-only "
-    "(`uv lock --no-build`, `npm install --package-lock-only --ignore-scripts`)."
-)
+_INSTRUCTIONS_RULES = get_brief_rules("pl")
 
 _STATIC_INSTRUCTIONS = (
     "Dostarcza modułowe instrukcje architektury i stacku dla projektu. "
     "Przed pracą nad backendem pobierz bundle backend; nad frontendem — frontend; "
     "nad architekturą/infra — architecture. Overlay projektu zawiera unikalne ścieżki i taski. "
     "Język prozy (odpowiedzi, docstringi, body issue/commit) ustawia --language / GUIDES_LANGUAGE; "
-    "tytuły issue/PR/branch zawsze po angielsku. Użyj get_language. "
+    "tytuły issue/PR/branch zawsze po angielsku. "
     "Klienci AI (--clients) to metadane instalacji — get_clients; treść bundle bez zmian. "
     "Pliki kita (hooki, agenci, komendy) instalują bootstrap_workspace i reload_workspace, "
     "a brakujące etykiety GitHuba zakłada ensure_labels — "
@@ -73,6 +60,7 @@ _workspace_root: Path | None = None
 _extra_overlays: list[Path] = []
 _language_override: str | None = None
 _clients: list[str] = ["all"]
+_client: str | None = None
 _legacy_config: bool = False
 _gh_runner: Runner | None = None
 
@@ -85,6 +73,7 @@ def _get_resolved():
         extra_overlays=_extra_overlays or None,
         language_override=_language_override,
         notice=MIGRATION_NOTICE if _legacy_config else "",
+        client=_client,
     )
 
 
@@ -118,7 +107,7 @@ def build_instructions(resolved: ResolvedProfile) -> str:
             "- `get_index()` / `list_modules()` / `get_module(id)` — rejestr i pojedyncze moduły.",
             "- `bootstrap_workspace()` / `reload_workspace()` — instalacja plików kita, domyślnie dry-run.",
             "",
-            _INSTRUCTIONS_RULES,
+            get_brief_rules(resolved.language),
             "",
             _STATIC_INSTRUCTIONS,
         ]
@@ -608,11 +597,13 @@ def get_clients() -> str:
     """
     flag = format_clients_arg(_clients)
     expanded = expand_clients(_clients)
+    client_line = f"- Client (`--client`): `{_client}`" if _client else "- Client (`--client`): _none_"
     lines = [
         "# Clients (MCP metadata)",
         "",
         f"- Flag `--clients`: `{flag}`",
         f"- Expanded: {', '.join(f'`{c}`' for c in expanded)}",
+        client_line,
         "",
         "Bundle content is identical for every client. "
         "Use this only to know which IDE packs were intended at bootstrap.",
@@ -651,7 +642,7 @@ def _register_bundle_resources() -> None:
 def main() -> None:
     """Entrypoint CLI serwera MCP."""
     global _kit_root, _workspace_root, _extra_overlays
-    global _language_override, _clients, _legacy_config
+    global _language_override, _clients, _client, _legacy_config
 
     parser = argparse.ArgumentParser(description="Instruction-kit MCP server")
     parser.add_argument(
@@ -698,6 +689,15 @@ def main() -> None:
             "antigravity | opencode (lista po przecinku; alias copilot→vscode). Nie zmienia bundle."
         ),
     )
+    parser.add_argument(
+        "--client",
+        required=False,
+        default=None,
+        help=(
+            "Identyfikator klienta AI tego serwera MCP: cursor | claude | codex | vscode | "
+            "kiro | kilo | antigravity | opencode. Służy do celowanego deliverowania instrukcji (np. codegraph)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.kit_root:
@@ -723,6 +723,13 @@ def main() -> None:
         _clients = parse_clients(clients_raw)
     except ValueError as exc:
         parser.error(f"--clients: {exc}")
+
+    client_raw = args.client if args.client is not None else os.environ.get("GUIDES_CLIENT")
+    if client_raw:
+        try:
+            _client = normalize_client_id(client_raw)
+        except ValueError as exc:
+            parser.error(f"--client: {exc}")
 
     _legacy_config = bool(
         args.preset

@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from guides.clients import expand_clients, format_clients_arg, parse_clients
+from guides.clients import expand_clients, format_clients_arg, normalize_client_id, parse_clients, parse_codegraph_clients
 from guides.manifest import BundleRule, Manifest, Mappings, load_manifest
 from guides.host_profile import VPS_LIGHTWEIGHT_MODULE, detect_host_profile
 
@@ -269,6 +269,10 @@ class ResolvedBundle:
 
 
 _BASE_LINE = re.compile(r"(?m)^base:[ \t]*(\S+)[ \t]*$")
+BASE_FALLBACK_RULE_PL = (
+    "`dev`, jeśli `origin/dev` istnieje i nie jest w tyle za default; "
+    "inaczej default (brak `base:` w `{overlay_rel}`)"
+)
 _COMMANDS_HEADING = re.compile(r"(?m)^##[ \t]+Komendy[ \t]*$")
 _HEADING = re.compile(r"(?m)^##[ \t]+")
 
@@ -392,6 +396,8 @@ def render_project_brief(
     bundle_names: Sequence[str],
     module_ids: Sequence[str],
     codegraph_content: str | None = None,
+    client: str | None = None,
+    codegraph_clients: object = None,
 ) -> str:
     """
     Zrenderuj brief projektu z Profilu i overlayu — jedno źródło dla pliku i MCP.
@@ -409,7 +415,8 @@ def render_project_brief(
         clients: Wartość ``clients:`` z Profilu.
         profile_path: Ścieżka Profilu (do wyświetlenia względem workspace'u).
         workspace_root: Root repo aplikacji.
-        overlay_content: Treść overlayu (także z nagłówkiem kita).
+        overlay_content: Treść overlayu (także z nagłówkiem kita); źródło bazy
+            i komend, nie treść briefu — sam overlay daje ``get_overlay``.
         bundle_names: Nazwy bundle'i z manifestu.
         module_ids: Włączone moduły (bez modułu hosta).
         codegraph_content: Treść modułu ``core:tooling-codegraph`` albo ``None``;
@@ -434,10 +441,7 @@ def render_project_brief(
     if base:
         base_line = f"`{base}` (z `{overlay_rel}`)"
     else:
-        base_line = (
-            f"`dev`, jeśli `origin/dev` istnieje i nie jest w tyle za default; "
-            f"inaczej default (brak `base:` w `{overlay_rel}`)"
-        )
+        base_line = BASE_FALLBACK_RULE_PL.format(overlay_rel=overlay_rel)
 
     commands = overlay_commands(overlay_content)
     commands_line = "; ".join(commands) if commands else (
@@ -453,18 +457,20 @@ def render_project_brief(
     visible_modules = [mid for mid in module_ids if mid != VPS_LIGHTWEIGHT_MODULE]
     modules_line = ", ".join(f"`{mid}`" for mid in visible_modules)
 
-    overlay_body = overlay_content.strip()
-    overlay_header = "# Overlay projektu"
-    if overlay_body.startswith(overlay_header):
-        overlay_body = overlay_body[len(overlay_header) :].strip()
-    overlay_section = (
-        ["", f"### Overlay projektu (`{overlay_rel}`)", "", overlay_body]
-        if overlay_body
-        else ["", f"### Overlay projektu (`{overlay_rel}`)", "", "_Brak overlay — dodaj fakty repo._"]
-    )
+    codegraph_targets = parse_codegraph_clients(codegraph_clients)
+    canonical_client: str | None = None
+    if client:
+        try:
+            canonical_client = normalize_client_id(client)
+        except ValueError:
+            canonical_client = None
 
     codegraph_section: list[str] = []
-    if codegraph_content and "claude" in client_ids:
+    if (
+        codegraph_content
+        and canonical_client is not None
+        and canonical_client in codegraph_targets
+    ):
         codegraph_section = ["", _demote_headings(codegraph_content.strip())]
 
     prose = BRIEF_LANGUAGE_PROSE.get(language, BRIEF_LANGUAGE_PROSE["pl"])
@@ -480,11 +486,10 @@ def render_project_brief(
             f"web=`{tiers.get('web', TIER_NONE)}` mobile=`{tiers.get('mobile', TIER_NONE)}`",
             f"- **Codegen:** `{codegen}` (efektywny; para backend + klient: {pair})",
             f"- **Klienci:** {clients_line}",
-            f"- **Overlay:** `{overlay_rel}` — pierwszeństwo przed bundlami.",
+            f"- **Overlay:** `{overlay_rel}` przez `get_overlay` — pierwszeństwo przed bundlami.",
             f"- **Komendy:** {commands_line}",
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
-            *overlay_section,
             *codegraph_section,
         ]
     )
@@ -1042,6 +1047,7 @@ def resolve_workspace_profile(
     language_override: str | None = None,
     notice: str = "",
     host_profile: str | None = None,
+    client: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil workspace'u (``.ai/project.profile.yaml``).
@@ -1071,6 +1077,7 @@ def resolve_workspace_profile(
         language_override=language_override,
         notice=notice,
         host_profile=host_profile,
+        client=client,
     )
 
 
@@ -1083,6 +1090,7 @@ def resolve_profile(
     language_override: str | None = None,
     notice: str = "",
     host_profile: str | None = None,
+    client: str | None = None,
 ) -> ResolvedProfile:
     """
     Rozwiąż profil projektu do bundle'i i indeksu.
@@ -1198,6 +1206,8 @@ def resolve_profile(
         bundle_names=list(bundles),
         module_ids=enabled_modules,
         codegraph_content=codegraph_content,
+        client=client,
+        codegraph_clients=profile_data.get("codegraph_clients"),
     )
 
     index_lines = []

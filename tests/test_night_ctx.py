@@ -23,9 +23,12 @@ KIT_ROOT = Path(__file__).resolve().parents[1]
 
 def _run(*argv: str, env: dict[str, str] | None = None) -> tuple[int, str]:
     out = io.StringIO()
-    with mock.patch.dict(os.environ, env or {}, clear=False):
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            code = cli.main(list(argv))
+    with (
+        mock.patch.dict(os.environ, env or {}, clear=False),
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(out),
+    ):
+        code = cli.main(list(argv))
     return code, out.getvalue()
 
 
@@ -215,6 +218,21 @@ class NightCtxTest(unittest.TestCase):
         _write_profile(self.repo)
         out = self._ctx()
         self.assertIn("Pełny zestaw testów: tylko CI", out)
+
+
+class TestNightCtxGit(unittest.TestCase):
+    def test_git_subprocess_uses_utf8_and_replace(self) -> None:
+        from guides.night_ctx import _git
+
+        with mock.patch("subprocess.run") as fake_run:
+            fake_run.return_value = subprocess.CompletedProcess([], 0, "main\n", "")
+            res = _git(Path("/fake/repo"), "symbolic-ref", "HEAD")
+
+        fake_run.assert_called_once()
+        kwargs = fake_run.call_args.kwargs
+        self.assertEqual(kwargs.get("encoding"), "utf-8")
+        self.assertEqual(kwargs.get("errors"), "replace")
+        self.assertEqual(res, "main")
 
 
 if __name__ == "__main__":
