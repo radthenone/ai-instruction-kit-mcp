@@ -5,7 +5,8 @@
 # Użycie: watchdog.sh <CTX> [próg_anomalii_min=60] [życie_min=110]
 # Testy: WATCHDOG_TICK_SEC (krok pętli, domyślnie 60), WATCHDOG_RECHECK_SEC (przerwa
 # sprawdzania pauzy bez godziny resetu, domyślnie 1800), WATCHDOG_READY_FILE (plik tworzony,
-# gdy offset transkryptu jest już policzony — linia limitu dopisana później zostanie wykryta).
+# gdy offset transkryptu jest już policzony — linia limitu dopisana później zostanie wykryta),
+# WATCHDOG_RECHECK_GATE_FILE (recheck pauzy czeka, aż ten plik powstanie — deterministyczny test, #418).
 # Wymaga GNU date (godzina resetu).
 # Ceiling: pauza bez godziny wybudza po przerwie RECHECK, gdy nie ma nowej linii limitu
 # w transkrypcie — to przybliżenie „limit minął”, orkiestrator weryfikuje to po wybudzeniu.
@@ -133,6 +134,17 @@ wait_until() {
   done
 }
 
+# Tylko testy (#418): bez WATCHDOG_RECHECK_GATE_FILE nic nie robi. Z nią czeka, aż plik powstanie
+# (albo do końca życia watchdoga, jak wait_until), żeby test dopisał linię limitu przed sprawdzeniem.
+recheck_gate() {
+  [[ -n ${WATCHDOG_RECHECK_GATE_FILE:-} ]] || return 0
+  while [[ ! -e $WATCHDOG_RECHECK_GATE_FILE ]]; do
+    (( $(date +%s) - START >= LIFE_SEC )) && return 1
+    sleep "$TICK"
+  done
+  return 0
+}
+
 close_pause() { printf 'pauza limitu od %s do %s\n' "$1" "$(timestamp "$(date +%s)")" >> "$CTX"; }
 
 # Zapisuje otwartą pauzę do ## Stan i czeka. Z godziną resetu: jedno czekanie do resetu + 5 min.
@@ -147,6 +159,7 @@ pause_and_wait() {
     echo "pauza limitu do $(timestamp "$until") — śpię do wznowienia"
     if ! wait_until "$until"; then echo "pauza trwa — odnów watchdoga"; exit 0; fi
     [[ -n $reset_at ]] && break
+    if ! recheck_gate; then echo "pauza trwa — odnów watchdoga"; exit 0; fi
     new_limit_line
     [[ -n $LIMIT_LINE_FOUND ]] || break
     limit_line=$LIMIT_LINE_FOUND
