@@ -79,6 +79,8 @@ export function detectUnknownModel(text, fallbackModel = "") {
 }
 const LIMIT_TAIL_LINES = 20
 const OUTPUT_TAIL_BYTES = 65_536
+// Raport zabitego w prompcie zastępcy (#408): limit argumentu CLI na Windows to około 32 KB.
+const HANDOFF_REPORT_CHARS = 4_000
 // Okno godziny resetu jak MAX_RESET_AHEAD_SEC w watchdog.sh (dalsza godzina = brak, nie zgadujemy).
 const MAX_RESET_AHEAD_MS = 6 * 3_600_000
 const QUOTA_TIMEOUT_MS = 60_000
@@ -513,9 +515,10 @@ const lines = (text) => (text ? text.split("\n") : [])
 // Kontrola postępu co 30 min (#397): jeden próg dla całego wywołania.
 export const STALL_CHECK_MIN = 30
 // `HEADLESS_STALL_CHECK_MS` skraca interwał w testach integracyjnych (#408); produkcja bez zmiany.
+// Poza (0, 2^31-1] setInterval daje 1 ms — wtedy domyślny interwał zamiast natychmiastowego zabicia.
 const stallCheckMs = () => {
   const ms = Number(process.env.HEADLESS_STALL_CHECK_MS)
-  return ms > 0 ? ms : STALL_CHECK_MIN * 60_000
+  return Number.isFinite(ms) && ms > 0 && ms <= 2 ** 31 - 1 ? ms : STALL_CHECK_MIN * 60_000
 }
 
 // Czas CPU (utime + stime, w tickach) procesu wykonawcy i jego potomków z /proc. Bez /proc
@@ -857,8 +860,10 @@ async function main() {
     const reason = code === PAUSE_CODE ? `limit ${name}` : `${name} zakończony klasą ${call.klasa} (kod ${code})`
     call.actions.push(`przekazano 1:1: ${name} → ${next}`)
     log(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
-    // Zadanie 1:1 plus raport zabitego wykonawcy (#397, #408).
-    prompt = `${basePrompt}\n\n---\nRaport zabitego wykonawcy (${name}, kod ${code}):\n${outcome.report}${sessionFooter}`
+    // Zadanie 1:1; po zabiciu (HANG) plus raport zabitego wykonawcy (#397, #408).
+    prompt = call.klasa === "HANG"
+      ? `${basePrompt}\n\n---\nRaport zabitego wykonawcy (${name}, kod ${code}):\n${outcome.report}${sessionFooter}`
+      : `${basePrompt}${sessionFooter}`
   }
   if (current.stopping) return
   // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
@@ -986,6 +991,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     intervalMs: stallCheckMs(),
     read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
     onStall: ({ idleMs }) => {
+      // Kolejny tick w trakcie umierania drzewa nie robi drugiego zrzutu ani checkera.
+      if (stalled) return
       stalled = true
       const checkerInput = { tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") }
       stallTree = processSnapshot(child.pid)
@@ -1055,8 +1062,11 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
-  const report = finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, tree: stallTree, changes })
-  log(report)
+  const reportArgs = { startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, changes }
+  log(finalReport({ ...reportArgs, tree: stallTree }))
+  // Dla zastępcy bez drzewa procesów i przycięty — prompt bywa argumentem CLI z limitem długości.
+  const handoff = finalReport(reportArgs)
+  const report = handoff.length > HANDOFF_REPORT_CHARS ? `${handoff.slice(0, HANDOFF_REPORT_CHARS)}\n… (raport ucięty)\n` : handoff
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"

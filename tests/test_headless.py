@@ -763,10 +763,31 @@ class HeadlessWrapperTest(unittest.TestCase):
             FAKE_HANG_FOR="opencode2",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        prompt = self.argv()[2]
+        prompt = "\n".join(self.argv())
         self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
         self.assertIn("[headless] raport końcowy", prompt)
         self.assertIn("wynik wykonawcy", prompt)
+
+    def test_limit_handoff_keeps_task_1_to_1_without_report(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertNotIn("Raport zabitego wykonawcy", "\n".join(self.argv()))
+
+    def test_handoff_report_is_truncated(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_HANG_FOR="opencode2", FAKE_LIMIT="y" * 20_000,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompt = "\n".join(self.argv())
+        self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
+        self.assertIn("(raport ucięty)", prompt)
+        # Zabity wypisał linię 20 000 znaków; do promptu trafia tylko początek raportu.
+        report = prompt.split("Raport zabitego wykonawcy", 1)[1].split("Zasady tej sesji", 1)[0]
+        self.assertLess(len(report), 5_000)
 
     def test_stall_with_injected_interval_kills_and_hands_off_with_report(self) -> None:
         self.chain_profile()
@@ -777,9 +798,32 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
         self.assertIn("brak postępu", self.headless_log())
-        prompt = self.argv()[2]
+        prompt = "\n".join(self.argv())
         self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
         self.assertIn("wynik wykonawcy", prompt)
+        # Drzewo procesów zostaje w logu, nie w prompcie zastępcy.
+        self.assertIn("## drzewo procesów przy zabiciu", self.headless_log())
+        self.assertNotIn("## drzewo procesów przy zabiciu", prompt)
+
+    def test_stall_is_handled_once_while_tree_dies(self) -> None:
+        # Grupa ignoruje SIGTERM, więc zabicie trwa KILL_GRACE_MS — dłużej niż interwał kontroli.
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x",
+            FAKE_HANG_FOR="opencode2", FAKE_IGNORE_TERM="1", HEADLESS_STALL_CHECK_MS="50",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.headless_log().count("— zabijam drzewo opencode"), 1)
+
+    def test_out_of_range_stall_interval_falls_back_to_default(self) -> None:
+        # setInterval zamienia > 2**31-1 i Infinity na 1 ms — bez odrzucenia wykonawca ginąłby od razu.
+        for value in ("Infinity", str(2**31)):
+            with self.subTest(value=value):
+                result = self.run_wrapper(
+                    "--host", "claude", "opencode", "x", FAKE_SLEEP="1", HEADLESS_STALL_CHECK_MS=value,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.last_row(result)["klasa"], "OK")
 
     def test_exhausted_chain_of_hangs_is_hang_row_in_report(self) -> None:
         self.chain_profile()
