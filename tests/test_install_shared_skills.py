@@ -105,6 +105,38 @@ class TestInstall(unittest.TestCase):
         install_native(skill, self.dest)
         self.assertFalse((self.dest / "s" / "stary.md").exists())
 
+    def test_native_replaces_symlink_and_keeps_target(self) -> None:
+        """Symlink w celu instalacji zostaje zastąpiony kopią, a cel nietknięty."""
+        import os
+
+        skill = write_skill(self.src, "ln", "name: ln\ndescription: x\n")
+        target = self.tmp / "cel"
+        target.mkdir()
+        (target / "keep.md").write_text("x", encoding="utf-8")
+        try:
+            os.symlink(target, self.dest / "ln", target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(f"brak uprawnień do symlinków: {exc}")
+
+        install_native(skill, self.dest)
+        self.assertFalse((self.dest / "ln").is_symlink())
+        self.assertTrue((self.dest / "ln" / "SKILL.md").is_file())
+        self.assertTrue((target / "keep.md").is_file())
+
+    def test_native_replaces_dangling_symlink(self) -> None:
+        """Link wiszący (cel nie istnieje) nie blokuje instalacji."""
+        import os
+
+        skill = write_skill(self.src, "wisi", "name: wisi\ndescription: x\n")
+        try:
+            os.symlink(self.tmp / "nie-ma", self.dest / "wisi", target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(f"brak uprawnień do symlinków: {exc}")
+
+        install_native(skill, self.dest)
+        self.assertFalse((self.dest / "wisi").is_symlink())
+        self.assertTrue((self.dest / "wisi" / "SKILL.md").is_file())
+
     def test_degraded_uses_directory_name_not_frontmatter(self) -> None:
         """Komendę nazywa katalog — to jedyna nazwa wspólna dla wszystkich klientów."""
         skill = write_skill(self.src, "katalog", "name: co-innego\ndescription: x\n")
