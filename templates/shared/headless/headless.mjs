@@ -108,6 +108,14 @@ const tailLines = (text) => text.split("\n").slice(-LIMIT_TAIL_LINES).join("\n")
 
 // Trailer autorstwa, którego kit wymaga w każdym commicie wykonawcy (#398).
 const COAUTHOR_TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
+// Klucz trailera porównujemy bez wielkości liter; wartość musi być dokładna (#408).
+const COAUTHOR_KEY = "co-authored-by"
+const COAUTHOR_VALUE = "Claude <noreply@anthropic.com>"
+
+function isCoauthorTrailer(line) {
+  const match = /^([^:]+):(.*)$/.exec(line.trim())
+  return Boolean(match) && match[1].toLowerCase() === COAUTHOR_KEY && match[2].trim() === COAUTHOR_VALUE
+}
 
 // Temat commita po polsku albo angielsku wg `language` z Profilu (#398); inny kod — podany wprost.
 const topicLanguage = (language) => ({ pl: "po polsku", en: "po angielsku" })[language] ?? `w języku ${language}`
@@ -303,7 +311,7 @@ function profileClients() {
 function profileLanguage() {
   try {
     const match = /^language:[ \t]*["']?([\w-]+)/m.exec(readFileSync(join(".ai", "project.profile.yaml"), "utf8"))
-    return match ? match[1] : "pl"
+    return match ? match[1].toLowerCase() : "pl"
   } catch {
     return "pl"
   }
@@ -504,6 +512,11 @@ const lines = (text) => (text ? text.split("\n") : [])
 
 // Kontrola postępu co 30 min (#397): jeden próg dla całego wywołania.
 export const STALL_CHECK_MIN = 30
+// `HEADLESS_STALL_CHECK_MS` skraca interwał w testach integracyjnych (#408); produkcja bez zmiany.
+const stallCheckMs = () => {
+  const ms = Number(process.env.HEADLESS_STALL_CHECK_MS)
+  return ms > 0 ? ms : STALL_CHECK_MIN * 60_000
+}
 
 // Czas CPU (utime + stime, w tickach) procesu wykonawcy i jego potomków z /proc. Bez /proc
 // (macOS, Windows) — null: wtedy postęp liczą log i git. Rodzic liczymy z pola ppid, nie z grupy
@@ -791,7 +804,9 @@ async function main() {
   pruneRuns(runsDir, basename(runDir), call.ctx)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
-  prompt += footer(runDir, call.ticket, profileLanguage())
+  const basePrompt = prompt
+  const sessionFooter = footer(runDir, call.ticket, profileLanguage())
+  prompt += sessionFooter
 
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
@@ -831,7 +846,8 @@ async function main() {
       continue
     }
     // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
-    code = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
+    const outcome = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
+    code = outcome.code
     // Zły model agy to błąd konfiguracji, nie wykonawcy: zastępca go nie naprawi, więc kończymy od razu.
     if (code === 0 || !next || call.klasa === "MODEL") {
       if (code !== 0 && !next) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
@@ -841,6 +857,8 @@ async function main() {
     const reason = code === PAUSE_CODE ? `limit ${name}` : `${name} zakończony klasą ${call.klasa} (kod ${code})`
     call.actions.push(`przekazano 1:1: ${name} → ${next}`)
     log(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
+    // Zadanie 1:1 plus raport zabitego wykonawcy (#397, #408).
+    prompt = `${basePrompt}\n\n---\nRaport zabitego wykonawcy (${name}, kod ${code}):\n${outcome.report}${sessionFooter}`
   }
   if (current.stopping) return
   // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
@@ -965,6 +983,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let stallTree = null
   let stallDescribed = null
   const progress = watchProgress({
+    intervalMs: stallCheckMs(),
     read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
     onStall: ({ idleMs }) => {
       stalled = true
@@ -1006,7 +1025,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   }
   await stallDescribed
-  if (stalled) call.actions.push(`zabito drzewo procesów (brak postępu ${STALL_CHECK_MIN} min)`)
+  if (stalled) call.actions.push(`zabito drzewo procesów (brak postępu ${minutes(stallCheckMs())} min)`)
   const hung = timedOut || stalled
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
@@ -1036,11 +1055,12 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
-  log(finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, tree: stallTree, changes }))
+  const report = finalReport({ startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, tree: stallTree, changes })
+  log(report)
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
-  return code
+  return { code, report }
 }
 
 // Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 i po sygnale — klasa wiersza i dzialanie (#398).
@@ -1058,7 +1078,7 @@ function untrailedCommits(startHead) {
     const cut = record.indexOf("\x1f")
     if (cut < 0) return []
     const hash = record.slice(0, cut).trim()
-    const hasTrailer = record.slice(cut + 1).split("\n").some((line) => line.trim() === COAUTHOR_TRAILER)
+    const hasTrailer = record.slice(cut + 1).split("\n").some(isCoauthorTrailer)
     return hash && !hasTrailer ? [hash] : []
   })
 }
