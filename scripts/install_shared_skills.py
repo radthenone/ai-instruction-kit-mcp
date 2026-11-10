@@ -18,11 +18,16 @@ jest gorszy niż skill, którego tam po prostu nie ma.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
 
 from render_agent_commands import DEST_SUFFIX, RENDERERS
+
+# Tag reparse junctionu (`mklink /J`). Python <3.12 nie ma `os.path.isjunction`,
+# więc rozpoznajemy go po tagu z `os.lstat` (nazwa jak w winnt.h).
+IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
 
 # Klienci z natywnym katalogiem skilli. Dokąd dokładnie trafiają, decyduje
 # bootstrap — tutaj liczy się tylko to, że dostają katalog, a nie jeden plik.
@@ -90,12 +95,32 @@ def iter_skills(src_dir: Path) -> list[Path]:
     return sorted(p.parent for p in src_dir.glob("*/SKILL.md"))
 
 
+def _is_junction(path: Path) -> bool:
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(st, "st_reparse_tag", 0) == IO_REPARSE_TAG_MOUNT_POINT
+
+
+def _is_link(path: Path) -> bool:
+    """Symlink albo junction — wpis, przez który `rmtree` nie może przejść."""
+    return path.is_symlink() or _is_junction(path)
+
+
+def _remove_link(path: Path) -> None:
+    """Usuwa sam link, nigdy jego cel (także wiszący link i junction)."""
+    if _is_junction(path) or (os.name == "nt" and path.is_dir()):
+        # rmdir na Windows zdejmuje sam punkt reparse; zawartość celu zostaje.
+        os.rmdir(path)
+    else:
+        path.unlink()
+
+
 def install_native(skill_dir: Path, dest_dir: Path) -> None:
     dest = dest_dir / skill_dir.name
-    if dest.is_symlink():
-        # Usuwamy sam link: rmtree na symlinku odmawia, a przejście przez niego
-        # skasowałoby cel (np. źródło skilla). Dotyczy też linku wiszącego.
-        dest.unlink()
+    if _is_link(dest):
+        _remove_link(dest)
     elif dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(skill_dir, dest)
