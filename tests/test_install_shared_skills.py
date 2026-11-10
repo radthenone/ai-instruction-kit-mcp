@@ -137,6 +137,26 @@ class TestInstall(unittest.TestCase):
         self.assertFalse((self.dest / "wisi").is_symlink())
         self.assertTrue((self.dest / "wisi" / "SKILL.md").is_file())
 
+    def test_native_replaces_junction_and_keeps_target(self) -> None:
+        """Junction (`mklink /J`) zostaje zastąpiony kopią, a cel nietknięty."""
+        import subprocess
+
+        if sys.platform != "win32":
+            self.skipTest("junction istnieje tylko na Windows")
+        skill = write_skill(self.src, "jn", "name: jn\ndescription: x\n")
+        target = self.tmp / "cel"
+        target.mkdir()
+        (target / "keep.md").write_text("x", encoding="utf-8")
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(self.dest / "jn"), str(target)],
+            check=True,
+            capture_output=True,
+        )
+
+        install_native(skill, self.dest)
+        self.assertTrue((self.dest / "jn" / "SKILL.md").is_file())
+        self.assertTrue((target / "keep.md").is_file())
+
     def test_degraded_uses_directory_name_not_frontmatter(self) -> None:
         """Komendę nazywa katalog — to jedyna nazwa wspólna dla wszystkich klientów."""
         skill = write_skill(self.src, "katalog", "name: co-innego\ndescription: x\n")
