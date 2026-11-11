@@ -405,6 +405,8 @@ function cmdAdd(args) {
   }
 
   // Wykonanie git worktree add
+  // add sam kopiuje i robi setup:, więc hook post-checkout kita ma się nie wtrącać (#439).
+  process.env.KIT_WORKTREE_HOOK = "0";
   if (detach) {
     git(["worktree", "add", "--detach", targetPath, targetRef], mainRoot);
   } else {

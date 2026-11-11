@@ -44,7 +44,11 @@ from guides.bugbot_md import (
 from guides.agent_classes import MATCHER_KEY, procedure_agents
 from guides.bugbot_md import overlay_paths as overlay_path_keys
 from guides.clients import expand_clients, parse_clients
-from guides.worktree import check_worktree_drift, parse_worktree_section
+from guides.worktree import (
+    check_worktree_drift,
+    check_worktree_hook,
+    parse_worktree_section,
+)
 
 RULE_FILES: tuple[str, ...] = (
     "BUGBOT.md",
@@ -1360,6 +1364,11 @@ def run_doctor(
                         "stale-worktree-config",
                     )
                 )
+
+    if (workspace / ".ai" / "worktree.mjs").is_file():
+        for hook_path, msg in check_worktree_hook(workspace, kit_root):
+            rel = hook_path.relative_to(workspace).as_posix() if hook_path.is_relative_to(workspace) else str(hook_path)
+            findings.append(Finding("warning", rel, None, msg, "missing-worktree-hook"))
 
     findings.extend(
         _check_ponytail(
