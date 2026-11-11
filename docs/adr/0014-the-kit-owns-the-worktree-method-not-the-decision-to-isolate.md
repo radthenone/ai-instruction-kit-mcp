@@ -14,3 +14,9 @@ The rules contradicted each other because they answered two different questions:
 ## Consequences
 
 The method is enforced by a rule, not a Guard, so a skipped `sync` can still happen. Git used by hand outside the Kit stays out of scope, but documented Kit flows, including the cost measurement of `/night-run`, use the method.
+
+## Amendment (#439): `sync` runs from a git `post-checkout` hook
+
+The deferred automation of `sync` is now in place, but as a git hook, not a `WorktreeCreate` hook. The failure the ADR waited for happened: tools such as Orca create worktrees with plain `git worktree add`, so `sync` never ran and the worktree had no `.env` or MCP config. A `WorktreeCreate` hook would not have helped, because it only fires for worktrees an agent client creates, not for Orca or a terminal.
+
+Install and reload write a marked block into `post-checkout` in the hooks directory (`core.hooksPath` when set), next to any hook the user already has. The block runs only for a new worktree (the previous HEAD is all zeros and `.git` is a file), calls `.ai/worktree.mjs` from the main checkout, because a worktree of an older branch may not contain it, and never fails `git worktree add`. `worktree.mjs add` turns the hook off for its own `git worktree add`, since it copies files itself. `setup:` still runs only from `worktree.mjs add`: a hook must not install packages. Doctor reports a missing or stale block.

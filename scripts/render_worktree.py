@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cienki wrapper: render `.ai/worktree.json` (reload / bootstrap).
+"""Cienki wrapper: render `.ai/worktree.json` i hooka `post-checkout` (reload / bootstrap).
 
 Cała logika żyje w `src/guides/worktree.py` (stdlib only). Bootstrap woła ten skrypt
 z `PYTHONPATH=$KIT_ROOT/src`.
@@ -15,4 +15,4 @@ if __name__ == "__main__":
     sys.path.insert(0, str(kit_root / "src"))
     from guides.worktree import main
 
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main(sys.argv, kit_root=kit_root))

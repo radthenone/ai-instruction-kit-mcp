@@ -405,17 +405,26 @@ function cmdAdd(args) {
   }
 
   // Wykonanie git worktree add
-  if (detach) {
-    git(["worktree", "add", "--detach", targetPath, targetRef], mainRoot);
-  } else {
-    const hasLocal = gitTry(["show-ref", "--verify", "--quiet", `refs/heads/${targetRef}`], mainRoot) !== null;
-    const hasRemote = gitTry(["show-ref", "--verify", "--quiet", `refs/remotes/origin/${targetRef}`], mainRoot) !== null;
-    if (hasLocal || hasRemote) {
-      // DWIM: lokalny branch albo tracking origin/<branch>, bez -b
-      git(["worktree", "add", targetPath, targetRef], mainRoot);
+  // add sam kopiuje i robi setup:, więc hook post-checkout kita ma się nie wtrącać (#439).
+  // Tylko na czas add: komendy setup: mają dostać zwykły hook.
+  const prevHook = process.env.KIT_WORKTREE_HOOK;
+  process.env.KIT_WORKTREE_HOOK = "0";
+  try {
+    if (detach) {
+      git(["worktree", "add", "--detach", targetPath, targetRef], mainRoot);
     } else {
-      git(["worktree", "add", "-b", targetRef, targetPath], mainRoot);
+      const hasLocal = gitTry(["show-ref", "--verify", "--quiet", `refs/heads/${targetRef}`], mainRoot) !== null;
+      const hasRemote = gitTry(["show-ref", "--verify", "--quiet", `refs/remotes/origin/${targetRef}`], mainRoot) !== null;
+      if (hasLocal || hasRemote) {
+        // DWIM: lokalny branch albo tracking origin/<branch>, bez -b
+        git(["worktree", "add", targetPath, targetRef], mainRoot);
+      } else {
+        git(["worktree", "add", "-b", targetRef, targetPath], mainRoot);
+      }
     }
+  } finally {
+    if (prevHook === undefined) delete process.env.KIT_WORKTREE_HOOK;
+    else process.env.KIT_WORKTREE_HOOK = prevHook;
   }
 
   const branchDisplay = detach ? `detached ${targetRef}` : targetRef;
