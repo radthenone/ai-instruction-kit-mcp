@@ -653,7 +653,8 @@ class TestPostCheckoutHook(unittest.TestCase):
         from guides.worktree import post_checkout_hook_path
 
         path = post_checkout_hook_path(self.repo)
-        self.assertIsNotNone(path)
+        if path is None:
+            raise AssertionError("repo testowe nie ma katalogu hooków")
         return path
 
     @unittest.skipUnless(shutil.which("node"), "brak node")
