@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "pl-PL"
+reviews:
+  # Wymień gałęzie docelowe, do których otwierasz PR-y
+  target_branches:
+    - "dev"
+    - "master"
+    - "main"
+  high_level_summary: true
+  poem: false
