@@ -40,7 +40,7 @@ Auth, ACL, billing, migracje, concurrency, brak dowodu w repo → **zapytaj uży
 | Warstwa | Przykład | Kiedy |
 |---------|----------|-------|
 | Proces | mattpocock `/grill-me`, `/tdd` | niejasny scope; red-green |
-| Meta | Superpowers worktree / finishing / debug | opcjonalna izolacja (Managed Worktree), domknięcie brancha |
+| Meta | worktree / finishing / debug | opcjonalna izolacja (Managed Worktree), domknięcie brancha |
 | PR loop | Autopilot | CI + komentarze aż merge-ready |
 
 Priorytet: użytkownik → overlay+MCP → `/git-*`+review → Matt → Superpowers → Autopilot.  

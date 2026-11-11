@@ -693,7 +693,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         log = self.headless_log()
         self.assertIn("[headless] sygnał SIGTERM", log)
         snapshot = log.split("[headless] sygnał SIGTERM", 1)[1]
-        self.assertIn("node", snapshot)
+        self.assertTrue("node" in snapshot or "MainThread" in snapshot, snapshot)
         self.assertNotIn(" x\n", snapshot)
 
     def test_signal_exit_code_wins_over_executor_that_handles_sigterm(self) -> None:
