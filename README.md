@@ -1111,6 +1111,8 @@ worktree:
 Gdy brak sekcji `copy`, skrypt kopiuje istniejące wpisy `MACHINE_FILES` (pliki MCP i stampy kita) + `.env` + `.claude/settings.local.json`.
 Polecenia w `setup:` przed uruchomieniem są weryfikowane przez `server-guard.mjs` (na VPS niebezpieczne komendy, np. instalacja paczek, są pomijane).
 
+Sync działa automatycznie: `kit-ai install`/`reload` dopisuje blok kita do hooka gita `post-checkout` (albo w katalogu z `core.hooksPath`), więc każdy nowy worktree, także z Orci, terminala czy agenta, od razu dostaje pliki z `copy`/`link` i overlay venv. Cudzy hook zostaje. Bez `node` w PATH hook tylko ostrzega. `setup:` dalej uruchamia się wyłącznie przy `node .ai/worktree.mjs add`. Przy względnym `core.hooksPath` (np. `.githooks`) git czyta hooki z katalogu nowego worktree, więc blok kita trzeba zacommitować.
+
 #### Overlay venv i ograniczenia
 
 Dla Pythona tryb `venv: auto` (oraz `overlay`) tworzy lekki overlay venv bazujący na głównym `.venv`:
