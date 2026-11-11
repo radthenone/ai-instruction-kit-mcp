@@ -41,6 +41,8 @@ worktree:
     - .ai/.kit-doctor.json
     - .env
     - .claude/settings.local.json
+  # skille Codexa i Antigravity generowane przez reload: jedna kopia, zawsze aktualna
   link:
-    - .agents/skills     # skille Codexa i Antigravity generowane przez reload: jedna kopia, zawsze aktualna
-  venv: auto             # .venv w roocie: kit sam robi nakładkę
+    - .agents/skills
+  # .venv w roocie: kit sam robi nakładkę
+  venv: auto
