@@ -15,6 +15,10 @@ case "$1" in
         exit 0
       fi
       main="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)" || exit 0
+      if [ "$(git config --bool core.bare)" = true ]; then
+        echo "[worktree] repo bare: kit nie ma głównego checkoutu, pomijam sync" >&2
+        exit 0
+      fi
       [ -f "$main/.ai/worktree.mjs" ] || exit 0
       node "$main/.ai/worktree.mjs" sync . \
         || echo "[worktree] sync nie powiódł się, worktree zostaje" >&2

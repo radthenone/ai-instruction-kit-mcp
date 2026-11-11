@@ -759,3 +759,41 @@ class TestPostCheckoutHook(unittest.TestCase):
         self._bootstrap()
 
         self.assertEqual(hook.read_text(encoding="utf-8"), "#!/usr/bin/env python3\nprint('x')\n")
+
+    def test_unreadable_hook_is_left_alone_and_reported(self) -> None:
+        hook = self._hook()
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        raw = "#!/bin/sh\n# zażółć\n".encode("cp1250")
+        hook.write_bytes(raw)
+
+        self._bootstrap()
+
+        self.assertEqual(hook.read_bytes(), raw)
+        kinds = {f.kind for f in run_doctor(self.repo, KIT_ROOT).findings}
+        self.assertIn("missing-worktree-hook", kinds)
+
+    def test_broken_block_is_not_duplicated(self) -> None:
+        from guides.worktree import HOOK_BEGIN
+
+        hook = self._hook()
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text(f"#!/bin/sh\n{HOOK_BEGIN}\necho half\n", encoding="utf-8")
+
+        self._bootstrap()
+
+        self.assertEqual(hook.read_text(encoding="utf-8").count(HOOK_BEGIN), 1)
+        findings = [f for f in run_doctor(self.repo, KIT_ROOT).findings if f.kind == "missing-worktree-hook"]
+        self.assertTrue(any("uszkodzony" in f.message for f in findings))
+
+    @unittest.skipUnless(shutil.which("node"), "brak node")
+    def test_worktree_mjs_add_keeps_hook_for_setup_commands(self) -> None:
+        self._bootstrap()
+        _write_config(self.repo, {
+            "copy": [], "link": [], "venv": "none",
+            "setup": [f"{sys.executable} -c \"import os; open('hookvar','w').write(os.environ.get('KIT_WORKTREE_HOOK', 'unset'))\""],
+        })
+
+        res = _run_wt(self.repo, "add", str(self.root / "wt-s"), "feat-s")
+
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertEqual((self.root / "wt-s" / "hookvar").read_text(encoding="utf-8"), "unset")

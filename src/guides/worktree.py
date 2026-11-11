@@ -273,9 +273,19 @@ def render_hook_block(kit_root: Path) -> str:
     return f"{HOOK_BEGIN}\n{body.rstrip()}\n{HOOK_END}\n"
 
 
-def _read_hook(path: Path) -> str:
-    """Treść hooka z końcami linii LF; pusty string, gdy pliku nie ma."""
-    return path.read_text(encoding="utf-8").replace("\r\n", "\n") if path.is_file() else ""
+def _read_hook(path: Path) -> str | None:
+    """Treść hooka z końcami linii LF; pusty string, gdy pliku nie ma; ``None``, gdy nieczytelny."""
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _broken_block(text: str) -> bool:
+    """Marker początku bloku kita bez pasującego końca (np. ręcznie ucięty blok)."""
+    return HOOK_BEGIN in text and _HOOK_RE.search(text) is None
 
 
 def _is_shell_shebang(line: str) -> bool:
@@ -291,34 +301,40 @@ def install_worktree_hook(workspace_root: Path, kit_root: Path) -> Path | None:
     Dopisz albo podmień blok kita w hooku `post-checkout`; cudza treść zostaje.
 
     Blok idzie zaraz po shebangu, przed cudzą treścią, bo ta może kończyć się ``exec``.
-    Cudzego hooka w innym języku niż powłoka (np. ``#!/usr/bin/env python3``) nie rusza.
+    Nie rusza hooka nieczytelnego, z uszkodzonym blokiem kita albo w innym języku niż
+    powłoka (np. ``#!/usr/bin/env python3``).
 
     Args:
         workspace_root: Root repo aplikacji.
         kit_root: Root kita (z szablonem hooka).
 
     Returns:
-        Path | None: Ścieżka hooka z blokiem kita; ``None``, gdy to nie repo git
-            albo cudzy hook nie jest skryptem powłoki.
+        Path | None: Ścieżka hooka z blokiem kita; ``None``, gdy to nie repo git,
+            hooka nie da się odczytać albo zapisać, albo cudzy hook nie jest skryptem powłoki.
     """
     path = post_checkout_hook_path(workspace_root)
     if path is None:
         return None
     block = render_hook_block(kit_root)
     text = _read_hook(path)
+    if text is None or _broken_block(text):
+        return None
     if _HOOK_RE.search(text):
         new = _HOOK_RE.sub(lambda _m: block, text, count=1)
     elif not text.strip():
         new = f"{SHELL_SHEBANG}\n{block}"
     else:
         shebang, _, rest = text.partition("\n")
-        if not _is_shell_shebang(shebang):
+        if not shebang.startswith("#!") or not _is_shell_shebang(shebang):
             return None
         new = f"{shebang}\n{block}{rest}"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if new != text:
-        path.write_text(new, encoding="utf-8", newline="\n")
-    path.chmod(path.stat().st_mode | 0o111)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if new != text:
+            path.write_text(new, encoding="utf-8", newline="\n")
+        path.chmod(path.stat().st_mode | 0o111)
+    except OSError:
+        return None
     return path
 
 
@@ -336,7 +352,7 @@ def remove_worktree_hook(workspace_root: Path) -> Path | None:
     if path is None:
         return None
     text = _read_hook(path)
-    if not _HOOK_RE.search(text):
+    if text is None or not _HOOK_RE.search(text):
         return None
     rest = _HOOK_RE.sub("", text, count=1)
     if rest.strip() in ("", SHELL_SHEBANG):
@@ -361,7 +377,16 @@ def check_worktree_hook(workspace_root: Path, kit_root: Path | None) -> list[tup
     path = post_checkout_hook_path(workspace_root)
     if path is None:
         return []
-    match = _HOOK_RE.search(_read_hook(path))
+    text = _read_hook(path)
+    if text is None:
+        return [(path, "nie da się odczytać hooka `post-checkout` (kodowanie albo uprawnienia)")]
+    if _broken_block(text):
+        return [(
+            path,
+            "uszkodzony blok kita w hooku `post-checkout` (brak markera końca) — usuń resztki"
+            " bloku i uruchom `kit-ai reload`",
+        )]
+    match = _HOOK_RE.search(text)
     if match is None:
         return [(
             path,
@@ -415,7 +440,11 @@ def main(argv: list[str], kit_root: Path | None = None) -> int:
     if kit_root is None or post_checkout_hook_path(workspace) is None:
         return 0
     if install_worktree_hook(workspace, kit_root) is None:
-        print("  ! hook post-checkout nie jest skryptem powłoki — blok kita nie dopisany", file=sys.stderr)
+        print(
+            "  ! hook post-checkout nieczytelny, z uszkodzonym blokiem kita albo nie w powłoce"
+            " — blok kita nie dopisany (szczegóły: `kit-ai doctor`)",
+            file=sys.stderr,
+        )
         return 0
     print("  + hook post-checkout (sync plików do nowego worktree)")
     relative = _relative_hooks_path(workspace)
