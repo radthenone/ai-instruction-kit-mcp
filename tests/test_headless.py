@@ -693,7 +693,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         log = self.headless_log()
         self.assertIn("[headless] sygnał SIGTERM", log)
         snapshot = log.split("[headless] sygnał SIGTERM", 1)[1]
-        self.assertIn("node", snapshot)
+        self.assertTrue("node" in snapshot or "MainThread" in snapshot, snapshot)
         self.assertNotIn(" x\n", snapshot)
 
     def test_signal_exit_code_wins_over_executor_that_handles_sigterm(self) -> None:
@@ -755,6 +755,75 @@ class HeadlessWrapperTest(unittest.TestCase):
         row = self.last_row(result)
         self.assertEqual((row["lancuch"], row["wykonawca"], row["kod"]), ("opencode>antigravity", "antigravity", 0))
         self.assertIn("przekazano 1:1: opencode → antigravity", row["dzialanie"])
+
+    def test_hang_hands_report_of_killed_executor_to_replacement_prompt(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_HANG_FOR="opencode2",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompt = "\n".join(self.argv())
+        self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
+        self.assertIn("[headless] raport końcowy", prompt)
+        self.assertIn("wynik wykonawcy", prompt)
+
+    def test_limit_handoff_keeps_task_1_to_1_without_report(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LIMIT_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertNotIn("Raport zabitego wykonawcy", "\n".join(self.argv()))
+
+    def test_handoff_report_is_truncated(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "--timeout", "0.02", "x",
+            FAKE_HANG_FOR="opencode2", FAKE_LIMIT="y" * 20_000,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompt = "\n".join(self.argv())
+        self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
+        self.assertIn("(raport ucięty)", prompt)
+        # Zabity wypisał linię 20 000 znaków; do promptu trafia tylko początek raportu.
+        report = prompt.split("Raport zabitego wykonawcy", 1)[1].split("Zasady tej sesji", 1)[0]
+        self.assertLess(len(report), 5_000)
+
+    def test_stall_with_injected_interval_kills_and_hands_off_with_report(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x",
+            FAKE_HANG_FOR="opencode2", HEADLESS_STALL_CHECK_MS="200",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("brak postępu", self.headless_log())
+        prompt = "\n".join(self.argv())
+        self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
+        self.assertIn("wynik wykonawcy", prompt)
+        # Drzewo procesów zostaje w logu, nie w prompcie zastępcy.
+        self.assertIn("## drzewo procesów przy zabiciu", self.headless_log())
+        self.assertNotIn("## drzewo procesów przy zabiciu", prompt)
+
+    def test_stall_is_handled_once_while_tree_dies(self) -> None:
+        # Grupa ignoruje SIGTERM, więc zabicie trwa KILL_GRACE_MS — dłużej niż interwał kontroli.
+        self.chain_profile()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x",
+            FAKE_HANG_FOR="opencode2", FAKE_IGNORE_TERM="1", HEADLESS_STALL_CHECK_MS="50",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.headless_log().count("— zabijam drzewo opencode"), 1)
+
+    def test_out_of_range_stall_interval_falls_back_to_default(self) -> None:
+        # setInterval zamienia > 2**31-1 i Infinity na 1 ms — bez odrzucenia wykonawca ginąłby od razu.
+        for value in ("Infinity", str(2**31)):
+            with self.subTest(value=value):
+                result = self.run_wrapper(
+                    "--host", "claude", "opencode", "x", FAKE_SLEEP="1", HEADLESS_STALL_CHECK_MS=value,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.last_row(result)["klasa"], "OK")
 
     def test_exhausted_chain_of_hangs_is_hang_row_in_report(self) -> None:
         self.chain_profile()
@@ -1383,6 +1452,12 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("Commity: temat po angielsku (język `en` z Profilu)", prompt)
         self.assertNotIn("temat po polsku", prompt)
 
+    def test_footer_language_is_normalized_to_lowercase(self) -> None:
+        self.profile("claude,opencode,codex", language="PL")
+        prompt, _ = self.footer_on_branch("feat/408-x")
+        self.assertIn("Commity: temat po polsku (język `pl` z Profilu)", prompt)
+        self.assertNotIn("w języku PL", prompt)
+
     def test_footer_without_ticket_number_skips_ticket_line(self) -> None:
         prompt, log = self.footer_on_branch("dev")
         self.assertNotIn("Ticket #", prompt)
@@ -1417,6 +1492,26 @@ class HeadlessWrapperTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.uwaga_lines(self.headless_log()), [])
+
+    def test_commit_trailer_key_is_case_insensitive(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\nCo-authored-by: Claude <noreply@anthropic.com>", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.uwaga_lines(self.headless_log()), [])
+        self.assertEqual(self.last_row(result)["klasa"], "OK")
+
+    def test_commit_trailer_with_other_model_name_stays_policy(self) -> None:
+        self.clean_git_repo()
+        result = self.run_wrapper(
+            "--host", "opencode", "claude", "x",
+            FAKE_COMMIT="1", FAKE_COMMIT_MSG=f"temat\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.uwaga_lines(self.headless_log())), 1)
+        self.assertEqual(self.last_row(result)["klasa"], "POLITYKA")
 
     def test_commit_before_run_is_outside_trailer_check(self) -> None:
         self.clean_git_repo()

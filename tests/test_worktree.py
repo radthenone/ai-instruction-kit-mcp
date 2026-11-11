@@ -624,3 +624,177 @@ class TestWorktreeSafety(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stderr)
             branch = subprocess.run(["git", "branch", "--show-current"], cwd=wt, capture_output=True, text=True, encoding="utf-8").stdout.strip()
             self.assertEqual(branch, "remote-only")
+
+
+def _git(repo: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, text=True, check=True,
+        env={**os.environ, **env},
+    )
+
+
+class TestPostCheckoutHook(unittest.TestCase):
+    """Hook `post-checkout` kita: sync plików do każdego nowego worktree (#439)."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        _init_git_repo(self.repo)
+
+    def _bootstrap(self) -> None:
+        from guides.bootstrap import run_bootstrap
+
+        run_bootstrap(target=self.repo, kit_root=KIT_ROOT, clients="claude")
+
+    def _hook(self) -> Path:
+        from guides.worktree import post_checkout_hook_path
+
+        path = post_checkout_hook_path(self.repo)
+        if path is None:
+            raise AssertionError("repo testowe nie ma katalogu hooków")
+        return path
+
+    @unittest.skipUnless(shutil.which("node"), "brak node")
+    def test_worktree_add_copies_files(self) -> None:
+        self._bootstrap()
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-m", "kit")
+        (self.repo / ".env").write_text("SECRET=1\n", encoding="utf-8")
+
+        _git(self.repo, "worktree", "add", "-b", "feat-a", str(self.root / "wt-a"))
+
+        self.assertEqual((self.root / "wt-a" / ".env").read_text(encoding="utf-8"), "SECRET=1\n")
+
+    @unittest.skipUnless(shutil.which("node"), "brak node")
+    def test_worktree_add_from_commit_without_kit_copies_files(self) -> None:
+        old = _git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        self._bootstrap()
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-m", "kit")
+        (self.repo / ".env").write_text("SECRET=2\n", encoding="utf-8")
+
+        _git(self.repo, "worktree", "add", "-b", "old", str(self.root / "wt-old"), old)
+
+        wt = self.root / "wt-old"
+        self.assertFalse((wt / ".ai" / "worktree.mjs").exists())
+        self.assertEqual((wt / ".env").read_text(encoding="utf-8"), "SECRET=2\n")
+
+    @unittest.skipUnless(shutil.which("node"), "brak node")
+    def test_checkout_inside_worktree_does_not_sync_again(self) -> None:
+        self._bootstrap()
+        (self.repo / ".env").write_text("SECRET=3\n", encoding="utf-8")
+        _git(self.repo, "branch", "other")
+        wt = self.root / "wt-c"
+        _git(self.repo, "worktree", "add", "-b", "feat-c", str(wt))
+        (wt / ".env").unlink()
+
+        _git(wt, "checkout", "other")
+
+        self.assertFalse((wt / ".env").exists())
+
+    @unittest.skipUnless(shutil.which("node"), "brak node")
+    def test_worktree_mjs_add_plain_skips_hook(self) -> None:
+        self._bootstrap()
+        (self.repo / ".env").write_text("SECRET=4\n", encoding="utf-8")
+
+        res = _run_wt(self.repo, "add", str(self.root / "wt-p"), "feat-p", "--plain")
+
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertFalse((self.root / "wt-p" / ".env").exists())
+
+    def test_foreign_hook_survives_and_block_is_not_duplicated(self) -> None:
+        hook = self._hook()
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text("#!/usr/bin/env bash\necho foreign\nexec true\n", encoding="utf-8")
+
+        self._bootstrap()
+        self._bootstrap()
+
+        from guides.worktree import HOOK_BEGIN
+
+        text = hook.read_text(encoding="utf-8")
+        self.assertEqual(text.count(HOOK_BEGIN), 1)
+        self.assertTrue(text.startswith("#!/usr/bin/env bash\n" + HOOK_BEGIN))
+        self.assertIn("echo foreign\nexec true\n", text)
+        self.assertNotIn("\r", text)
+        self.assertTrue(os.access(hook, os.X_OK))
+
+    def test_hook_goes_to_core_hooks_path(self) -> None:
+        _git(self.repo, "config", "core.hooksPath", ".githooks")
+
+        self._bootstrap()
+
+        self.assertTrue((self.repo / ".githooks" / "post-checkout").is_file())
+        self.assertFalse((self.repo / ".git" / "hooks" / "post-checkout").exists())
+
+    def test_doctor_reports_missing_hook(self) -> None:
+        self._bootstrap()
+        kinds = {f.kind for f in run_doctor(self.repo, KIT_ROOT).findings}
+        self.assertNotIn("missing-worktree-hook", kinds)
+
+        self._hook().unlink()
+
+        kinds = {f.kind for f in run_doctor(self.repo, KIT_ROOT).findings}
+        self.assertIn("missing-worktree-hook", kinds)
+
+    def test_remove_keeps_foreign_hook_and_deletes_own(self) -> None:
+        from guides.bootstrap import run_bootstrap
+
+        self._bootstrap()
+        run_bootstrap(target=self.repo, kit_root=KIT_ROOT, clients="claude", remove=True)
+        self.assertFalse(self._hook().exists())
+
+        self._hook().write_text("#!/bin/sh\necho foreign\n", encoding="utf-8")
+        self._bootstrap()
+        run_bootstrap(target=self.repo, kit_root=KIT_ROOT, clients="claude", remove=True)
+        self.assertEqual(self._hook().read_text(encoding="utf-8"), "#!/bin/sh\necho foreign\n")
+
+    def test_non_shell_foreign_hook_is_left_alone(self) -> None:
+        hook = self._hook()
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text("#!/usr/bin/env python3\nprint('x')\n", encoding="utf-8")
+
+        self._bootstrap()
+
+        self.assertEqual(hook.read_text(encoding="utf-8"), "#!/usr/bin/env python3\nprint('x')\n")
+
+    def test_unreadable_hook_is_left_alone_and_reported(self) -> None:
+        hook = self._hook()
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        raw = "#!/bin/sh\n# zażółć\n".encode("cp1250")
+        hook.write_bytes(raw)
+
+        self._bootstrap()
+
+        self.assertEqual(hook.read_bytes(), raw)
+        kinds = {f.kind for f in run_doctor(self.repo, KIT_ROOT).findings}
+        self.assertIn("missing-worktree-hook", kinds)
+
+    def test_broken_block_is_not_duplicated(self) -> None:
+        from guides.worktree import HOOK_BEGIN
+
+        hook = self._hook()
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text(f"#!/bin/sh\n{HOOK_BEGIN}\necho half\n", encoding="utf-8")
+
+        self._bootstrap()
+
+        self.assertEqual(hook.read_text(encoding="utf-8").count(HOOK_BEGIN), 1)
+        findings = [f for f in run_doctor(self.repo, KIT_ROOT).findings if f.kind == "missing-worktree-hook"]
+        self.assertTrue(any("uszkodzony" in f.message for f in findings))
+
+    @unittest.skipUnless(shutil.which("node"), "brak node")
+    def test_worktree_mjs_add_keeps_hook_for_setup_commands(self) -> None:
+        self._bootstrap()
+        _write_config(self.repo, {
+            "copy": [], "link": [], "venv": "none",
+            "setup": [f"{sys.executable} -c \"import os; open('hookvar','w').write(os.environ.get('KIT_WORKTREE_HOOK', 'unset'))\""],
+        })
+
+        res = _run_wt(self.repo, "add", str(self.root / "wt-s"), "feat-s")
+
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertEqual((self.root / "wt-s" / "hookvar").read_text(encoding="utf-8"), "unset")

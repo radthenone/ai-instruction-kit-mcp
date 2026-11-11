@@ -29,3 +29,18 @@ models:
     standard: sonnet
     heavy: opus
     takeover: haiku
+
+worktree:
+  copy:
+    - .mcp.json
+    - .vscode/mcp.json
+    - .codex/config.toml
+    - .agents/mcp_config.json
+    - opencode.json
+    - .ai/.kit-bootstrap.json
+    - .ai/.kit-doctor.json
+    - .env
+    - .claude/settings.local.json
+  link:
+    - .agents/skills     # skille Codexa i Antigravity generowane przez reload: jedna kopia, zawsze aktualna
+  venv: auto             # .venv w roocie: kit sam robi nakładkę

@@ -1337,6 +1337,8 @@ remove_kit() {
   kit_rm .ai/headless.mjs
   kit_rm .ai/worktree.mjs
   kit_rm .ai/worktree.json
+  PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_worktree.py" \
+    --remove-hook "$TARGET" || true
   kit_rm .ai/night-run-watchdog.sh
   kit_rm "$DESIGN_HANDOFF"
   echo ""
