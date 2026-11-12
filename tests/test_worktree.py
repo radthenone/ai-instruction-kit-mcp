@@ -820,4 +820,5 @@ class TestOrcaWorktreeConfig(unittest.TestCase):
         setup_cmd = scripts["setup"]
         self.assertIsInstance(setup_cmd, str)
         self.assertEqual(setup_cmd.strip(), "node .ai/worktree.mjs sync .")
-        self.assertNotIn("worktree.mjs add", setup_cmd)
+        # Orca odpala komendę w katalogu worktree, więc skrypt musi być trackowany pod tą ścieżką.
+        self.assertTrue((KIT_ROOT / ".ai" / "worktree.mjs").is_file())
