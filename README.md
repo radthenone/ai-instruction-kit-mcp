@@ -977,7 +977,7 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu / naprawa doctora | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"`, `/kit-project-edit "napraw zgłoszenia doctora"` |
 | `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
 | `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
-| `/retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); `--kit` w repo kita: propozycje z wielu repo; nic nie zmienia | `kit-ai retro scan`, potem `/retro`; w repo kita `kit-ai retro report`, potem `/retro --kit` |
+| `/kit-retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); `--kit` w repo kita: propozycje z wielu repo; nic nie zmienia | `kit-ai retro scan`, potem `/kit-retro`; w repo kita `kit-ai retro report`, potem `/kit-retro --kit` |
 | `/night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
 
 
@@ -1074,7 +1074,7 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 | `/git-check`                         | `templates/shared/agents/git-check.md`           |
 | `/git-commit`                        | `templates/shared/agents/git-commit.md`          |
 | `/git-end`                           | `templates/shared/agents/git-end.md`             |
-| `/retro` (skill)                     | `templates/shared/skills/retro/SKILL.md`         |
+| `/kit-retro` (skill)                     | `templates/shared/skills/kit-retro/SKILL.md`         |
 | `/compact` (Cursor)                  | `templates/cursor/skills/compact/SKILL.md`       |
 | `/review-architecture`               | `templates/shared/agents/review-architecture.md` |
 | `/review-backend`                    | `templates/shared/agents/review-backend.md`      |

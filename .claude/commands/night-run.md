@@ -548,7 +548,7 @@ Ostatni krok przed raportem, raz na noc. Nie blokuje raportu: gdy skan albo klas
 1. Skan sesji i przebiegów headless tego repo od daty nocy (`YYYY-MM-DD` z nazwy katalogu CTX):
    `kit-ai retro scan --since <YYYY-MM-DD>`. Wynik podaje liczby i katalog z zapisami JSONL.
 2. Zero znalezisk → `Retro: 0 znalezisk.` i koniec kroku.
-3. Są znaleziska → uruchom skill `/retro` na zapisach z tej nocy: pliki `*.jsonl` z katalogu z kroku 1, których `scanned_at` jest z tego przebiegu. Tabelę z ocenami zostaw w rozmowie, nie zapisuj jej do pliku.
+3. Są znaleziska → uruchom skill `/kit-retro` na zapisach z tej nocy: pliki `*.jsonl` z katalogu z kroku 1, których `scanned_at` jest z tego przebiegu. Tabelę z ocenami zostaw w rozmowie, nie zapisuj jej do pliku.
 4. Do raportu wpisz linię `Retro: …` z liczbami per kategoria (w bloku raportu poniżej).
 
 Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i raportu. Issue zakłada człowiek po akceptacji (`/create-task`), więc nie zakładasz issue ani nie piszesz w GitHubie z tego kroku.

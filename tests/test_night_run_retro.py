@@ -1,6 +1,6 @@
 """Krok Retro w /night-run (#372): ostatni przed NIGHT-RUN REPORT, tylko propozycje.
 
-Skan (`kit-ai retro scan`) i klasyfikacja (`/retro`) wracają do rozmowy, a raport dostaje
+Skan (`kit-ai retro scan`) i klasyfikacja (`/kit-retro`) wracają do rozmowy, a raport dostaje
 jedną linię podsumowania. Issue z tych znalezisk zakłada człowiek po akceptacji, nie
 orkiestrator, i krok nie może zablokować raportu, gdy skan się nie uda.
 """
@@ -47,8 +47,8 @@ class NightRunRetroStepTests(unittest.TestCase):
     def test_step_scans_then_classifies_with_skill(self) -> None:
         step = retro_step(self.text)
         self.assertIn("kit-ai retro scan --since", step)
-        self.assertIn("`/retro`", step)
-        self.assertLess(step.index("kit-ai retro scan"), step.index("`/retro`"))
+        self.assertIn("`/kit-retro`", step)
+        self.assertLess(step.index("kit-ai retro scan"), step.index("`/kit-retro`"))
 
     def test_step_is_non_blocking(self) -> None:
         self.assertIn("pominięte", retro_step(self.text))

@@ -1,4 +1,4 @@
-"""Skill `/retro` (#372): kontrakt źródła i degradacja do jednego pliku.
+"""Skill `/kit-retro` (#372): kontrakt źródła i degradacja do jednego pliku.
 
 Skill klasyfikuje znaleziska ze skanu `kit-ai retro scan` i niczego nie zapisuje w repo.
 Testy pilnują rzeczy, które łatwo zepsuć po cichu: nazwy skilla (od niej zależy komenda
@@ -8,13 +8,15 @@ degradację do jednego pliku — bez `references/`, `scripts/` ani `assets/`.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = KIT_ROOT / "templates" / "shared" / "skills" / "retro"
+SKILL_DIR = KIT_ROOT / "templates" / "shared" / "skills" / "kit-retro"
 SKILL_FILE = SKILL_DIR / "SKILL.md"
 sys.path.insert(0, str(KIT_ROOT / "scripts"))
 
@@ -22,8 +24,12 @@ from install_shared_skills import (  # noqa: E402
     DEGRADED_CLIENTS,
     install_degraded,
     install_native,
+    remove_renamed,
     parse_frontmatter,
 )
+
+# Początek opisu skilla kita sprzed zmiany nazwy (#422) — taki sam we wszystkich wersjach.
+OLD_KIT_SKILL = "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, zapisy JSONL"
 
 # Cztery kategorie z opisu #372 (taksonomia z `mattpocock-skills:retro`).
 CATEGORIES = ("kit", "projekt", "agent", "zewnętrzne")
@@ -50,7 +56,7 @@ class RetroSkillSourceTests(unittest.TestCase):
 
     def test_description_names_trigger_and_read_only_contract(self) -> None:
         description = self.meta.get("description", "")
-        self.assertIn("/retro", description)
+        self.assertIn("/kit-retro", description)
         self.assertIn("kit-ai retro scan", description)
         self.assertIn("Nie edytuje plików", description)
 
@@ -71,12 +77,12 @@ class RetroSkillSourceTests(unittest.TestCase):
         self.assertIn("nie zakłada issue", self.body)
 
     def test_description_names_kit_trigger(self) -> None:
-        """Tryb `--kit` ma być w opisie, inaczej skill nie odpali się na `/retro --kit`."""
+        """Tryb `--kit` ma być w opisie, inaczej skill nie odpali się na `/kit-retro --kit`."""
         self.assertIn("--kit", self.meta.get("description", ""))
 
     def test_body_describes_kit_mode_over_the_report(self) -> None:
-        """`/retro --kit` czyta agregację z `kit-ai retro report`, a nie pojedynczy skan."""
-        self.assertIn("`/retro --kit`", self.body)
+        """`/kit-retro --kit` czyta agregację z `kit-ai retro report`, a nie pojedynczy skan."""
+        self.assertIn("`/kit-retro --kit`", self.body)
         self.assertIn("`kit-ai retro report`", self.body)
 
     def test_kit_mode_routes_cards_and_keeps_dedup_marker(self) -> None:
@@ -92,7 +98,7 @@ class RetroSkillSourceTests(unittest.TestCase):
         """`/kit-project-edit` nie zakłada issue, więc propozycja `projekt` wracałaby w każdym raporcie (#410)."""
         kit_mode = self.body[self.body.index("## Tryb `--kit`") : self.body.index("## Zasady")]
         self.assertIn("tylko dla `kit` i `agent`", kit_mode)
-        self.assertIn("znalezisk projektowych, uruchom `/retro` w repo", kit_mode)
+        self.assertIn("znalezisk projektowych, uruchom `/kit-retro` w repo", kit_mode)
 
     def test_kit_mode_dedups_against_issues_in_every_state(self) -> None:
         self.assertIn("otwartym albo zamkniętym", self.body)
@@ -121,7 +127,7 @@ class CreateTaskRetroMarkerTests(unittest.TestCase):
 
 class RetroSkillDegradationTests(unittest.TestCase):
     def test_degraded_clients_get_one_complete_file(self) -> None:
-        """Klient bez natywnych skilli dostaje komendę `/retro` jako jeden kompletny plik."""
+        """Klient bez natywnych skilli dostaje komendę `/kit-retro` jako jeden kompletny plik."""
         for client, fmt in DEGRADED_CLIENTS.items():
             with self.subTest(client=client), tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp)
@@ -137,7 +143,65 @@ class RetroSkillDegradationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp)
             install_native(SKILL_DIR, dest)
-            self.assertEqual(sorted(p.name for p in (dest / "retro").iterdir()), ["SKILL.md"])
+            self.assertEqual(sorted(p.name for p in (dest / "kit-retro").iterdir()), ["SKILL.md"])
+
+    def test_reload_removes_kit_skill_under_old_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro").mkdir()
+            (dest / "retro" / "SKILL.md").write_text(OLD_KIT_SKILL, encoding="utf-8")
+            (dest / "retro.md").write_text(OLD_KIT_SKILL, encoding="utf-8")
+            remove_renamed("kit-retro", dest, None)
+            remove_renamed("kit-retro", dest, ".md")
+            self.assertEqual(list(dest.iterdir()), [])
+
+    def test_reload_keeps_foreign_skill_under_old_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro").mkdir()
+            (dest / "retro" / "SKILL.md").write_text("Conduct a retrospective on a coding session.", encoding="utf-8")
+            (dest / "retro.md").write_text("cudza komenda", encoding="utf-8")
+            remove_renamed("kit-retro", dest, None)
+            remove_renamed("kit-retro", dest, ".md")
+            self.assertTrue((dest / "retro" / "SKILL.md").is_file())
+            self.assertTrue((dest / "retro.md").is_file())
+
+    def test_reload_keeps_foreign_skill_mentioning_kit_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro").mkdir()
+            (dest / "retro" / "SKILL.md").write_text("Mój skill; po sesji odpal kit-ai retro scan.", encoding="utf-8")
+            (dest / "retro.md").write_text("Moja komenda: kit-ai retro scan", encoding="utf-8")
+            remove_renamed("kit-retro", dest, None)
+            remove_renamed("kit-retro", dest, ".md")
+            self.assertTrue((dest / "retro" / "SKILL.md").is_file())
+            self.assertTrue((dest / "retro.md").is_file())
+
+    def test_reload_keeps_old_kit_skill_with_user_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro" / "scripts").mkdir(parents=True)
+            (dest / "retro" / "SKILL.md").write_text(OLD_KIT_SKILL, encoding="utf-8")
+            (dest / "retro" / "scripts" / "mine.sh").write_text("echo moje", encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                remove_renamed("kit-retro", dest, None)
+            self.assertTrue((dest / "retro" / "scripts" / "mine.sh").is_file())
+            self.assertIn("zostawiam", err.getvalue())
+
+    def test_reload_keeps_link_under_old_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "skills"
+            target = Path(tmp) / "elsewhere"
+            dest.mkdir()
+            target.mkdir()
+            (target / "SKILL.md").write_text("kit-ai retro scan", encoding="utf-8")
+            try:
+                (dest / "retro").symlink_to(target, target_is_directory=True)
+            except OSError:
+                self.skipTest("brak uprawnień do symlinków")
+            remove_renamed("kit-retro", dest, None)
+            self.assertTrue((target / "SKILL.md").is_file())
+            self.assertTrue((dest / "retro").is_symlink())
 
 
 if __name__ == "__main__":

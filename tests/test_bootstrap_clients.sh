@@ -152,16 +152,32 @@ test -f "$TMP/skills/.github/prompts/skill-authoring.prompt.md"
 test -f "$TMP/skills/.kiro/agents/skill-authoring.md"
 test -f "$TMP/skills/.kilocode/workflows/skill-authoring.md"
 test -f "$TMP/skills/.opencode/command/skill-authoring.md"
-# Skill /retro (#372) idzie tą samą drogą: natywnie u czterech klientów, komenda u reszty.
-test -f "$TMP/skills/.claude/skills/retro/SKILL.md"
-test -f "$TMP/skills/.cursor/skills/retro/SKILL.md"
-test -f "$TMP/skills/.agents/skills/retro/SKILL.md"
-test -f "$TMP/skills/.codex/skills/retro/SKILL.md"
-test -f "$TMP/skills/.github/prompts/retro.prompt.md"
-test -f "$TMP/skills/.kiro/agents/retro.md"
-test -f "$TMP/skills/.kilocode/workflows/retro.md"
-test -f "$TMP/skills/.opencode/command/retro.md"
+# Skill /kit-retro (#372) idzie tą samą drogą: natywnie u czterech klientów, komenda u reszty.
+test -f "$TMP/skills/.claude/skills/kit-retro/SKILL.md"
+test -f "$TMP/skills/.cursor/skills/kit-retro/SKILL.md"
+test -f "$TMP/skills/.agents/skills/kit-retro/SKILL.md"
+test -f "$TMP/skills/.codex/skills/kit-retro/SKILL.md"
+test -f "$TMP/skills/.github/prompts/kit-retro.prompt.md"
+test -f "$TMP/skills/.kiro/agents/kit-retro.md"
+test -f "$TMP/skills/.kilocode/workflows/kit-retro.md"
+test -f "$TMP/skills/.opencode/command/kit-retro.md"
 echo "OK  shared skills u wszystkich klientów (4 natywnie, 4 przez degradację)"
+
+# Rename retro → kit-retro (#422): reload kasuje kitową kopię spod starej nazwy,
+# cudzy skill `retro` (np. z mattpocock-skills) zostaje.
+mkdir -p "$TMP/skills/.claude/skills/retro" "$TMP/skills/.codex/skills/retro"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.claude/skills/retro/SKILL.md"
+echo "Conduct a retrospective on a coding session." > "$TMP/skills/.codex/skills/retro/SKILL.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.opencode/command/retro.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.github/prompts/retro.prompt.md"
+"$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
+test ! -e "$TMP/skills/.claude/skills/retro"
+test ! -e "$TMP/skills/.opencode/command/retro.md"
+test ! -e "$TMP/skills/.github/prompts/retro.prompt.md"
+test -f "$TMP/skills/.codex/skills/retro/SKILL.md"
+rm -rf "$TMP/skills/.codex/skills/retro"
+test -f "$TMP/skills/.claude/skills/kit-retro/SKILL.md"
+echo "OK  reload sprząta kitowy skill retro po zmianie nazwy, cudzy zostaje"
 
 # night-run (#71): model pod /goal wywołuje go sam, więc musi trafić do każdego klienta,
 # a frontmatter nie może mieć readonly ani disable-model-invocation.
@@ -232,5 +248,17 @@ test -f "$TMP/skills/.claude/skills/skill-authoring/SKILL.md"
 # Cursor odznaczony w tym samym przebiegu — jego skille znikają razem z resztą.
 test ! -e "$TMP/skills/.cursor/skills"
 echo "OK  prune kasuje kitowe skille, zostawia cudze"
+
+# Odznaczony klient: kitowy skill spod starej nazwy (#422) też znika, cudzy zostaje.
+"$BOOT" "$TMP/skills" --clients claude,opencode,codex --from "$ROOT" >/dev/null
+mkdir -p "$TMP/skills/.codex/skills/retro" "$TMP/skills/.agents/skills/retro"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.codex/skills/retro/SKILL.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.opencode/command/retro.md"
+echo "Conduct a retrospective on a coding session." > "$TMP/skills/.agents/skills/retro/SKILL.md"
+"$BOOT" "$TMP/skills" --clients claude --from "$ROOT" >/dev/null
+test ! -e "$TMP/skills/.codex/skills/retro"
+test ! -e "$TMP/skills/.opencode/command/retro.md"
+test -f "$TMP/skills/.agents/skills/retro/SKILL.md"
+echo "OK  prune odznaczonego klienta sprząta kitowy skill retro, cudzy zostaje"
 
 echo "All bootstrap --clients checks passed."

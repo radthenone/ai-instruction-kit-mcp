@@ -268,6 +268,23 @@ prune_client() {
     fi
     kit_rm "$rel"
   done <<< "$files"
+  # Kitowe skille spod nazw sprzed zmiany (#422) — lista wyżej zna tylko nowe nazwy.
+  # Mapa katalogów 1:1 z wywołaniami copy_shared_skills.
+  local skills_dir=""
+  case "$id" in
+    cursor) skills_dir=".cursor/skills" ;;
+    claude) skills_dir=".claude/skills" ;;
+    codex) skills_dir=".codex/skills" ;;
+    vscode) skills_dir=".github/prompts" ;;
+    kiro) skills_dir=".kiro/agents" ;;
+    kilo) skills_dir=".kilocode/workflows" ;;
+    antigravity) skills_dir=".agents/skills" ;;
+    opencode) skills_dir=".opencode/command" ;;
+  esac
+  if [[ -d "$TARGET/$skills_dir" ]]; then
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed "$id" "$TARGET/$skills_dir"
+    rmdir "$TARGET/$skills_dir" 2>/dev/null && rmdir "$TARGET/$(dirname "$skills_dir")" 2>/dev/null || true
+  fi
   # Pozostałości starszych wersji kita, których dzisiejsza instalacja już nie kładzie.
   case "$id" in
     cursor|claude)
