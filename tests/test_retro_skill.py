@@ -35,6 +35,8 @@ OLD_KIT_SKILL = "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai r
 CATEGORIES = ("kit", "projekt", "agent", "zewnętrzne")
 # Pola rekordu `finding` z `kit-ai retro scan` (src/guides/retro.py), które skill czyta.
 RECORD_FIELDS = ("kind", "fingerprint", "count", "replay", "evidence")
+# Samo „retro” w cudzysłowie jako fraza triggera — koliduje z `/retro` z mattpocock-skills (#422).
+BARE_RETRO_TRIGGER = "„retro[“”]"
 
 
 class RetroSkillSourceTests(unittest.TestCase):
@@ -87,37 +89,33 @@ class RetroSkillSourceTests(unittest.TestCase):
         (np. 'kit-ai retro scan', '/kit-retro'), ale nie jako osobne słowo
         cytowane cudzysłowem (np. „retro“) — traktowane jako trigger skilla.
         """
-        import re as _re
-
         description = self.meta.get("description", "")
         # Szukamy „retro“ jako samodzielnie cytowanej frazy triggera,
         # ale nie jako fragmentu dłuższej nazwy (kit-retro, retro scan etc.)
-        bare_trigger = _re.search("[\u201e\u201c]retro[\u201e\u201c]", description)
-        self.assertIsNone(
-            bare_trigger,
+        self.assertNotRegex(
+            description,
+            BARE_RETRO_TRIGGER,
             "Opis nie może zawierać samodzielnego retro jako frazy triggera "
             "— to koliduje z /retro z mattpocock-skills.",
         )
 
+    def test_bare_retro_pattern_catches_the_old_description(self) -> None:
+        """Wzorzec ma łapać opis sprzed #422, inaczej test wyżej niczego nie pilnuje."""
+        self.assertRegex("pisze `/kit-retro`, „retro”, „przejrzyj sesję”", BARE_RETRO_TRIGGER)
+
     def test_description_defers_general_retro_to_mattpocock(self) -> None:
         """Opis ma wskazywać /retro z mattpocock-skills dla ogólnej retrospektywy (#422)."""
-        description = self.meta.get("description", "")
+        # Cały zwrot: samo "/retro" siedzi też w ścieżce cache `kit-ai/retro/`.
         self.assertIn(
-            "/retro",
-            description,
-            "Opis powinien wspomnieć /retro (mattpocock) dla ogólnej retrospektywy.",
-        )
-        self.assertIn(
-            "mattpocock",
-            description,
-            "Opis powinien wskazać mattpocock-skills jako właściciela /retro.",
+            "`/retro` z mattpocock-skills",
+            self.meta.get("description", ""),
+            "Opis powinien odsyłać ogólną retrospektywę do /retro z mattpocock-skills.",
         )
 
     def test_body_heading_uses_kit_retro_name(self) -> None:
         """Nagłówek H1 w body ma używać nazwy 'kit-retro', nie samego 'Retro' (#422)."""
-        self.assertIn(
-            "# kit-retro",
-            self.body,
+        self.assertTrue(
+            self.body.startswith("# kit-retro — klasyfikacja znalezisk"),
             "Nagłówek H1 musi brzmieć '# kit-retro — klasyfikacja znalezisk'.",
         )
 
