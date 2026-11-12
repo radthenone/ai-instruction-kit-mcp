@@ -8,6 +8,8 @@ degradację do jednego pliku — bez `references/`, `scripts/` ani `assets/`.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -25,6 +27,9 @@ from install_shared_skills import (  # noqa: E402
     remove_renamed,
     parse_frontmatter,
 )
+
+# Początek opisu skilla kita sprzed zmiany nazwy (#422) — taki sam we wszystkich wersjach.
+OLD_KIT_SKILL = "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, zapisy JSONL"
 
 # Cztery kategorie z opisu #372 (taksonomia z `mattpocock-skills:retro`).
 CATEGORIES = ("kit", "projekt", "agent", "zewnętrzne")
@@ -144,8 +149,8 @@ class RetroSkillDegradationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp)
             (dest / "retro").mkdir()
-            (dest / "retro" / "SKILL.md").write_text("stary skill kita: kit-ai retro scan", encoding="utf-8")
-            (dest / "retro.md").write_text("stara komenda kita: kit-ai retro scan", encoding="utf-8")
+            (dest / "retro" / "SKILL.md").write_text(OLD_KIT_SKILL, encoding="utf-8")
+            (dest / "retro.md").write_text(OLD_KIT_SKILL, encoding="utf-8")
             remove_renamed("kit-retro", dest, None)
             remove_renamed("kit-retro", dest, ".md")
             self.assertEqual(list(dest.iterdir()), [])
@@ -160,6 +165,28 @@ class RetroSkillDegradationTests(unittest.TestCase):
             remove_renamed("kit-retro", dest, ".md")
             self.assertTrue((dest / "retro" / "SKILL.md").is_file())
             self.assertTrue((dest / "retro.md").is_file())
+
+    def test_reload_keeps_foreign_skill_mentioning_kit_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro").mkdir()
+            (dest / "retro" / "SKILL.md").write_text("Mój skill; po sesji odpal kit-ai retro scan.", encoding="utf-8")
+            (dest / "retro.md").write_text("Moja komenda: kit-ai retro scan", encoding="utf-8")
+            remove_renamed("kit-retro", dest, None)
+            remove_renamed("kit-retro", dest, ".md")
+            self.assertTrue((dest / "retro" / "SKILL.md").is_file())
+            self.assertTrue((dest / "retro.md").is_file())
+
+    def test_reload_keeps_old_kit_skill_with_user_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro" / "scripts").mkdir(parents=True)
+            (dest / "retro" / "SKILL.md").write_text(OLD_KIT_SKILL, encoding="utf-8")
+            (dest / "retro" / "scripts" / "mine.sh").write_text("echo moje", encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                remove_renamed("kit-retro", dest, None)
+            self.assertTrue((dest / "retro" / "scripts" / "mine.sh").is_file())
+            self.assertIn("zostawiam", err.getvalue())
 
     def test_reload_keeps_link_under_old_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

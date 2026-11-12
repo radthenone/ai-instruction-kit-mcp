@@ -50,10 +50,16 @@ DEGRADED_CLIENTS = {
 # Katalogi, które skill może mieć obok SKILL.md (kolejność jak w dokumentacji).
 BUNDLED_DIRS = ("scripts", "references", "assets")
 
-# Skille kita po zmianie nazwy: nowa nazwa → (stara nazwa, fraza z treści kitowego
-# skilla). Starą kopię kasujemy tylko, gdy zawiera frazę — pod tą samą nazwą może
-# leżeć cudzy skill (np. `retro` z mattpocock-skills, #422).
-RENAMED_SKILLS = {"kit-retro": ("retro", "kit-ai retro scan")}
+# Skille kita po zmianie nazwy: nowa nazwa → (stara nazwa, początek opisu kitowego
+# skilla, wspólny dla wszystkich jego wersji i formatów). Starą kopię kasujemy tylko,
+# gdy go zawiera — pod tą samą nazwą może leżeć cudzy skill (np. `retro` z
+# mattpocock-skills, #422), także taki, który wspomina o komendzie kita.
+RENAMED_SKILLS = {
+    "kit-retro": (
+        "retro",
+        "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`",
+    )
+}
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -179,7 +185,15 @@ def remove_renamed(skill_name: str, dest_dir: Path, suffix: str | None) -> None:
     try:
         if marker not in content.read_text(encoding="utf-8"):
             return
+        # Kit instalował sam SKILL.md — dodatkowe pliki są użytkownika.
+        extra = suffix is None and any(p.name != "SKILL.md" for p in old.iterdir())
     except (OSError, UnicodeDecodeError):
+        return
+    if extra:
+        print(
+            f"UWAGA: zostawiam {old} — skill kita sprzed zmiany nazwy ma dodatkowe pliki, usuń ręcznie",
+            file=sys.stderr,
+        )
         return
     try:
         if suffix is None:

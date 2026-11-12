@@ -166,10 +166,10 @@ echo "OK  shared skills u wszystkich klientów (4 natywnie, 4 przez degradację)
 # Rename retro → kit-retro (#422): reload kasuje kitową kopię spod starej nazwy,
 # cudzy skill `retro` (np. z mattpocock-skills) zostaje.
 mkdir -p "$TMP/skills/.claude/skills/retro" "$TMP/skills/.codex/skills/retro"
-echo "stary skill kita: kit-ai retro scan" > "$TMP/skills/.claude/skills/retro/SKILL.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.claude/skills/retro/SKILL.md"
 echo "Conduct a retrospective on a coding session." > "$TMP/skills/.codex/skills/retro/SKILL.md"
-echo "stara komenda kita: kit-ai retro scan" > "$TMP/skills/.opencode/command/retro.md"
-echo "stara komenda kita: kit-ai retro scan" > "$TMP/skills/.github/prompts/retro.prompt.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.opencode/command/retro.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.github/prompts/retro.prompt.md"
 "$BOOT" "$TMP/skills" --clients all --from "$ROOT" >/dev/null
 test ! -e "$TMP/skills/.claude/skills/retro"
 test ! -e "$TMP/skills/.opencode/command/retro.md"
@@ -252,8 +252,8 @@ echo "OK  prune kasuje kitowe skille, zostawia cudze"
 # Odznaczony klient: kitowy skill spod starej nazwy (#422) też znika, cudzy zostaje.
 "$BOOT" "$TMP/skills" --clients claude,opencode,codex --from "$ROOT" >/dev/null
 mkdir -p "$TMP/skills/.codex/skills/retro" "$TMP/skills/.agents/skills/retro"
-echo "stary skill kita: kit-ai retro scan" > "$TMP/skills/.codex/skills/retro/SKILL.md"
-echo "stara komenda kita: kit-ai retro scan" > "$TMP/skills/.opencode/command/retro.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.codex/skills/retro/SKILL.md"
+echo 'Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, stara kopia kita' > "$TMP/skills/.opencode/command/retro.md"
 echo "Conduct a retrospective on a coding session." > "$TMP/skills/.agents/skills/retro/SKILL.md"
 "$BOOT" "$TMP/skills" --clients claude --from "$ROOT" >/dev/null
 test ! -e "$TMP/skills/.codex/skills/retro"
