@@ -80,6 +80,47 @@ class RetroSkillSourceTests(unittest.TestCase):
         """Tryb `--kit` ma być w opisie, inaczej skill nie odpali się na `/kit-retro --kit`."""
         self.assertIn("--kit", self.meta.get("description", ""))
 
+    def test_description_does_not_trigger_on_bare_retro(self) -> None:
+        """'retro' jako samodzielna fraza triggera koliduje z /retro Matta (#422).
+
+        Opis może zawierać 'retro' jako część fraz specyficznych dla kita
+        (np. 'kit-ai retro scan', '/kit-retro'), ale nie jako osobne słowo
+        cytowane cudzysłowem (np. „retro“) — traktowane jako trigger skilla.
+        """
+        import re as _re
+
+        description = self.meta.get("description", "")
+        # Szukamy „retro“ jako samodzielnie cytowanej frazy triggera,
+        # ale nie jako fragmentu dłuższej nazwy (kit-retro, retro scan etc.)
+        bare_trigger = _re.search("[\u201e\u201c]retro[\u201e\u201c]", description)
+        self.assertIsNone(
+            bare_trigger,
+            "Opis nie może zawierać samodzielnego retro jako frazy triggera "
+            "— to koliduje z /retro z mattpocock-skills.",
+        )
+
+    def test_description_defers_general_retro_to_mattpocock(self) -> None:
+        """Opis ma wskazywać /retro z mattpocock-skills dla ogólnej retrospektywy (#422)."""
+        description = self.meta.get("description", "")
+        self.assertIn(
+            "/retro",
+            description,
+            "Opis powinien wspomnieć /retro (mattpocock) dla ogólnej retrospektywy.",
+        )
+        self.assertIn(
+            "mattpocock",
+            description,
+            "Opis powinien wskazać mattpocock-skills jako właściciela /retro.",
+        )
+
+    def test_body_heading_uses_kit_retro_name(self) -> None:
+        """Nagłówek H1 w body ma używać nazwy 'kit-retro', nie samego 'Retro' (#422)."""
+        self.assertIn(
+            "# kit-retro",
+            self.body,
+            "Nagłówek H1 musi brzmieć '# kit-retro — klasyfikacja znalezisk'.",
+        )
+
     def test_body_describes_kit_mode_over_the_report(self) -> None:
         """`/kit-retro --kit` czyta agregację z `kit-ai retro report`, a nie pojedynczy skan."""
         self.assertIn("`/kit-retro --kit`", self.body)
