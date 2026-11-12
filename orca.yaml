@@ -1,0 +1,2 @@
+scripts:
+  setup: node .ai/worktree.mjs sync .

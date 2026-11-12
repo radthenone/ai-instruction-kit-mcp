@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 from guides.doctor import run_doctor
 from guides.manifest import load_manifest
 from guides.questions import render_catalog
@@ -798,3 +800,24 @@ class TestPostCheckoutHook(unittest.TestCase):
 
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertEqual((self.root / "wt-s" / "hookvar").read_text(encoding="utf-8"), "unset")
+
+
+class TestOrcaWorktreeConfig(unittest.TestCase):
+    """Testy konfiguracji orca.yaml dla worktree w Orce (#450)."""
+
+    def test_orca_yaml_runs_worktree_sync(self) -> None:
+        """orca.yaml istnieje w korzeniu repo i wywołuje sync (bez add, ADR-0014)."""
+        orca_yaml = KIT_ROOT / "orca.yaml"
+        self.assertTrue(orca_yaml.is_file(), "Brak pliku orca.yaml w korzeniu repozytorium")
+
+        content = yaml.safe_load(orca_yaml.read_text(encoding="utf-8"))
+        self.assertIsInstance(content, dict)
+        self.assertIn("scripts", content)
+        scripts = content["scripts"]
+        self.assertIsInstance(scripts, dict)
+        self.assertIn("setup", scripts)
+
+        setup_cmd = scripts["setup"]
+        self.assertIsInstance(setup_cmd, str)
+        self.assertEqual(setup_cmd.strip(), "node .ai/worktree.mjs sync .")
+        self.assertNotIn("worktree.mjs add", setup_cmd)
