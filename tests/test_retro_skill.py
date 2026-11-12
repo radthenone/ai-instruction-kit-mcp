@@ -1,4 +1,4 @@
-"""Skill `/retro` (#372): kontrakt źródła i degradacja do jednego pliku.
+"""Skill `/kit-retro` (#372): kontrakt źródła i degradacja do jednego pliku.
 
 Skill klasyfikuje znaleziska ze skanu `kit-ai retro scan` i niczego nie zapisuje w repo.
 Testy pilnują rzeczy, które łatwo zepsuć po cichu: nazwy skilla (od niej zależy komenda
@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = KIT_ROOT / "templates" / "shared" / "skills" / "retro"
+SKILL_DIR = KIT_ROOT / "templates" / "shared" / "skills" / "kit-retro"
 SKILL_FILE = SKILL_DIR / "SKILL.md"
 sys.path.insert(0, str(KIT_ROOT / "scripts"))
 
@@ -50,7 +50,7 @@ class RetroSkillSourceTests(unittest.TestCase):
 
     def test_description_names_trigger_and_read_only_contract(self) -> None:
         description = self.meta.get("description", "")
-        self.assertIn("/retro", description)
+        self.assertIn("/kit-retro", description)
         self.assertIn("kit-ai retro scan", description)
         self.assertIn("Nie edytuje plików", description)
 
@@ -71,12 +71,12 @@ class RetroSkillSourceTests(unittest.TestCase):
         self.assertIn("nie zakłada issue", self.body)
 
     def test_description_names_kit_trigger(self) -> None:
-        """Tryb `--kit` ma być w opisie, inaczej skill nie odpali się na `/retro --kit`."""
+        """Tryb `--kit` ma być w opisie, inaczej skill nie odpali się na `/kit-retro --kit`."""
         self.assertIn("--kit", self.meta.get("description", ""))
 
     def test_body_describes_kit_mode_over_the_report(self) -> None:
-        """`/retro --kit` czyta agregację z `kit-ai retro report`, a nie pojedynczy skan."""
-        self.assertIn("`/retro --kit`", self.body)
+        """`/kit-retro --kit` czyta agregację z `kit-ai retro report`, a nie pojedynczy skan."""
+        self.assertIn("`/kit-retro --kit`", self.body)
         self.assertIn("`kit-ai retro report`", self.body)
 
     def test_kit_mode_routes_cards_and_keeps_dedup_marker(self) -> None:
@@ -92,7 +92,7 @@ class RetroSkillSourceTests(unittest.TestCase):
         """`/kit-project-edit` nie zakłada issue, więc propozycja `projekt` wracałaby w każdym raporcie (#410)."""
         kit_mode = self.body[self.body.index("## Tryb `--kit`") : self.body.index("## Zasady")]
         self.assertIn("tylko dla `kit` i `agent`", kit_mode)
-        self.assertIn("znalezisk projektowych, uruchom `/retro` w repo", kit_mode)
+        self.assertIn("znalezisk projektowych, uruchom `/kit-retro` w repo", kit_mode)
 
     def test_kit_mode_dedups_against_issues_in_every_state(self) -> None:
         self.assertIn("otwartym albo zamkniętym", self.body)
@@ -121,7 +121,7 @@ class CreateTaskRetroMarkerTests(unittest.TestCase):
 
 class RetroSkillDegradationTests(unittest.TestCase):
     def test_degraded_clients_get_one_complete_file(self) -> None:
-        """Klient bez natywnych skilli dostaje komendę `/retro` jako jeden kompletny plik."""
+        """Klient bez natywnych skilli dostaje komendę `/kit-retro` jako jeden kompletny plik."""
         for client, fmt in DEGRADED_CLIENTS.items():
             with self.subTest(client=client), tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp)
@@ -137,7 +137,7 @@ class RetroSkillDegradationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp)
             install_native(SKILL_DIR, dest)
-            self.assertEqual(sorted(p.name for p in (dest / "retro").iterdir()), ["SKILL.md"])
+            self.assertEqual(sorted(p.name for p in (dest / "kit-retro").iterdir()), ["SKILL.md"])
 
 
 if __name__ == "__main__":
