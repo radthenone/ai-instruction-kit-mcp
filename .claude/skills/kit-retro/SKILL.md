@@ -5,13 +5,13 @@ description: >-
   ~/.cache/kit-ai/retro/<repo>/) na kategorie kit / projekt / agent / zewnętrzne z oceną.
   Z flagą `/kit-retro --kit` (w repo kita) klasyfikuje propozycje z agregacji `kit-ai retro report`
   z wielu repo.
-  Użyj zawsze, gdy użytkownik pisze `/kit-retro`, „retro”, „przejrzyj sesję”, „co poszło źle w
-  sesji”, „sklasyfikuj znaleziska”, „sygnały z guardów”, „co wyszło z nocy”, albo gdy po sesji
-  lub przebiegu headless czeka wynik skanu do oceny — także wtedy, gdy użytkownik nie użyje
-  słowa „retro”. Nie edytuje plików.
+  Użyj zawsze, gdy użytkownik pisze `/kit-retro`, „przejrzyj sesję”, „co poszło źle w sesji”,
+  „sklasyfikuj znaleziska”, „sygnały z guardów”, „co wyszło z nocy”, albo gdy po sesji lub
+  przebiegu headless czeka wynik skanu do oceny. Nie dla ogólnej retrospektywy sesji —
+  do tego jest `/retro` z mattpocock-skills. Nie edytuje plików.
 ---
 
-# Retro — klasyfikacja znalezisk
+# kit-retro — klasyfikacja znalezisk
 
 Czytasz wynik skanu sesji, przypisujesz każde znalezisko do jednej z czterech kategorii i
 podajesz ocenę w rozmowie. Wynik to propozycje dla człowieka, a nie poprawki, więc niczego
