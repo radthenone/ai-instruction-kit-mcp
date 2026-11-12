@@ -4,6 +4,10 @@ Zainstaluj templates/shared/skills/*/SKILL.md do katalogu klienta.
 
 Użycie:
     install_shared_skills.py CLIENT SRC_DIR DEST_DIR
+    install_shared_skills.py prune-renamed CLIENT DEST_DIR
+
+`prune-renamed` kasuje u odznaczonego klienta kitowe skille spod nazw sprzed zmiany
+(`RENAMED_SKILLS`) — lista plików kita do prune zna już tylko nowe nazwy.
 
 Cztery klienty czytają skille natywnie (`<nazwa>/SKILL.md` w katalogu skilli) —
 dla nich instalacja to kopia całego katalogu razem z `scripts/`, `references/`
@@ -45,6 +49,11 @@ DEGRADED_CLIENTS = {
 
 # Katalogi, które skill może mieć obok SKILL.md (kolejność jak w dokumentacji).
 BUNDLED_DIRS = ("scripts", "references", "assets")
+
+# Skille kita po zmianie nazwy: nowa nazwa → (stara nazwa, fraza z treści kitowego
+# skilla). Starą kopię kasujemy tylko, gdy zawiera frazę — pod tą samą nazwą może
+# leżeć cudzy skill (np. `retro` z mattpocock-skills, #422).
+RENAMED_SKILLS = {"kit-retro": ("retro", "kit-ai retro scan")}
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -151,10 +160,57 @@ def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None) -> None:
     (dest_dir / f"{skill_dir.name}{suffix}").write_text(out, encoding="utf-8", newline="\n")
 
 
+def remove_renamed(skill_name: str, dest_dir: Path, suffix: str | None) -> None:
+    """Kasuje kopię skilla kita spod nazwy sprzed zmiany, cudzy skill zostawia.
+
+    Args:
+        skill_name: Obecna nazwa skilla (katalog w źródle).
+        dest_dir: Katalog skilli albo komend klienta.
+        suffix: Rozszerzenie pliku komendy; ``None`` dla klienta z natywnymi skillami.
+    """
+    if skill_name not in RENAMED_SKILLS:
+        return
+    old_name, marker = RENAMED_SKILLS[skill_name]
+    old = dest_dir / old_name if suffix is None else dest_dir / f"{old_name}{suffix}"
+    # Link to nie kopia kita (kit kopiuje pliki) — nie idziemy przez niego.
+    if _is_link(old):
+        return
+    content = old / "SKILL.md" if suffix is None else old
+    try:
+        if marker not in content.read_text(encoding="utf-8"):
+            return
+    except (OSError, UnicodeDecodeError):
+        return
+    try:
+        if suffix is None:
+            shutil.rmtree(old)
+        else:
+            old.unlink()
+    except OSError as exc:
+        # Stara kopia to porządki, nie instalacja — reload ma dojść do końca.
+        print(f"UWAGA: nie udało się usunąć {old}: {exc}", file=sys.stderr)
+
+
+def _renamed_suffix(client: str) -> str | None:
+    """Rozszerzenie komendy klienta bez natywnych skilli; ``None`` dla natywnego."""
+    if client in NATIVE_CLIENTS:
+        return None
+    fmt = DEGRADED_CLIENTS[client]
+    return DEST_SUFFIX.get(fmt, ".md") if fmt else ".md"
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 4:
         print(__doc__, file=sys.stderr)
         return 1
+    if argv[1] == "prune-renamed":
+        client, dest_dir = argv[2], Path(argv[3])
+        if client not in NATIVE_CLIENTS and client not in DEGRADED_CLIENTS:
+            print(f"Nieznany klient: {client}", file=sys.stderr)
+            return 1
+        for skill_name in RENAMED_SKILLS:
+            remove_renamed(skill_name, dest_dir, _renamed_suffix(client))
+        return 0
     client, src_dir, dest_dir = argv[1], Path(argv[2]), Path(argv[3])
 
     if client not in NATIVE_CLIENTS and client not in DEGRADED_CLIENTS:
@@ -173,6 +229,7 @@ def main(argv: list[str]) -> int:
             install_native(skill_dir, dest_dir)
         else:
             install_degraded(skill_dir, dest_dir, DEGRADED_CLIENTS[client])
+        remove_renamed(skill_dir.name, dest_dir, _renamed_suffix(client))
     return 0
 
 

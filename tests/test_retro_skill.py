@@ -22,6 +22,7 @@ from install_shared_skills import (  # noqa: E402
     DEGRADED_CLIENTS,
     install_degraded,
     install_native,
+    remove_renamed,
     parse_frontmatter,
 )
 
@@ -138,6 +139,42 @@ class RetroSkillDegradationTests(unittest.TestCase):
             dest = Path(tmp)
             install_native(SKILL_DIR, dest)
             self.assertEqual(sorted(p.name for p in (dest / "kit-retro").iterdir()), ["SKILL.md"])
+
+    def test_reload_removes_kit_skill_under_old_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro").mkdir()
+            (dest / "retro" / "SKILL.md").write_text("stary skill kita: kit-ai retro scan", encoding="utf-8")
+            (dest / "retro.md").write_text("stara komenda kita: kit-ai retro scan", encoding="utf-8")
+            remove_renamed("kit-retro", dest, None)
+            remove_renamed("kit-retro", dest, ".md")
+            self.assertEqual(list(dest.iterdir()), [])
+
+    def test_reload_keeps_foreign_skill_under_old_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            (dest / "retro").mkdir()
+            (dest / "retro" / "SKILL.md").write_text("Conduct a retrospective on a coding session.", encoding="utf-8")
+            (dest / "retro.md").write_text("cudza komenda", encoding="utf-8")
+            remove_renamed("kit-retro", dest, None)
+            remove_renamed("kit-retro", dest, ".md")
+            self.assertTrue((dest / "retro" / "SKILL.md").is_file())
+            self.assertTrue((dest / "retro.md").is_file())
+
+    def test_reload_keeps_link_under_old_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "skills"
+            target = Path(tmp) / "elsewhere"
+            dest.mkdir()
+            target.mkdir()
+            (target / "SKILL.md").write_text("kit-ai retro scan", encoding="utf-8")
+            try:
+                (dest / "retro").symlink_to(target, target_is_directory=True)
+            except OSError:
+                self.skipTest("brak uprawnień do symlinków")
+            remove_renamed("kit-retro", dest, None)
+            self.assertTrue((target / "SKILL.md").is_file())
+            self.assertTrue((dest / "retro").is_symlink())
 
 
 if __name__ == "__main__":
