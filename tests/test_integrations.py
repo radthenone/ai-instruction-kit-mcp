@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from guides.integrations import (
+    _read_profile_integrations,
     INTEGRATIONS_MAP,
     KIT_MARKER,
     main,
@@ -212,6 +213,31 @@ class TestIntegrationsRender(unittest.TestCase):
 
 
 class TestIntegrationsCLI(unittest.TestCase):
+    def test_cli_main_prints_unknown_integration_warnings(self) -> None:
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            workspace = tmp / "ws"
+            workspace.mkdir()
+            kit_root = tmp / "kit"
+            kit_root.mkdir()
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("integrations:\n  - unknown_integration\n", encoding="utf-8")
+
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                argv = ["render_integrations.py", str(workspace), str(profile), str(kit_root)]
+                exit_code = main(argv, kit_root=kit_root)
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("unknown_integration", buf.getvalue())
+
     """Testy CLI render_integrations."""
 
     def test_cli_main_slices_argv_zero(self) -> None:
@@ -230,3 +256,36 @@ class TestIntegrationsCLI(unittest.TestCase):
             exit_code = main(argv, kit_root=kit_root)
             self.assertEqual(exit_code, 0)
             self.assertTrue((workspace / "orca.yaml").is_file())
+
+
+class TestReadProfileIntegrations(unittest.TestCase):
+    """Testy wczytywania profilu w _read_profile_integrations."""
+
+    def test_read_profile_integrations_returns_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = Path(tmp_dir) / "profile.yaml"
+            profile.write_text("integrations:\n  - orca\n  - bogus_integration\n", encoding="utf-8")
+            integrations, lang, warnings = _read_profile_integrations(profile)
+            self.assertEqual(integrations, ["orca"])
+            self.assertEqual(lang, "pl")
+            self.assertEqual(len(warnings), 1)
+            self.assertIn("bogus_integration", warnings[0])
+
+    def test_read_profile_integrations_yaml_error_warns(self) -> None:
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = Path(tmp_dir) / "profile.yaml"
+            profile.write_text("integrations: [unclosed_list\n", encoding="utf-8")
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                integrations, lang, warnings = _read_profile_integrations(profile)
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(integrations, [])
+            # Ostrzeżenie na stderr lub w zwróconej liście warnings
+            combined = buf.getvalue() + " ".join(warnings)
+            self.assertIn("błąd", combined.lower())

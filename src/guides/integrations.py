@@ -144,24 +144,31 @@ def parse_integrations(raw: object) -> ParsedIntegrations:
     return ParsedIntegrations(ordered, warnings)
 
 
-def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str]:
-    """Wczytaj integrations i language z pliku profilu YAML bez twardej zależności od PyYAML."""
+def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list[str]]:
+    """Wczytaj integrations, language i ostrzeżenia z pliku profilu YAML bez twardej zależności od PyYAML."""
     if not profile_path.is_file():
-        return [], "pl"
+        return [], "pl", []
     text = profile_path.read_text(encoding="utf-8")
     try:
         import yaml  # type: ignore
+    except ImportError:
+        yaml = None
 
-        data = yaml.safe_load(text)
-        if isinstance(data, dict):
-            raw_int = data.get("integrations")
-            lang = str(data.get("language") or "pl")
-            parsed = parse_integrations(raw_int)
-            return parsed.integrations, lang
-    except Exception:
-        pass
+    if yaml is not None:
+        try:
+            data = yaml.safe_load(text)
+            if isinstance(data, dict):
+                raw_int = data.get("integrations")
+                lang = str(data.get("language") or "pl")
+                parsed = parse_integrations(raw_int)
+                return parsed.integrations, lang, parsed.warnings
+            return [], "pl", []
+        except yaml.YAMLError as exc:
+            msg = f"błąd składni YAML w profilu `{profile_path}`: {exc}"
+            print(f"ostrzeżenie: {msg}", file=sys.stderr)
+            return [], "pl", [msg]
 
-    # Awaryjny parser linijkowy
+    # Awaryjny parser linijkowy (gdy brak PyYAML)
     integrations: list[str] = []
     language = "pl"
     in_integrations = False
@@ -179,7 +186,8 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str]:
             if val.startswith("[") and val.endswith("]"):
                 inner = val[1:-1].strip()
                 items = [x.strip().strip("'\"") for x in inner.split(",") if x.strip()]
-                return parse_integrations(items).integrations, language
+                parsed = parse_integrations(items)
+                return parsed.integrations, language, parsed.warnings
             in_integrations = True
             continue
         if in_integrations:
@@ -189,7 +197,8 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str]:
                     integrations.append(item)
             else:
                 break
-    return parse_integrations(integrations).integrations, language
+    parsed = parse_integrations(integrations)
+    return parsed.integrations, language, parsed.warnings
 
 
 def render_integrations(
@@ -249,13 +258,13 @@ def render_integrations(
         if not language:
             resolved_lang = str(profile_data.get("language") or "pl")
     elif isinstance(profile_data, Path):
-        selected_integrations, file_lang = _read_profile_integrations(profile_data)
+        selected_integrations, file_lang, _ = _read_profile_integrations(profile_data)
         if not language:
             resolved_lang = file_lang
     else:
         profile_path = workspace_root / ".ai" / "project.profile.yaml"
         if profile_path.is_file():
-            selected_integrations, file_lang = _read_profile_integrations(profile_path)
+            selected_integrations, file_lang, _ = _read_profile_integrations(profile_path)
             if not language:
                 resolved_lang = file_lang
 
@@ -321,6 +330,11 @@ def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
         if len(args) > 2
         else (kit_root or Path(__file__).resolve().parents[2])
     )
+
+    if profile_path.is_file():
+        _, _, warnings = _read_profile_integrations(profile_path)
+        for w in warnings:
+            print(f"ostrzeżenie: {w}", file=sys.stderr)
 
     result = render_integrations(
         workspace_root=workspace,
