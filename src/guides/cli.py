@@ -44,6 +44,8 @@ from guides.night_ctx import render_night_ctx
 from guides.resolver import PROFILE_REL_PATH, normalize_language
 from guides.retro import default_cache_root, default_projects_root, scan_command
 from guides.retro_report import report_command
+from guides.issue_stats import run_issue_stats
+from guides.pr_stats import run_pr_stats
 
 DEFAULT_GIT_SOURCE = "git+https://github.com/radthenone/ai-instruction-kit-mcp.git"
 SERVER_NAME = "project-guides"
@@ -673,6 +675,20 @@ def main(argv: list[str] | None = None) -> int:
         "path", nargs="?", default=".", help="Repo, z którego czytane są issue z markerem, w każdym stanie (domyślnie: .)"
     )
 
+    issue = sub.add_parser("issue", help="Narzędzia do analizy issues")
+    issue_sub = issue.add_subparsers(dest="issue_command", required=True)
+    issue_stats_parser = issue_sub.add_parser(
+        "stats", help="Analiza i priorytetyzacja otwartych issues (#453)"
+    )
+    issue_stats_parser.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+
+    pr = sub.add_parser("pr", help="Narzędzia do analizy PR-ów")
+    pr_sub = pr.add_subparsers(dest="pr_command", required=True)
+    pr_stats_parser = pr_sub.add_parser(
+        "stats", help="Inspekcja otwartych PR-ów, ryzyka, rekomendacje (#453)"
+    )
+    pr_stats_parser.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
+
     args = parser.parse_args(argv)
     if args.command == "host":
         print(get_host_profile())
@@ -718,6 +734,10 @@ def main(argv: list[str] | None = None) -> int:
                         kit_root=kit_root,
                     )
                 )
+        elif args.command == "issue":
+            print(run_issue_stats(workspace))
+        elif args.command == "pr":
+            print(run_pr_stats(workspace))
         else:
             print(check_kit_updates(kit_root=own_kit_root(workspace, kit_root), workspace_root=workspace))
             print(doctor_report(workspace, kit_root))
