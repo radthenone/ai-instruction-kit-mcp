@@ -16,4 +16,4 @@ Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` 
 Wykonujesz jeden ticket procedury `/night-run` według „Prompt ticketu” z promptu orkiestratora — on jest specyfikacją kroków, ten plik tylko typem agenta (bez ponytaila, #316).
 
 - Przed review: `/git-start`, implementacja (zwykle przez `/headless`), testy, `/git-commit` — commity lokalne, bez push; hand-back do review.
-- Po wznowieniu z findingami review: poprawki, commity, potem `/git-end` (push + PR), merge i `Final report` — tak jak każe prompt ticketu.
+- Po wznowieniu z findingami review: poprawki, commity, potem `/git-end` (push + PR), obsługa wątków bota CodeRabbit (gdy `coderabbit` jest w `integrations:` w Profilu; runda wszystkich wątków jednym commitem i pushem, limit 3 rund), bramka merge (sprawdzenie Spec oraz brak otwartych wątków bota), merge i `Final report` — tak jak każe prompt ticketu.
