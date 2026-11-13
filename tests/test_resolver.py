@@ -603,6 +603,40 @@ class TestProjectBrief(unittest.TestCase):
 
         self.assertNotIn("CodeGraph", resolved.project_brief)
 
+    def test_profile_with_integrations(self) -> None:
+        """Profil z listą integrations przenosi je do ResolvedProfile i indeksu (#459)."""
+        tmp, workspace = _workspace(
+            "name: integrations-test\nlanguage: pl\nclients: all\n"
+            "integrations:\n  - orca\n  - coderabbit\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        self.assertEqual(resolved.integrations, ("orca", "coderabbit"))
+        self.assertEqual(resolved.integration_warnings, ())
+        self.assertIn("## Integracje", resolved.index_markdown)
+        self.assertIn("- `orca`", resolved.index_markdown)
+        self.assertIn("- `coderabbit`", resolved.index_markdown)
+
+    def test_profile_with_unknown_integration_warns_and_omits(self) -> None:
+        """Nieznana integracja generuje ostrzeżenie w indeksie i jest pomijana (#459)."""
+        tmp, workspace = _workspace(
+            "name: bad-int-test\nlanguage: pl\nclients: all\n"
+            "integrations:\n  - orca\n  - nieznana\n"
+        )
+        try:
+            resolved = resolve_workspace_profile(workspace, kit_root=KIT_ROOT)
+        finally:
+            tmp.cleanup()
+
+        self.assertEqual(resolved.integrations, ("orca",))
+        self.assertEqual(len(resolved.integration_warnings), 1)
+        self.assertIn("nieznana integracja `nieznana` — pominięto", resolved.integration_warnings[0])
+        self.assertIn("## Ostrzeżenia integracji", resolved.index_markdown)
+        self.assertIn("nieznana integracja `nieznana` — pominięto", resolved.index_markdown)
+
     def test_codegraph_module_matches_cursor_rule(self) -> None:
         """Moduł kita i reguła Cursora to jedno źródło prawdy (#322)."""
         cursor_rule_path = KIT_ROOT / ".cursor" / "rules" / "codegraph.mdc"

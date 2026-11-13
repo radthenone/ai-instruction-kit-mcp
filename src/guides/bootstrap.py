@@ -31,6 +31,7 @@ KIT_SURFACE: tuple[str, ...] = (
     ".agents",
     ".ai",
     ".claude",
+    ".coderabbit.yaml",
     ".codex",
     ".cursor",
     ".github/copilot-instructions.md",
@@ -56,6 +57,7 @@ KIT_SURFACE: tuple[str, ...] = (
     "docs/agents/issue-tracker.md",
     "docs/agents/triage-labels.md",
     "opencode.json",
+    "orca.yaml",
     "skills-lock.json",
 )
 
