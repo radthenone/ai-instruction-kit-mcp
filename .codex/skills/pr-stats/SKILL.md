@@ -1,8 +1,6 @@
 ---
 name: pr-stats
 description: Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /pr-stats.
-model-tier: light
-classification: procedure
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

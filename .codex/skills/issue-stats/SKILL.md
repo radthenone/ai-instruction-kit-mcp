@@ -1,8 +1,6 @@
 ---
 name: issue-stats
 description: Analiza i priorytetyzacja otwartych issues pod kątem gotowości do pracy autonomicznej (/night-run). Generuje 4-sekcyjny raport statusu, roadmapy, metodyki i segmentacji. Wywołuj jako /issue-stats.
-model-tier: light
-classification: procedure
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
