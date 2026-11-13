@@ -8,6 +8,7 @@ from pathlib import Path
 
 from guides.integrations import (
     INTEGRATIONS_MAP,
+    KIT_MARKER,
     main,
     KNOWN_INTEGRATIONS,
     coderabbit_language,
@@ -126,7 +127,7 @@ class TestIntegrationsRender(unittest.TestCase):
             kit_root.mkdir()
 
             orca_file = workspace / "orca.yaml"
-            orca_file.write_text("scripts:\n  setup: node .ai/worktree.mjs sync .\n")
+            orca_file.write_text(f"{KIT_MARKER}\nscripts:\n  setup: node .ai/worktree.mjs sync .\n")
 
             unrelated = workspace / "other.yaml"
             unrelated.write_text("keep: true\n")
@@ -136,6 +137,57 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertFalse(orca_file.exists())
             self.assertTrue(unrelated.exists())
 
+
+
+
+    def test_remove_leaves_foreign_file_with_warning(self) -> None:
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            kit_root = workspace / "kit"
+            kit_root.mkdir()
+
+            foreign_orca = workspace / "orca.yaml"
+            foreign_orca.write_text("custom_orca: true\n", encoding="utf-8")
+
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                removed = render_integrations(workspace, kit_root, remove=True)
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(removed, [])
+            self.assertTrue(foreign_orca.is_file())
+            self.assertEqual(foreign_orca.read_text(encoding="utf-8"), "custom_orca: true\n")
+            self.assertIn("orca.yaml", buf.getvalue())
+
+    def test_render_does_not_overwrite_foreign_file_and_warns(self) -> None:
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            kit_root = workspace / "kit"
+            templates_dir = kit_root / "templates"
+            templates_dir.mkdir(parents=True)
+            (templates_dir / "orca.yaml").write_text("kit_orca: true\n", encoding="utf-8")
+
+            foreign_orca = workspace / "orca.yaml"
+            foreign_orca.write_text("custom_user_orca: true\n", encoding="utf-8")
+
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                created = render_integrations(workspace, kit_root, integrations=["orca"])
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, [])
+            self.assertEqual(foreign_orca.read_text(encoding="utf-8"), "custom_user_orca: true\n")
+            self.assertIn("orca.yaml", buf.getvalue())
 
 
 class TestIntegrationsCLI(unittest.TestCase):
