@@ -54,7 +54,7 @@ def is_kit_managed(path: Path) -> bool:
     try:
         content = path.read_text(encoding="utf-8")
         return any(marker in content for marker in KIT_MARKERS)
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return False
 
 
@@ -169,13 +169,22 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list
             return [], "pl", [msg]
 
     # Awaryjny parser linijkowy (gdy brak PyYAML)
-    integrations: list[str] = []
+    raw_integrations: object = None
+    list_items: list[str] = []
     language = "pl"
     in_integrations = False
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if in_integrations:
+            if line.startswith(" ") or line.startswith("\t"):
+                if stripped.startswith("-"):
+                    item = stripped[1:].strip().strip("'\"")
+                    list_items.append(item)
+                continue
+            in_integrations = False
+
         if line.startswith("language:"):
             _, _, val = line.partition(":")
             language = val.strip().strip("'\"")
@@ -185,19 +194,15 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list
             val = val.strip()
             if val.startswith("[") and val.endswith("]"):
                 inner = val[1:-1].strip()
-                items = [x.strip().strip("'\"") for x in inner.split(",") if x.strip()]
-                parsed = parse_integrations(items)
-                return parsed.integrations, language, parsed.warnings
-            in_integrations = True
-            continue
-        if in_integrations:
-            if line.startswith(" ") or line.startswith("\t"):
-                if stripped.startswith("-"):
-                    item = stripped[1:].strip().strip("'\"")
-                    integrations.append(item)
+                raw_integrations = [x.strip().strip("'\"") for x in inner.split(",") if x.strip()]
+            elif val:
+                raw_integrations = val.strip("'\"")
             else:
-                break
-    parsed = parse_integrations(integrations)
+                in_integrations = True
+            continue
+
+    raw = raw_integrations if raw_integrations is not None else list_items
+    parsed = parse_integrations(raw)
     return parsed.integrations, language, parsed.warnings
 
 

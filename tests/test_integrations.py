@@ -10,6 +10,7 @@ from guides.integrations import (
     _read_profile_integrations,
     INTEGRATIONS_MAP,
     KIT_MARKER,
+    is_kit_managed,
     main,
     KNOWN_INTEGRATIONS,
     coderabbit_language,
@@ -192,6 +193,36 @@ class TestIntegrationsRender(unittest.TestCase):
 
 
 
+    def test_is_kit_managed_non_utf8_file_returns_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "invalid.yaml"
+            file_path.write_bytes(b"\x80\xff\xfe\x00\x00")
+            self.assertFalse(is_kit_managed(file_path))
+
+    def test_render_does_not_crash_on_non_utf8_foreign_file(self) -> None:
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            kit_root = workspace / "kit"
+            (kit_root / "templates").mkdir(parents=True)
+            (kit_root / "templates" / "orca.yaml").write_text("kit: true\n", encoding="utf-8")
+
+            bad_orca = workspace / "orca.yaml"
+            bad_orca.write_bytes(b"\x80\xff\xfe\x00\x00")
+
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                created = render_integrations(workspace, kit_root, integrations=["orca"])
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, [])
+            self.assertTrue(bad_orca.is_file())
+            self.assertEqual(bad_orca.read_bytes(), b"\x80\xff\xfe\x00\x00")
+
     def test_render_warns_on_missing_template(self) -> None:
         import io
         import sys
@@ -329,3 +360,42 @@ class TestReadProfileIntegrations(unittest.TestCase):
             # Ostrzeżenie na stderr lub w zwróconej liście warnings
             combined = buf.getvalue() + " ".join(warnings)
             self.assertIn("błąd", combined.lower())
+
+
+    def test_read_profile_integrations_fallback_preserves_language_regardless_of_order(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p1 = Path(tmp_dir) / "p1.yaml"
+            p1.write_text("integrations: [coderabbit]\nlanguage: en\n", encoding="utf-8")
+            with patch.dict("sys.modules", {"yaml": None}):
+                integrations, lang, warnings = _read_profile_integrations(p1)
+                self.assertEqual(integrations, ["coderabbit"])
+                self.assertEqual(lang, "en")
+                self.assertEqual(warnings, [])
+
+            p2 = Path(tmp_dir) / "p2.yaml"
+            p2.write_text("integrations:\n  - coderabbit\nlanguage: en\n", encoding="utf-8")
+            with patch.dict("sys.modules", {"yaml": None}):
+                integrations, lang, warnings = _read_profile_integrations(p2)
+                self.assertEqual(integrations, ["coderabbit"])
+                self.assertEqual(lang, "en")
+                self.assertEqual(warnings, [])
+
+    def test_read_profile_integrations_fallback_supports_scalar_and_comma_separated(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p1 = Path(tmp_dir) / "p1.yaml"
+            p1.write_text("integrations: orca\nlanguage: pl\n", encoding="utf-8")
+            with patch.dict("sys.modules", {"yaml": None}):
+                integrations, lang, warnings = _read_profile_integrations(p1)
+                self.assertEqual(integrations, ["orca"])
+                self.assertEqual(lang, "pl")
+                self.assertEqual(warnings, [])
+
+            p2 = Path(tmp_dir) / "p2.yaml"
+            p2.write_text('integrations: "orca, coderabbit"\nlanguage: en\n', encoding="utf-8")
+            with patch.dict("sys.modules", {"yaml": None}):
+                integrations, lang, warnings = _read_profile_integrations(p2)
+                self.assertEqual(integrations, ["orca", "coderabbit"])
+                self.assertEqual(lang, "en")
+                self.assertEqual(warnings, [])
