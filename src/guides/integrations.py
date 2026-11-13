@@ -304,7 +304,7 @@ def render_integrations(
             content = f"{KIT_MARKER}\n{content}"
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        target.write_text(content, encoding="utf-8", newline="\n")
         created.append(info.target_file)
 
     return created
