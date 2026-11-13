@@ -150,7 +150,7 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list
         return [], "pl", []
     text = profile_path.read_text(encoding="utf-8")
     try:
-        import yaml  # type: ignore
+        import yaml
     except ImportError:
         yaml = None
 
