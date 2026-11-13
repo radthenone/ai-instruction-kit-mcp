@@ -212,6 +212,46 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertIn("brak szablonu dla orca", buf.getvalue())
 
 
+
+    def test_render_coderabbit_template_language_substitution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir) / "ws"
+            workspace.mkdir()
+            kit_root = Path(tmp_dir) / "kit"
+            templates_dir = kit_root / "templates"
+            templates_dir.mkdir(parents=True)
+            template_file = templates_dir / ".coderabbit.yaml"
+            template_file.write_text("# CodeRabbit config\nlanguage: \"{{language}}\"\nauto_review: true\n", encoding="utf-8")
+
+            # Render dla domyślnego/polskiego języka (pl -> pl-PL)
+            created = render_integrations(workspace, kit_root, integrations=["coderabbit"], language="pl")
+            self.assertIn(".coderabbit.yaml", created)
+            cr_path = workspace / ".coderabbit.yaml"
+            self.assertTrue(cr_path.is_file())
+            content_pl = cr_path.read_text(encoding="utf-8")
+            self.assertIn('language: "pl-PL"', content_pl)
+            self.assertNotIn("{{language}}", content_pl)
+            self.assertIn(KIT_MARKER, content_pl)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir) / "ws"
+            workspace.mkdir()
+            kit_root = Path(tmp_dir) / "kit"
+            templates_dir = kit_root / "templates"
+            templates_dir.mkdir(parents=True)
+            template_file = templates_dir / ".coderabbit.yaml"
+            template_file.write_text("# CodeRabbit config\nlanguage: \"{{language}}\"\nauto_review: true\n", encoding="utf-8")
+
+            # Render dla języka angielskiego (en -> en-US)
+            created = render_integrations(workspace, kit_root, integrations=["coderabbit"], language="en")
+            self.assertIn(".coderabbit.yaml", created)
+            cr_path = workspace / ".coderabbit.yaml"
+            content_en = cr_path.read_text(encoding="utf-8")
+            self.assertIn('language: "en-US"', content_en)
+            self.assertNotIn("{{language}}", content_en)
+            self.assertIn(KIT_MARKER, content_en)
+
+
 class TestIntegrationsCLI(unittest.TestCase):
     def test_cli_main_prints_unknown_integration_warnings(self) -> None:
         import io
