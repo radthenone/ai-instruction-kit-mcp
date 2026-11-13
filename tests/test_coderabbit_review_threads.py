@@ -88,6 +88,20 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("CodeRabbit", triggers)
         self.assertIn("CodeRabbit", cases)
 
+    def test_git_end_round_without_code_changes_and_resolve_timing(self) -> None:
+        """git-end: brak zmian w kodzie pomija commit/push; wątki z fixem rozwiązywane po pushu; czekanie na head commit."""
+        normalized = " ".join(self.git_end.split())
+        self.assertRegex(normalized, r"brak zmian w kodzie.*(?:pomiń|pomijasz) commit i push")
+        self.assertRegex(normalized, r"(?:poprawkami w kodzie|fixem).*(?:po udanym pushu|po pushu)")
+        self.assertRegex(normalized, r"review.*head commit")
+
+    def test_night_run_round_without_code_changes_and_local_host(self) -> None:
+        """night-run: runda bez zmian w kodzie pomija commit/push, czeka na head commit, a Host: local czyta po bramkach."""
+        prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        self.assertRegex(prompt, r"brak zmian w kodzie.*(?:pomiń|pomijasz) commit i push")
+        self.assertRegex(prompt, r"review.*head commit")
+        self.assertRegex(prompt, r"Host:\s*local.*bez checks.*bramkach szybkich")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -174,7 +174,7 @@ Wątki sprawdzasz **tylko wtedy, gdy `coderabbit` jest na liście `integrations:
 Jeśli brak `coderabbit` w `integrations:` — krok wątków bota jest pominięty (bez integracji krok pominięty).
 
 **Pobranie wątków (GraphQL):**
-Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit i pobierz wątki review przez GraphQL (`reviewThreads`):
+Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit dla bieżącego head commita PR (po zielonych checks) i pobierz wątki review przez GraphQL (`reviewThreads`):
 
 ```bash
 PR_NUMBER=$(gh pr view --json number -q .number)
@@ -224,7 +224,7 @@ mutation($threadId: ID!, $body: String!) {
   }
 }'
 ```
-3. **Resolve:** każdy załatwiony wątek (zarówno po fixie, jak i po odpowiedzi z uzasadnieniem) oznaczasz jako rozwiązany mutacją GraphQL:
+3. **Resolve:** każdy załatwiony wątek oznaczasz jako rozwiązany mutacją GraphQL (dla wątków z odpowiedzią z uzasadnieniem: po wysłaniu odpowiedzi; dla wątków z poprawkami w kodzie: po udanym pushu rundy):
 ```bash
 gh api graphql -F threadId="$THREAD_ID" -f query='
 mutation($threadId: ID!) {
@@ -236,7 +236,9 @@ mutation($threadId: ID!) {
 
 **Rundy wątków (maks. 3 rundy):**
 - Runda startuje tylko wtedy, gdy bot ma otwarte wątki.
-- W rundzie obsługujesz **wszystkie otwarte wątki naraz**: jeden commit z poprawkami i testami, jeden push (każdy push to nowe CI i ponowne review bota).
+- W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
+  - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR.
+  - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push.
 - Zero otwartych wątków → koniec rund i przejście do kroku powrotu / merge.
 - Otwarte wątki po 3. rundzie → `needs-human` (zatrzymanie, brak merge).
 - Liczbę rund (0–3) podajesz w raporcie.
