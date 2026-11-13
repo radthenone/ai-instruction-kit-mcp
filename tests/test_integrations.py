@@ -190,6 +190,27 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertIn("orca.yaml", buf.getvalue())
 
 
+
+    def test_render_warns_on_missing_template(self) -> None:
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            kit_root = workspace / "kit"
+            kit_root.mkdir()
+
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                created = render_integrations(workspace, kit_root, integrations=["orca"])
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, [])
+            self.assertIn("brak szablonu dla orca", buf.getvalue())
+
+
 class TestIntegrationsCLI(unittest.TestCase):
     """Testy CLI render_integrations."""
 

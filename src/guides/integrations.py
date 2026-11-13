@@ -274,6 +274,7 @@ def render_integrations(
         ]
         template_path = next((p for p in template_candidates if p.is_file()), None)
         if template_path is None:
+            print(f"brak szablonu dla {name}", file=sys.stderr)
             continue
 
         content = template_path.read_text(encoding="utf-8")
