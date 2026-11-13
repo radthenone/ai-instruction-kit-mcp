@@ -41,6 +41,9 @@ def _make_gh_run(
         if "pr list" in cmd:
             return json.dumps(prs_data)
         if "pr checks" in cmd:
+            # Odrzuć nieobsługiwane pola JSON
+            if "status" in cmd or "conclusion" in cmd:
+                raise RuntimeError("gh: unknown JSON fields: status, conclusion")
             for arg in argv:
                 try:
                     num = int(arg)
@@ -54,10 +57,10 @@ def _make_gh_run(
                 try:
                     num = int(arg)
                     if num in reviews_data:
-                        return json.dumps({"reviews": reviews_data[num]})
+                        return json.dumps({"latestReviews": reviews_data[num]})
                 except (ValueError, IndexError):
                     pass
-            return json.dumps({"reviews": []})
+            return json.dumps({"latestReviews": []})
         return ""
 
     return gh_run
@@ -84,8 +87,8 @@ def _sample_pr(
     }
 
 
-def _check(name: str, status: str = "completed", conclusion: str = "success") -> dict:
-    return {"name": name, "status": status, "conclusion": conclusion}
+def _check(name: str, state: str = "SUCCESS", bucket: str = "pass") -> dict:
+    return {"name": name, "state": state, "bucket": bucket}
 
 
 def _review(login: str, state: str = "APPROVED") -> dict:
@@ -97,7 +100,8 @@ class TestFetchPRs(unittest.TestCase):
 
     def _fetch(self, data: list[dict]) -> list[PRInfo]:
         gh = _make_gh_run(data)
-        return fetch_prs(Path("."), gh)
+        prs, _ = fetch_prs(Path("."), gh)
+        return prs
 
     def test_empty_response_returns_empty_list(self) -> None:
         self.assertEqual(self._fetch([]), [])
@@ -119,13 +123,13 @@ class TestFetchPRs(unittest.TestCase):
     def test_invalid_json_returns_empty(self) -> None:
         def bad_gh(argv, cwd):
             return "not json"
-        result = fetch_prs(Path("."), bad_gh)
-        self.assertEqual(result, [])
+        prs, _ = fetch_prs(Path("."), bad_gh)
+        self.assertEqual(prs, [])
 
     def test_missing_number_skipped(self) -> None:
         data = [{"title": "No number", "baseRefName": "dev", "state": "open"}]
-        result = self._fetch(data)
-        self.assertEqual(result, [])
+        prs = self._fetch(data)
+        self.assertEqual(prs, [])
 
 
 class TestPRInfoProperties(unittest.TestCase):
@@ -152,27 +156,27 @@ class TestPRInfoProperties(unittest.TestCase):
 
     def test_checks_summary_all_success(self) -> None:
         pr = self._pr(checks=[
-            CheckRun("ci", "completed", "success"),
-            CheckRun("lint", "completed", "success"),
+            CheckRun("ci", "SUCCESS", "pass"),
+            CheckRun("lint", "SUCCESS", "pass"),
         ])
         self.assertIn("✓2", pr.checks_summary)
 
     def test_checks_summary_has_failure(self) -> None:
         pr = self._pr(checks=[
-            CheckRun("ci", "completed", "failure"),
+            CheckRun("ci", "FAILURE", "fail"),
         ])
         self.assertIn("✗1", pr.checks_summary)
 
     def test_has_failing_checks(self) -> None:
-        pr = self._pr(checks=[CheckRun("ci", "completed", "failure")])
+        pr = self._pr(checks=[CheckRun("ci", "FAILURE", "fail")])
         self.assertTrue(pr.has_failing_checks)
 
     def test_no_failing_checks(self) -> None:
-        pr = self._pr(checks=[CheckRun("ci", "completed", "success")])
+        pr = self._pr(checks=[CheckRun("ci", "SUCCESS", "pass")])
         self.assertFalse(pr.has_failing_checks)
 
     def test_risk_high_on_failing_checks(self) -> None:
-        pr = self._pr(checks=[CheckRun("ci", "completed", "failure")])
+        pr = self._pr(checks=[CheckRun("ci", "FAILURE", "fail")])
         self.assertEqual(pr.risk_level, "HIGH")
 
     def test_risk_high_on_changes_requested(self) -> None:
@@ -184,16 +188,21 @@ class TestPRInfoProperties(unittest.TestCase):
         self.assertEqual(pr.risk_level, "HIGH")
 
     def test_risk_medium_pending_checks(self) -> None:
-        pr = self._pr(checks=[CheckRun("ci", "in_progress", None)])
+        pr = self._pr(checks=[CheckRun("ci", "PENDING", "pending")])
         self.assertEqual(pr.risk_level, "MEDIUM")
 
     def test_risk_medium_no_human_approval(self) -> None:
         pr = self._pr()  # brak reviews
         self.assertEqual(pr.risk_level, "MEDIUM")
 
+    def test_risk_medium_empty_checks(self) -> None:
+        """PR bez checków nie może dostać LOW nawet z akceptacją."""
+        pr = self._pr(checks=[], reviews=[Review("alice", "APPROVED")])
+        self.assertEqual(pr.risk_level, "MEDIUM")
+
     def test_risk_low_approved_all_pass(self) -> None:
         pr = self._pr(
-            checks=[CheckRun("ci", "completed", "success")],
+            checks=[CheckRun("ci", "SUCCESS", "pass")],
             reviews=[Review("alice", "APPROVED")],
         )
         self.assertEqual(pr.risk_level, "LOW")
@@ -210,6 +219,10 @@ class TestPRInfoProperties(unittest.TestCase):
         pr = self._pr(reviews=[Review("coderabbit[bot]", "APPROVED", is_bot=True)])
         self.assertFalse(pr.has_human_approval)
 
+    def test_clean_title_escapes_pipe(self) -> None:
+        pr = self._pr(title="Fix A | B")
+        self.assertEqual(pr.clean_title, "Fix A / B")
+
 
 class TestRenderPRReport(unittest.TestCase):
     """Testy renderowania raportu PR."""
@@ -217,7 +230,7 @@ class TestRenderPRReport(unittest.TestCase):
     def test_report_has_exactly_three_sections(self) -> None:
         """Raport musi zawierać dokładnie 3 sekcje z ustalonymi nagłówkami."""
         pr = PRInfo(1, "My PR", "dev", "feat/x", "alice", "open")
-        pr.checks = [CheckRun("ci", "completed", "success")]
+        pr.checks = [CheckRun("ci", "SUCCESS", "pass")]
         pr.reviews = [Review("alice", "APPROVED")]
         report = render_pr_report([pr])
         for header in PR_SECTION_HEADERS:
@@ -253,7 +266,7 @@ class TestRenderPRReport(unittest.TestCase):
 
     def test_merge_ready_in_recommendations(self) -> None:
         pr = PRInfo(5, "Ready PR", "dev", "feat/x", "alice", "open", mergeable="MERGEABLE")
-        pr.checks = [CheckRun("ci", "completed", "success")]
+        pr.checks = [CheckRun("ci", "SUCCESS", "pass")]
         pr.reviews = [Review("bob", "APPROVED", is_bot=False)]
         report = render_pr_report([pr])
         self.assertIn("merge", report.lower())
@@ -283,12 +296,19 @@ class TestPRStatsCommand(unittest.TestCase):
         result = pr_stats_command(Path("."), gh)
         self.assertIn("Brak otwartych PR", result)
 
-    def test_command_risk_assessment(self) -> None:
-        data = [_sample_pr(10, "Failing", mergeable="CONFLICTING")]
-        checks = {10: [_check("ci", "completed", "failure")]}
+    def test_command_risk_assessment_with_failing_check(self) -> None:
+        data = [_sample_pr(10, "Failing", mergeable="MERGEABLE")]
+        checks = {10: [_check("ci", "FAILURE", "fail")]}
         gh = _make_gh_run(data, checks)
         result = pr_stats_command(Path("."), gh)
         self.assertIn("HIGH", result)
+
+    def test_command_handles_gh_error(self) -> None:
+        def failing_gh(argv, cwd):
+            raise RuntimeError("Authentication failed")
+
+        result = pr_stats_command(Path("."), failing_gh)
+        self.assertIn("Błąd GitHub CLI", result)
 
 
 if __name__ == "__main__":

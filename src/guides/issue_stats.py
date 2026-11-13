@@ -36,6 +36,15 @@ _LABEL_NEEDS_LOCAL = "needs-local"
 _SKIP_LABELS = {_LABEL_HUMAN, _LABEL_NEEDS_INFO, _LABEL_TRIAGE, _LABEL_WONTFIX}
 
 _EFFORT_RE = re.compile(r"\bkryteria\s+akceptacji\b|\bkryterium\s+uko[ńn]czenia\b", re.IGNORECASE)
+_DEP_RE = re.compile(
+    r"(?:zale[żz]y\s+od|wymaga|po|depends\s+on|blocked\s+by|prerequisite:?|parent:?|sub-issue\s+pod)\s+#?(\d+)",
+    re.IGNORECASE,
+)
+
+
+def _clean_md(text: str) -> str:
+    """Zabezpiecz tekst przed rozbiciem komórek tabeli Markdown."""
+    return text.replace("|", "/").strip()
 
 
 @dataclass
@@ -48,6 +57,10 @@ class IssueInfo:
     body: str = ""
     state: str = "open"
     merged_pr: bool = False  # Czy powiązane PR zmergowane na dev?
+
+    @property
+    def clean_title(self) -> str:
+        return _clean_md(self.title)
 
     @property
     def skip_label(self) -> str | None:
@@ -65,6 +78,15 @@ class IssueInfo:
         return _LABEL_NEEDS_LOCAL in self.labels
 
     @property
+    def issue_type(self) -> str:
+        for lbl in self.labels:
+            if lbl.startswith("type: "):
+                return lbl.removeprefix("type: ")
+            if lbl in ("bug", "enhancement"):
+                return lbl
+        return "inne"
+
+    @property
     def acceptance_criteria_count(self) -> int:
         """Szacunkowa liczba kryteriów akceptacji z body issue."""
         if not self.body:
@@ -77,7 +99,7 @@ class IssueInfo:
                 in_criteria = True
                 continue
             if in_criteria:
-                if line.startswith("## ") and not _EFFORT_RE.search(line):
+                if re.match(r"^#{1,6}\s+", line) and not _EFFORT_RE.search(line):
                     in_criteria = False
                 elif re.match(r"^[-*]\s+\S", line) or re.match(r"^\d+\.\s+\S", line):
                     count += 1
@@ -92,9 +114,57 @@ class IssueInfo:
             return "M (3–4 kryteria)"
         return "L (>4 kryteria)"
 
+    @property
+    def estimated_minutes(self) -> str:
+        cnt = self.acceptance_criteria_count
+        if cnt <= 2:
+            return "5–15 min"
+        if cnt <= 4:
+            return "15–30 min"
+        return "30–60 min"
+
+    @property
+    def dependencies(self) -> list[int]:
+        """Numery innych issues, od których to issue zależy."""
+        if not self.body:
+            return []
+        deps: list[int] = []
+        for line in self.body.splitlines():
+            for match in _DEP_RE.finditer(line):
+                try:
+                    num = int(match.group(1))
+                    if num != self.number and num not in deps:
+                        deps.append(num)
+                except ValueError:
+                    continue
+        return deps
+
+    @property
+    def open_questions(self) -> list[str]:
+        """Wykryj sekcję 'Otwarte pytania' lub pytania blokujące."""
+        if not self.body:
+            return []
+        questions: list[str] = []
+        in_q_section = False
+        for line in self.body.splitlines():
+            s = line.strip()
+            if re.search(r"\botwarte\s+pytani[ae]\b", s, re.IGNORECASE):
+                in_q_section = True
+                continue
+            if in_q_section:
+                if re.match(r"^#{1,6}\s+", s):
+                    in_q_section = False
+                elif s.startswith("- ") or s.startswith("* ") or s.endswith("?"):
+                    q = s.lstrip("-* ").strip()
+                    if q:
+                        questions.append(_clean_md(q))
+            elif "?" in s and not s.startswith("http") and not s.startswith("<!--"):
+                questions.append(_clean_md(s.lstrip("-* ").strip()))
+        return questions
+
 
 def _gh_run(argv: list[str], cwd: Path) -> str:
-    """Uruchom ``gh`` w katalogu ``cwd`` i zwróć stdout (lub pusty string)."""
+    """Uruchom ``gh`` w katalogu ``cwd`` i zwróć stdout. Podnosi RuntimeError przy błędzie."""
     try:
         proc = subprocess.run(
             argv,
@@ -104,13 +174,16 @@ def _gh_run(argv: list[str], cwd: Path) -> str:
             errors="replace",
             check=False,
         )
-    except OSError:
-        return ""
-    return proc.stdout if proc.returncode == 0 else ""
+    except OSError as err:
+        raise RuntimeError(f"Nie można uruchomić gh: {err}") from err
+    if proc.returncode != 0:
+        err_msg = proc.stderr.strip() or f"gh zakończony kodem {proc.returncode}"
+        raise RuntimeError(f"Błąd gh: {err_msg}")
+    return proc.stdout
 
 
-def fetch_issues(workspace: Path, gh_run: GhRun = _gh_run) -> list[IssueInfo]:
-    """Pobierz otwarte issues przez ``gh issue list``."""
+def fetch_issues(workspace: Path, gh_run: GhRun = _gh_run) -> tuple[list[IssueInfo], bool]:
+    """Pobierz otwarte issues przez ``gh issue list``. Zwraca (issues, is_partial)."""
     raw = gh_run(
         [
             "gh", "issue", "list",
@@ -121,13 +194,13 @@ def fetch_issues(workspace: Path, gh_run: GhRun = _gh_run) -> list[IssueInfo]:
         workspace,
     )
     if not raw.strip():
-        return []
+        return [], False
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return []
+        return [], False
     if not isinstance(data, list):
-        return []
+        return [], False
 
     issues: list[IssueInfo] = []
     for item in data:
@@ -155,22 +228,26 @@ def fetch_issues(workspace: Path, gh_run: GhRun = _gh_run) -> list[IssueInfo]:
             body=str(body),
             state=str(state),
         ))
-    return issues
+    is_partial = len(issues) >= 100
+    return issues, is_partial
 
 
 def detect_merged_issues(issues: list[IssueInfo], workspace: Path, gh_run: GhRun = _gh_run) -> None:
-    """Oznacz issues, których powiązane PR zostały zmergowane na dev."""
+    """Oznacz issues, których powiązane PR zostały faktycznie zmergowane na dev."""
     for issue in issues:
-        raw = gh_run(
-            [
-                "gh", "pr", "list",
-                "--state", "merged",
-                "--search", f"#{issue.number}",
-                "--json", "number,title,baseRefName",
-                "--limit", "5",
-            ],
-            workspace,
-        )
+        try:
+            raw = gh_run(
+                [
+                    "gh", "pr", "list",
+                    "--state", "merged",
+                    "--search", f"#{issue.number}",
+                    "--json", "number,title,baseRefName,headRefName,body",
+                    "--limit", "5",
+                ],
+                workspace,
+            )
+        except RuntimeError:
+            continue
         if not raw.strip():
             continue
         try:
@@ -184,8 +261,30 @@ def detect_merged_issues(issues: list[IssueInfo], workspace: Path, gh_run: GhRun
                 continue
             base = pr.get("baseRefName", "")
             if isinstance(base, str) and base in ("dev", "main", "master"):
-                issue.merged_pr = True
-                break
+                pr_title = str(pr.get("title", ""))
+                pr_head = str(pr.get("headRefName", ""))
+                pr_body = str(pr.get("body", ""))
+
+                # Weryfikacja rzeczywistego powiązania (a nie przypadkowego wspomnienia)
+                num_pattern = str(issue.number)
+                title_linked = (
+                    f"#{num_pattern}" in pr_title
+                    or f"({num_pattern})" in pr_title
+                )
+                branch_linked = bool(
+                    re.search(rf"[/-]{num_pattern}(?:[-/]|$)", pr_head)
+                )
+                body_linked = bool(
+                    re.search(
+                        rf"(?i)\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+[:#]?\s*{num_pattern}\b",
+                        pr_body,
+                    )
+                    or re.search(rf"(?i)issues?/{num_pattern}\b", pr_body)
+                )
+
+                if title_linked or branch_linked or body_linked:
+                    issue.merged_pr = True
+                    break
 
 
 def _night_run_command(issue: IssueInfo) -> str:
@@ -198,17 +297,40 @@ def _gh_edit_command(issue: IssueInfo, action: str) -> str:
     if action == "ready":
         return (
             f"gh issue edit {issue.number} "
-            f"--remove-label needs-triage --add-label ready-for-agent"
+            f"--remove-label ready-for-human --remove-label needs-triage --add-label ready-for-agent"
         )
     if action == "skip":
         return (
-            f"gh issue edit {issue.number} "
-            f"--add-label wontfix"
+            f"gh issue edit {issue.number} --add-label wontfix"
         )
     return f"gh issue edit {issue.number}"
 
 
-def render_report(issues: list[IssueInfo]) -> str:
+def _sort_with_dependencies(ready: list[IssueInfo]) -> list[IssueInfo]:
+    """Sortuj zadania gotowe uwzględniając zależności, a następnie nakład prac (S przed M przed L)."""
+    ready_by_num = {i.number: i for i in ready}
+    visited: set[int] = set()
+    order: list[IssueInfo] = []
+
+    def visit(issue: IssueInfo) -> None:
+        if issue.number in visited:
+            return
+        visited.add(issue.number)
+        # Najpierw odwiedź warunki wstępne, które są w liście ready
+        for dep_num in issue.dependencies:
+            if dep_num in ready_by_num and dep_num not in visited:
+                visit(ready_by_num[dep_num])
+        order.append(issue)
+
+    # Sortuj wstępnie wg liczby kryteriów akceptacji (S -> M -> L)
+    effort_sorted = sorted(ready, key=lambda i: i.acceptance_criteria_count)
+    for i in effort_sorted:
+        visit(i)
+
+    return order
+
+
+def render_report(issues: list[IssueInfo], is_partial: bool = False) -> str:
     """Złóż raport z dokładnie 4 sekcjami."""
     # Partycja issues
     done: list[IssueInfo] = [i for i in issues if i.merged_pr]
@@ -233,114 +355,203 @@ def render_report(issues: list[IssueInfo]) -> str:
         f"(zmergowane: {len(done)}, gotowe do agenta: {len(ready)}, "
         f"pominięte: {len(skipped)}, oczekujące: {len(not_ready)})"
     )
+    if is_partial:
+        lines.append("")
+        lines.append("> [!NOTE] Pobrano pierwsze 100 issues (limit zapytania). Backlog może zawierać więcej zgłoszeń.")
     lines.append("")
 
     if done:
         lines.append("### Kod już na dev (PR zmergowane)")
         lines.append("")
-        lines.append("| # | Tytuł |")
-        lines.append("|---|-------|")
+        lines.append("| # | Tytuł | Typ | Etykiety | Stan faktyczny |")
+        lines.append("|---|-------|-----|----------|----------------|")
         for i in done:
-            lines.append(f"| #{i.number} | {i.title} |")
+            lbl_str = ", ".join(f"`{l}`" for l in i.labels) if i.labels else "—"
+            lines.append(f"| #{i.number} | {i.clean_title} | {i.issue_type} | {lbl_str} | zmergowane na dev |")
         lines.append("")
 
     if skipped:
         lines.append("### Pominięte (blokujące etykiety)")
         lines.append("")
-        lines.append("| # | Tytuł | Etykieta |")
-        lines.append("|---|-------|----------|")
+        lines.append("| # | Tytuł | Typ | Etykieta | Powód pominięcia |")
+        lines.append("|---|-------|-----|----------|------------------|")
         for i in skipped:
-            lines.append(f"| #{i.number} | {i.title} | `{i.skip_label}` |")
+            lines.append(f"| #{i.number} | {i.clean_title} | {i.issue_type} | `{i.skip_label}` | blokada triage |")
         lines.append("")
 
     if not_ready:
         lines.append("### Oczekujące (bez `ready-for-agent`)")
         lines.append("")
-        lines.append("| # | Tytuł | Etykiety |")
-        lines.append("|---|-------|---------|")
+        lines.append("| # | Tytuł | Typ | Etykiety | Status przygotowania |")
+        lines.append("|---|-------|-----|----------|----------------------|")
         for i in not_ready:
             lbl_str = ", ".join(f"`{l}`" for l in i.labels) if i.labels else "—"
-            lines.append(f"| #{i.number} | {i.title} | {lbl_str} |")
+            status = "wymaga grillowania / decyzji" if i.open_questions else "brak etykiety ready-for-agent"
+            lines.append(f"| #{i.number} | {i.clean_title} | {i.issue_type} | {lbl_str} | {status} |")
         lines.append("")
 
     if ready:
         lines.append("### Gotowe do realizacji (`ready-for-agent`)")
         lines.append("")
-        lines.append("| # | Tytuł | Nakład | needs-local |")
-        lines.append("|---|-------|--------|------------|")
+        lines.append("| # | Tytuł | Typ | Nakład | needs-local | Gotowość |")
+        lines.append("|---|-------|-----|--------|------------|----------|")
         for i in ready:
             nl = "tak" if i.needs_local else "nie"
-            lines.append(f"| #{i.number} | {i.title} | {i.effort_label} | {nl} |")
+            lines.append(f"| #{i.number} | {i.clean_title} | {i.issue_type} | {i.effort_label} | {nl} | ready-for-agent |")
         lines.append("")
 
     # Sekcja 2
     lines.append(SECTION_HEADERS[1])
     lines.append("")
     if not ready:
-        lines.append("Brak issues gotowych do agenta. Sprawdź sekcję 1.")
+        lines.append("Brak issues gotowych do agenta. Sprawdź sekcję 1 i sekcję 4.")
         lines.append("")
     else:
-        lines.append(
-            "Sugerowana kolejność: najpierw issues `S`, potem `M`, na końcu `L`. "
-            "Issues z `needs-local` wymagają lokalnego środowiska."
-        )
+        priority = _sort_with_dependencies(ready)
+
+        # Graf zależności (ASCII)
+        has_deps = any(i.dependencies for i in priority)
+        lines.append("### Graf przepływu i zależności")
         lines.append("")
-        priority = sorted(ready, key=lambda i: i.acceptance_criteria_count)
-        lines.append("| Priorytet | # | Tytuł | Nakład | Komenda |")
-        lines.append("|-----------|---|-------|--------|---------|")
+        lines.append("```text")
+        if has_deps:
+            for i in priority:
+                if i.dependencies:
+                    dep_str = ", ".join(f"#{d}" for d in i.dependencies)
+                    lines.append(f"[{dep_str}] ───► [#{i.number}: {i.clean_title}]")
+                else:
+                    lines.append(f"[Start] ───► [#{i.number}: {i.clean_title}]")
+        else:
+            flow_items = " ──► ".join(f"#{i.number}" for i in priority)
+            lines.append(f"[Start] ──► {flow_items} ──► [Wdrożone]")
+        lines.append("```")
+        lines.append("")
+
+        lines.append("### Uzasadnienie kolejności")
+        lines.append("")
+        if has_deps:
+            lines.append(
+                "Kolejność uwzględnia warunki wstępne (zadania zależne następują po zadaniach bazowych). "
+                "Wśród zadań niezależnych priorytet mają mniejsze moduły (S przed M przed L) "
+                "oraz fundamenty infrastrukturalne."
+            )
+        else:
+            lines.append(
+                "Zadania są niezależne. Kolejność wynika z minimalizacji ryzyka i natychmiastowego zysku "
+                "z dźwigni narzędziowej: najpierw zadania `S` (szybki feedback), następnie `M` i `L`."
+            )
+        lines.append("")
+
+        lines.append("| Priorytet | # | Tytuł | Typ | Nakład | Zależności | Komenda |")
+        lines.append("|-----------|---|-------|-----|--------|------------|---------|")
         for rank, i in enumerate(priority, 1):
             cmd = _night_run_command(i)
-            lines.append(f"| {rank} | #{i.number} | {i.title} | {i.effort_label} | `{cmd}` |")
+            deps = ", ".join(f"#{d}" for d in i.dependencies) if i.dependencies else "brak"
+            lines.append(
+                f"| {rank} | #{i.number} | {i.clean_title} | {i.issue_type} | {i.effort_label} | {deps} | `{cmd}` |"
+            )
         lines.append("")
 
     # Sekcja 3
     lines.append(SECTION_HEADERS[2])
     lines.append("")
-    if not ready:
-        lines.append("Brak issues do analizy.")
+    active_issues = [i for i in issues if not i.merged_pr and i.skip_label != _LABEL_WONTFIX]
+    if not active_issues:
+        lines.append("Brak aktywnych issues do analizy metodyki.")
         lines.append("")
     else:
-        for i in ready:
-            lines.append(f"### #{i.number} — {i.title}")
+        for i in active_issues:
+            lines.append(f"### #{i.number} — {i.clean_title}")
             lines.append("")
             criteria = i.acceptance_criteria_count
-            lines.append(f"- **Nakład:** {i.effort_label} ({criteria} kryteriów akceptacji)")
+            lines.append(f"- **Typ:** {i.issue_type} | **Nakład:** {i.effort_label} ({criteria} kryteriów akceptacji, szacunek: {i.estimated_minutes})")
             if i.needs_local:
-                lines.append("- **Wymaga lokalnego środowiska:** tak (etykieta `needs-local`)")
-            lines.append(f"- **Skille:** `/git-start #{i.number}`, `/tdd`, `/git-commit`, `/git-end`")
-            if criteria > 3:
-                lines.append(
-                    "- **Metodyka:** duży ticket (>3 kryteria) — plan 5–10 kroków przed implementacją"
-                )
+                lines.append("- **Środowisko:** wymaga lokalnej weryfikacji (`needs-local`)")
+            if i.dependencies:
+                lines.append(f"- **Wymaga wcześniejszego wykonania:** {', '.join(f'#{d}' for d in i.dependencies)}")
+            lines.append("- **Pełna procedura i skille:**")
+            if not i.is_ready:
+                lines.append(f"  1. *Scope & Alignment:* `/grill-me` (wyjaśnienie otwartych pytań i nadanie `ready-for-agent`)")
             else:
-                lines.append(
-                    "- **Metodyka:** standardowy TDD, test czerwony → kod → zielony → commit"
-                )
+                lines.append(f"  1. *Scope & Alignment:* pominięte (gotowa specyfikacja `ready-for-agent`)")
+            lines.append(f"  2. *Start i izolacja:* `/git-start #{i.number}` (+ opcjonalny worktree)")
+            lines.append(f"  3. *Implementacja:* `/tdd` (czerwony test → implementacja → zielony → refactor)")
+            lines.append(f"  4. *Commit:* `/git-commit` (Conventional Commits)")
+            lines.append(f"  5. *Code Review:* `/review-bugbot` + review domenowe (`/review-backend` / `/review-frontend`)")
+            lines.append(f"  6. *Finisz:* `/git-end` (lub Superpowers finishing → PR → merge)")
             lines.append(f"- **Komenda night-run:** `{_night_run_command(i)}`")
-            lines.append(f"- **Gotowe labels:** `{_gh_edit_command(i, 'ready')}`")
+            if not i.is_ready:
+                lines.append(f"- **Gotowe polecenie zmiany etykiety:** `{_gh_edit_command(i, 'ready')}`")
             lines.append("")
 
     # Sekcja 4
     lines.append(SECTION_HEADERS[3])
     lines.append("")
-    if not ready:
-        lines.append("Brak issues `ready-for-agent` do przeglądu.")
+    unresolved = [i for i in issues if not i.merged_pr and i.skip_label != _LABEL_WONTFIX]
+    if not unresolved:
+        lines.append("Brak otwartych issues do przeglądu.")
         lines.append("")
     else:
+        lines.append("### Tabela gotowości i analizy nakładu pracy")
+        lines.append("")
         lines.append(
-            "| # | Tytuł | ready-for-agent | Kryterium ukończenia | needs-local | PR zmergowane | night-run |"
+            "| # | Tytuł | Stan | Nakład (min) | Kryteria | needs-local | Pytania blokujące | Następny krok |"
         )
         lines.append(
-            "|---|-------|-----------------|---------------------|------------|---------------|-----------|"
+            "|---|-------|------|--------------|----------|------------|-------------------|---------------|"
         )
-        for i in ready:
-            has_criteria = "tak" if i.acceptance_criteria_count > 0 else "brak"
+        for i in unresolved:
+            stan = "ready-for-agent" if i.is_ready else (i.skip_label or "oczekujące")
+            has_crit = f"tak ({i.acceptance_criteria_count})" if i.acceptance_criteria_count > 0 else "brak"
             nl = "tak" if i.needs_local else "—"
-            merged = "tak" if i.merged_pr else "—"
-            cmd = f"`{_night_run_command(i)}`"
+            q_count = f"{len(i.open_questions)} pytań" if i.open_questions else "brak"
+            if i.is_ready:
+                next_step = "gotowe do `/night-run`"
+            elif i.open_questions:
+                next_step = "zamknąć pytania + `ready-for-agent`"
+            else:
+                next_step = "nadać `ready-for-agent`"
             lines.append(
-                f"| #{i.number} | {i.title} | ✓ | {has_criteria} | {nl} | {merged} | {cmd} |"
+                f"| #{i.number} | {i.clean_title} | `{stan}` | {i.estimated_minutes} | {has_crit} | {nl} | {q_count} | {next_step} |"
             )
+        lines.append("")
+
+        # Zadania wymagające przygotowania przed night-run
+        needs_prep = [i for i in unresolved if not i.is_ready]
+        if needs_prep:
+            lines.append("### Przygotowanie zadań pod night-run (zdjęcie blokad)")
+            lines.append("")
+            for i in needs_prep:
+                lines.append(f"#### #{i.number} — {i.clean_title}")
+                if i.open_questions:
+                    lines.append("- **Pytania do rozstrzygnięcia:**")
+                    for q in i.open_questions[:4]:
+                        lines.append(f"  - {q}")
+                lines.append(f"- **Polecenie nadania gotowości:** `{_gh_edit_command(i, 'ready')}`")
+                lines.append("")
+
+        # Rekomendacja segmentacji
+        lines.append("### Rekomendowane segmenty night-run")
+        lines.append("")
+        ready_ordered = _sort_with_dependencies(ready) if ready else []
+        if ready_ordered:
+            # Segmentacja: zadania solo (S lub infrastruktura), duety/zależne
+            solo: list[IssueInfo] = [i for i in ready_ordered if i.acceptance_criteria_count <= 2 and not i.dependencies]
+            dependent_or_heavy: list[IssueInfo] = [i for i in ready_ordered if i not in solo]
+
+            segment_idx = 1
+            if solo:
+                solo_cmds = " ".join(f"#{i.number}" for i in solo)
+                lines.append(f"- **Segment {segment_idx} (szybkie / niezależne):** `/night-run {solo_cmds} /review-bugbot`")
+                segment_idx += 1
+            if dependent_or_heavy:
+                dep_cmds = " ".join(f"#{i.number}" for i in dependent_or_heavy)
+                lines.append(f"- **Segment {segment_idx} (złożone / powiązane):** `/night-run {dep_cmds} /review-bugbot`")
+            lines.append("")
+            all_cmds = " ".join(f"#{i.number}" for i in ready_ordered)
+            lines.append(f"**Łączna komenda dla wszystkich gotowych:** `/night-run {all_cmds} /review-bugbot`")
+        else:
+            lines.append("Brak zadań z etykietą `ready-for-agent`. Przygotuj zadania powyższymi komendami.")
         lines.append("")
 
     return "\n".join(lines)
@@ -348,16 +559,34 @@ def render_report(issues: list[IssueInfo]) -> str:
 
 def issue_stats_command(workspace: Path, gh_run: GhRun = _gh_run) -> str:
     """Główna logika komendy ``kit-ai issue stats``."""
-    issues = fetch_issues(workspace, gh_run)
+    try:
+        issues, is_partial = fetch_issues(workspace, gh_run)
+    except RuntimeError as err:
+        return f"Błąd GitHub CLI podczas pobierania issues: {err}\n"
+
     if not issues:
-        header = "\n".join(SECTION_HEADERS)
-        return (
-            "Brak otwartych issues.\n\n"
-            + "\n\n(brak danych)\n\n".join(SECTION_HEADERS)
-            + "\n\n(brak danych)\n"
-        )
+        empty_lines = [
+            SECTION_HEADERS[0],
+            "",
+            "Brak otwartych issues w repozytorium.",
+            "",
+            SECTION_HEADERS[1],
+            "",
+            "Brak otwartych issues do zaplanowania.",
+            "",
+            SECTION_HEADERS[2],
+            "",
+            "Brak otwartych issues do analizy.",
+            "",
+            SECTION_HEADERS[3],
+            "",
+            "Brak otwartych issues do przeglądu.",
+            "",
+        ]
+        return "\n".join(empty_lines)
+
     detect_merged_issues(issues, workspace, gh_run)
-    return render_report(issues)
+    return render_report(issues, is_partial=is_partial)
 
 
 def _parse_issue_dict(item: dict) -> IssueInfo:

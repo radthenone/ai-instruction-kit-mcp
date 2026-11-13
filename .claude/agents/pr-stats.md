@@ -29,22 +29,22 @@ kit-ai pr stats
 ### 1. Pobierz otwarte PR-y
 
 ```bash
-gh pr list --state open --limit 50 --json number,title,baseRefName,headRefName,author,state,isDraft,mergeable
+gh pr list --state open --limit 100 --json number,title,baseRefName,headRefName,author,state,isDraft,mergeable
 ```
 
 ### 2. Sprawdź checks i reviews
 
-Dla każdego PR pobierz status check runs oraz recenzje (w tym botów: CodeRabbit, BugBot):
+Dla każdego PR pobierz status check runs (używając obsługiwanych pól `name,state,bucket`) oraz aktualne recenzje (`latestReviews`):
 ```bash
-gh pr checks <numer> --json name,status,conclusion
-gh pr view <numer> --json reviews
+gh pr checks <numer> --json name,state,bucket
+gh pr view <numer> --json latestReviews
 ```
 
 ### 3. Analiza ryzyk
 
-- **HIGH:** failing checks, stan `CHANGES_REQUESTED` lub status `CONFLICTING`.
-- **MEDIUM:** pending checks lub brak review człowieka.
-- **LOW:** checks przeszły pomyślnie i istnieje akceptacja (approved).
+- **HIGH:** failing checks (`bucket: fail` lub `state: FAILURE`), stan `CHANGES_REQUESTED` w aktualnych recenzjach lub status `CONFLICTING`.
+- **MEDIUM:** pending checks, brak danych o checkach (niezweryfikowane CI) lub brak review człowieka.
+- **LOW:** potwierdzone zielone checks (`bucket: pass` / `state: SUCCESS`) oraz akceptacja człowieka (`APPROVED`).
 
 ### 4. Wygeneruj 3 sekcje raportu
 

@@ -26,13 +26,18 @@ PR_SECTION_HEADERS = [
 _REVIEW_BOTS = {"coderabbit", "bugbot", "github-advanced-security", "copilot"}
 
 
+def _clean_md(text: str) -> str:
+    """Zabezpiecz tekst przed rozbiciem komórek tabeli Markdown."""
+    return text.replace("|", "/").strip()
+
+
 @dataclass
 class CheckRun:
     """Stan jednego check runu PR."""
 
     name: str
-    status: str  # queued | in_progress | completed
-    conclusion: str | None  # success | failure | neutral | cancelled | ...
+    state: str  # SUCCESS | FAILURE | PENDING | SKIPPED | CANCELLED | ACTION_REQUIRED
+    bucket: str  # pass | fail | pending | skipping | cancel
 
 
 @dataclass
@@ -60,12 +65,16 @@ class PRInfo:
     mergeable: str = "UNKNOWN"  # MERGEABLE | CONFLICTING | UNKNOWN
 
     @property
+    def clean_title(self) -> str:
+        return _clean_md(self.title)
+
+    @property
     def checks_summary(self) -> str:
         if not self.checks:
             return "brak"
-        passed = sum(1 for c in self.checks if c.conclusion == "success")
-        failed = sum(1 for c in self.checks if c.conclusion in ("failure", "action_required"))
-        pending = sum(1 for c in self.checks if c.status != "completed")
+        passed = sum(1 for c in self.checks if c.bucket in ("pass", "skipping") or c.state in ("SUCCESS", "SKIPPED"))
+        failed = sum(1 for c in self.checks if c.bucket == "fail" or c.state in ("FAILURE", "ACTION_REQUIRED"))
+        pending = sum(1 for c in self.checks if c.bucket == "pending" or c.state in ("PENDING", "QUEUED", "IN_PROGRESS", "STARTING"))
         parts = []
         if passed:
             parts.append(f"✓{passed}")
@@ -77,11 +86,15 @@ class PRInfo:
 
     @property
     def has_failing_checks(self) -> bool:
-        return any(c.conclusion in ("failure", "action_required") for c in self.checks)
+        return any(c.bucket == "fail" or c.state in ("FAILURE", "ACTION_REQUIRED") for c in self.checks)
 
     @property
     def has_pending_checks(self) -> bool:
-        return any(c.status != "completed" for c in self.checks)
+        return any(c.bucket == "pending" or c.state in ("PENDING", "QUEUED", "IN_PROGRESS", "STARTING") for c in self.checks)
+
+    @property
+    def has_passed_checks(self) -> bool:
+        return bool(self.checks) and all(c.bucket in ("pass", "skipping") or c.state in ("SUCCESS", "SKIPPED") for c in self.checks)
 
     @property
     def review_summary(self) -> str:
@@ -122,13 +135,15 @@ class PRInfo:
             return "HIGH"
         if self.has_pending_checks:
             return "MEDIUM"
+        if not self.checks:  # niezweryfikowane CI
+            return "MEDIUM"
         if not self.has_human_approval:
             return "MEDIUM"
         return "LOW"
 
 
 def _gh_run(argv: list[str], cwd: Path) -> str:
-    """Uruchom ``gh`` w katalogu ``cwd`` i zwróć stdout (lub pusty string)."""
+    """Uruchom ``gh`` w katalogu ``cwd`` i zwróć stdout. Podnosi RuntimeError przy błędzie."""
     try:
         proc = subprocess.run(
             argv,
@@ -138,9 +153,12 @@ def _gh_run(argv: list[str], cwd: Path) -> str:
             errors="replace",
             check=False,
         )
-    except OSError:
-        return ""
-    return proc.stdout if proc.returncode == 0 else ""
+    except OSError as err:
+        raise RuntimeError(f"Nie można uruchomić gh: {err}") from err
+    if proc.returncode != 0:
+        err_msg = proc.stderr.strip() or f"gh zakończony kodem {proc.returncode}"
+        raise RuntimeError(f"Błąd gh: {err_msg}")
+    return proc.stdout
 
 
 def _is_bot(login: str) -> bool:
@@ -149,26 +167,26 @@ def _is_bot(login: str) -> bool:
     return any(bot in low for bot in _REVIEW_BOTS) or low.endswith("[bot]")
 
 
-def fetch_prs(workspace: Path, gh_run: GhRun = _gh_run) -> list[PRInfo]:
-    """Pobierz otwarte PR-y przez ``gh pr list``."""
+def fetch_prs(workspace: Path, gh_run: GhRun = _gh_run) -> tuple[list[PRInfo], bool]:
+    """Pobierz otwarte PR-y przez ``gh pr list``. Zwraca (prs, is_partial)."""
     raw = gh_run(
         [
             "gh", "pr", "list",
             "--state", "open",
-            "--limit", "50",
+            "--limit", "100",
             "--json",
             "number,title,baseRefName,headRefName,author,state,isDraft,mergeable",
         ],
         workspace,
     )
     if not raw.strip():
-        return []
+        return [], False
     try:
         data: Any = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return []
+        return [], False
     if not isinstance(data, list):
-        return []
+        return [], False
 
     prs: list[PRInfo] = []
     for item in data:
@@ -191,18 +209,22 @@ def fetch_prs(workspace: Path, gh_run: GhRun = _gh_run) -> list[PRInfo]:
             mergeable=str(item.get("mergeable", "UNKNOWN")),
         )
         prs.append(pr)
-    return prs
+    is_partial = len(prs) >= 100
+    return prs, is_partial
 
 
 def fetch_pr_checks(pr: PRInfo, workspace: Path, gh_run: GhRun = _gh_run) -> None:
-    """Uzupełnij check rury PR."""
-    raw = gh_run(
-        [
-            "gh", "pr", "checks", str(pr.number),
-            "--json", "name,status,conclusion",
-        ],
-        workspace,
-    )
+    """Uzupełnij check runy PR za pomocą obsługiwanych pól name,state,bucket."""
+    try:
+        raw = gh_run(
+            [
+                "gh", "pr", "checks", str(pr.number),
+                "--json", "name,state,bucket",
+            ],
+            workspace,
+        )
+    except RuntimeError:
+        return
     if not raw.strip():
         return
     try:
@@ -214,8 +236,8 @@ def fetch_pr_checks(pr: PRInfo, workspace: Path, gh_run: GhRun = _gh_run) -> Non
     pr.checks = [
         CheckRun(
             name=str(c.get("name", "")),
-            status=str(c.get("status", "completed")),
-            conclusion=c.get("conclusion") or None,
+            state=str(c.get("state", "PENDING")),
+            bucket=str(c.get("bucket", "pending")),
         )
         for c in data
         if isinstance(c, dict)
@@ -223,14 +245,17 @@ def fetch_pr_checks(pr: PRInfo, workspace: Path, gh_run: GhRun = _gh_run) -> Non
 
 
 def fetch_pr_reviews(pr: PRInfo, workspace: Path, gh_run: GhRun = _gh_run) -> None:
-    """Uzupełnij recenzje PR."""
-    raw = gh_run(
-        [
-            "gh", "pr", "view", str(pr.number),
-            "--json", "reviews",
-        ],
-        workspace,
-    )
+    """Uzupełnij recenzje PR na podstawie latestReviews (aktualny stan, nie historia)."""
+    try:
+        raw = gh_run(
+            [
+                "gh", "pr", "view", str(pr.number),
+                "--json", "latestReviews",
+            ],
+            workspace,
+        )
+    except RuntimeError:
+        return
     if not raw.strip():
         return
     try:
@@ -239,7 +264,7 @@ def fetch_pr_reviews(pr: PRInfo, workspace: Path, gh_run: GhRun = _gh_run) -> No
         return
     if not isinstance(data, dict):
         return
-    reviews_raw = data.get("reviews") or []
+    reviews_raw = data.get("latestReviews") or []
     pr.reviews = [
         Review(
             author=str((r.get("author") or {}).get("login", "unknown")),
@@ -251,13 +276,16 @@ def fetch_pr_reviews(pr: PRInfo, workspace: Path, gh_run: GhRun = _gh_run) -> No
     ]
 
 
-def render_pr_report(prs: list[PRInfo]) -> str:
+def render_pr_report(prs: list[PRInfo], is_partial: bool = False) -> str:
     """Złóż raport PR z 3 sekcjami."""
     lines: list[str] = []
 
     # Sekcja 1: Tabela PR
     lines.append(PR_SECTION_HEADERS[0])
     lines.append("")
+    if is_partial:
+        lines.append("> [!NOTE] Pobrano pierwsze 100 PR-ów (limit zapytania).")
+        lines.append("")
     if not prs:
         lines.append("Brak otwartych PR-ów.")
         lines.append("")
@@ -267,7 +295,7 @@ def render_pr_report(prs: list[PRInfo]) -> str:
         for pr in prs:
             draft = "tak" if pr.is_draft else "—"
             lines.append(
-                f"| #{pr.number} | {pr.title} | `{pr.base_ref}` | {pr.author} | {draft} "
+                f"| #{pr.number} | {pr.clean_title} | `{pr.base_ref}` | {pr.author} | {draft} "
                 f"| {pr.checks_summary} | {pr.review_summary} | {pr.mergeable} | {pr.risk_level} |"
             )
         lines.append("")
@@ -299,7 +327,7 @@ def render_pr_report(prs: list[PRInfo]) -> str:
                     reasons.append("CHANGES_REQUESTED")
                 if pr.mergeable == "CONFLICTING":
                     reasons.append("konflikty merge")
-                lines.append(f"- **#{pr.number}** {pr.title}: {', '.join(reasons)}")
+                lines.append(f"- **#{pr.number}** {pr.clean_title}: {', '.join(reasons)}")
             lines.append("")
 
         if medium:
@@ -309,9 +337,11 @@ def render_pr_report(prs: list[PRInfo]) -> str:
                 reasons = []
                 if pr.has_pending_checks:
                     reasons.append("pending checks")
+                if not pr.checks:
+                    reasons.append("brak danych CI / checks")
                 if not pr.has_human_approval:
                     reasons.append("brak human approval")
-                lines.append(f"- **#{pr.number}** {pr.title}: {', '.join(reasons)}")
+                lines.append(f"- **#{pr.number}** {pr.clean_title}: {', '.join(reasons)}")
             lines.append("")
 
     # Sekcja 3: Rekomendowane akcje
@@ -333,7 +363,7 @@ def render_pr_report(prs: list[PRInfo]) -> str:
             lines.append("### Gotowe do merge")
             lines.append("")
             for pr in merge_ready:
-                lines.append(f"- `gh pr merge {pr.number} --merge`  # #{pr.number} {pr.title}")
+                lines.append(f"- `gh pr merge {pr.number} --merge`  # #{pr.number} {pr.clean_title}")
             lines.append("")
 
         if conflicts:
@@ -342,7 +372,7 @@ def render_pr_report(prs: list[PRInfo]) -> str:
             for pr in conflicts:
                 lines.append(
                     f"- `gh pr checkout {pr.number} && git merge origin/{pr.base_ref}`"
-                    f"  # #{pr.number} {pr.title}"
+                    f"  # #{pr.number} {pr.clean_title}"
                 )
             lines.append("")
 
@@ -350,9 +380,9 @@ def render_pr_report(prs: list[PRInfo]) -> str:
             lines.append("### Failing checks — wymagają naprawy")
             lines.append("")
             for pr in needs_fix:
-                failing = [c.name for c in pr.checks if c.conclusion in ("failure", "action_required")]
+                failing = [c.name for c in pr.checks if c.bucket == "fail" or c.state in ("FAILURE", "ACTION_REQUIRED")]
                 lines.append(
-                    f"- **#{pr.number}** {pr.title}: `gh pr checks {pr.number}` "
+                    f"- **#{pr.number}** {pr.clean_title}: `gh pr checks {pr.number}` "
                     f"(failing: {', '.join(failing[:3])})"
                 )
             lines.append("")
@@ -361,7 +391,7 @@ def render_pr_report(prs: list[PRInfo]) -> str:
             lines.append("### Oczekują na review człowieka")
             lines.append("")
             for pr in needs_review:
-                lines.append(f"- **#{pr.number}** {pr.title}: `gh pr view {pr.number}`")
+                lines.append(f"- **#{pr.number}** {pr.clean_title}: `gh pr view {pr.number}`")
             lines.append("")
 
     return "\n".join(lines)
@@ -375,16 +405,32 @@ def _pr_list(prs: list[PRInfo]) -> str:
 
 def pr_stats_command(workspace: Path, gh_run: GhRun = _gh_run) -> str:
     """Główna logika komendy ``kit-ai pr stats``."""
-    prs = fetch_prs(workspace, gh_run)
+    try:
+        prs, is_partial = fetch_prs(workspace, gh_run)
+    except RuntimeError as err:
+        return f"Błąd GitHub CLI podczas pobierania PR-ów: {err}\n"
+
     if not prs:
-        return (
-            "\n\n(brak danych)\n\n".join(PR_SECTION_HEADERS)
-            + "\n\nBrak otwartych PR-ów.\n"
-        )
+        empty_lines = [
+            PR_SECTION_HEADERS[0],
+            "",
+            "Brak otwartych PR-ów w repozytorium.",
+            "",
+            PR_SECTION_HEADERS[1],
+            "",
+            "Brak PR-ów do analizy ryzyk.",
+            "",
+            PR_SECTION_HEADERS[2],
+            "",
+            "Brak rekomendacji dla otwartych PR-ów.",
+            "",
+        ]
+        return "\n".join(empty_lines)
+
     for pr in prs:
         fetch_pr_checks(pr, workspace, gh_run)
         fetch_pr_reviews(pr, workspace, gh_run)
-    return render_pr_report(prs)
+    return render_pr_report(prs, is_partial=is_partial)
 
 
 def _parse_pr_dict(item: dict) -> PRInfo:
@@ -405,8 +451,8 @@ def _parse_pr_dict(item: dict) -> PRInfo:
         elif isinstance(c, dict):
             checks.append(CheckRun(
                 name=str(c.get("name", "")),
-                status=str(c.get("status", "completed")),
-                conclusion=c.get("conclusion") or None,
+                state=str(c.get("state") or c.get("status") or "SUCCESS"),
+                bucket=str(c.get("bucket", "pass")),
             ))
     reviews_raw = item.get("reviews") or []
     reviews: list[Review] = []

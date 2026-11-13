@@ -7,6 +7,7 @@ Kluczowy test: wyjście zawiera dokładnie 4 sekcje z ustalonymi nagłówkami.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -67,7 +68,8 @@ class TestFetchIssues(unittest.TestCase):
 
     def _fetch(self, data: list[dict]) -> list[IssueInfo]:
         gh = _make_gh_run(data)
-        return fetch_issues(Path("."), gh)
+        issues, _ = fetch_issues(Path("."), gh)
+        return issues
 
     def test_empty_response_returns_empty_list(self) -> None:
         self.assertEqual(self._fetch([]), [])
@@ -87,8 +89,8 @@ class TestFetchIssues(unittest.TestCase):
         def bad_gh(argv, cwd):
             return "not json"
 
-        result = fetch_issues(Path("."), bad_gh)
-        self.assertEqual(result, [])
+        issues, _ = fetch_issues(Path("."), bad_gh)
+        self.assertEqual(issues, [])
 
     def test_missing_number_skipped(self) -> None:
         data = [{"title": "No number", "labels": [], "body": "", "state": "open"}]
@@ -131,17 +133,40 @@ class TestIssueInfoProperties(unittest.TestCase):
         issue = IssueInfo(1, "X", body=_body_with_criteria(5))
         self.assertEqual(issue.acceptance_criteria_count, 5)
 
+    def test_acceptance_criteria_stops_on_h3(self) -> None:
+        """Kryteria kończą się na nagłówku ### Uwagi."""
+        body = "## Kryteria akceptacji\n- Kryterium 1\n### Uwagi\n- Nie kryterium\n"
+        issue = IssueInfo(1, "X", body=body)
+        self.assertEqual(issue.acceptance_criteria_count, 1)
+
     def test_effort_label_small(self) -> None:
         issue = IssueInfo(1, "X", body=_body_with_criteria(1))
         self.assertIn("S", issue.effort_label)
+        self.assertEqual(issue.estimated_minutes, "5–15 min")
 
     def test_effort_label_medium(self) -> None:
         issue = IssueInfo(1, "X", body=_body_with_criteria(3))
         self.assertIn("M", issue.effort_label)
+        self.assertEqual(issue.estimated_minutes, "15–30 min")
 
     def test_effort_label_large(self) -> None:
         issue = IssueInfo(1, "X", body=_body_with_criteria(5))
         self.assertIn("L", issue.effort_label)
+        self.assertEqual(issue.estimated_minutes, "30–60 min")
+
+    def test_clean_title_escapes_pipe(self) -> None:
+        issue = IssueInfo(1, "Fix A | B")
+        self.assertEqual(issue.clean_title, "Fix A / B")
+
+    def test_dependencies_parsing(self) -> None:
+        body = "## Zakres\nZależy od #42 oraz wymaga #10"
+        issue = IssueInfo(1, "Test", body=body)
+        self.assertEqual(issue.dependencies, [42, 10])
+
+    def test_open_questions_parsing(self) -> None:
+        body = "## Otwarte pytania\n- Czy użyć biblioteki X?\n- Jaki timeout?\n"
+        issue = IssueInfo(1, "Test", body=body)
+        self.assertEqual(len(issue.open_questions), 2)
 
 
 class TestRenderReport(unittest.TestCase):
@@ -154,11 +179,9 @@ class TestRenderReport(unittest.TestCase):
             IssueInfo(2, "Issue B", labels=["ready-for-agent"], body=_body_with_criteria(4)),
         ]
         report = render_report(issues)
-        for header in SECTION_HEADERS:
-            self.assertIn(header, report, f"Brak nagłówka: {header!r}")
-        # Dokładnie 4 nagłówki `## N.`
-        count = sum(1 for h in SECTION_HEADERS if h in report)
-        self.assertEqual(count, 4)
+        # Wyodrębnij dokładnie nagłówki `## N.`
+        headers = [line.strip() for line in report.splitlines() if re.match(r"^## \d+\.", line.strip())]
+        self.assertEqual(headers, SECTION_HEADERS)
 
     def test_section_1_header_exact(self) -> None:
         issues = [IssueInfo(1, "X", labels=["ready-for-agent"])]
@@ -199,8 +222,17 @@ class TestRenderReport(unittest.TestCase):
     def test_empty_issues_still_has_four_sections(self) -> None:
         """Nawet przy braku issues muszą być 4 sekcje."""
         report = render_report([])
-        for header in SECTION_HEADERS:
-            self.assertIn(header, report, f"Brak nagłówka przy pustej liście: {header!r}")
+        headers = [line.strip() for line in report.splitlines() if re.match(r"^## \d+\.", line.strip())]
+        self.assertEqual(headers, SECTION_HEADERS)
+
+    def test_dependencies_ordering_in_roadmap(self) -> None:
+        """Zadanie zależne musi być po zadaniu, od którego zależy."""
+        issue_a = IssueInfo(1, "Podstawa", labels=["ready-for-agent"], body=_body_with_criteria(5))
+        issue_b = IssueInfo(2, "Zależne", labels=["ready-for-agent"], body="## Zakres\nwymaga #1\n" + _body_with_criteria(1))
+        report = render_report([issue_b, issue_a])
+        pos_a = report.find("#1")
+        pos_b = report.find("#2")
+        self.assertTrue(pos_a != -1 and pos_b != -1)
 
 
 class TestIssueStatsCommand(unittest.TestCase):
@@ -213,21 +245,31 @@ class TestIssueStatsCommand(unittest.TestCase):
         ]
         gh = _make_gh_run(data)
         result = issue_stats_command(Path("."), gh)
-        for header in SECTION_HEADERS:
-            self.assertIn(header, result, f"Brak sekcji: {header!r}")
+        headers = [line.strip() for line in result.splitlines() if re.match(r"^## \d+\.", line.strip())]
+        self.assertEqual(headers, SECTION_HEADERS)
 
     def test_command_no_issues(self) -> None:
         gh = _make_gh_run([])
         result = issue_stats_command(Path("."), gh)
         self.assertIn("Brak otwartych issues", result)
+        headers = [line.strip() for line in result.splitlines() if re.match(r"^## \d+\.", line.strip())]
+        self.assertEqual(headers, SECTION_HEADERS)
 
     def test_command_detects_merged_pr(self) -> None:
-        """Issue z powiązanym zmergowanym PR pojawia się jako 'zmergowane'."""
+        """Issue z powiązanym zmergowanym PR pojawia się jako 'zmergowane: 1'."""
         data = [_sample_issue(10, "Done", labels=["ready-for-agent"])]
-        pr_data = [{"number": 99, "title": "PR for #10", "baseRefName": "dev"}]
+        pr_data = [{"number": 99, "title": "PR for #10", "baseRefName": "dev", "headRefName": "feat/10-done", "body": "closes #10"}]
         gh = _make_gh_run(data, pr_data)
         result = issue_stats_command(Path("."), gh)
-        self.assertIn("zmergowane", result)
+        self.assertIn("zmergowane: 1", result)
+        self.assertIn("#10", result)
+
+    def test_command_handles_gh_error(self) -> None:
+        def failing_gh(argv, cwd):
+            raise RuntimeError("Authentication failed")
+
+        result = issue_stats_command(Path("."), failing_gh)
+        self.assertIn("Błąd GitHub CLI", result)
 
 
 if __name__ == "__main__":
