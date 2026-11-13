@@ -17,6 +17,10 @@ codegen: orval
 # Dopisz tylko klientów, którzy mają serwer codegraph, np. [claude, codex].
 codegraph_clients: []
 
+# Integracje z zewnętrznymi narzędziami (#459). Pusta lista = brak integracji.
+# Dostępne na start: orca (orca.yaml), coderabbit (.coderabbit.yaml).
+integrations: []
+
 # Server guard (VPS) — twarda blokada ciężkich komend tylko na słabym hoście
 # serwerowym (decyzja w runtime, normalnie nic nie ustawiasz). Brak sekcji
 # = `guard: auto`, sama lista kita + rozwinięte wrappery. Po zmianie Taskfile

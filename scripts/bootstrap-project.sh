@@ -755,6 +755,11 @@ install_worktree() {
     "$TARGET" "$TARGET/.ai/project.profile.yaml" || echo "  ! worktree.json nie wyrenderowany" >&2
 }
 
+install_integrations() {
+  PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_integrations.py" \
+    "$TARGET" "$TARGET/.ai/project.profile.yaml" "$KIT_ROOT" || echo "  ! błąd renderowania integracji" >&2
+}
+
 install_headless() {
   local c rel
   if [[ "$HEADLESS" != "1" ]]; then
@@ -1356,6 +1361,8 @@ remove_kit() {
   kit_rm .ai/worktree.json
   PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_worktree.py" \
     --remove-hook "$TARGET" || true
+  PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_integrations.py" \
+    --remove "$TARGET" "$TARGET/.ai/project.profile.yaml" "$KIT_ROOT" || true
   kit_rm .ai/night-run-watchdog.sh
   kit_rm "$DESIGN_HANDOFF"
   echo ""
@@ -1483,6 +1490,7 @@ JSON
 echo "  + .ai/.kit-bootstrap.json (stamp dla check_kit_status)"
 
 install_worktree
+install_integrations
 
 warn_tracked_machine_files
 

@@ -12,6 +12,7 @@ import yaml
 from guides.clients import expand_clients, format_clients_arg, normalize_client_id, parse_clients, parse_codegraph_clients
 from guides.manifest import BundleRule, Manifest, Mappings, load_manifest
 from guides.host_profile import VPS_LIGHTWEIGHT_MODULE, detect_host_profile
+from guides.integrations import parse_integrations
 
 CODEGEN_SLOT = "codegen"
 AUTH_SLOT = "auth"
@@ -515,6 +516,8 @@ class ResolvedProfile:
     language_module_id: str
     unrecognised_decisions: tuple[tuple[str, str], ...]
     deprecated_aliases: tuple[tuple[str, str], ...]
+    integrations: tuple[str, ...] = ()
+    integration_warnings: tuple[str, ...] = ()
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -1187,6 +1190,7 @@ def resolve_profile(
     overlay_content = _load_overlays(profile_data, resolved_workspace, extra_overlays)
     unknown_decisions = unrecognised_decisions(profile_data, manifest.mappings)
     deprecated_aliases = used_aliases(profile_data, manifest.mappings)
+    parsed_integrations = parse_integrations(profile_data.get("integrations"))
     lang_module = manifest.mappings.languages.module_for(language)
     project_name = str(profile_data.get("name", resolved_workspace.name))
     codegraph_content: str | None = None
@@ -1253,6 +1257,14 @@ def resolve_profile(
             for alias, target in deprecated_aliases
         )
 
+    if parsed_integrations.integrations:
+        index_lines.extend(["", "## Integracje", ""])
+        index_lines.extend(f"- `{name}`" for name in parsed_integrations.integrations)
+
+    if parsed_integrations.warnings:
+        index_lines.extend(["", "## Ostrzeżenia integracji", ""])
+        index_lines.extend(f"- {w}" for w in parsed_integrations.warnings)
+
     if overlay_content:
         index_lines.extend(["", "## Overlay", "", "Projekt ma lokalny overlay — użyj `guides://overlay`."])
 
@@ -1273,4 +1285,6 @@ def resolve_profile(
         language_module_id=lang_module,
         unrecognised_decisions=unknown_decisions,
         deprecated_aliases=deprecated_aliases,
+        integrations=tuple(parsed_integrations.integrations),
+        integration_warnings=tuple(parsed_integrations.warnings),
     )
