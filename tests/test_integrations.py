@@ -399,3 +399,22 @@ class TestReadProfileIntegrations(unittest.TestCase):
                 self.assertEqual(integrations, ["orca", "coderabbit"])
                 self.assertEqual(lang, "en")
                 self.assertEqual(warnings, [])
+
+    def test_read_profile_integrations_fallback_supports_unindented_list(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = Path(tmp_dir) / "profile.yaml"
+            profile.write_text(
+                "integrations:\n"
+                "- orca\n"
+                "- coderabbit\n"
+                "language: en\n"
+                "other_key:\n"
+                "- should_not_be_included\n",
+                encoding="utf-8",
+            )
+            with patch.dict("sys.modules", {"yaml": None}):
+                integrations, lang, warnings = _read_profile_integrations(profile)
+                self.assertEqual(integrations, ["orca", "coderabbit"])
+                self.assertEqual(lang, "en")
+                self.assertEqual(warnings, [])

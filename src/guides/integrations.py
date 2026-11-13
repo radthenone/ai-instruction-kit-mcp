@@ -178,10 +178,11 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list
         if not stripped or stripped.startswith("#"):
             continue
         if in_integrations:
+            if stripped.startswith("-"):
+                item = stripped[1:].strip().strip("'\"")
+                list_items.append(item)
+                continue
             if line.startswith(" ") or line.startswith("\t"):
-                if stripped.startswith("-"):
-                    item = stripped[1:].strip().strip("'\"")
-                    list_items.append(item)
                 continue
             in_integrations = False
 
