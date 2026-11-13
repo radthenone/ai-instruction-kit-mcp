@@ -262,7 +262,8 @@ def render_integrations(
 
 def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
     """CLI dla skryptów render_integrations.py."""
-    args = list(sys.argv[1:] if argv is None else argv)
+    raw_args = sys.argv if argv is None else argv
+    args = list(raw_args[1:])
     remove = False
     if "--remove" in args:
         remove = True
@@ -286,7 +287,6 @@ def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
         profile_data=profile_path,
         remove=remove,
     )
-    action = "Usunięto" if remove else "Wyrenderowano"
     for path in result:
         print(f"  {' -' if remove else ' +'} {path}")
     return 0

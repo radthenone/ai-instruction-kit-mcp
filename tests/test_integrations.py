@@ -8,6 +8,7 @@ from pathlib import Path
 
 from guides.integrations import (
     INTEGRATIONS_MAP,
+    main,
     KNOWN_INTEGRATIONS,
     coderabbit_language,
     integration_target_file,
@@ -134,3 +135,25 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertIn("orca.yaml", removed)
             self.assertFalse(orca_file.exists())
             self.assertTrue(unrelated.exists())
+
+
+
+class TestIntegrationsCLI(unittest.TestCase):
+    """Testy CLI render_integrations."""
+
+    def test_cli_main_slices_argv_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            workspace = tmp / "ws"
+            workspace.mkdir()
+            kit_root = tmp / "kit"
+            (kit_root / "templates").mkdir(parents=True)
+            (kit_root / "templates" / "orca.yaml").write_text("orca_cfg: true\n", encoding="utf-8")
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("integrations:\n  - orca\n", encoding="utf-8")
+
+            argv = ["render_integrations.py", str(workspace), str(profile), str(kit_root)]
+            exit_code = main(argv, kit_root=kit_root)
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((workspace / "orca.yaml").is_file())
