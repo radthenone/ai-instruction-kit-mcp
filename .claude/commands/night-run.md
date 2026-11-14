@@ -558,10 +558,9 @@ Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i rap
 Zaczynasz od `CronDelete` i zatrzymania watchdoga. Pod `/goal` raport i dowody muszą paść
 w rozmowie (warunek sprawdza transkrypt).
 
-Przed blokiem raportu: przeczytaj wszystkie pliki `$CTX_DIR/handoff-*.md` z katalogu nocy i dołącz ich treść jako sekcję `## Przekazania` (podsekcja per issue: `### #<N>`) pod tabelą raportu. `node .ai/headless.mjs --report --ctx "$CTX_DIR"` — wypisz wynik jako
-`## HEADLESS REPORT` pod NIGHT-RUN REPORT (wrapper kasuje bufor dopiero po udanym wypisaniu).
-Pliki zaległych wywołań z kroku 6 dopisz jako `## Zaległe wywołania`. Bez wywołań wrapper
-sam wypisze „brak wywołań headless”.
+Przed wysłaniem raportu:
+1. Przeczytaj wszystkie pliki `$CTX_DIR/handoff-*.md` z katalogu nocy i dołącz ich treść jako sekcję `## Przekazania` (podsekcja per issue: `### #<N>`) na końcu raportu za wszystkimi sekcjami `###` (brak handoffów → „brak”).
+2. Uruchom `node .ai/headless.mjs --report --ctx "$CTX_DIR"` — wypisz wynik jako `## HEADLESS REPORT` pod NIGHT-RUN REPORT (wrapper kasuje bufor dopiero po udanym wypisaniu). Pliki zaległych wywołań z kroku 6 dopisz jako `## Zaległe wywołania`. Bez wywołań wrapper sam wypisze „brak wywołań headless”.
 
 ```markdown
 ## NIGHT-RUN REPORT
@@ -594,13 +593,13 @@ Założenia: <co przyjęto bez danych z repo>
 Pomiar per agent: <wiersze ze snippetu>
 Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule języka: nagłówki sekcji, etykiety werdyktów i podsumowanie w języku Profilu (np. `## Standardy` / `## Spec`, `TWARDE` / `OCENA`); nagłówek tabeli `Severity | Location | Finding | Fix` i wartości Severity bez zmian, cytaty kodu, identyfikatory i ścieżki bez zmian.
 
-## Przekazania
-<dla każdego handoff-*.md sekcja ### #<N> z treścią pliku (fakty dla następcy: modele, serwisy, endpointy, migracje, zmienione kontrakty); brak handoffów → „brak”>
-
 ### Nowe ekrany
 | PR | Route |
 | --- | --- |
 | #<PR> | <plik dodany w routes-web / routes-mobile> |
+
+## Przekazania
+<dla każdego handoff-*.md sekcja ### #<N> z treścią pliku (fakty dla następcy: modele, serwisy, endpointy, migracje, zmienione kontrakty); brak handoffów → „brak”>
 ```
 
 **Kontrakt raportu:** przed wysłaniem sprawdź każde pole powyższego bloku. Pole, którego nie dotyczy (np. `Pauzy limitu`, `Orkiestrator` poza Claude Code, `Wznowienia per ticket` bez wznowień), dostaje `n/d — <powód>`. Dane, których brak mimo wysiłku, dostają `brak danych: <powód>`. Pola nie wolno pominąć.

@@ -42,7 +42,7 @@ class TestNightRunHandoffContract(unittest.TestCase):
         self.ticket = TEMPLATE_TICKET.read_text(encoding="utf-8")
 
     def test_context_md_keeps_only_index_and_handoff_is_separate_file(self) -> None:
-        """Krok 6: Przekazanie do osobnego pliku handoff-<N>.md, w context.md tylko indeks."""
+        """Krok 5 łańcucha: Przekazanie do osobnego pliku handoff-<N>.md, w context.md tylko indeks."""
         self.assertIn("handoff-<N>.md", self.night_run)
         self.assertIn("#N → handoff-<N>.md", self.night_run)
         self.assertIn("≤ 30 linii", self.night_run)
@@ -56,13 +56,14 @@ class TestNightRunHandoffContract(unittest.TestCase):
     def test_ticket_prompt_scopes_handoffs_to_transitive_blockers(self) -> None:
         """Prompt ticketu podaje listę handoff-<B>.md blokujących przechodnio z listy nocy."""
         self.assertIn("handoff-<B>.md", self.night_run)
-        self.assertIn("blokujących", self.night_run)
-        self.assertIn("brak blokujących", self.night_run)
+        self.assertIn("brak blokujących → brak handoffów", self.night_run)
+        self.assertIn("nie czytasz handoffów niezależnych ticketów", self.night_run)
 
     def test_night_run_ticket_agent_reads_only_indicated_handoffs(self) -> None:
         """night-run-ticket.md czyta tylko wskazane handoffy blokujących."""
-        self.assertIn("wskazane", self.ticket)
-        self.assertIn("handoff", self.ticket)
+        self.assertIn("brak blokujących → brak handoffów", self.ticket)
+        self.assertIn("Nie czytasz handoffów niezależnych ticketów", self.ticket)
+        self.assertIn("wyłącznie wskazane w prompcie ticketu pliki `handoff-<B>.md`", self.ticket)
 
     def test_night_run_report_reads_all_handoff_files(self) -> None:
         """NIGHT-RUN REPORT czyta wszystkie handoff-*.md (sekcja per issue)."""
@@ -77,13 +78,16 @@ class TestNightRunHandoffContract(unittest.TestCase):
                 self.assertIn("handoff-<N>.md", text)
                 self.assertIn("#N → handoff-<N>.md", text)
                 self.assertIn("handoff-<B>.md", text)
+                self.assertIn("brak blokujących → brak handoffów", text)
+                self.assertIn("nie czytasz handoffów niezależnych ticketów", text)
                 self.assertIn("## Przekazania", text)
 
         for rel in TICKET_COPIES:
             with self.subTest(ticket_copy=rel):
                 text = (ROOT / rel).read_text(encoding="utf-8")
-                self.assertIn("wskazane", text)
-                self.assertIn("handoff", text)
+                self.assertIn("brak blokujących → brak handoffów", text)
+                self.assertIn("Nie czytasz handoffów niezależnych ticketów", text)
+                self.assertIn("wyłącznie wskazane w prompcie ticketu pliki `handoff-<B>.md`", text)
 
 
 if __name__ == "__main__":
