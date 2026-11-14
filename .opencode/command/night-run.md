@@ -86,10 +86,10 @@ halt C) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu
   `/review` poza Claude Code (brak wbudowanego review) → traktowane jak nieznany skill review
   (needs-human na starcie nocy).
   Rozróżnienie `/code-review` i `/review`:
-  - `/code-review` = skill Matta (gdy istnieje), dostaje numer issue (`/code-review <N>` z flagami) —
-    jego oś Spec czyta issue;
-  - `/review [effort] [--fix]` = wbudowane review Claude Code; cel: przed PR dostaje zakres `<BASE>...HEAD`, po `/git-end` numer PR;
-  - gdy w argumentach podano `/code-review` z flagami `--fix` albo `--comment`, przy osobistym skillu `code-review` (np. skill Matta, który tych flag nie obsługuje) → orkiestrator tłumaczy wywołanie na `/review …` z tymi flagami (decyzja odwracalna) i zapisuje to w raporcie (w linii Założenia);
+  - `/code-review` = osobisty skill (gdy istnieje), dostaje numer issue (`/code-review <N>`), bo jego oś Spec czyta issue;
+  - `/review [effort] [--fix]` = wbudowane review Claude Code; dostaje zakres `<BASE>...HEAD`;
+  - kryterium wykrycia osobistego skilla `code-review`: skill nie deklaruje flag `--fix`/`--comment`;
+  - gdy w argumentach podano `/code-review` z flagami `--fix` albo `--comment`: orkiestrator najpierw sprawdza, czy klient ma wbudowane `/review` (Claude Code); dopiero wtedy — przy wykryciu osobistego skilla `code-review` (niedeklarującego tych flag) — tłumaczy na `/review` z tymi flagami (decyzja odwracalna) i zapisuje to w raporcie (w linii Założenia). Poza Claude Code brak wbudowanego `/review` uniemożliwia tłumaczenie (needs-human na starcie nocy);
   - po `--fix`: zebranie poprawek przez `/git-commit` w osobnym commicie na branchu ticketu i ponowne CI;
   pozostałe skille review dostają tylko diff.
 
@@ -252,13 +252,9 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co
    uruchomienie review. Ze skillami review z argumentów: uruchamiasz je **Ty** według reguły
    „Komendy kitu uruchamiasz według klienta” (np. `review-bugbot` na modelu z
-   frontmattera), w kolejności z argumentów, dopisując do wywołania linię `Język wyjścia: <language>` (wartość z `get_language`):
-   - `/code-review` wołasz z numerem ticketu (`/code-review <N>`), bo jego oś Spec czyta issue;
-   - `/review [effort] [--fix]` (wbudowane review Claude Code): przed PR dostaje zakres `origin/$BASE...HEAD` (albo `<BASE>...HEAD`), po `/git-end` numer PR;
-   - gdy w argumentach podano `/code-review` z flagami `--fix` albo `--comment`, przy osobistym skillu `code-review` → orkiestrator tłumaczy na `/review …` (decyzja odwracalna) i zapisuje to w raporcie;
-   - `/review` poza Claude Code (brak wbudowanego review) → nieznany skill review (needs-human na starcie nocy);
-   - pozostałe skille review uruchamiasz na `git diff origin/$BASE...HEAD` brancha ticketu.
-   Od skilla bierzesz tylko tabelę niżej; skill / review z `--fix` poprawia sam — po `--fix` subagent ticketu po
+   frontmattera), w kolejności z argumentów, dopisując do wywołania linię `Język wyjścia: <language>` (wartość z `get_language`),
+   wg reguły z sekcji Argumenty.
+   Od skilla bierzesz tylko tabelę niżej (dla wbudowanego `/review`: orkiestrator przepisuje findingi do tabeli `Severity | Location | Finding | Fix` — nagłówek bez zmian — i oznacza każdy wiersz jako potwierdzony albo niepewny); skill / review z `--fix` poprawia sam — po `--fix` subagent ticketu po
    wznowieniu zbiera poprawki przez `/git-commit` (w osobnym commicie na branchu ticketu) i uruchamia ponowne CI.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    Język wyjścia: <language> (wartość z `get_language`).
