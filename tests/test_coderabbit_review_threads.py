@@ -148,6 +148,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
     def test_night_run_merge_gate_fails_closed_on_read_error(self) -> None:
         self.assertIn("Błąd zapytania GraphQL albo odpowiedź bez danych `reviewThreads`", self.night_run)
         self.assertIn("bramka fail-closed", self.night_run)
+        self.assertIn("orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo wątków”", self.night_run)
 
 if __name__ == "__main__":
     unittest.main()

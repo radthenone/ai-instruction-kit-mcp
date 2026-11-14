@@ -297,6 +297,17 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertNotIn("en-US", content)
 
 
+    def test_remove_keeps_template_when_workspace_is_kit_root(self) -> None:
+        """--remove w repo kita nie kasuje pliku, który jest szablonem integracji."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            target = root / ".coderabbit.yaml"
+            target.write_text(f'{KIT_MARKER}\nlanguage: "pl-PL"\n', encoding="utf-8")
+            removed = render_integrations(root, root, remove=True)
+            self.assertNotIn(".coderabbit.yaml", removed)
+            self.assertTrue(target.is_file())
+
+
 class TestIntegrationsCLI(unittest.TestCase):
     def test_cli_main_prints_unknown_integration_warnings(self) -> None:
         import io

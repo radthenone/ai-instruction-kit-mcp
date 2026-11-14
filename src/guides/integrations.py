@@ -244,6 +244,9 @@ def render_integrations(
         removed: list[str] = []
         for info in INTEGRATIONS_MAP.values():
             target = workspace_root / info.target_file
+            if target.resolve() == (kit_root / info.template_name).resolve():
+                # Repo kita: plik celu jest szablonem integracji, nie usuwamy go.
+                continue
             if target.is_file():
                 if is_kit_managed(target):
                     target.unlink()
