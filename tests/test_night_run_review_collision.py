@@ -9,6 +9,8 @@ Weryfikuje zakres z issue #465 oraz poprawki po review:
 - /review poza Claude Code (brak wbudowanego) -> traktowane jak nieznany skill review (needs-human na starcie);
 - krok 2 odsyła do sekcji Argumenty oraz normalizuje wynik wbudowanego /review do tabeli Severity | Location | Finding | Fix;
 - przykład w sekcji Argumenty: /review --fix zamiast /code-review --fix;
+- --comment tylko przy istniejącym PR (po /git-end), przed /git-end wynik zostaje w raporcie nocy;
+- skille review uruchamiane w katalogu brancha ticketu, z kontrolą `git branch --show-current` i rozjazdem jako needs-human;
 - kopie szablonów u klientów zachowują ten sam kontrakt.
 """
 
@@ -95,6 +97,22 @@ class TestNightRunReviewCollision(unittest.TestCase):
         )
         self.assertNotIn("po `/git-end` numer PR", step_two)
 
+    def test_comment_flag_only_with_existing_pr(self) -> None:
+        """`--comment` działa tylko przy istniejącym PR; przed /git-end wynik zostaje w raporcie nocy (#465)."""
+        section = self.review_args_section
+        self.assertIn("`--comment` działa tylko wtedy, gdy PR już istnieje (po `/git-end`)", section)
+        self.assertIn("nie przekazujesz `--comment`", section)
+        self.assertIn("wynik zostaje w raporcie nocy", section)
+
+    def test_review_skills_run_in_ticket_branch_directory(self) -> None:
+        """Skille review idą w katalogu brancha ticketu, z kontrolą `git branch --show-current` (#465)."""
+        step_two = self.step_two_section
+        self.assertIn("w katalogu brancha ticketu", step_two)
+        self.assertIn("`git -C <katalog brancha>`", step_two)
+        self.assertIn("git -C <katalog brancha> branch --show-current", step_two)
+        self.assertIn("nie odpalasz review na złym diffie", step_two)
+        self.assertIn("katalog (worktree ticketu albo katalog główny)", self.text)
+
     def test_all_client_copies_contain_review_contract(self) -> None:
         """Wszystkie śledzone kopie szablonu night-run u klientów zachowują kontrakt #465."""
         for rel in NIGHT_RUN_COPIES:
@@ -123,7 +141,12 @@ class TestNightRunReviewCollision(unittest.TestCase):
                     "`/review` poza Claude Code (brak wbudowanego review) → traktowane jak nieznany skill review",
                     review_args,
                 )
+                self.assertIn("`--comment` działa tylko wtedy, gdy PR już istnieje (po `/git-end`)", review_args)
+                self.assertIn("wynik zostaje w raporcie nocy", review_args)
                 self.assertIn("wg reguły z sekcji Argumenty", step_two)
+                self.assertIn("w katalogu brancha ticketu", step_two)
+                self.assertIn("git -C <katalog brancha> branch --show-current", step_two)
+                self.assertIn("katalog (worktree ticketu albo katalog główny)", copy)
                 self.assertIn(
                     "dla wbudowanego `/review`: orkiestrator przepisuje findingi do tabeli `Severity | Location | Finding | Fix`",
                     step_two,

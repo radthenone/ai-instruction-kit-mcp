@@ -90,6 +90,7 @@ halt C) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu
   - kryterium wykrycia osobistego skilla `code-review`: skill nie deklaruje flag `--fix`/`--comment`;
   - gdy w argumentach podano `/code-review` z flagami `--fix` albo `--comment`: orkiestrator najpierw sprawdza, czy klient ma wbudowane `/review` (Claude Code); dopiero wtedy — przy wykryciu osobistego skilla `code-review` (niedeklarującego tych flag) — tłumaczy na `/review` z tymi flagami (decyzja odwracalna) i zapisuje to w raporcie (w linii Założenia). Poza Claude Code brak wbudowanego `/review` uniemożliwia tłumaczenie (needs-human na starcie nocy);
   - po `--fix`: zebranie poprawek przez `/git-commit` w osobnym commicie na branchu ticketu i ponowne CI;
+  - `--comment` działa tylko wtedy, gdy PR już istnieje (po `/git-end`); przy review przed `/git-end` nie przekazujesz `--comment` — wynik zostaje w raporcie nocy (bez publikacji na nieistniejący PR);
   pozostałe skille review dostają tylko diff.
 
 `EXEC` i `REVIEW` (albo „domyślne”) → nagłówek `CTX` i NIGHT-RUN REPORT.
@@ -253,6 +254,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    „Komendy kitu uruchamiasz według klienta” (np. `review-bugbot` na modelu z
    frontmattera), w kolejności z argumentów, dopisując do wywołania linię `Język wyjścia: <language>` (wartość z `get_language`),
    wg reguły z sekcji Argumenty.
+   Skille review uruchamiasz w katalogu brancha ticketu (worktree ticketu z hand-backu albo katalog główny, gdy worktree nie był używany): `git -C <katalog brancha>` albo cwd ustawiony na ten katalog. Przed startem sprawdzasz `git -C <katalog brancha> branch --show-current`: inny branch niż branch ticketu → nie odpalasz review na złym diffie, tylko zgłaszasz rozjazd w raporcie nocy (needs-human).
    Od skilla bierzesz tylko tabelę niżej (dla wbudowanego `/review`: orkiestrator przepisuje findingi do tabeli `Severity | Location | Finding | Fix` — nagłówek bez zmian — i oznacza każdy wiersz jako potwierdzony albo niepewny); skill / review z `--fix` poprawia sam — po `--fix` subagent ticketu po
    wznowieniu zbiera poprawki przez `/git-commit` (w osobnym commicie na branchu ticketu) i uruchamia ponowne CI.
    Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
@@ -394,7 +396,7 @@ Reguły:
 - Zero pytań do człowieka. Needs-human albo halt → wypchnij branch, hand-back z Q1/Q2
   (komentarz na issue daje orkiestrator).
 
-Hand-back (bez streszczania pracy): stan (do review / MERGED / needs-human / halt); branch, PR,
+Hand-back (bez streszczania pracy): stan (do review / MERGED / needs-human / halt); branch, katalog (worktree ticketu albo katalog główny), PR,
 link `Final report`; testy unit/x, integration-db/y, integration/z, e2e/w (z komend);
 dodane modele, serwisy, endpointy, migracje; założenia; findingi review w języku Profilu; rundy CodeRabbit: <0–3 / n/d>; model: <per komenda: agent
 <nazwa> (<model>) / skill / inline — fallback przy braku agenta>.
