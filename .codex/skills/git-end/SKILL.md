@@ -165,7 +165,7 @@ gh pr checks <PR> --watch
 
 Czerwone CI → hand-back z logiem CI, kodu nie naprawiasz.
 
-Gdy `gh pr checks` zwróci `no checks reported` (błąd/brak CI): powtórz sprawdzenie raz (checki mogą rejestrować się z opóźnieniem). Jeśli nadal brak checks: przy `Host: local` po przejściu bramek szybkich przejdź do obsługi wątków review; przy `Host: vps` brak CI to błąd (hand-back z logiem CI, brak merge).
+Gdy `gh pr checks` zwróci `no checks reported` (błąd/brak CI): odczekaj 60 s i powtórz sprawdzenie raz (checki mogą rejestrować się z opóźnieniem). Jeśli nadal brak checks: przy `Host: local` po przejściu bramek szybkich przejdź do obsługi wątków review; przy `Host: vps` brak CI to błąd (hand-back z logiem CI, brak merge).
 
 Po zielonych checks (lub przy `Host: local` bez checks po bramkach szybkich) przejdź do obsługi wątków review:
 
@@ -178,7 +178,7 @@ Jeśli brak `coderabbit` w `integrations:` — krok wątków bota jest pominięt
 
 **Pobranie wątków (GraphQL):**
 Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit dla bieżącego head commita PR (po zielonych checks, a przy `Host: local` bez checks po przejściu bramek szybkich).
-Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Po upływie limitu czasu (brak review bota): 0 rund z adnotacją „brak review bota” w raporcie (w rundzie 1) albo `needs-human` (w kolejnych rundach).
+Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Po upływie limitu czasu (brak review bota): nadal pobierz otwarte wątki bota z GraphQL (poniżej) i obsłuż je jak w rundach. Gdy brak otwartych wątków: 0 rund z adnotacją „brak review bota” w raporcie (w rundzie 1) albo `needs-human` (w kolejnych rundach).
 
 Pobierz wątki review przez GraphQL (`reviewThreads`) z paginacją (`gh api graphql --paginate` oraz `pageInfo { hasNextPage endCursor }`):
 

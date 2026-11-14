@@ -87,16 +87,24 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("merge mimo wątków", prompt)
 
     def test_git_end_no_checks_reported_branch(self) -> None:
-        """git-end krok 4 obsługuje gałąź no checks reported."""
+        """git-end krok 4 obsługuje gałąź no checks reported z odczekaniem 60 s przed ponowieniem."""
         normalized = " ".join(self.git_end.split())
         self.assertIn("no checks reported", self.git_end)
-        self.assertRegex(normalized, r"no checks reported.*(?:powtórz|ponów).*Host:\s*local")
+        self.assertRegex(normalized, r"no checks reported.*(?:odczekaj 60 s|po minucie).*(?:powtórz|ponów).*Host:\s*local")
 
     def test_git_end_bot_review_timeout_and_signal(self) -> None:
-        """git-end: limit czasu na review bota, sygnał dla head commita i adnotacja w raporcie."""
+        """git-end: limit czasu na review bota, sygnał dla head commita, odczyt istniejących wątków i adnotacja w raporcie."""
         normalized = " ".join(self.git_end.split())
         self.assertIn("reviews.nodes.commit.oid == headRefOid", self.git_end)
         self.assertRegex(normalized, r"(?:limit czasu|timeout).*brak review bota")
+        self.assertRegex(normalized, r"(?:limitu czasu|timeout).*nadal pobierz.*otwarte wątki")
+        self.assertRegex(normalized, r"Gdy (?:brak|nie ma) otwartych wątków:\s*0 rund")
+
+    def test_night_run_merge_gate_gated_on_coderabbit_integration(self) -> None:
+        """Bramka wątków bota przed merge w night-run zależy od obecności coderabbit w integrations:."""
+        prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        self.assertRegex(prompt, r"Bramka merge uwzględnia wątki bota:\*{0,2}\s*gdy `coderabbit` jest w `integrations:`")
+        self.assertRegex(prompt, r"(?:brak|bez) `coderabbit` w `integrations:`.*(?:sprawdzenie.*pominięt|pominięt)")
 
     def test_git_end_pagination_and_root_author_filter(self) -> None:
         """git-end: paginacja reviewThreads oraz filtrowanie po pierwszym autorze i obsługa isOutdated."""
