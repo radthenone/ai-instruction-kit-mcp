@@ -145,5 +145,9 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertRegex(prompt, r"Host:\s*local.*bez checks.*bramkach szybkich")
 
 
+    def test_night_run_merge_gate_fails_closed_on_read_error(self) -> None:
+        self.assertIn("Błąd zapytania GraphQL albo odpowiedź bez danych `reviewThreads`", self.night_run)
+        self.assertIn("bramka fail-closed", self.night_run)
+
 if __name__ == "__main__":
     unittest.main()
