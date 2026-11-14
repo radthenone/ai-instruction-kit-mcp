@@ -80,6 +80,40 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("jeden push", prompt)
         self.assertRegex(prompt, r"3\.\s*rundzie.*needs-human")
         self.assertLess(prompt.index("reviewThreads"), prompt.index("gh pr merge"))
+        gate_phrase = "Bramka merge uwzględnia wątki bota"
+        self.assertIn(gate_phrase, prompt)
+        self.assertLess(prompt.index(gate_phrase), prompt.index("7. `gh pr merge"))
+        self.assertRegex(prompt, r"ponowny odczyt.*reviewThreads")
+        self.assertIn("merge mimo wątków", prompt)
+
+    def test_git_end_no_checks_reported_branch(self) -> None:
+        """git-end krok 4 obsługuje gałąź no checks reported."""
+        normalized = " ".join(self.git_end.split())
+        self.assertIn("no checks reported", self.git_end)
+        self.assertRegex(normalized, r"no checks reported.*(?:powtórz|ponów).*Host:\s*local")
+
+    def test_git_end_bot_review_timeout_and_signal(self) -> None:
+        """git-end: limit czasu na review bota, sygnał dla head commita i adnotacja w raporcie."""
+        normalized = " ".join(self.git_end.split())
+        self.assertIn("reviews.nodes.commit.oid == headRefOid", self.git_end)
+        self.assertRegex(normalized, r"(?:limit czasu|timeout).*brak review bota")
+
+    def test_git_end_pagination_and_root_author_filter(self) -> None:
+        """git-end: paginacja reviewThreads oraz filtrowanie po pierwszym autorze i obsługa isOutdated."""
+        normalized = " ".join(self.git_end.split())
+        self.assertIn("pageInfo", self.git_end)
+        self.assertIn("hasNextPage", self.git_end)
+        self.assertIn("endCursor", self.git_end)
+        self.assertIn("comments.nodes[0].author.login", self.git_end)
+        self.assertRegex(normalized, r"isOutdated.*resolveReviewThread")
+
+    def test_rounds_owner_and_ci_attempt_accounting(self) -> None:
+        """git-end i night-run ustalają właściciela rund i wliczanie czerwonego CI rundy do 3 prób."""
+        git_end_norm = " ".join(self.git_end.split())
+        night_run_prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        self.assertRegex(git_end_norm, r"(?i)czerwone CI po pushu rundy.*(?:liczy|wlicza).*3 prób")
+        self.assertRegex(night_run_prompt, r"(?i)czerwone CI po pushu rundy.*(?:liczy|wlicza).*3 prób")
+        self.assertRegex(night_run_prompt, r"(?:Właścicielem|właścicielem).*git-end")
 
     def test_night_run_triggers_and_cases_include_bot_threads(self) -> None:
         """Wyzwalacze i przypadek E w night-run uwzględniają otwarte wątki CodeRabbit."""
