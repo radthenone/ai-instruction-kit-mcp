@@ -283,6 +283,20 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertIn(KIT_MARKER, content_en)
 
 
+    def test_render_coderabbit_language_round_trip_when_target_is_template(self) -> None:
+        """W repo kita szablonem jest sam plik celu: pl -> en -> pl musi wrócić do pl-PL."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            target = root / ".coderabbit.yaml"
+            target.write_text(f'{KIT_MARKER}\nlanguage: "pl-PL"\nreviews: {{}}\n', encoding="utf-8")
+            render_integrations(root, root, integrations=["coderabbit"], language="en")
+            self.assertIn('language: "en-US"', target.read_text(encoding="utf-8"))
+            render_integrations(root, root, integrations=["coderabbit"], language="pl")
+            content = target.read_text(encoding="utf-8")
+            self.assertIn('language: "pl-PL"', content)
+            self.assertNotIn("en-US", content)
+
+
 class TestIntegrationsCLI(unittest.TestCase):
     def test_cli_main_prints_unknown_integration_warnings(self) -> None:
         import io
