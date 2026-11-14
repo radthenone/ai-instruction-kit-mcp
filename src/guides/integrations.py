@@ -9,6 +9,7 @@ Na start:
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -243,6 +244,9 @@ def render_integrations(
         removed: list[str] = []
         for info in INTEGRATIONS_MAP.values():
             target = workspace_root / info.target_file
+            if target.resolve() == (kit_root / info.template_name).resolve():
+                # Repo kita: plik celu jest szablonem integracji, nie usuwamy go.
+                continue
             if target.is_file():
                 if is_kit_managed(target):
                     target.unlink()
@@ -296,7 +300,8 @@ def render_integrations(
         if name == "coderabbit":
             lang_code = coderabbit_language(resolved_lang)
             content = content.replace("{{language}}", lang_code)
-            content = content.replace('language: "pl-PL"', f'language: "{lang_code}"')
+            # Dowolna wartość language (nie tylko pl-PL): w repo kita szablonem jest sam plik celu.
+            content = re.sub(r'(?m)^language:\s*"[^"]*"', f'language: "{lang_code}"', content)
 
         target = workspace_root / info.target_file
         if target.is_file() and not is_kit_managed(target):
