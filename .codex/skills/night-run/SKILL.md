@@ -173,8 +173,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 - **Mapa aplikacji:** katalog → co w nim jest, 1 linia.
 - **Konwencje:** same reguły z AGENTS.md, BUGBOT.md, `.ai/project.md`.
 - **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay; brak → „brak danych”.
-- **Przekazanie:** `### #N` + modele, serwisy, endpointy, migracje z hand-backu. Dopisujesz
-  **Ty** po każdym MERGED.
+- **Przekazania:** zapisywane do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy); w `context.md` zostaje tylko indeks `#N → handoff-<N>.md` dopisywany przez Ciebie po każdym MERGED.
 - **Zaległe wywołania headless:** przed pierwszym ticketem przejrzyj `~/.cache/night-run-<repo>-*/`
   poprzednich nocy. Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
   raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<data>.md`
@@ -232,7 +231,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 ## Łańcuch na ticket — dokładnie ten
 
 1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
-   dosłownie. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
+   dosłownie, z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
    poprawiasz `## Stan`, jeśli hand-back zmienia krok. Z `/headless` kroki 2–3 promptu
@@ -264,19 +263,19 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
    przed CI — krok `ci`. Dalej kroki 6–8 promptu.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
-5. Dopisz „Przekazanie” do `CTX`, policz koszt ticketu (sekcja „Pomiar”),
-   `git checkout $BASE && git pull` przed następnym ticketem.
+5. Zapisz Przekazanie z hand-backu do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy), dopisz wpis do indeksu w `CTX` (`#N → handoff-<N>.md`), a w rozmowie orkiestratora zostaw tylko jedną linię stanu: `#N: <stan> <PR> <koszt>` (dzięki temu kontekst orkiestratora nie rośnie z każdym ticketem). Policz koszt ticketu (sekcja „Pomiar”), `git checkout $BASE && git pull` przed następnym ticketem.
 
 Hand-back needs-human albo halt od subagenta → sekcja „Gdy ticket napotka problem”.
 
 ## Prompt ticketu
 
-Przekazujesz go subagentowi dosłownie, poza wyborem wariantu kroków 2–3 (łańcuch, krok 1).
+Przekazujesz go subagentowi dosłownie, poza wyborem wariantu kroków 2–3 (łańcuch, krok 1) oraz podstawieniem listy plików handoff blokujących przechodnio z listy tej nocy (brak blokujących → brak handoffów).
 Komendy kitu w krokach uruchamiasz według reguły „Komendy kitu uruchamiasz według klienta”.
 
 ```markdown
-Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> — przeczytaj go najpierw, zamiast
+Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> (część wspólna: nagłówek, mapa, konwencje, pułapki) — przeczytaj go najpierw, zamiast
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
+Przekazania blokujących (tylko zależności przechodnie z listy nocy): <lista plików $CTX_DIR/handoff-<B>.md albo „brak blokujących”> — czytasz wyłącznie wskazane pliki handoffów blokujących; nie czytasz handoffów niezależnych ticketów ani całego CTX z obcymi Przekazaniami.
 Specyfikacja = body issue + komentarz z briefem agenta (AGENT-BRIEF od `/triage`), jeśli jest:
 `gh issue view <N> --comments`.
 Body issue bez sekcji `Kryterium ukończenia` ani `Kryteria akceptacji` (nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) → hand-back needs-human przed pierwszym krokiem, bez kodu.
@@ -448,7 +447,7 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 ### Zasięg — zanim cokolwiek zrobisz
 
 Które tickety z listy od tego zależą: jawnie (blocked-by) i niejawnie (zmieniony model,
-pole, serwis, endpoint, z którego korzysta inny — treść issue + „Przekazanie” w `CTX`).
+pole, serwis, endpoint, z którego korzysta inny — treść issue + pliki `handoff-<B>.md` blokujących / indeks w `CTX`).
 
 ### Przypadki
 
@@ -557,10 +556,9 @@ Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i rap
 Zaczynasz od `CronDelete` i zatrzymania watchdoga. Pod `/goal` raport i dowody muszą paść
 w rozmowie (warunek sprawdza transkrypt).
 
-Przed blokiem raportu: `node .ai/headless.mjs --report --ctx "$CTX_DIR"` — wypisz wynik jako
-`## HEADLESS REPORT` pod NIGHT-RUN REPORT (wrapper kasuje bufor dopiero po udanym wypisaniu).
-Pliki zaległych wywołań z kroku 6 dopisz jako `## Zaległe wywołania`. Bez wywołań wrapper
-sam wypisze „brak wywołań headless”.
+Przed wysłaniem raportu:
+1. Przeczytaj wszystkie pliki `$CTX_DIR/handoff-*.md` z katalogu nocy i dołącz ich treść jako sekcję `## Przekazania` (podsekcja per issue: `### #<N>`) na końcu raportu za wszystkimi sekcjami `###` (brak handoffów → „brak”).
+2. Uruchom `node .ai/headless.mjs --report --ctx "$CTX_DIR"` — wypisz wynik jako `## HEADLESS REPORT` pod NIGHT-RUN REPORT (wrapper kasuje bufor dopiero po udanym wypisaniu). Pliki zaległych wywołań z kroku 6 dopisz jako `## Zaległe wywołania`. Bez wywołań wrapper sam wypisze „brak wywołań headless”.
 
 ```markdown
 ## NIGHT-RUN REPORT
@@ -597,6 +595,9 @@ Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule język
 | PR | Route |
 | --- | --- |
 | #<PR> | <plik dodany w routes-web / routes-mobile> |
+
+## Przekazania
+<dla każdego handoff-*.md sekcja ### #<N> z treścią pliku (fakty dla następcy: modele, serwisy, endpointy, migracje, zmienione kontrakty); brak handoffów → „brak”>
 ```
 
 **Kontrakt raportu:** przed wysłaniem sprawdź każde pole powyższego bloku. Pole, którego nie dotyczy (np. `Pauzy limitu`, `Orkiestrator` poza Claude Code, `Wznowienia per ticket` bez wznowień), dostaje `n/d — <powód>`. Dane, których brak mimo wysiłku, dostają `brak danych: <powód>`. Pola nie wolno pominąć.
