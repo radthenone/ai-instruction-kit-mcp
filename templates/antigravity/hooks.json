@@ -6,12 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/invoke-hook.js git-guard.mjs --to antigravity",
+            "command": "node -e \"const p=require('path'),f=require('fs');const find=d=>{for(const r of ['hooks','.agents/hooks']){const c=p.join(d,r,'invoke-hook.js');if(f.existsSync(c))return c}const u=p.dirname(d);return u===d?'':find(u)};const s=find(process.cwd());if(s===''){const m='kit-guards: nie znaleziono invoke-hook.js (hooks/ ani .agents/hooks/ od '+process.cwd()+' w gore)';console.error(m);console.log(JSON.stringify({decision:'deny',reason:m}));process.exit(0)}process.argv.splice(1,0,s);require(s)\" git-guard.mjs --to antigravity",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "node hooks/invoke-hook.js server-guard.mjs --to antigravity",
+            "command": "node -e \"const p=require('path'),f=require('fs');const find=d=>{for(const r of ['hooks','.agents/hooks']){const c=p.join(d,r,'invoke-hook.js');if(f.existsSync(c))return c}const u=p.dirname(d);return u===d?'':find(u)};const s=find(process.cwd());if(s===''){const m='kit-guards: nie znaleziono invoke-hook.js (hooks/ ani .agents/hooks/ od '+process.cwd()+' w gore)';console.error(m);console.log(JSON.stringify({decision:'deny',reason:m}));process.exit(0)}process.argv.splice(1,0,s);require(s)\" server-guard.mjs --to antigravity",
             "timeout": 10
           }
         ]
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/invoke-hook.js server-guard.mjs --to antigravity",
+            "command": "node -e \"const p=require('path'),f=require('fs');const find=d=>{for(const r of ['hooks','.agents/hooks']){const c=p.join(d,r,'invoke-hook.js');if(f.existsSync(c))return c}const u=p.dirname(d);return u===d?'':find(u)};const s=find(process.cwd());if(s===''){const m='kit-guards: nie znaleziono invoke-hook.js (hooks/ ani .agents/hooks/ od '+process.cwd()+' w gore)';console.error(m);console.log(JSON.stringify({decision:'deny',reason:m}));process.exit(0)}process.argv.splice(1,0,s);require(s)\" server-guard.mjs --to antigravity",
             "timeout": 10
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/invoke-hook.js sensitive-files-guard.mjs --to antigravity",
+            "command": "node -e \"const p=require('path'),f=require('fs');const find=d=>{for(const r of ['hooks','.agents/hooks']){const c=p.join(d,r,'invoke-hook.js');if(f.existsSync(c))return c}const u=p.dirname(d);return u===d?'':find(u)};const s=find(process.cwd());if(s===''){const m='kit-guards: nie znaleziono invoke-hook.js (hooks/ ani .agents/hooks/ od '+process.cwd()+' w gore)';console.error(m);console.log(JSON.stringify({decision:'deny',reason:m}));process.exit(0)}process.argv.splice(1,0,s);require(s)\" sensitive-files-guard.mjs --to antigravity",
             "timeout": 10
           }
         ]

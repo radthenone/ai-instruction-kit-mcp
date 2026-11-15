@@ -1459,7 +1459,7 @@ wie o różnicy między klientami.
 | OpenCode | plugin `.opencode/plugins/kit-guards.js` → `node .opencode/hooks/invoke-hook.js <guard>.mjs --to opencode --tool Bash\|Read\|Edit\|Write` | tłumaczony przez adapter |
 | Codex | `node "$(git rev-parse --show-toplevel)/.codex/hooks/invoke-hook.js" <guard>.mjs --to codex` | tłumaczony przez adapter; wyjście jak Claude Code (`hookSpecificOutput.permissionDecision`) |
 | Copilot (VS Code + CLI) | `node .github/hooks/invoke-hook.js <guard>.mjs --to copilot` | tłumaczony przez adapter; deny = top-level `permissionDecision` + `hookSpecificOutput`, allow = pusty stdout |
-| Antigravity | `node hooks/invoke-hook.js <guard>.mjs --to antigravity` (cwd = katalog `hooks.json`, czyli `.agents/`) | tłumaczony przez adapter; wyjście `{ decision, reason }` (allow = `{"decision":"allow"}`) |
+| Antigravity | `node -e "<launcher>" <guard>.mjs --to antigravity` (launcher szuka `hooks/` albo `.agents/hooks/` od cwd w górę) | tłumaczony przez adapter; wyjście `{ decision, reason }` (allow = `{"decision":"allow"}`) |
 
 Cursor: `beforeShellExecution` → git-guard + sensitive-files-guard, `beforeReadFile` →
 sensitive-files-guard (`--tool Read`), `preToolUse` z matcherem `Write` → sensitive-files-guard
@@ -1517,7 +1517,12 @@ Antigravity (`--clients antigravity`): bootstrap kładzie guardy, `invoke-hook.j
 `kit-guards`, PreToolUse). Plik dzielimy z użytkownikiem — `scripts/antigravity_hooks.py`
 scala przy install i prune'uje przy odznaczeniu wyłącznie klucz `kit-guards`, więc własne
 hooki zostają (nieparsowalny plik → `.bak` i wpis kita od zera). Komendy hooków startują
-z katalogu, w którym leży `hooks.json`, stąd `node hooks/invoke-hook.js … --to antigravity`.
+z katalogu zależnego od hosta (w worktree T3 i adapterze ACP nie musi to być `.agents/`), więc
+komenda to `node -e "<launcher>" <guard>.mjs --to antigravity`: jednolinijkowy launcher (bez `%`, `$`, `!`, apostrofów
+dwukrotnych — działa w cmd, PowerShellu i bashu) szuka `hooks/invoke-hook.js` albo `.agents/hooks/invoke-hook.js`
+od cwd w górę i ładuje pierwszy znaleziony. Brak pliku = czytelny komunikat na stderr oraz
+`{"decision":"deny"}` z powodem (fail-closed, zamiast „External hook failed to execute"). W worktree `.agents/hooks*`
+musi istnieć: w repo z zacommitowanymi hookami robi to git, w pozostałych `worktree.copy` z Profilu.
 Adapter sprowadza narzędzia runtime (`run_command` z `CommandLine`, `view_file`
 z `AbsolutePath`, `write_to_file` / `replace_file_content` / `multi_replace_file_content` /
 `edit_file` z `TargetFile`, MCP jednym narzędziem `call_mcp_tool` z `ServerName` / `ToolName` /
