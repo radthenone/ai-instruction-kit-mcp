@@ -449,7 +449,7 @@ class HelpTextTests(unittest.TestCase):
 
     def test_help_texts_have_no_issue_references(self) -> None:
         """Numery issue w pomocy starzeją się szybciej niż opis zachowania."""
-        for argv in (["retro"], ["retro", "scan"], ["retro", "report"]):
+        for argv in ([], ["retro"], ["retro", "scan"], ["retro", "report"]):
             with self.subTest(argv=argv):
                 self.assertNotRegex(self._help(*argv), r"#\d+")
 
