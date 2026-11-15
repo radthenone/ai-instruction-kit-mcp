@@ -161,7 +161,7 @@ nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie
 - Warunek wykonania `needs-local` (także z listy ręcznej i przy `ready-for-agent`):
   - na hoście `vps` (`Host: vps` z nagłówka CTX / `kit-ai host`) → pomijasz, w raporcie `skipped: needs-local`;
   - na hoście `local` (`Host: local`) → bierzesz normalnie (bez pomijania).
-- **Ticket w innej nocy:** przed podjęciem każdego ticketu (z kolejki lub listy ręcznej) sprawdzasz inne katalogi CTX tego dnia (`~/.cache/night-run-<repo>-<data>*/` poza Twoim `$CTX_DIR`). Ticket z listy, który w pliku `context.md` innego CTX tego dnia ma w `## Stan` krok ≠ `koniec` (ticket trwający w innej nocy) → pomijasz, w raporcie `skipped: w innej nocy <katalog>` (gdzie `<katalog>` to nazwa tamtego katalogu CTX, np. `night-run-<repo>-<data>` albo `night-run-<repo>-<data>-b`).
+- **Ticket w innej nocy:** przed podjęciem każdego ticketu (z kolejki lub listy ręcznej) sprawdzasz inne katalogi CTX tego dnia (`~/.cache/night-run-<repo>-<data>*/` poza Twoim `$CTX_DIR`). Ticket z listy, który w pliku `context.md` innego CTX tego dnia ma w `## Stan` krok ≠ `koniec` (ticket trwający w innej nocy) → pomijasz, w raporcie `skipped: w innej nocy <katalog>` (gdzie `<katalog>` to nazwa tamtego katalogu CTX, np. `night-run-<repo>-<data>` albo `night-run-<repo>-<data>-b`). Ticket z listy zależny od ticketu pominiętego w ten sposób (zależność `blocked_by`) również pomijasz: `skipped: zależność #N w innej nocy <katalog>`.
 
 ### 5. Kolejność
 
@@ -178,8 +178,8 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 
 - **Sufiks CTX dla równoległych nocy:** dwie noce w tym samym repo i dniu (równoległe workspace'y)
   mają osobne katalogi CTX, `## Stan`, watchdogi i cron, i nie ruszają nawzajem swoich ticketów.
-  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`.
-  - **Bez `ctx:`:** jeśli katalog dnia `~/.cache/night-run-<repo>-<data>/` istnieje, a jego `## Stan` ma krok ≠ `koniec` (noc w toku) → przydzielasz automatyczny sufiks `-b`, `-c`… (`CTX_DIR=~/.cache/night-run-<repo>-<data>-b/`, `...-c/` itd., pierwszy wolny katalog lub z krokiem `koniec`) z linią w raporcie (`Sufiks CTX: automatyczny <sufiks> (noc w toku w <katalog>)`). Gdy katalog dnia nie istnieje lub ma krok `koniec` → używasz bazowego `CTX_DIR=~/.cache/night-run-<repo>-<data>/` bez sufiksu.
+  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`. Gdy katalog ten już istnieje, a jego `## Stan` ma krok ≠ `koniec` (inna aktywna noc na tym sufiksie) → zatrzymujesz start (halt C: katalog CTX zajęty przez inną aktywną noc).
+  - **Bez `ctx:`:** jeśli katalog dnia `~/.cache/night-run-<repo>-<data>/` istnieje, a jego `## Stan` ma krok ≠ `koniec` (noc w toku), to przydzielasz automatyczny sufiks `-b`, `-c`… (`CTX_DIR=~/.cache/night-run-<repo>-<data>-b/`, `...-c/` itd. — katalog tworzysz przez `mkdir`; jeśli już istnieje i jest w toku, sprawdzasz kolejny wolny lub z krokiem `koniec`) z linią w raporcie (`Sufiks CTX: automatyczny <sufiks> (noc w toku w <katalog>)`). Gdy katalog dnia nie istnieje lub ma krok `koniec`, to używasz bazowego `CTX_DIR=~/.cache/night-run-<repo>-<data>/` bez sufiksu.
 
 - **Nagłówek:** uruchom raz na noc w repo `kit-ai night-ctx` i wklej wynik **bez zmian** na
   początek CTX (BASE, `Host:`, bramki szybkie, język, linia-znacznik generatora
@@ -599,7 +599,7 @@ Retro: <liczba znalezisk> (kit <n> · projekt <n> · agent <n> · zewnętrzne <n
 | #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
 | #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
-| #J | skipped: needs-local / skipped: <etykieta> / skipped: w innej nocy <katalog> / halted | — | — | — | etykieta stanu, inna noc albo link do komentarza halted | — |
+| #J | skipped: needs-local / skipped: <etykieta> / skipped: w innej nocy <katalog> / skipped: zależność #N w innej nocy <katalog> / halted | — | — | — | etykieta stanu, inna noc albo link do komentarza halted | — |
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako

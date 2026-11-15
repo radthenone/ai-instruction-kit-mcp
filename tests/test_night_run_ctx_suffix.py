@@ -48,10 +48,12 @@ class TestNightRunCtxSuffixContract(unittest.TestCase):
         self.assertIn("`ctx: <sufiks>`", self.text)
 
     def test_ctx_directory_with_suffix_format(self) -> None:
-        """Krok 6 określa format katalogu z sufiksem z celu: night-run-<repo>-<data>-<sufiks>."""
+        """Krok 6 określa format katalogu z sufiksem z celu oraz zatrzymanie, gdy jawny sufiks jest zajęty."""
         ctx_sec = self.ctx_section
         self.assertIn("`CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`", ctx_sec)
         self.assertIn("`ctx: <sufiks>`", ctx_sec)
+        self.assertIn("inna aktywna noc na tym sufiksie", ctx_sec)
+        self.assertIn("halt C", ctx_sec)
 
     def test_auto_suffix_when_active_night_exists(self) -> None:
         """Bez ctx:, gdy katalog dnia ma krok != koniec, przydzielany jest automatyczny sufiks -b, -c... z linią w raporcie."""
@@ -63,16 +65,18 @@ class TestNightRunCtxSuffixContract(unittest.TestCase):
         self.assertIn("Sufiks CTX:", ctx_sec)
 
     def test_skip_ticket_in_progress_in_another_night(self) -> None:
-        """Ticket, który inny CTX tego dnia ma w ## Stan jako trwający, zostaje pominięty z skipped: w innej nocy <katalog>."""
+        """Ticket trwający w innym CTX oraz tickety od niego zależne są pomijane."""
         queue_sec = self.queue_section
         self.assertIn("skipped: w innej nocy <katalog>", queue_sec)
+        self.assertIn("skipped: zależność #N w innej nocy <katalog>", queue_sec)
         self.assertIn("krok ≠ `koniec`", queue_sec)
 
     def test_report_includes_ctx_suffix_and_skipped_in_other_night(self) -> None:
-        """NIGHT-RUN REPORT ma linię Sufiks CTX oraz stan skipped: w innej nocy w tabeli."""
+        """NIGHT-RUN REPORT ma linię Sufiks CTX oraz stany skipped w tabeli."""
         rep = self.report_section
         self.assertIn("Sufiks CTX:", rep)
         self.assertIn("skipped: w innej nocy <katalog>", rep)
+        self.assertIn("skipped: zależność #N w innej nocy <katalog>", rep)
 
     def test_cron_isolated_per_ctx(self) -> None:
         """CronCreate w kroku 7 sprawdza istnienie crona dla tego CTX / tej nocy, nie blokując równoległej nocy."""
@@ -89,6 +93,7 @@ class TestNightRunCtxSuffixContract(unittest.TestCase):
                 self.assertIn("`ctx: <sufiks>`", copy)
                 self.assertIn("`CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`", copy)
                 self.assertIn("skipped: w innej nocy <katalog>", copy)
+                self.assertIn("skipped: zależność #N w innej nocy <katalog>", copy)
                 self.assertIn("Sufiks CTX:", copy)
 
 
