@@ -47,8 +47,8 @@ echo $! > "$HEADLESS_TEST_DIR/child"
 echo "wynik wykonawcy"
 if [ -n "$FAKE_PROGRESS" ]; then i=0; while [ "$i" -lt "$FAKE_PROGRESS" ]; do echo "krok $i"; sleep 0.1; i=$((i+1)); done; fi
 if [ -n "$FAKE_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP" ]; do echo "→ Bash: próba $i"; echo "Error: boom"; if [ -n "$FAKE_LOOP_EDIT" ]; then echo "$i" >> tracked.txt; fi; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
-case " $FAKE_LOOP_FOR " in *" $(basename "$0") "*) i=0; while [ "$i" -lt 5 ]; do echo "→ Bash: próba $i"; echo "Error: boom"; i=$((i+1)); done; sleep 300; exit 0;; esac
-if [ -n "$FAKE_TOOL_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_TOOL_LOOP" ]; do echo "→ Read tests/x.py"; i=$((i+1)); done; fi
+case " $FAKE_LOOP_FOR " in *" $(basename "$0") "*) i=0; while [ "$i" -lt 5 ]; do echo "→ Bash: próba $i"; echo "Error: boom"; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; sleep 300; exit 0;; esac
+if [ -n "$FAKE_TOOL_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_TOOL_LOOP" ]; do echo "→ Read tests/x.py"; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
 if [ -n "$FAKE_LOOP_UNTRACKED" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP_UNTRACKED" ]; do echo "→ Bash: próba $i"; echo "Error: boom"; echo "$i" >> untracked-edit.txt; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
 if [ -n "$FAKE_LOOP_DUMP" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP_DUMP" ]; do echo "Error: boom"; i=$((i+1)); done; fi
 if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "${FAKE_COMMIT_MSG:-praca wykonawcy}"; fi
@@ -865,7 +865,8 @@ class HeadlessWrapperTest(unittest.TestCase):
 
     def test_repeated_identical_error_is_loop_hang_before_limit(self) -> None:
         # Bez `--timeout` limit to 60 min; pętla ma zabić wykonawcę znacznie wcześniej (sleep 30 s).
-        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_SLEEP="30")
+        # Pauza: powtórzenia muszą trafić w różne porcje wyjścia, inaczej nie da się sprawdzić, czy repo się zmieniło.
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_SLEEP="30", FAKE_LOOP_PAUSE="0.3")
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("## pętla: 5× Error: boom", self.headless_log())
         row = self.last_row(result)
@@ -899,14 +900,14 @@ class HeadlessWrapperTest(unittest.TestCase):
 
     def test_repeated_tool_call_lines_are_loop_hang_before_limit(self) -> None:
         # Wywołania narzędzi (`→`) jak w wyjściu opencode: ta sama linia 5 razy z rzędu, repo bez zmian.
-        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_TOOL_LOOP="5", FAKE_SLEEP="30")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_TOOL_LOOP="5", FAKE_SLEEP="30", FAKE_LOOP_PAUSE="0.3")
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("## pętla: 5× → Read tests/x.py", self.headless_log())
         self.assertEqual((self.last_row(result)["klasa"], self.last_row(result)["kod"]), ("HANG", 124))
 
     def test_loop_hands_task_1_to_1_to_fallback_executor(self) -> None:
         self.chain_profile()
-        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP_FOR="opencode2")
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP_FOR="opencode2", FAKE_LOOP_PAUSE="0.3")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
         self.assertIn("## pętla: 5× Error: boom", self.headless_log())
@@ -2346,6 +2347,49 @@ class HeadlessDecisionTest(unittest.TestCase):
         name.write_text("raz\ndwa\n", encoding="utf-8")
         third = node_export("h.repoFingerprint()", self.root)
         self.assertEqual(len({first, second, third}), 3)
+
+    def test_repetitions_within_one_output_chunk_are_not_a_loop(self) -> None:
+        # Cała seria w jednej porcji wyjścia: nie widać, czy repo zmieniło się między powtórzeniami (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, () => "same", 1);
+    out.push(d.feed("Error: boom", () => "same", 1));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, [None] * 5)
+
+    def test_repetitions_spread_over_chunks_are_a_loop(self) -> None:
+        # Te same powtórzenia w pięciu różnych porcjach przy niezmienionym repo: pętla (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, () => "same", i + 1);
+    out.push(d.feed("Error: boom", () => "same", i + 1));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[-1], {"key": "Error: boom", "count": 5})
+
+    def test_repo_fingerprint_is_unknown_in_repo_without_commits(self) -> None:
+        # Repo bez HEAD to stan nieznany (null), a nie stały odcisk „brak repozytorium” (#424).
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True, capture_output=True)
+        self.assertIsNone(node_export("h.repoFingerprint()", self.root))
+
+    def test_repo_fingerprint_is_constant_outside_a_repo(self) -> None:
+        # Poza repozytorium odcisk jest stały, a pętlę liczy sama seria wyjścia (#424).
+        first = node_export("h.repoFingerprint()", self.root)
+        self.assertIsNotNone(first)
+        self.assertEqual(first, node_export("h.repoFingerprint()", self.root))
 
     def git_init_with_commit(self) -> None:
         """Repo z jednym commitem do testów odcisku; użytkownik gita ustawiony w samym poleceniu."""

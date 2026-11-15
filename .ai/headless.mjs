@@ -642,16 +642,22 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
   let error = null
   let toolSinceError = false
   // Liczy powtórzenie w serii; zwraca trafienie, `"reset"` (repo się zmieniło, seria zaczyna od nowa) albo null.
-  const count = (streak, key, fingerprint) => {
+  const count = (streak, key, fingerprint, chunk) => {
     streak.count += 1
-    if (streak.count === 2) streak.fp = fingerprint()
+    if (streak.count === 2) {
+      streak.fp = fingerprint()
+      streak.chunk = chunk
+    }
     if (streak.count < repeats) return null
+    // Porównanie tylko z INNEJ porcji wyjścia niż baza. W tej samej porcji nie widać, czy repo zmieniło się
+    // między powtórzeniami, więc taka seria nie dowodzi pętli (#424).
+    if (chunk !== undefined && chunk === streak.chunk) return "reset"
     const now = fingerprint()
     // Stan nieznany (`null`) nigdy nie dowodzi, że repo się nie zmieniło.
     return now !== null && now === streak.fp ? { key, count: streak.count } : "reset"
   }
   return {
-    feed(line, fingerprint) {
+    feed(line, fingerprint, chunk) {
       const key = loopEventKey(line)
       if (key === null) return null
       if (LOOP_TOOL_LINE.test(key)) {
@@ -660,7 +666,7 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
           tool = { key, count: 1, fp: null }
           return null
         }
-        const hit = count(tool, key, fingerprint)
+        const hit = count(tool, key, fingerprint, chunk)
         if (hit === "reset") tool = { key, count: 1, fp: null }
         return hit === "reset" ? null : hit
       }
@@ -671,7 +677,7 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
         error = { key, count: 1, fp: null }
         return null
       }
-      const hit = count(error, key, fingerprint)
+      const hit = count(error, key, fingerprint, chunk)
       if (hit === "reset") error = { key, count: 1, fp: null }
       return hit === "reset" ? null : hit
     },
@@ -684,7 +690,10 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
 // jest nieznany (`null`): nie wolno go uznać za niezmieniony i zabić wykonawcy.
 export function repoFingerprint() {
   const head = git("rev-parse", "HEAD")
-  if (head === null) return createHash("sha1").update("no-repo").digest("hex")
+  if (head === null) {
+    // Brak repozytorium daje stały odcisk; repo bez HEAD albo błąd odczytu w repo to stan nieznany (null).
+    return git("rev-parse", "--git-dir") === null ? createHash("sha1").update("no-repo").digest("hex") : null
+  }
   const status = git("status", "--porcelain")
   const diff = git("diff", "HEAD")
   // `-z`: nazwy idą surowe, bez cytowania (core.quotePath), więc `statSync` trafia w prawdziwy plik.
@@ -1051,6 +1060,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // Wykrywacz pętli tylko tam, gdzie wykonawca drukuje zdarzenia na bieżąco (#424, zob. EXECUTORS.claude).
   const loops = executor.loopDetect === false ? null : createLoopDetector()
   let fpMemo
+  let chunkNo = 0
   const stopForLoop = (hit) => {
     killReason = "loop"
     loopNote = `${hit.count}× ${hit.key}`
@@ -1075,11 +1085,12 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       // Wykrywacz pętli widzi tylko pełne linie. Odcisk repo liczymy co najwyżej raz na porcję wyjścia: każdy odcisk
       // to kilka procesów git, które blokują pętlę zdarzeń, więc powtórzenia w jednej porcji nie mnożą kosztu.
       if (loops) {
+        chunkNo += 1
         fpMemo = undefined
         const fingerprint = () => (fpMemo === undefined ? (fpMemo = repoFingerprint()) : fpMemo)
         for (const line of parts) {
           if (killReason !== null) break
-          const hit = loops.feed(line, fingerprint)
+          const hit = loops.feed(line, fingerprint, chunkNo)
           if (hit) stopForLoop(hit)
         }
       }
