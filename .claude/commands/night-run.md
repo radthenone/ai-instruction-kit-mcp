@@ -193,7 +193,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 - **Przekazania:** zapisywane do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy); w `context.md` zostaje tylko indeks `#N → handoff-<N>.md` dopisywany przez Ciebie po każdym MERGED.
 - **Zaległe wywołania headless:** przed pierwszym ticketem przejrzyj `~/.cache/night-run-<repo>-*/`
   poprzednich nocy (zakończonych z krokiem `koniec` lub rzeczywiście przerwanych — nigdy aktywnej nocy z krokiem ≠ `koniec`). Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
-  raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<data>.md`
+  raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<nazwa tamtego katalogu>.md`
   (wrapper kasuje bufor dopiero po wypisaniu). Plik wpisz do NIGHT-RUN REPORT jako `zaległe wywołania`.
 - **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
