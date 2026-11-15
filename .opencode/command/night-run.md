@@ -177,7 +177,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 
 - **Sufiks CTX dla równoległych nocy:** dwie noce w tym samym repo i dniu (równoległe workspace'y)
   mają osobne katalogi CTX, `## Stan`, watchdogi i cron, i nie ruszają nawzajem swoich ticketów.
-  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`. Gdy katalog ten już istnieje, a jego `## Stan` ma krok ≠ `koniec` (inna aktywna noc na tym sufiksie) → zatrzymujesz start (halt C: katalog CTX zajęty przez inną aktywną noc).
+  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`. Gdy katalog ten już istnieje, a jego `## Stan` ma krok ≠ `koniec` (inna aktywna noc na tym sufiksie), to zatrzymujesz start tej sesji — nie wykonujesz `CronDelete`, `TaskStop` ani `--report` dla tego katalogu (katalog CTX zajęty przez inną aktywną noc).
   - **Bez `ctx:`:** jeśli katalog dnia `~/.cache/night-run-<repo>-<data>/` istnieje, a jego `## Stan` ma krok ≠ `koniec` (noc w toku), to przydzielasz automatyczny sufiks `-b`, `-c`… (`CTX_DIR=~/.cache/night-run-<repo>-<data>-b/`, `...-c/` itd. — katalog tworzysz przez `mkdir`; jeśli już istnieje i jest w toku, sprawdzasz kolejny wolny lub z krokiem `koniec`) z linią w raporcie (`Sufiks CTX: automatyczny <sufiks> (noc w toku w <katalog>)`). Gdy katalog dnia nie istnieje lub ma krok `koniec`, to używasz bazowego `CTX_DIR=~/.cache/night-run-<repo>-<data>/` bez sufiksu.
 
 - **Nagłówek:** uruchom raz na noc w repo `kit-ai night-ctx` i wklej wynik **bez zmian** na

@@ -53,7 +53,7 @@ class TestNightRunCtxSuffixContract(unittest.TestCase):
         self.assertIn("`CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`", ctx_sec)
         self.assertIn("`ctx: <sufiks>`", ctx_sec)
         self.assertIn("inna aktywna noc na tym sufiksie", ctx_sec)
-        self.assertIn("halt C", ctx_sec)
+        self.assertIn("zatrzymujesz start tej sesji", ctx_sec)
 
     def test_auto_suffix_when_active_night_exists(self) -> None:
         """Bez ctx:, gdy katalog dnia ma krok != koniec, przydzielany jest automatyczny sufiks -b, -c... z linią w raporcie."""
