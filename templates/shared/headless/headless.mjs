@@ -11,7 +11,8 @@
  *
  * Termin (#424): bez `--timeout` 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana HEAD
  * albo git status (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout <min>` to twardy limit bez
- * przedłużania. Pętla (ta sama linia błędu albo wywołania narzędzia 5 razy z rzędu, repo bez zmian) zabija
+ * przedłużania. Pętla (to samo wywołanie narzędzia 5 razy z rzędu albo ten sam błąd po wywołaniu narzędzia,
+ * 5 razy, repo bez zmian; zrzut błędów bez wywołań narzędzi nie jest pętlą) zabija
  * wykonawcę przed limitem jako HANG, a raport dostaje wpis `## pętla`.
  *
  * Po zakończeniu, błędzie albo timeoucie wrapper zabija całe drzewo procesów wykonawcy
@@ -518,8 +519,13 @@ function git(...args) {
   return r.status === 0 ? r.stdout.trimEnd() : null
 }
 
-// Stan gita jako źródło postępu: HEAD i git status (#397). Poza repo — pusty, stały tekst.
-const gitState = () => [git("rev-parse", "HEAD"), git("status", "--porcelain")].join("\n")
+// Stan gita jako źródło postępu: HEAD i git status (#397). Null, gdy git nie odpowiada (poza repo albo
+// przejściowy błąd): wtedy nie ma porównania, więc błąd gita nie daje fałszywego postępu.
+const gitState = () => {
+  const head = git("rev-parse", "HEAD")
+  const status = git("status", "--porcelain")
+  return head === null || status === null ? null : `${head}\n${status}`
+}
 
 const lines = (text) => (text ? text.split("\n") : [])
 
@@ -576,7 +582,7 @@ export function cpuTicksOfTree(rootPid, proc = "/proc") {
 // potomków (spadek to koniec procesu, nie praca). Na Windows CPU jest `null` — liczą się wyjście i git.
 export function progressSince(previous, current) {
   return current.output > previous.output
-    || current.git !== previous.git
+    || (current.git != null && previous.git != null && current.git !== previous.git)
     || (current.cpu ?? 0) > (previous.cpu ?? 0)
 }
 
@@ -611,7 +617,8 @@ export function nextDeadline({ elapsedMs, deadlineMs, progressed, stepMs, ceilin
   if (elapsedMs < deadlineMs - stepMs / 100) return { action: "wait" }
   if (!progressed) return { action: "kill", reason: "no-progress" }
   if (deadlineMs >= ceilingMs) return { action: "kill", reason: "ceiling" }
-  return { action: "extend", deadlineMs: Math.min(deadlineMs + stepMs, ceilingMs) }
+  // Od bieżącego czasu, gdy tick spóźnił się względem terminu: inaczej nowy termin mógłby być już przeterminowany.
+  return { action: "extend", deadlineMs: Math.min(Math.max(deadlineMs, elapsedMs) + stepMs, ceilingMs) }
 }
 
 // Zdarzenie wyjścia do wykrywania pętli (#424): błąd albo wywołanie narzędzia (opencode rysuje je jako
@@ -625,26 +632,46 @@ export function loopEventKey(line) {
   return LOOP_ERROR_LINE.test(clean) || LOOP_TOOL_LINE.test(clean) ? clean : null
 }
 
-// Wykrywacz pętli (#424): ta sama treść zdarzenia `repeats` razy z rzędu. Zwykłe linie nie zrywają serii,
-// inne zdarzenie tak. Pętla to seria, w której odcisk repo (`fingerprint()`) nie zmienił się od drugiego
-// zdarzenia do N-tego: wykonawca, który edytuje między błędami, nie jest w pętli. Odcisk liczymy dopiero
-// przy powtórce, więc zwykłe zdarzenia nie wołają gita. Dla `repeats` ≥ 3 okno ma sens.
+// Wykrywacz pętli (#424, po review): pętla to powtórzenie z rzędu przy niezmienionym repo, w dwóch wariantach:
+// (1) to samo wywołanie narzędzia (`→`, `⚙`, `$`) N razy z rzędu; zdarzenia błędu między nimi są pomijane;
+// (2) ten sam błąd N razy, z wywołaniem narzędzia przed każdym powtórzeniem (agent ponawia tę samą akcję).
+// Zrzut błędów bez wywołań narzędzi (kompilator, testy, cytat w odpowiedzi) nie jest pętlą; kończy go termin.
+// Odcisk repo (`fingerprint()`) liczymy od drugiego powtórzenia do N-tego: edycja między nimi = nie pętla.
 export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
-  let streak = null
+  let tool = null
+  let error = null
+  let toolSinceError = false
+  // Liczy powtórzenie w serii; zwraca trafienie, `"reset"` (repo się zmieniło, seria zaczyna od nowa) albo null.
+  const count = (streak, key, fingerprint) => {
+    streak.count += 1
+    if (streak.count === 2) streak.fp = fingerprint()
+    if (streak.count < repeats) return null
+    return fingerprint() === streak.fp ? { key, count: streak.count } : "reset"
+  }
   return {
     feed(line, fingerprint) {
       const key = loopEventKey(line)
       if (key === null) return null
-      if (streak === null || streak.key !== key) {
-        streak = { key, count: 1, fp: null }
+      if (LOOP_TOOL_LINE.test(key)) {
+        toolSinceError = true
+        if (tool === null || tool.key !== key) {
+          tool = { key, count: 1, fp: null }
+          return null
+        }
+        const hit = count(tool, key, fingerprint)
+        if (hit === "reset") tool = { key, count: 1, fp: null }
+        return hit === "reset" ? null : hit
+      }
+      // Błąd wchodzi do serii tylko wtedy, gdy przed tym powtórzeniem było wywołanie narzędzia.
+      const continues = error !== null && error.key === key && toolSinceError
+      toolSinceError = false
+      if (!continues) {
+        error = { key, count: 1, fp: null }
         return null
       }
-      streak.count += 1
-      if (streak.count === 2) streak.fp = fingerprint()
-      if (streak.count < repeats) return null
-      if (fingerprint() === streak.fp) return { key, count: streak.count }
-      streak = { key, count: 1, fp: null }
-      return null
+      const hit = count(error, key, fingerprint)
+      if (hit === "reset") error = { key, count: 1, fp: null }
+      return hit === "reset" ? null : hit
     },
   }
 }
@@ -1036,11 +1063,12 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       partial.set(source, parts.pop())
       tail.push(...parts.filter((l) => l.trim()))
       tail.splice(0, tail.length - TAIL_LINES)
-      // Wykrywacz pętli widzi tylko pełne linie.
+      // Wykrywacz pętli widzi tylko pełne linie; po zabiciu nie liczymy dalej (każdy odcisk to kilka procesów git).
       if (loops) {
         for (const line of parts) {
+          if (killReason !== null) break
           const hit = loops.feed(line, repoFingerprint)
-          if (hit && killReason === null) stopForLoop(hit)
+          if (hit) stopForLoop(hit)
         }
       }
     })
@@ -1125,6 +1153,9 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       stallDescribed = describeStall(checkerInput).then((note) => {
         stallNote = note
         log(`[headless] zacięcie: ${note}\n`)
+      }).catch((err) => {
+        // Błąd checkera nie może przerwać runOnce przed raportem końcowym i wierszem wywołania.
+        stallNote = `checker niedostępny: ${err?.message ?? err}`
       })
     },
   })
