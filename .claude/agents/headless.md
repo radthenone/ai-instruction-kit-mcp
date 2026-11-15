@@ -78,7 +78,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    w ostatnim kroku (10 min: bajty wyjścia, zmiana `HEAD`/`git status`, a z `/proc` także CPU) albo sufit
    120 min, a wrapper przechodzi dalej 1:1. Pętla (ten sam błąd albo to samo wywołanie narzędzia 5 razy
    z rzędu, bez zmian w repo) kończy wykonawcę wcześniej jako `HANG` z wpisem `## pętla` w raporcie.
-   Jawny `--timeout` zabija w swoim terminie, bez przedłużania.
+   `claude -p` pętli nie wykrywa (drukuje tylko finalny tekst). Jawny `--timeout` zabija w swoim terminie, bez przedłużania.
 2. Kod wyjścia `2` = błędne wywołanie (np. wykonawca == host, spoza `clients:`, nieznana
    flaga). Pokaż komunikat wrappera użytkownikowi i zakończ.
    Kod `75` = limit u ostatniego wykonawcy łańcucha, nie błąd: linia

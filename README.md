@@ -1318,7 +1318,7 @@ klasa `HANG`, kod `124`). Jawny `--timeout <min>` to twardy limit bez przedłuż
 **Pętla (#424).** Ta sama linia błędu albo to samo wywołanie narzędzia (`→`, `⚙`, `$` w wyjściu opencode) 5 razy z rzędu,
 przy niezmienionym `HEAD`, `git status` i diffie, to pętla: wrapper zabija drzewo przed limitem, klasa `HANG`, a raport
 dostaje wpis `## pętla: <N>× <linia>`. Zwykłe linie między błędami nie zrywają serii; edycja repo między powtórkami już tak.
-Limit dostawcy i błędny model agy nie są pętlą — mają własne klasy (`LIMIT`, `MODEL`).
+Limit dostawcy i błędny model agy nie są pętlą — mają własne klasy (`LIMIT`, `MODEL`). `claude -p` nie ma wykrywania pętli: drukuje tylko finalny tekst, więc powtórzone linie błędu w odpowiedzi nie są sygnałem pętli.
 
 **Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
