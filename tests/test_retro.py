@@ -437,6 +437,35 @@ def _run_cli(*argv: str, env: dict[str, str]) -> tuple[int, str]:
     return code, out.getvalue()
 
 
+class HelpTextTests(unittest.TestCase):
+    """Pomoc ``retro``, ``scan`` i ``report`` opisuje zachowanie, nie numery issue."""
+
+    def _help(self, *argv: str) -> str:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as exit_code:
+            cli.main([*argv, "--help"])
+        self.assertEqual(exit_code.exception.code, 0)
+        return out.getvalue()
+
+    def test_help_texts_have_no_issue_references(self) -> None:
+        """Numery issue w pomocy starzeją się szybciej niż opis zachowania."""
+        for argv in ([], ["retro"], ["retro", "scan"], ["retro", "report"]):
+            with self.subTest(argv=argv):
+                self.assertNotRegex(self._help(*argv), r"#\d+")
+
+    def test_subcommand_help_has_description(self) -> None:
+        """Podkomendy retro mają opisy działania w pomocy własnej (--help)."""
+        cases = [
+            (["retro"], "~/.cache/kit-ai/retro"),
+            (["retro", "scan"], "sesje Claude Code tego repo"),
+            (["retro", "report"], "issue z markerem"),
+        ]
+        for argv, expected in cases:
+            with self.subTest(argv=argv):
+                normalized = " ".join(self._help(*argv).split())
+                self.assertIn(expected, normalized)
+
+
 class ScanTests(unittest.TestCase):
     NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
 

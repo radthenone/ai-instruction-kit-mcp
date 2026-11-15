@@ -658,10 +658,18 @@ def main(argv: list[str] | None = None) -> int:
         "--verbose", action="store_true", help="Kandydaci, gdy ścieżka pasuje do kilku miejsc"
     )
 
-    retro = sub.add_parser("retro", help="Skaner sesji agentów do ~/.cache/kit-ai/retro (#371)")
+    retro = sub.add_parser(
+        "retro",
+        description="Skaner zapisuje wyniki w katalogu cache: $XDG_CACHE_HOME/kit-ai/retro "
+        "albo ~/.cache/kit-ai/retro.",
+        help="Skaner sesji Claude Code: sygnały i koszt w $XDG_CACHE_HOME/kit-ai/retro "
+        "albo ~/.cache/kit-ai/retro",
+    )
     retro_sub = retro.add_subparsers(dest="retro_command", required=True)
     retro_scan = retro_sub.add_parser(
-        "scan", help="Przeskanuj sesje Claude tego repo albo jedną sesję (--session)"
+        "scan",
+        description="Skanuje sesje Claude Code tego repo albo jedną sesję podaną w --session.",
+        help="Przeskanuj sesje Claude Code tego repo albo jedną sesję (--session)",
     )
     retro_scan.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
     retro_scan.add_argument("--session", help="ID sesji Claude (np. z hooka SessionEnd)")
@@ -669,7 +677,11 @@ def main(argv: list[str] | None = None) -> int:
         "--since", help="Bez --session: tylko sesje zmienione od YYYY-MM-DD albo w ostatnich Nd"
     )
     retro_report_parser = retro_sub.add_parser(
-        "report", help="Propozycje z wielu repo ponad progami, bez znalezisk, które mają już issue z markerem (#373, ADR-0017)"
+        "report",
+        description="Zestawia propozycje z wielu repo ponad progami i pomija znaleziska, "
+        "które mają już issue z markerem.",
+        help="Propozycje z wielu repo ponad progami; pomija znaleziska, które mają już "
+        "issue z markerem",
     )
     retro_report_parser.add_argument(
         "path", nargs="?", default=".", help="Repo, z którego czytane są issue z markerem, w każdym stanie (domyślnie: .)"
