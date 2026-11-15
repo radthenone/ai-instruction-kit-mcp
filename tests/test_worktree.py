@@ -552,6 +552,38 @@ class TestWorktreeSafety(unittest.TestCase):
             self.assertIn("pominięto link poza repo: ../x", res.stdout)
             self.assertFalse((repo / ".worktrees" / "x").exists())
 
+    def test_copy_does_not_write_through_symlinked_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            (repo / ".agents" / "hooks").mkdir(parents=True)
+            (repo / ".agents" / "hooks" / "guard.mjs").write_text("// guard\n", encoding="utf-8")
+            (repo / ".agents" / "hooks.json").write_text("{}\n", encoding="utf-8")
+            (repo / ".agents" / "skills").mkdir()
+            _write_config(
+                repo,
+                {"copy": [".agents/hooks.json", ".agents/hooks"], "link": [".agents/skills"], "setup": [], "venv": "none"},
+            )
+            wt = repo / ".worktrees" / "symlink-wt"
+            res = _run_wt(repo, "add", str(wt), "--detach", "HEAD", "--plain")
+            self.assertEqual(res.returncode, 0, res.stderr)
+            # Worktree z `.agents` wskazującym poza worktree; zewnętrzny katalog hooks już istnieje
+            external = Path(tmp) / "external"
+            (external / "hooks").mkdir(parents=True)
+            (external / "hooks" / "keep.txt").write_text("keep\n", encoding="utf-8")
+            try:
+                os.symlink(external, wt / ".agents", target_is_directory=True)
+            except OSError:
+                self.skipTest("brak uprawnień do tworzenia dowiązań symbolicznych")
+            res_sync = _run_wt(repo, "sync", str(wt))
+            self.assertEqual(res_sync.returncode, 0, res_sync.stderr)
+            self.assertFalse((external / "hooks" / "guard.mjs").exists())
+            self.assertFalse((external / "hooks.json").exists())
+            self.assertFalse(os.path.lexists(external / "skills"))
+            self.assertIn("pominięto copy przez dowiązanie w ścieżce: .agents/hooks", res_sync.stdout)
+            self.assertIn("pominięto link przez dowiązanie w ścieżce: .agents/skills", res_sync.stdout)
+
     def test_remove_refuses_main_checkout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"

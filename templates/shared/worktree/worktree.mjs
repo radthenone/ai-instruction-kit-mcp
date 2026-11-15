@@ -97,6 +97,15 @@ function isInside(root, p) {
   return rel !== null && rel !== "";
 }
 
+// Czy któryś katalog między `wtPath` a `dest` jest dowiązaniem (także zerwanym); zapis przez niego wyszedłby poza worktree.
+function hasSymlinkAncestor(wtPath, dest) {
+  const root = path.resolve(wtPath);
+  for (let cur = path.dirname(path.resolve(dest)); cur.startsWith(root + path.sep); cur = path.dirname(cur)) {
+    if (lexists(cur) && fs.lstatSync(cur).isSymbolicLink()) return true;
+  }
+  return false;
+}
+
 function getMainRepoRoot(cwd = process.cwd()) {
   const common = git(["rev-parse", "--git-common-dir"], cwd);
   const resolved = path.isAbsolute(common) ? common : path.resolve(cwd, common);
@@ -262,6 +271,10 @@ function performCopy(mainRoot, wtPath, copyList, warnings) {
       continue;
     }
     if (!fs.existsSync(src)) continue;
+    if (hasSymlinkAncestor(wtPath, dest)) {
+      warnings.push(`pominięto copy przez dowiązanie w ścieżce: ${item}`);
+      continue;
+    }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
@@ -294,6 +307,10 @@ function performLink(mainRoot, wtPath, linkList, warnings) {
     if (!fs.existsSync(src)) continue;
     if (lexists(dest)) {
       if (!fs.existsSync(dest)) warnings.push(`zerwany symlink w worktree, pomijam: ${item}`);
+      continue;
+    }
+    if (hasSymlinkAncestor(wtPath, dest)) {
+      warnings.push(`pominięto link przez dowiązanie w ścieżce: ${item}`);
       continue;
     }
     fs.mkdirSync(path.dirname(dest), { recursive: true });

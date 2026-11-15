@@ -31,6 +31,8 @@ const DEFAULT_MACHINE_FILES = [
   ".ai/.kit-doctor.json",
   ".env",
   ".claude/settings.local.json",
+  ".agents/hooks.json",
+  ".agents/hooks",
 ];
 
 const LOCKFILES = [
@@ -93,6 +95,15 @@ function relInside(root, p) {
 function isInside(root, p) {
   const rel = relInside(root, p);
   return rel !== null && rel !== "";
+}
+
+// Czy któryś katalog między `wtPath` a `dest` jest dowiązaniem (także zerwanym); zapis przez niego wyszedłby poza worktree.
+function hasSymlinkAncestor(wtPath, dest) {
+  const root = path.resolve(wtPath);
+  for (let cur = path.dirname(path.resolve(dest)); cur.startsWith(root + path.sep); cur = path.dirname(cur)) {
+    if (lexists(cur) && fs.lstatSync(cur).isSymbolicLink()) return true;
+  }
+  return false;
 }
 
 function getMainRepoRoot(cwd = process.cwd()) {
@@ -183,6 +194,73 @@ function askServerGuard(mainRoot, command) {
   return { allowed: true };
 }
 
+function copyMissingRecursive(srcDir, destDir, warnings) {
+  if (lexists(destDir)) {
+    try {
+      const destStat = fs.lstatSync(destDir);
+      if (!destStat.isDirectory() || destStat.isSymbolicLink()) {
+        if (warnings) warnings.push(`pominięto scalanie katalogu z nie-katalogiem: ${destDir}`);
+        return false;
+      }
+    } catch (e) {
+      if (warnings) warnings.push(`błąd sprawdzania docelowego katalogu ${destDir}: ${e.message}`);
+      return false;
+    }
+  } else {
+    try {
+      fs.mkdirSync(destDir, { recursive: true });
+    } catch (e) {
+      if (warnings) warnings.push(`błąd tworzenia katalogu ${destDir}: ${e.message}`);
+      return false;
+    }
+  }
+
+  let anyCopied = false;
+  let entries;
+  try {
+    entries = fs.readdirSync(srcDir, { withFileTypes: true });
+  } catch (e) {
+    if (warnings) warnings.push(`błąd odczytu katalogu ${srcDir}: ${e.message}`);
+    return false;
+  }
+
+  for (const entry of entries) {
+    const srcEntry = path.join(srcDir, entry.name);
+    const destEntry = path.join(destDir, entry.name);
+
+    if (entry.isDirectory()) {
+      if (copyMissingRecursive(srcEntry, destEntry, warnings)) {
+        anyCopied = true;
+      }
+    } else if (entry.isSymbolicLink()) {
+      if (!lexists(destEntry)) {
+        try {
+          const target = fs.readlinkSync(srcEntry);
+          let linkType = "file";
+          try {
+            const stat = fs.statSync(srcEntry);
+            if (stat.isDirectory()) linkType = "dir";
+          } catch {
+            // broken symlink cel
+          }
+          fs.symlinkSync(target, destEntry, linkType);
+          anyCopied = true;
+        } catch (e) {
+          if (warnings) warnings.push(`błąd tworzenia symlinka ${destEntry}: ${e.message}`);
+        }
+      }
+    } else if (!lexists(destEntry)) {
+      try {
+        fs.copyFileSync(srcEntry, destEntry);
+        anyCopied = true;
+      } catch (e) {
+        if (warnings) warnings.push(`błąd kopiowania pliku ${srcEntry} -> ${destEntry}: ${e.message}`);
+      }
+    }
+  }
+  return anyCopied;
+}
+
 function performCopy(mainRoot, wtPath, copyList, warnings) {
   const copied = [];
   for (const item of copyList || []) {
@@ -193,15 +271,25 @@ function performCopy(mainRoot, wtPath, copyList, warnings) {
       continue;
     }
     if (!fs.existsSync(src)) continue;
-    if (lexists(dest)) continue;
+    if (hasSymlinkAncestor(wtPath, dest)) {
+      warnings.push(`pominięto copy przez dowiązanie w ścieżce: ${item}`);
+      continue;
+    }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      fs.cpSync(src, dest, { recursive: true });
-    } else {
-      fs.copyFileSync(src, dest);
+      const didCopy = copyMissingRecursive(src, dest, warnings);
+      if (didCopy) {
+        copied.push(item);
+      }
+    } else if (!lexists(dest)) {
+      try {
+        fs.copyFileSync(src, dest);
+        copied.push(item);
+      } catch (e) {
+        warnings.push(`błąd kopiowania ${item}: ${e.message}`);
+      }
     }
-    copied.push(item);
   }
   return copied;
 }
@@ -219,6 +307,10 @@ function performLink(mainRoot, wtPath, linkList, warnings) {
     if (!fs.existsSync(src)) continue;
     if (lexists(dest)) {
       if (!fs.existsSync(dest)) warnings.push(`zerwany symlink w worktree, pomijam: ${item}`);
+      continue;
+    }
+    if (hasSymlinkAncestor(wtPath, dest)) {
+      warnings.push(`pominięto link przez dowiązanie w ścieżce: ${item}`);
       continue;
     }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
