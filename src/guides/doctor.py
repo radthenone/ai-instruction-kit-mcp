@@ -69,9 +69,10 @@ KIT_TEMPLATES: dict[str, str] = {
 PROJECT_BLOCKS: dict[str, str] = {"AGENTS.md": "agents", "BUGBOT.md": "rules"}
 AGENT_TEMPLATES = "templates/shared/agents"
 
-# Komendy z innych warstw (Matt, Superpowers, Cursor), których kit nie instaluje.
-# Ich brak to brak warstwy zewnętrznej — nie rozjazd reguł projektu — więc doctor
-# ich nie zgłasza. Komendy kita (`/review-*`, `/git-*`, …) muszą istnieć.
+# Komendy z innych warstw (Matt, Superpowers, Cursor) i wbudowane w klienta (`/review`
+# w Claude Code), których kit nie instaluje. Ich brak to brak warstwy zewnętrznej —
+# nie rozjazd reguł projektu — więc doctor ich nie zgłasza. Komendy kita (`/review-*`,
+# `/git-*`, …) muszą istnieć.
 EXTERNAL_COMMANDS = frozenset(
     {
         "grill-me",
@@ -79,6 +80,7 @@ EXTERNAL_COMMANDS = frozenset(
         "tdd",
         "triage",
         "code-review",
+        "review",
         "compact",
         "goal",
         "loop",

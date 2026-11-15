@@ -1032,6 +1032,20 @@ class TestCommands(unittest.TestCase):
 
             self.assertEqual(_report(workspace).warnings, ())
 
+    def test_client_builtin_review_is_not_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = _workspace(tmp)
+            _write(kit / "manifest.yaml", "modules: {}\n")
+            _write(
+                kit / "templates" / "shared" / "agents" / "night-run.md",
+                "Wbudowane `/review` Claude Code; kit: `/review-ghost`.\n",
+            )
+
+            warnings = run_doctor(kit, kit, clients="claude").warnings
+
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertIn("/review-ghost", warnings[0].message)
+
     def test_kit_templates_are_not_checked_in_app_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = _workspace(tmp)
