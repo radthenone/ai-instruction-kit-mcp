@@ -1304,12 +1304,21 @@ a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak w
 w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 `grep '^\[headless\]' <log> | tail -1`.
 
-**Kontrola postępu co 30 min (#397).** Postęp to nowe bajty wyjścia wykonawcy, zmiana `HEAD` albo
-`git status`, albo wzrost CPU jego potomków (`/proc/<pid>/stat`; bez `/proc` liczą log i git). Brak postępu
-w oknie 30 min → zrzut drzewa procesów do logu, checker z `models.claude.light` z Profilu opisuje stan w 1–3 zdaniach
+**Termin i kontrola postępu (#397, #424).** Bez `--timeout` termin to 60 min. Co 10 min wrapper sprawdza postęp:
+nowe bajty wyjścia wykonawcy, zmiana `HEAD` albo `git status`, albo wzrost CPU jego potomków (`/proc/<pid>/stat`;
+na Windows i bez `/proc` liczą się tylko log i git). Jeśli w ostatnim kroku był postęp, termin przedłuża się o 10 min,
+najwyżej do sufitu 120 min. Brak postępu przy terminie → zrzut drzewa procesów do logu, checker z `models.claude.light` z Profilu opisuje stan w 1–3 zdaniach
 (ostatnie 40 linii wyjścia, `git status`, czas bez postępu; timeout 60 s; nie decyduje o zabiciu), drzewo zabite
 łagodnie jak przy `--timeout` (SIGTERM, po 2 s SIGKILL), klasa `HANG`, kod `124`, zadanie idzie 1:1 dalej.
 Opis trafia do raportu końcowego jako `## zacięcie: …`. Brak klucza `models.claude.light` wyłącza checker, nie kontrolę.
+
+**Sufit i jawny `--timeout` (#424).** Przedłużanie kończy się na 120 min, nawet przy ciągłym postępie (`[headless] sufit …`,
+klasa `HANG`, kod `124`). Jawny `--timeout <min>` to twardy limit bez przedłużania — zabija w swoim terminie, także przy postępie.
+
+**Pętla (#424).** To samo wywołanie narzędzia (`→`, `⚙`, `$` w wyjściu opencode) 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,
+przy niezmienionym `HEAD`, `git status` i diffie, to pętla: wrapper zabija drzewo przed limitem, klasa `HANG`, a raport
+dostaje wpis `## pętla: <N>× <linia>`. Zwykłe linie między powtórkami nie zrywają serii; edycja repo między powtórkami już tak. Zrzut błędów bez wywołań narzędzi (kompilator, testy, cytat w odpowiedzi) nie jest pętlą; kończy go termin.
+Limit dostawcy i błędny model agy nie są pętlą — mają własne klasy (`LIMIT`, `MODEL`). `claude -p` nie ma wykrywania pętli: drukuje tylko finalny tekst, więc powtórzone linie błędu w odpowiedzi nie są sygnałem pętli.
 
 **Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy

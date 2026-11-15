@@ -27,7 +27,9 @@ TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
 # robią w repo commit / `git stash` jak wykonawca w trakcie pracy (#183).
 # `-p /quota` (agy) odpowiada FAKE_QUOTA z kodem FAKE_QUOTA_CODE; FAKE_LIMIT_FOR / FAKE_FAIL_FOR —
 # podane binarki kończą się kodem 1 z tekstem limitu / zwykłego błędu (#293). FAKE_HANG_FOR — podane
-# binarki wiszą bez wyjścia do zabicia drzewa, jak wykonawca bez postępu (#397).
+# binarki wiszą bez wyjścia do zabicia drzewa, jak wykonawca bez postępu (#397). FAKE_PROGRESS=N — N linii
+# co 0,1 s (postęp); FAKE_LOOP=N — N razy ten sam błąd (pętla), FAKE_LOOP_EDIT — dopisuje do tracked.txt,
+# FAKE_LOOP_PAUSE — pauza między błędami (#424).
 FAKE = """#!/bin/sh
 if [ "$1" = -p ] && [ "$2" = /quota ]; then
   echo "$(basename "$0") /quota" >> "$HEADLESS_TEST_DIR/calls"; printf '%b' "$FAKE_QUOTA"; exit "${FAKE_QUOTA_CODE:-0}"
@@ -43,6 +45,12 @@ if [ "$(basename "$0")" = claude ]; then cat > "$HEADLESS_TEST_DIR/stdin"; fi
 sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
 echo "wynik wykonawcy"
+if [ -n "$FAKE_PROGRESS" ]; then i=0; while [ "$i" -lt "$FAKE_PROGRESS" ]; do echo "krok $i"; sleep 0.1; i=$((i+1)); done; fi
+if [ -n "$FAKE_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP" ]; do echo "→ Bash: próba $i"; echo "Error: boom"; if [ -n "$FAKE_LOOP_EDIT" ]; then echo "$i" >> tracked.txt; fi; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
+case " $FAKE_LOOP_FOR " in *" $(basename "$0") "*) i=0; while [ "$i" -lt 5 ]; do echo "→ Bash: próba $i"; echo "Error: boom"; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; sleep 300; exit 0;; esac
+if [ -n "$FAKE_TOOL_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_TOOL_LOOP" ]; do echo "→ Read tests/x.py"; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
+if [ -n "$FAKE_LOOP_UNTRACKED" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP_UNTRACKED" ]; do echo "→ Bash: próba $i"; echo "Error: boom"; echo "$i" >> untracked-edit.txt; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
+if [ -n "$FAKE_LOOP_DUMP" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP_DUMP" ]; do echo "Error: boom"; i=$((i+1)); done; fi
 if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "${FAKE_COMMIT_MSG:-praca wykonawcy}"; fi
 if [ -n "$FAKE_DIRTY" ]; then echo mod >> tracked.txt; fi
 if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
@@ -793,11 +801,13 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.chain_profile()
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x",
-            FAKE_HANG_FOR="opencode2", HEADLESS_STALL_CHECK_MS="200",
+            FAKE_HANG_FOR="opencode2", HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="400",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
         self.assertIn("brak postępu", self.headless_log())
+        # Bez postępu termin nie jest przedłużany: zabicie przy pierwszym terminie (#424).
+        self.assertNotIn("termin przedłużony", self.headless_log())
         prompt = "\n".join(self.argv())
         self.assertIn("Raport zabitego wykonawcy (opencode, kod 124)", prompt)
         self.assertIn("wynik wykonawcy", prompt)
@@ -810,20 +820,110 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.chain_profile()
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x",
-            FAKE_HANG_FOR="opencode2", FAKE_IGNORE_TERM="1", HEADLESS_STALL_CHECK_MS="50",
+            FAKE_HANG_FOR="opencode2", FAKE_IGNORE_TERM="1", HEADLESS_DEFAULT_TIMEOUT_MS="800", HEADLESS_PROGRESS_STEP_MS="400",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.headless_log().count("— zabijam drzewo opencode"), 1)
 
-    def test_out_of_range_stall_interval_falls_back_to_default(self) -> None:
+    def test_out_of_range_progress_step_falls_back_to_default(self) -> None:
         # setInterval zamienia > 2**31-1 i Infinity na 1 ms — bez odrzucenia wykonawca ginąłby od razu.
         for value in ("Infinity", str(2**31)):
             with self.subTest(value=value):
                 result = self.run_wrapper(
-                    "--host", "claude", "opencode", "x", FAKE_SLEEP="1", HEADLESS_STALL_CHECK_MS=value,
+                    "--host", "claude", "opencode", "x", FAKE_SLEEP="1", HEADLESS_PROGRESS_STEP_MS=value,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(self.last_row(result)["klasa"], "OK")
+
+    def test_progress_extends_default_deadline_until_worker_finishes(self) -> None:
+        # Bez `--timeout` termin to 1,2 s, krok 0,6 s; wykonawca pisze co 0,1 s przez ok. 3 s (zapas na obciążony CI).
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_PROGRESS="30",
+            HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="600", HEADLESS_TIMEOUT_CEILING_MS="10000",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("termin przedłużony", self.headless_log())
+        self.assertNotIn("zabijam drzewo", self.headless_log())
+
+    def test_explicit_timeout_is_hard_limit_even_with_progress(self) -> None:
+        result = self.run_wrapper("--host", "claude", "opencode", "--timeout", "0.01", "x", FAKE_PROGRESS="30")
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("timeout po 0.01 min", self.headless_log())
+        self.assertNotIn("termin przedłużony", self.headless_log())
+
+    def test_progressing_worker_is_stopped_at_ceiling(self) -> None:
+        # Termin 1,2 s, krok 0,6 s, sufit 3 s: przedłużenia 1200 → 1800 → 2400 → 3000, potem zabicie.
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_PROGRESS="300",
+            HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="600", HEADLESS_TIMEOUT_CEILING_MS="3000",
+        )
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("sufit", self.headless_log())
+        self.assertEqual((self.last_row(result)["klasa"], self.last_row(result)["kod"]), ("HANG", 124))
+        # Zabicie sufitem zapisuje zrzut drzewa jak zacięcie i pętla (#424).
+        self.assertIn("## drzewo procesów przy zabiciu", self.headless_log())
+
+    def test_repeated_identical_error_is_loop_hang_before_limit(self) -> None:
+        # Bez `--timeout` limit to 60 min; pętla ma zabić wykonawcę znacznie wcześniej (sleep 30 s).
+        # Pauza: powtórzenia muszą trafić w różne porcje wyjścia, inaczej nie da się sprawdzić, czy repo się zmieniło.
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_SLEEP="30", FAKE_LOOP_PAUSE="0.3")
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("## pętla: 5× Error: boom", self.headless_log())
+        row = self.last_row(result)
+        self.assertEqual((row["klasa"], row["kod"]), ("HANG", 124))
+        self.assertIn("pętla", row["dzialanie"])
+        self.assert_tree_killed()
+
+    def test_identical_errors_with_tracked_edits_between_are_not_a_loop(self) -> None:
+        # Między błędami wykonawca dopisuje do śledzonego pliku, więc repo się zmienia i to nie jest pętla.
+        self.git_repo()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_LOOP_EDIT="1", FAKE_LOOP_PAUSE="0.5", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("## pętla", self.headless_log())
+
+    def test_identical_errors_with_untracked_edits_between_are_not_a_loop(self) -> None:
+        # Wykonawca dopisuje do nowego, nieśledzonego pliku: `git status` pokazuje go jako `??` bez zmian,
+        # więc o zmianie decyduje rozmiar i mtime w odcisku repo (#424).
+        self.git_repo()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_LOOP_UNTRACKED="5", FAKE_LOOP_PAUSE="0.5", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("## pętla", self.headless_log())
+
+    def test_claude_final_text_with_repeated_error_lines_is_not_a_loop(self) -> None:
+        # claude -p drukuje tylko finalny tekst: powtórzone linie błędu w odpowiedzi nie są pętlą (#424).
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_LOOP="5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("## pętla", self.headless_log())
+
+    def test_repeated_tool_call_lines_are_loop_hang_before_limit(self) -> None:
+        # Wywołania narzędzi (`→`) jak w wyjściu opencode: ta sama linia 5 razy z rzędu, repo bez zmian.
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_TOOL_LOOP="5", FAKE_SLEEP="30", FAKE_LOOP_PAUSE="0.3")
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("## pętla: 5× → Read tests/x.py", self.headless_log())
+        self.assertEqual((self.last_row(result)["klasa"], self.last_row(result)["kod"]), ("HANG", 124))
+        self.assert_tree_killed()
+
+    def test_loop_hands_task_1_to_1_to_fallback_executor(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP_FOR="opencode2", FAKE_LOOP_PAUSE="0.3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("## pętla: 5× Error: boom", self.headless_log())
+        self.assertIn("przekazuję zadanie 1:1: opencode → antigravity", self.headless_log())
+
+    def test_error_dump_without_tool_calls_is_not_a_loop(self) -> None:
+        # Zrzut błędów bez wywołań narzędzi nie zabija przed terminem: kończy go termin bez postępu (#424).
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_LOOP_DUMP="5", FAKE_HANG_FOR="opencode2",
+            HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="400",
+        )
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertNotIn("## pętla", self.headless_log())
+        self.assertIn("brak postępu", self.headless_log())
 
     def test_exhausted_chain_of_hangs_is_hang_row_in_report(self) -> None:
         self.chain_profile()
@@ -1747,7 +1847,7 @@ def node_export(expression: str, cwd: Path) -> Any:
     return json.loads(result.stdout)
 
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+@unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessStallProfileTest(unittest.TestCase):
     """Tani model checkera zacięcia z `models.claude.light` w Profilu (#397)."""
 
@@ -1768,7 +1868,8 @@ clients: claude,opencode
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         (self.root / ".ai").mkdir()
-        (self.root / ".ai/project.profile.yaml").write_text(self.PROFILE, encoding="utf-8")
+        # LF także na Windows: parser profilu dzieli linie po "\n", a write_text zapisuje CRLF.
+        (self.root / ".ai/project.profile.yaml").write_bytes(self.PROFILE.encode("utf-8"))
 
     def test_reads_claude_light_from_models_block(self) -> None:
         self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
@@ -1790,15 +1891,19 @@ clients: claude,opencode
 WATCH_JS = """(() => {
   const reads = __SNAPSHOTS__;
   const clock = { t: 0 };
+  const results = [];
   const stalls = [];
   const watch = h.watchProgress({
     read: () => reads.shift(),
-    onStall: ({ idleMs }) => stalls.push(idleMs),
+    onTick: ({ progressed, idleMs }) => {
+      results.push(progressed);
+      if (!progressed) stalls.push(idleMs);
+    },
     now: () => clock.t,
     schedule: () => 0,
     unschedule: () => {},
   });
-  const results = __TICKS__.map((t) => { clock.t = t; return watch.tick().progressed; });
+  for (const t of __TICKS__) { clock.t = t; watch.tick(); }
   return { results, stalls };
 })()"""
 
@@ -1808,9 +1913,9 @@ def run_watch(snapshots: list[dict], ticks: list[int], root: Path) -> dict:
     return node_export(js, root)
 
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+@unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessProgressSourcesTest(unittest.TestCase):
-    """Źródła postępu (CPU z /proc, log, git) i kontrola co 30 min na wstrzykniętym zegarze (#397)."""
+    """Źródła postępu (CPU z /proc, wyjście, git) i kontrola co krok 10 min na wstrzykniętym zegarze (#397, #424)."""
 
     MIN = 60_000
 
@@ -1838,8 +1943,8 @@ class HeadlessProgressSourcesTest(unittest.TestCase):
     def test_cpu_ticks_are_null_without_proc(self) -> None:
         self.assertIsNone(node_export('h.cpuTicksOfTree(100, "/nonexistent-proc")', self.root))
 
-    def test_check_threshold_is_thirty_minutes(self) -> None:
-        self.assertEqual(node_export("h.STALL_CHECK_MIN", self.root), 30)
+    def test_progress_step_is_ten_minutes_ceiling_is_120(self) -> None:
+        self.assertEqual(node_export("[h.PROGRESS_STEP_MIN, h.TIMEOUT_CEILING_MIN]", self.root), [10, 120])
 
     def test_output_growth_counts_as_progress(self) -> None:
         result = run_watch(
@@ -1889,7 +1994,7 @@ class HeadlessProgressSourcesTest(unittest.TestCase):
   const unscheduled = [];
   const watch = h.watchProgress({
     read: () => ({ output: 0, git: "a", cpu: 0 }),
-    onStall: () => {},
+    onTick: () => {},
     schedule: (fn, ms) => { scheduled.push(ms); return "timer"; },
     unschedule: (token) => unscheduled.push(token),
   });
@@ -1898,10 +2003,419 @@ class HeadlessProgressSourcesTest(unittest.TestCase):
 })()""",
             self.root,
         )
-        self.assertEqual(result, {"scheduled": [30 * self.MIN], "unscheduled": ["timer"]})
+        self.assertEqual(result, {"scheduled": [10 * self.MIN], "unscheduled": ["timer"]})
 
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+@unittest.skipUnless(shutil.which("node"), "brak node")
+class HeadlessDecisionTest(unittest.TestCase):
+    """Funkcje decyzyjne terminu, postępu i pętli (#424) na wstrzykniętych danych, bez wykonawcy."""
+
+    MIN = 60_000
+    STEP = 10 * MIN
+    CEILING = 120 * MIN
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def decide(self, **fields: Any) -> Any:
+        args = {"stepMs": self.STEP, "ceilingMs": self.CEILING, **fields}
+        return node_export(f"h.nextDeadline({json.dumps(args)})", self.root)
+
+    def test_step_ceiling_and_loop_repeats_match_issue_decisions(self) -> None:
+        self.assertEqual(node_export("[h.PROGRESS_STEP_MIN, h.TIMEOUT_CEILING_MIN, h.LOOP_REPEATS]", self.root), [10, 120, 5])
+
+    def test_nothing_happens_before_the_deadline(self) -> None:
+        self.assertEqual(self.decide(elapsedMs=50 * self.MIN, deadlineMs=60 * self.MIN, progressed=True), {"action": "wait"})
+
+    def test_progress_in_last_step_extends_deadline_by_one_step(self) -> None:
+        self.assertEqual(
+            self.decide(elapsedMs=60 * self.MIN, deadlineMs=60 * self.MIN, progressed=True),
+            {"action": "extend", "deadlineMs": 70 * self.MIN},
+        )
+
+    def test_no_progress_at_deadline_kills_without_extension(self) -> None:
+        self.assertEqual(
+            self.decide(elapsedMs=60 * self.MIN, deadlineMs=60 * self.MIN, progressed=False),
+            {"action": "kill", "reason": "no-progress"},
+        )
+
+    def test_extension_is_capped_at_ceiling(self) -> None:
+        self.assertEqual(
+            self.decide(elapsedMs=110 * self.MIN, deadlineMs=110 * self.MIN, progressed=True),
+            {"action": "extend", "deadlineMs": 120 * self.MIN},
+        )
+
+    def test_progress_at_ceiling_still_kills(self) -> None:
+        self.assertEqual(
+            self.decide(elapsedMs=120 * self.MIN, deadlineMs=120 * self.MIN, progressed=True),
+            {"action": "kill", "reason": "ceiling"},
+        )
+
+    def test_timer_firing_slightly_early_is_still_a_decision(self) -> None:
+        # Dryf timera: 5 s przed terminem (tolerancja 1 % kroku = 6 s) decyzja zapada; 10 s przed — jeszcze nie.
+        self.assertEqual(
+            self.decide(elapsedMs=60 * self.MIN - 5_000, deadlineMs=60 * self.MIN, progressed=True),
+            {"action": "extend", "deadlineMs": 70 * self.MIN},
+        )
+        self.assertEqual(
+            self.decide(elapsedMs=60 * self.MIN - 10_000, deadlineMs=60 * self.MIN, progressed=True),
+            {"action": "wait"},
+        )
+
+    def test_progress_sources_compare_consecutive_snapshots(self) -> None:
+        cases = {
+            "output": ({"output": 0, "git": "a", "cpu": None}, {"output": 3, "git": "a", "cpu": None}, True),
+            "git": ({"output": 0, "git": "a", "cpu": None}, {"output": 0, "git": "b", "cpu": None}, True),
+            "cpu_growth": ({"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "a", "cpu": 11}, True),
+            "cpu_drop": ({"output": 0, "git": "a", "cpu": 10}, {"output": 0, "git": "a", "cpu": 4}, False),
+            "windows_no_cpu": ({"output": 0, "git": "a", "cpu": None}, {"output": 0, "git": "a", "cpu": None}, False),
+            "same": ({"output": 9, "git": "a", "cpu": 10}, {"output": 9, "git": "a", "cpu": 10}, False),
+            "git_unknown_before": ({"output": 0, "git": None, "cpu": None}, {"output": 0, "git": "a", "cpu": None}, False),
+            "git_unknown_after": ({"output": 0, "git": "a", "cpu": None}, {"output": 0, "git": None, "cpu": None}, False),
+        }
+        for name, (before, after, expected) in cases.items():
+            with self.subTest(name):
+                result = node_export(f"h.progressSince({json.dumps(before)}, {json.dumps(after)})", self.root)
+                self.assertIs(result, expected)
+
+    def test_each_tick_judges_only_the_last_step(self) -> None:
+        result = node_export(
+            """(() => {
+  const reads = [
+    { output: 0, git: "a", cpu: null },
+    { output: 5, git: "a", cpu: null },
+    { output: 5, git: "a", cpu: null },
+  ];
+  const clock = { t: 0 };
+  const calls = [];
+  let fire = null;
+  h.watchProgress({
+    read: () => reads.shift(),
+    onTick: (tick) => calls.push(tick),
+    now: () => clock.t,
+    schedule: (fn) => { fire = fn; return "timer"; },
+    unschedule: () => {},
+  });
+  clock.t = 600000; fire();
+  clock.t = 1200000; fire();
+  return calls;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, [{"progressed": True, "idleMs": 0}, {"progressed": False, "idleMs": 600000}])
+
+    def test_five_identical_errors_after_tool_calls_are_a_loop(self) -> None:
+        # Każdy błąd poprzedzony wywołaniem narzędzia (różne argumenty): agent ponawia tę samą akcję (#424).
+        result = node_export(
+            """(() => {
+  const detector = h.createLoopDetector();
+  const lines = [];
+  for (let i = 0; i < 5; i++) lines.push(`\\u2192 Bash: proba ${i}`, "Error: boom");
+  return lines.map((line) => detector.feed(line, () => "same"));
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[:-1], [None] * 9)
+        self.assertEqual(result[-1], {"key": "Error: boom", "count": 5})
+
+    def test_identical_error_dump_without_tool_calls_is_not_a_loop(self) -> None:
+        # Zrzut błędów bez wywołań narzędzi (kompilator, testy, cytat): nie jest pętlą, kończy go termin (#424).
+        result = node_export(
+            '(() => { const d = h.createLoopDetector(); return [1, 2, 3, 4, 5, 6].map(() => d.feed("Error: boom", () => "same")); })()',
+            self.root,
+        )
+        self.assertEqual(result, [None] * 6)
+
+    def test_plain_lines_between_tool_calls_do_not_break_the_streak(self) -> None:
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const lines = [
+    "\\u2192 Bash: proba 0", "Error: boom", "retry in 2s",
+    "\\u2192 Bash: proba 1", "Error: boom", "",
+    "\\u2192 Bash: proba 2", "Error: boom",
+    "\\u2192 Bash: proba 3", "Error: boom",
+    "\\u2192 Bash: proba 4", "Error: boom",
+  ];
+  return lines.map((line) => d.feed(line, () => "same"));
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[:-1], [None] * (len(result) - 1))
+        self.assertEqual(result[-1], {"key": "Error: boom", "count": 5})
+
+    def test_other_event_breaks_the_streak(self) -> None:
+        # Pięć błędów po wywołaniach narzędzi to pętla; inny błąd na piątym miejscu przerywa serię (#424).
+        result = node_export(
+            """(() => {
+  const sequence = (last) => {
+    const d = h.createLoopDetector();
+    const out = [];
+    for (let i = 0; i < 5; i++) {
+      d.feed(`\\u2192 Bash: proba ${i}`, () => "same");
+      out.push(d.feed(i === 4 ? last : "Error: boom", () => "same"));
+    }
+    return out;
+  };
+  return { control: sequence("Error: boom"), broken: sequence("Error: other") };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result["control"][-1], {"key": "Error: boom", "count": 5})
+        self.assertEqual(result["broken"], [None] * 5)
+
+    def test_loop_note_is_in_final_report(self) -> None:
+        # Wpis pętli trafia do raportu końcowego jak zacięcie i zrzut drzewa (#424).
+        report = node_export(
+            """(() => h.finalReport({ startHead: null, tail: [], loop: "5\\u00d7 Error: boom",
+  changes: { status: "", added: [], suspect: false, untrailed: [] } }))()""",
+            self.root,
+        )
+        self.assertIn("## pętla: 5× Error: boom", report)
+
+    def test_tool_glyphs_are_all_recognized(self) -> None:
+        # Wywołania narzędzi opencode: `→`, `⚙` i `$` (#424).
+        result = node_export(
+            """(() => [
+  '\\u2192 Read tests/x.py',
+  '\\u2699 execute {"code": 1}',
+  '$ git status',
+  'Error: boom',
+].map((line) => h.loopEventKey(line)))()""",
+            self.root,
+        )
+        self.assertEqual(result, ["→ Read tests/x.py", '⚙ execute {"code": 1}', "$ git status", "Error: boom"])
+
+    def test_git_state_is_null_outside_a_repo(self) -> None:
+        # Poza repo `git rev-parse` zawodzi: stan nieznany (null), a nie pusty tekst (#424).
+        self.assertIsNone(node_export("h.gitState()", self.root))
+
+    def test_repo_change_between_repeats_is_not_a_loop(self) -> None:
+        # Odcisk liczony przy drugim powtórzeniu ("a") i piątym ("b"): wykonawca edytował między błędami.
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const prints = ["a", "b"];
+  const fp = () => prints.shift();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, fp);
+    out.push(d.feed("Error: boom", fp));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, [None] * 5)
+
+    def test_unchanged_repo_between_repeats_is_a_loop(self) -> None:
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const prints = ["a", "a"];
+  const fp = () => prints.shift();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, fp);
+    out.push(d.feed("Error: boom", fp));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[-1], {"key": "Error: boom", "count": 5})
+        self.assertEqual(result[:-1], [None] * 4)
+
+    def test_repeated_tool_call_with_errors_between_is_a_loop(self) -> None:
+        # Ta sama akcja narzędzia 5 razy, a między nimi błędy wyniku: to pętla wywołań narzędzi (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const lines = [];
+  for (let i = 0; i < 5; i++) lines.push("\\u2192 Bash: npm test", "Error: boom");
+  return lines.map((line) => d.feed(line, () => "same"));
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[-2], {"key": "→ Bash: npm test", "count": 5})
+
+    def test_limit_and_invalid_model_lines_are_not_loop_events(self) -> None:
+        result = node_export(
+            """(() => {
+  const limit = h.createLoopDetector();
+  const model = h.createLoopDetector();
+  // Wywołanie narzędzia przed każdym błędem: bez wykluczeń LIMIT/MODEL seria by się zbudowała (regresja).
+  const a = [1, 2, 3, 4, 5, 6].map((i) => {
+    limit.feed(`\\u2192 Bash: limit ${i}`, () => "same");
+    return limit.feed("Error: rate limit reached", () => "same");
+  });
+  const b = [1, 2, 3, 4, 5, 6].map((i) => {
+    model.feed(`\\u2192 Bash: model ${i}`, () => "same");
+    return model.feed("error: invalid model selection (x): model y is not recognized", () => "same");
+  });
+  return { a, b };
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, {"a": [None] * 6, "b": [None] * 6})
+
+    def test_tool_lines_are_keyed_without_ansi_codes(self) -> None:
+        result = node_export(
+            r"""(() => {
+  const d = h.createLoopDetector();
+  const line = "\u001b[0m→ \u001b[0mRead tests/x.py \u001b[90m[offset=1]\u001b[0m";
+  return [1, 2, 3, 4, 5].map(() => d.feed(line, () => "same"));
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[-1], {"key": "→ Read tests/x.py [offset=1]", "count": 5})
+
+    def test_ordinary_text_and_python_errors_are_told_apart(self) -> None:
+        result = node_export(
+            r"""(() => [
+  "error handling was added",
+  "The Error: appears in prose",
+  "Errors are bad",
+  "ValueError: bad value",
+].map((line) => h.loopEventKey(line)))()""",
+            self.root,
+        )
+        self.assertEqual(result, [None, None, None, "ValueError: bad value"])
+
+    def test_repeated_extensions_then_stall_is_killed_at_the_last_deadline(self) -> None:
+        # Postęp w krokach 1 i 2 przedłuża termin 60 → 70 → 80 min; brak postępu w kroku 3 zabija w 80. minucie.
+        result = node_export(
+            """(() => {
+  const stepMs = 600000;
+  let deadlineMs = 3600000;
+  const out = [];
+  for (const [elapsedMs, progressed] of [[3600000, true], [4200000, true], [4800000, false]]) {
+    const step = h.nextDeadline({ elapsedMs, deadlineMs, progressed, stepMs, ceilingMs: 7200000 });
+    out.push(step);
+    if (step.action === "extend") deadlineMs = step.deadlineMs;
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(
+            result,
+            [
+                {"action": "extend", "deadlineMs": 4200000},
+                {"action": "extend", "deadlineMs": 4800000},
+                {"action": "kill", "reason": "no-progress"},
+            ],
+        )
+
+    def test_late_tick_extends_from_now_not_from_stale_deadline(self) -> None:
+        # Tick spóźniony o 10 min względem terminu 60 min: przedłużenie liczymy od bieżącego czasu (70 → 80 min).
+        self.assertEqual(
+            self.decide(elapsedMs=70 * self.MIN, deadlineMs=60 * self.MIN, progressed=True),
+            {"action": "extend", "deadlineMs": 80 * self.MIN},
+        )
+
+    def test_late_tick_past_ceiling_kills_even_with_progress(self) -> None:
+        # Tick spóźniony: 121 min przy terminie 110 min i sufit 120 min. Przedłużenie do 120 min już minęło (#424).
+        self.assertEqual(
+            self.decide(elapsedMs=121 * self.MIN, deadlineMs=110 * self.MIN, progressed=True),
+            {"action": "kill", "reason": "ceiling"},
+        )
+
+    def test_unknown_repo_state_never_proves_a_loop(self) -> None:
+        # Gdy odcisk repo jest nieznany (git zawiódł), nie wolno uznać stanu za niezmieniony (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, () => null);
+    out.push(d.feed("Error: boom", () => null));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, [None] * 5)
+
+    def test_repo_fingerprint_sees_edits_of_non_ascii_untracked_file(self) -> None:
+        # `git ls-files` cytuje nazwy z polskimi znakami (core.quotePath); odcisk musi widzieć surowe nazwy (#424).
+        self.git_init_with_commit()
+        name = self.root / "żółw.txt"
+        first = node_export("h.repoFingerprint()", self.root)
+        name.write_text("raz\n", encoding="utf-8")
+        second = node_export("h.repoFingerprint()", self.root)
+        name.write_text("raz\ndwa\n", encoding="utf-8")
+        third = node_export("h.repoFingerprint()", self.root)
+        self.assertEqual(len({first, second, third}), 3)
+
+    def test_repetitions_within_one_output_chunk_are_not_a_loop(self) -> None:
+        # Cała seria w jednej porcji wyjścia: nie widać, czy repo zmieniło się między powtórzeniami (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, () => "same", 1);
+    out.push(d.feed("Error: boom", () => "same", 1));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, [None] * 5)
+
+    def test_repetitions_spread_over_chunks_are_a_loop(self) -> None:
+        # Te same powtórzenia w pięciu różnych porcjach przy niezmienionym repo: pętla (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, () => "same", i + 1);
+    out.push(d.feed("Error: boom", () => "same", i + 1));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result[-1], {"key": "Error: boom", "count": 5})
+
+    def test_repo_fingerprint_is_unknown_in_repo_without_commits(self) -> None:
+        # Repo bez HEAD to stan nieznany (null), a nie stały odcisk „brak repozytorium” (#424).
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True, capture_output=True)
+        self.assertIsNone(node_export("h.repoFingerprint()", self.root))
+
+    def test_repo_fingerprint_is_constant_outside_a_repo(self) -> None:
+        # Poza repozytorium odcisk jest stały, a pętlę liczy sama seria wyjścia (#424).
+        first = node_export("h.repoFingerprint()", self.root)
+        self.assertIsNotNone(first)
+        self.assertEqual(first, node_export("h.repoFingerprint()", self.root))
+
+    def git_init_with_commit(self) -> None:
+        """Repo z jednym commitem do testów odcisku; użytkownik gita ustawiony w samym poleceniu."""
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True)
+
+        git("init", "-q")
+        (self.root / "tracked.txt").write_text("a\n", encoding="utf-8")
+        git("add", "tracked.txt")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start")
+
+    def test_repo_fingerprint_sees_untracked_file_edits(self) -> None:
+        # `git status` pokazuje nieśledzony plik jako `??` także po edycji, więc odcisk musi patrzeć na zawartość (#424).
+        self.git_init_with_commit()
+        first = node_export("h.repoFingerprint()", self.root)
+        (self.root / "new.txt").write_text("raz\n", encoding="utf-8")
+        second = node_export("h.repoFingerprint()", self.root)
+        (self.root / "new.txt").write_text("raz\ndwa\n", encoding="utf-8")
+        third = node_export("h.repoFingerprint()", self.root)
+        self.assertEqual(len({first, second, third}), 3)
+
+
+@unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessStallCheckerTest(unittest.TestCase):
     """Checker zacięcia tylko opisuje stan (tani model z Profilu), nie decyduje o zabiciu (#397)."""
 
@@ -1990,20 +2504,13 @@ class HeadlessStallCheckerTest(unittest.TestCase):
             """(async () => {
   const note = await h.describeStall({ tail: [], status: "", idleMs: 1, model: "haiku",
     run: () => ({ status: 0, stdout: "czekaj" }) });
-  let killed = false;
-  const watch = h.watchProgress({
-    read: () => ({ output: 0, git: "a", cpu: 0 }),
-    onStall: () => { killed = true; },
-    now: () => 0,
-    schedule: () => 0,
-    unschedule: () => {},
-  });
-  watch.tick();
-  return { note, killed };
+  // Zabicie decyduje `nextDeadline` (#424); werdykt checkera jest tylko opisem do raportu.
+  const decision = h.nextDeadline({ elapsedMs: 60, deadlineMs: 60, progressed: false, stepMs: 10, ceilingMs: 120 });
+  return { note, decision };
 })()""",
             self.root,
         )
-        self.assertEqual(result, {"note": "czekaj", "killed": True})
+        self.assertEqual(result, {"note": "czekaj", "decision": {"action": "kill", "reason": "no-progress"}})
 
     def test_stall_note_is_in_final_report(self) -> None:
         result = node_export(

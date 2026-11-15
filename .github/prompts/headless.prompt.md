@@ -27,7 +27,7 @@ opencode:     /headless gemini "..."
 antigravity:  /headless opencode "..."
 ```
 
-Limit dostawcy, brak postępu (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje
+Limit dostawcy, brak postępu albo pętla (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje
 tę samą treść 1:1 drugiemu tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta
 i klientów spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
 Ostatni z innym błędem → jego kod wyjścia i wiersz `HANG`/`ERROR` w raporcie.
@@ -41,7 +41,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
   np. `{"model": "gemini-3.8-flash-high"}` albo `{"model": "gemini-3.8-flash", "effort": "high"}`
   (poziom w sufiksie nazwy albo w `effort`, nie oba); bez pliku `gemini-3.8-flash-medium`.
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
-- `--timeout` — minuty, domyślnie 60; liczony osobno dla każdego wykonawcy w łańcuchu.
+- `--timeout` — minuty. Bez flagi termin 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana `HEAD`/`git status` (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout` to twardy limit bez przedłużania. Liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
 - `--ctx <katalog>` — katalog nocy (CTX z `/night-run`); bez flagi wrapper nic nie zapisuje. Z nią
   dopisuje wiersz wywołania (ostatnia linia wyjścia, JSON) do `<katalog>/headless-rows.jsonl`, a przy
@@ -73,8 +73,11 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
    `grep '^\[headless\]' <log> | tail -1`. Budzić się (np. Monitor) warto tylko na linię
-   `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija. Zabija kontrola postępu co 30 min
-   (brak bajtów wyjścia, zmiany `HEAD`/`git status` i wzrostu CPU), a wrapper przechodzi dalej 1:1; `--timeout` zabija też.
+   `[headless] możliwe zacięcie`; samo zacięcie niczego nie zabija. Zabija dopiero termin bez postępu
+   w ostatnim kroku (10 min: bajty wyjścia, zmiana `HEAD`/`git status`, a z `/proc` także CPU) albo sufit
+   120 min, a wrapper przechodzi dalej 1:1. Pętla (to samo wywołanie narzędzia 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,
+   bez zmian w repo) kończy wykonawcę wcześniej jako `HANG` z wpisem `## pętla` w raporcie. Zrzut błędów bez wywołań narzędzi nie jest pętlą.
+   `claude -p` pętli nie wykrywa (drukuje tylko finalny tekst). Jawny `--timeout` zabija w swoim terminie, bez przedłużania.
 2. Kod wyjścia `2` = błędne wywołanie (np. wykonawca == host, spoza `clients:`, nieznana
    flaga). Pokaż komunikat wrappera użytkownikowi i zakończ.
    Kod `75` = limit u ostatniego wykonawcy łańcucha, nie błąd: linia
