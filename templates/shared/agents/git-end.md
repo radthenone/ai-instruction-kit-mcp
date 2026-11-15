@@ -268,17 +268,23 @@ mutation($threadId: ID!) {
 
 ### 5. Powrót na branch sprzed `/git-start`
 
-Po udanym push+PR, chyba że podano flagę `--stay`, **nie zostawaj** na feature branchu — wróć tam skąd user startował:
+Po udanym push+PR, sprawdź czy wywołanie zawierało flagę `--stay`:
 
-- **Flaga `--stay`:** pomija powrót na poprzedni branch — agent zostaje na branchu feature / ticketu (np. w nocy dla rund CodeRabbit i kolejnych commitów).
-- **Bez flagi `--stay`:** wraca na branch `PREV`. Gdy `PREV` jest wybrany w innym worktree (zajęty checkout) — agent zostaje na branchu ticketu, bez błędu.
+- **Gdy wywołano `/git-end --stay`:** agent pomija powrót na poprzedni branch i zostaje na branchu ticketu / feature (np. w nocy dla rund CodeRabbit i kolejnych commitów).
+- **W przeciwnym razie (brak flagi `--stay`):** agent wykonuje logikę powrotu na branch `PREV` sprzed `/git-start` (sprawdzając czy `PREV` nie jest zajęty w innym worktree):
+  1. Odczytaj `PREV` z configu: `git config "branch.${CUR_BRANCH}.startedFrom"`.
+  2. Sprawdź czy `PREV` istnieje lokalnie (`git show-ref --verify --quiet "refs/heads/$PREV"`).
+  3. Sprawdź czy `PREV` nie jest wybrany w innym worktree (`git worktree list --porcelain`).
+  4. Gdy `PREV` jest wybrany w innym worktree (zajęty checkout), brak configu lub `PREV` nie istnieje lokalnie → agent zostaje na branchu ticketu, bez błędu.
+  5. Gdy `PREV` jest wolny i istnieje lokalnie → przełącz się na `PREV` (`git checkout "$PREV"`).
 
 ```bash
 if [[ "$*" == *"--stay"* ]]; then
-  # Flaga --stay pomija powrót na poprzedni branch
+  # Flaga --stay pomija powrót na poprzedni branch — zostań na branchu ticketu
   CUR_BRANCH=$(git branch --show-current)
   echo "Flaga --stay aktywna — pozostaję na branchu $CUR_BRANCH"
 else
+  # Brak --stay: powrót na branch PREV sprzed /git-start
   CUR_BRANCH=$(git branch --show-current)
   PREV=$(git config "branch.${CUR_BRANCH}.startedFrom" 2>/dev/null || true)
   if [[ -n "$PREV" ]] && git show-ref --verify --quiet "refs/heads/$PREV"; then
@@ -288,6 +294,8 @@ else
     else
       git checkout "$PREV" 2>/dev/null || true
     fi
+  else
+    echo "Brak zapisanego PREV lub branch nie istnieje — pozostaję na branchu $CUR_BRANCH"
   fi
 fi
 ```
