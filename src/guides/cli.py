@@ -660,12 +660,16 @@ def main(argv: list[str] | None = None) -> int:
 
     retro = sub.add_parser(
         "retro",
+        description="Skaner zapisuje wyniki w katalogu cache: $XDG_CACHE_HOME/kit-ai/retro "
+        "albo ~/.cache/kit-ai/retro.",
         help="Skaner sesji Claude Code: sygnały i koszt w $XDG_CACHE_HOME/kit-ai/retro "
         "albo ~/.cache/kit-ai/retro",
     )
     retro_sub = retro.add_subparsers(dest="retro_command", required=True)
     retro_scan = retro_sub.add_parser(
-        "scan", help="Przeskanuj sesje Claude Code tego repo albo jedną sesję (--session)"
+        "scan",
+        description="Skanuje sesje Claude Code tego repo albo jedną sesję podaną w --session.",
+        help="Przeskanuj sesje Claude Code tego repo albo jedną sesję (--session)",
     )
     retro_scan.add_argument("path", nargs="?", default=".", help="Repo aplikacji (domyślnie: .)")
     retro_scan.add_argument("--session", help="ID sesji Claude (np. z hooka SessionEnd)")
@@ -674,6 +678,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     retro_report_parser = retro_sub.add_parser(
         "report",
+        description="Zestawia propozycje z wielu repo ponad progami i pomija znaleziska, "
+        "które mają już issue z markerem.",
         help="Propozycje z wielu repo ponad progami; pomija znaleziska, które mają już "
         "issue z markerem",
     )

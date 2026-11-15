@@ -453,6 +453,18 @@ class HelpTextTests(unittest.TestCase):
             with self.subTest(argv=argv):
                 self.assertNotRegex(self._help(*argv), r"#\d+")
 
+    def test_subcommand_help_has_description(self) -> None:
+        """Podkomendy retro mają opisy działania w pomocy własnej (--help)."""
+        cases = [
+            (["retro"], "~/.cache/kit-ai/retro"),
+            (["retro", "scan"], "sesje Claude Code tego repo"),
+            (["retro", "report"], "issue z markerem"),
+        ]
+        for argv, expected in cases:
+            with self.subTest(argv=argv):
+                normalized = " ".join(self._help(*argv).split())
+                self.assertIn(expected, normalized)
+
 
 class ScanTests(unittest.TestCase):
     NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
