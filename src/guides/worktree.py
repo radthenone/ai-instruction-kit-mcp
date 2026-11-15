@@ -34,6 +34,8 @@ MACHINE_FILES: tuple[str, ...] = (
 EXTRA_COPY_FILES: tuple[str, ...] = (
     ".env",
     ".claude/settings.local.json",
+    ".agents/hooks.json",
+    ".agents/hooks",
 )
 
 

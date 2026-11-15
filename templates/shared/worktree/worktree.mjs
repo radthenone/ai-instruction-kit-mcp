@@ -31,6 +31,8 @@ const DEFAULT_MACHINE_FILES = [
   ".ai/.kit-doctor.json",
   ".env",
   ".claude/settings.local.json",
+  ".agents/hooks.json",
+  ".agents/hooks",
 ];
 
 const LOCKFILES = [
