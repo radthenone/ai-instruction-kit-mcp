@@ -176,7 +176,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 
 - **Sufiks CTX dla równoległych nocy:** dwie noce w tym samym repo i dniu (równoległe workspace'y)
   mają osobne katalogi CTX, `## Stan`, watchdogi i cron, i nie ruszają nawzajem swoich ticketów.
-  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`. Gdy katalog ten już istnieje, a jego `## Stan` ma krok ≠ `koniec` (inna aktywna noc na tym sufiksie), to zatrzymujesz start tej sesji — nie wykonujesz `CronDelete`, `TaskStop` ani `--report` dla tego katalogu (katalog CTX zajęty przez inną aktywną noc).
+  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`. Gdy katalog ten już istnieje, a jego `## Stan` ma krok ≠ `koniec`: jeśli wznawiasz przerwaną noc (ten sam proces/sesja lub cel ze wznowieniem) → kontynuujesz pracę od kroku z `## Stan`; jeśli to nowy start równoległej sesji, a trwa inna aktywna noc na tym sufiksie → zatrzymujesz start tej sesji — nie wykonujesz `CronDelete`, `TaskStop` ani `--report` dla tego katalogu (katalog CTX zajęty przez inną aktywną noc).
   - **Bez `ctx:`:** jeśli katalog dnia `~/.cache/night-run-<repo>-<data>/` istnieje, a jego `## Stan` ma krok ≠ `koniec` (noc w toku), to przydzielasz automatyczny sufiks `-b`, `-c`… (`CTX_DIR=~/.cache/night-run-<repo>-<data>-b/`, `...-c/` itd. — katalog tworzysz przez `mkdir`; jeśli już istnieje i jest w toku, sprawdzasz kolejny wolny lub z krokiem `koniec`) z linią w raporcie (`Sufiks CTX: automatyczny <sufiks> (noc w toku w <katalog>)`). Gdy katalog dnia nie istnieje lub ma krok `koniec`, to używasz bazowego `CTX_DIR=~/.cache/night-run-<repo>-<data>/` bez sufiksu.
 
 - **Nagłówek:** uruchom raz na noc w repo `kit-ai night-ctx` i wklej wynik **bez zmian** na
@@ -190,7 +190,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 - **Pułapki toolchainu:** z pamięci projektu (CLAUDE.md, notatki agenta) i overlay; brak → „brak danych”.
 - **Przekazania:** zapisywane do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy); w `context.md` zostaje tylko indeks `#N → handoff-<N>.md` dopisywany przez Ciebie po każdym MERGED.
 - **Zaległe wywołania headless:** przed pierwszym ticketem przejrzyj `~/.cache/night-run-<repo>-*/`
-  poprzednich nocy. Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
+  poprzednich nocy (zakończonych z krokiem `koniec` lub rzeczywiście przerwanych — nigdy aktywnej nocy z krokiem ≠ `koniec`). Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
   raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<data>.md`
   (wrapper kasuje bufor dopiero po wypisaniu). Plik wpisz do NIGHT-RUN REPORT jako `zaległe wywołania`.
 - **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
