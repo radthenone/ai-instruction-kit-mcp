@@ -185,33 +185,71 @@ function askServerGuard(mainRoot, command) {
   return { allowed: true };
 }
 
-function copyMissingRecursive(srcDir, destDir) {
-  fs.mkdirSync(destDir, { recursive: true });
-  const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+function copyMissingRecursive(srcDir, destDir, warnings) {
+  if (lexists(destDir)) {
+    try {
+      const destStat = fs.lstatSync(destDir);
+      if (!destStat.isDirectory() || destStat.isSymbolicLink()) {
+        if (warnings) warnings.push(`pominięto scalanie katalogu z nie-katalogiem: ${destDir}`);
+        return false;
+      }
+    } catch (e) {
+      if (warnings) warnings.push(`błąd sprawdzania docelowego katalogu ${destDir}: ${e.message}`);
+      return false;
+    }
+  } else {
+    try {
+      fs.mkdirSync(destDir, { recursive: true });
+    } catch (e) {
+      if (warnings) warnings.push(`błąd tworzenia katalogu ${destDir}: ${e.message}`);
+      return false;
+    }
+  }
+
+  let anyCopied = false;
+  let entries;
+  try {
+    entries = fs.readdirSync(srcDir, { withFileTypes: true });
+  } catch (e) {
+    if (warnings) warnings.push(`błąd odczytu katalogu ${srcDir}: ${e.message}`);
+    return false;
+  }
+
   for (const entry of entries) {
     const srcEntry = path.join(srcDir, entry.name);
     const destEntry = path.join(destDir, entry.name);
+
     if (entry.isDirectory()) {
-      if (lexists(destEntry)) {
+      if (copyMissingRecursive(srcEntry, destEntry, warnings)) {
+        anyCopied = true;
+      }
+    } else if (entry.isSymbolicLink()) {
+      if (!lexists(destEntry)) {
         try {
-          const destStat = fs.lstatSync(destEntry);
-          if (destStat.isDirectory() && !destStat.isSymbolicLink()) {
-            copyMissingRecursive(srcEntry, destEntry);
+          const target = fs.readlinkSync(srcEntry);
+          let linkType = "file";
+          try {
+            const stat = fs.statSync(srcEntry);
+            if (stat.isDirectory()) linkType = "dir";
+          } catch {
+            // broken symlink cel
           }
-        } catch {
-          // pomiń w razie błędu stat
+          fs.symlinkSync(target, destEntry, linkType);
+          anyCopied = true;
+        } catch (e) {
+          if (warnings) warnings.push(`błąd tworzenia symlinka ${destEntry}: ${e.message}`);
         }
-      } else {
-        copyMissingRecursive(srcEntry, destEntry);
       }
     } else if (!lexists(destEntry)) {
       try {
         fs.copyFileSync(srcEntry, destEntry);
-      } catch {
-        // pomiń w razie błędu kopiowania
+        anyCopied = true;
+      } catch (e) {
+        if (warnings) warnings.push(`błąd kopiowania pliku ${srcEntry} -> ${destEntry}: ${e.message}`);
       }
     }
   }
+  return anyCopied;
 }
 
 function performCopy(mainRoot, wtPath, copyList, warnings) {
@@ -227,11 +265,17 @@ function performCopy(mainRoot, wtPath, copyList, warnings) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      copyMissingRecursive(src, dest);
-      copied.push(item);
+      const didCopy = copyMissingRecursive(src, dest, warnings);
+      if (didCopy) {
+        copied.push(item);
+      }
     } else if (!lexists(dest)) {
-      fs.copyFileSync(src, dest);
-      copied.push(item);
+      try {
+        fs.copyFileSync(src, dest);
+        copied.push(item);
+      } catch (e) {
+        warnings.push(`błąd kopiowania ${item}: ${e.message}`);
+      }
     }
   }
   return copied;
