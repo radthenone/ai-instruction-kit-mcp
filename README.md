@@ -1315,9 +1315,9 @@ Opis trafia do raportu końcowego jako `## zacięcie: …`. Brak klucza `models.
 **Sufit i jawny `--timeout` (#424).** Przedłużanie kończy się na 120 min, nawet przy ciągłym postępie (`[headless] sufit …`,
 klasa `HANG`, kod `124`). Jawny `--timeout <min>` to twardy limit bez przedłużania — zabija w swoim terminie, także przy postępie.
 
-**Pętla (#424).** Ta sama linia błędu albo to samo wywołanie narzędzia (`→`, `⚙`, `$` w wyjściu opencode) 5 razy z rzędu,
+**Pętla (#424).** To samo wywołanie narzędzia (`→`, `⚙`, `$` w wyjściu opencode) 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,
 przy niezmienionym `HEAD`, `git status` i diffie, to pętla: wrapper zabija drzewo przed limitem, klasa `HANG`, a raport
-dostaje wpis `## pętla: <N>× <linia>`. Zwykłe linie między błędami nie zrywają serii; edycja repo między powtórkami już tak.
+dostaje wpis `## pętla: <N>× <linia>`. Zwykłe linie między powtórkami nie zrywają serii; edycja repo między powtórkami już tak. Zrzut błędów bez wywołań narzędzi (kompilator, testy, cytat w odpowiedzi) nie jest pętlą; kończy go termin.
 Limit dostawcy i błędny model agy nie są pętlą — mają własne klasy (`LIMIT`, `MODEL`). `claude -p` nie ma wykrywania pętli: drukuje tylko finalny tekst, więc powtórzone linie błędu w odpowiedzi nie są sygnałem pętli.
 
 **Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
