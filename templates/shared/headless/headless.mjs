@@ -616,7 +616,7 @@ export function watchProgress({
 export function nextDeadline({ elapsedMs, deadlineMs, progressed, stepMs, ceilingMs }) {
   if (elapsedMs < deadlineMs - stepMs / 100) return { action: "wait" }
   if (!progressed) return { action: "kill", reason: "no-progress" }
-  if (deadlineMs >= ceilingMs) return { action: "kill", reason: "ceiling" }
+  if (deadlineMs >= ceilingMs || elapsedMs >= ceilingMs) return { action: "kill", reason: "ceiling" }
   // Od bieżącego czasu, gdy tick spóźnił się względem terminu: inaczej nowy termin mógłby być już przeterminowany.
   return { action: "extend", deadlineMs: Math.min(Math.max(deadlineMs, elapsedMs) + stepMs, ceilingMs) }
 }
@@ -646,7 +646,9 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
     streak.count += 1
     if (streak.count === 2) streak.fp = fingerprint()
     if (streak.count < repeats) return null
-    return fingerprint() === streak.fp ? { key, count: streak.count } : "reset"
+    const now = fingerprint()
+    // Stan nieznany (`null`) nigdy nie dowodzi, że repo się nie zmieniło.
+    return now !== null && now === streak.fp ? { key, count: streak.count } : "reset"
   }
   return {
     feed(line, fingerprint) {
@@ -678,10 +680,17 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
 
 // Odcisk stanu repo (#424): HEAD, `git status`, treść diffa i pliki nieśledzone (rozmiar i mtime). `git status`
 // pokazuje nieśledzony plik jako `??` także po jego edycji, dlatego same linie statusu nie wystarczą.
-// Poza repo albo przy błędzie gita składnik jest pusty — odcisk stały, a pętlę liczy sama seria wyjścia.
+// Poza repo (brak HEAD) odcisk jest stały, a pętlę liczy sama seria wyjścia. Gdy git w repo zawodzi, stan
+// jest nieznany (`null`): nie wolno go uznać za niezmieniony i zabić wykonawcy.
 export function repoFingerprint() {
-  const untracked = lines(git("ls-files", "--others", "--exclude-standard") ?? "")
-  const files = untracked.map((file) => {
+  const head = git("rev-parse", "HEAD")
+  if (head === null) return createHash("sha1").update("no-repo").digest("hex")
+  const status = git("status", "--porcelain")
+  const diff = git("diff", "HEAD")
+  // `-z`: nazwy idą surowe, bez cytowania (core.quotePath), więc `statSync` trafia w prawdziwy plik.
+  const untracked = git("ls-files", "--others", "--exclude-standard", "-z")
+  if (status === null || diff === null || untracked === null) return null
+  const files = untracked.split("\0").filter(Boolean).map((file) => {
     try {
       const stat = statSync(file)
       return `${file}\0${stat.size}\0${stat.mtimeMs}`
@@ -689,8 +698,7 @@ export function repoFingerprint() {
       return `${file}\0missing`
     }
   })
-  const parts = [git("rev-parse", "HEAD"), git("status", "--porcelain"), git("diff", "HEAD"), ...files]
-  return createHash("sha1").update(parts.map((part) => part ?? "").join("\0")).digest("hex")
+  return createHash("sha1").update([head, status, diff, ...files].join("\0")).digest("hex")
 }
 
 // Checker zacięcia (#397): tani model z `models.claude.light` tylko opisuje, co robi wykonawca.
@@ -1042,6 +1050,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let stallDescribed = null
   // Wykrywacz pętli tylko tam, gdzie wykonawca drukuje zdarzenia na bieżąco (#424, zob. EXECUTORS.claude).
   const loops = executor.loopDetect === false ? null : createLoopDetector()
+  let fpMemo
   const stopForLoop = (hit) => {
     killReason = "loop"
     loopNote = `${hit.count}× ${hit.key}`
@@ -1063,11 +1072,14 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       partial.set(source, parts.pop())
       tail.push(...parts.filter((l) => l.trim()))
       tail.splice(0, tail.length - TAIL_LINES)
-      // Wykrywacz pętli widzi tylko pełne linie; po zabiciu nie liczymy dalej (każdy odcisk to kilka procesów git).
+      // Wykrywacz pętli widzi tylko pełne linie. Odcisk repo liczymy co najwyżej raz na porcję wyjścia: każdy odcisk
+      // to kilka procesów git, które blokują pętlę zdarzeń, więc powtórzenia w jednej porcji nie mnożą kosztu.
       if (loops) {
+        fpMemo = undefined
+        const fingerprint = () => (fpMemo === undefined ? (fpMemo = repoFingerprint()) : fpMemo)
         for (const line of parts) {
           if (killReason !== null) break
-          const hit = loops.feed(line, repoFingerprint)
+          const hit = loops.feed(line, fingerprint)
           if (hit) stopForLoop(hit)
         }
       }

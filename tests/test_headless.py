@@ -2243,8 +2243,15 @@ class HeadlessDecisionTest(unittest.TestCase):
             """(() => {
   const limit = h.createLoopDetector();
   const model = h.createLoopDetector();
-  const a = [1, 2, 3, 4, 5, 6].map(() => limit.feed("Error: rate limit reached", () => "same"));
-  const b = [1, 2, 3, 4, 5, 6].map(() => model.feed("error: invalid model selection (x): model y is not recognized", () => "same"));
+  // Wywołanie narzędzia przed każdym błędem: bez wykluczeń LIMIT/MODEL seria by się zbudowała (regresja).
+  const a = [1, 2, 3, 4, 5, 6].map((i) => {
+    limit.feed(`\\u2192 Bash: limit ${i}`, () => "same");
+    return limit.feed("Error: rate limit reached", () => "same");
+  });
+  const b = [1, 2, 3, 4, 5, 6].map((i) => {
+    model.feed(`\\u2192 Bash: model ${i}`, () => "same");
+    return model.feed("error: invalid model selection (x): model y is not recognized", () => "same");
+  });
   return { a, b };
 })()""",
             self.root,
@@ -2305,6 +2312,40 @@ class HeadlessDecisionTest(unittest.TestCase):
             self.decide(elapsedMs=70 * self.MIN, deadlineMs=60 * self.MIN, progressed=True),
             {"action": "extend", "deadlineMs": 80 * self.MIN},
         )
+
+    def test_late_tick_past_ceiling_kills_even_with_progress(self) -> None:
+        # Tick spóźniony: 121 min przy terminie 110 min i sufit 120 min. Przedłużenie do 120 min już minęło (#424).
+        self.assertEqual(
+            self.decide(elapsedMs=121 * self.MIN, deadlineMs=110 * self.MIN, progressed=True),
+            {"action": "kill", "reason": "ceiling"},
+        )
+
+    def test_unknown_repo_state_never_proves_a_loop(self) -> None:
+        # Gdy odcisk repo jest nieznany (git zawiódł), nie wolno uznać stanu za niezmieniony (#424).
+        result = node_export(
+            """(() => {
+  const d = h.createLoopDetector();
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    d.feed(`\\u2192 Bash: proba ${i}`, () => null);
+    out.push(d.feed("Error: boom", () => null));
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(result, [None] * 5)
+
+    def test_repo_fingerprint_sees_edits_of_non_ascii_untracked_file(self) -> None:
+        # `git ls-files` cytuje nazwy z polskimi znakami (core.quotePath); odcisk musi widzieć surowe nazwy (#424).
+        self.git_init_with_commit()
+        name = self.root / "żółw.txt"
+        first = node_export("h.repoFingerprint()", self.root)
+        name.write_text("raz\n", encoding="utf-8")
+        second = node_export("h.repoFingerprint()", self.root)
+        name.write_text("raz\ndwa\n", encoding="utf-8")
+        third = node_export("h.repoFingerprint()", self.root)
+        self.assertEqual(len({first, second, third}), 3)
 
     def git_init_with_commit(self) -> None:
         """Repo z jednym commitem do testów odcisku; użytkownik gita ustawiony w samym poleceniu."""
