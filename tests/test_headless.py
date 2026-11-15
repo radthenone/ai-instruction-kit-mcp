@@ -872,6 +872,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         row = self.last_row(result)
         self.assertEqual((row["klasa"], row["kod"]), ("HANG", 124))
         self.assertIn("pętla", row["dzialanie"])
+        self.assert_tree_killed()
 
     def test_identical_errors_with_tracked_edits_between_are_not_a_loop(self) -> None:
         # Między błędami wykonawca dopisuje do śledzonego pliku, więc repo się zmienia i to nie jest pętla.
@@ -904,6 +905,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("## pętla: 5× → Read tests/x.py", self.headless_log())
         self.assertEqual((self.last_row(result)["klasa"], self.last_row(result)["kod"]), ("HANG", 124))
+        self.assert_tree_killed()
 
     def test_loop_hands_task_1_to_1_to_fallback_executor(self) -> None:
         self.chain_profile()
