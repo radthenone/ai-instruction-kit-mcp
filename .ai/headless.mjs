@@ -9,6 +9,11 @@
  * EXECUTORS, w `clients:` Profilu i różny od hosta. Model: `--model` > projektowy config
  * wykonawcy (np. `model` w opencode.json) > domyślny model wykonawcy.
  *
+ * Termin (#424): bez `--timeout` 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana HEAD
+ * albo git status (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout <min>` to twardy limit bez
+ * przedłużania. Pętla (ta sama linia błędu albo wywołania narzędzia 5 razy z rzędu, repo bez zmian) zabija
+ * wykonawcę przed limitem jako HANG, a raport dostaje wpis `## pętla`.
+ *
  * Po zakończeniu, błędzie albo timeoucie wrapper zabija całe drzewo procesów wykonawcy
  * (Unix: grupa procesów, Windows: `taskkill /T /F`) — razem z jego LSP i serwerami MCP.
  * Kody wyjścia: kod wykonawcy, 124 = timeout, 2 = błędne wywołanie albo błąd konfiguracji
@@ -28,6 +33,7 @@
  * bufor kasuje dopiero po wypisaniu.
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
 import { basename, delimiter, dirname, join, resolve } from "node:path"
@@ -385,7 +391,7 @@ function pruneRuns(runsDir, current, ctx) {
 }
 
 function parse(argv) {
-  const opts = { host: "", executor: "", model: "", ctx: "", timeoutMin: DEFAULT_TIMEOUT_MIN, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
+  const opts = { host: "", executor: "", model: "", ctx: "", timeoutMin: DEFAULT_TIMEOUT_MIN, timeoutExplicit: false, heartbeatMin: DEFAULT_HEARTBEAT_MIN, words: [] }
   // Wartość flagi nie może być kolejną flagą — `--model --timeout 5` to błąd, nie model.
   const value = (i) => {
     const v = argv[i + 1]
@@ -398,6 +404,7 @@ function parse(argv) {
     else if (arg === "--model") opts.model = value(i++)
     else if (arg === "--timeout") {
       opts.timeoutMin = Number(value(i++))
+      opts.timeoutExplicit = true
       if (!(opts.timeoutMin > 0)) fail(`--timeout wymaga liczby minut > 0, dostał: ${argv[i]}`)
     } else if (arg === "--heartbeat") {
       opts.heartbeatMin = Number(value(i++))
@@ -503,7 +510,8 @@ function processSnapshot(childPid) {
 // `--no-optional-locks`: `status` z heartbeatu nie bierze index.lock, więc nie wywraca
 // commita wykonawcy. Limit 15 s — zawieszony git nie blokuje event loop ani `--timeout`.
 function git(...args) {
-  const r = spawnSync("git", ["--no-optional-locks", ...args], { encoding: "utf8", windowsHide: true, timeout: 15_000, killSignal: "SIGKILL" })
+  // `maxBuffer` z zapasem: diff repo przekraczający domyślny 1 MB nie może wyglądać jak brak gita.
+  const r = spawnSync("git", ["--no-optional-locks", ...args], { encoding: "utf8", windowsHide: true, timeout: 15_000, killSignal: "SIGKILL", maxBuffer: 64 * 1024 * 1024 })
   return r.status === 0 ? r.stdout.trimEnd() : null
 }
 
@@ -512,14 +520,19 @@ const gitState = () => [git("rev-parse", "HEAD"), git("status", "--porcelain")].
 
 const lines = (text) => (text ? text.split("\n") : [])
 
-// Kontrola postępu co 30 min (#397): jeden próg dla całego wywołania.
-export const STALL_CHECK_MIN = 30
-// `HEADLESS_STALL_CHECK_MS` skraca interwał w testach integracyjnych (#408); produkcja bez zmiany.
-// Poza (0, 2^31-1] setInterval daje 1 ms — wtedy domyślny interwał zamiast natychmiastowego zabicia.
-const stallCheckMs = () => {
-  const ms = Number(process.env.HEADLESS_STALL_CHECK_MS)
-  return Number.isFinite(ms) && ms > 0 && ms <= 2 ** 31 - 1 ? ms : STALL_CHECK_MIN * 60_000
+// Termin i postęp (#424): krok 10 min (jak heartbeat), sufit 120 min, pętla po 5 zdarzeniach z rzędu.
+export const PROGRESS_STEP_MIN = 10
+export const TIMEOUT_CEILING_MIN = 120
+export const LOOP_REPEATS = 5
+// `HEADLESS_*_MS` skracają czas w testach integracyjnych (#408, #424); produkcja bez zmiany.
+// Poza (0, 2^31-1] timer daje 1 ms — wtedy wartość domyślna, nie natychmiastowe zabicie.
+const envMs = (name, fallbackMs) => {
+  const ms = Number(process.env[name])
+  return Number.isFinite(ms) && ms > 0 && ms <= 2 ** 31 - 1 ? ms : fallbackMs
 }
+const progressStepMs = () => envMs("HEADLESS_PROGRESS_STEP_MS", PROGRESS_STEP_MIN * 60_000)
+const timeoutCeilingMs = () => envMs("HEADLESS_TIMEOUT_CEILING_MS", TIMEOUT_CEILING_MIN * 60_000)
+const defaultTimeoutMs = () => envMs("HEADLESS_DEFAULT_TIMEOUT_MS", DEFAULT_TIMEOUT_MIN * 60_000)
 
 // Czas CPU (utime + stime, w tickach) procesu wykonawcy i jego potomków z /proc. Bez /proc
 // (macOS, Windows) — null: wtedy postęp liczą log i git. Rodzic liczymy z pola ppid, nie z grupy
@@ -556,13 +569,21 @@ export function cpuTicksOfTree(rootPid, proc = "/proc") {
   return total
 }
 
-// Kontrola postępu co `intervalMs` (#397). Postęp = wzrost bajtów wyjścia wykonawcy, zmiana HEAD
-// albo git status, wzrost CPU potomków (spadek to koniec procesu, nie praca). Brak postępu w oknie
-// → `onStall({ idleMs })`, czyli czas od ostatniej zmiany. Źródła, zegar i harmonogram są wstrzyknięte.
+// Postęp między dwiema próbkami: wzrost bajtów wyjścia, zmiana HEAD albo git status, wzrost CPU
+// potomków (spadek to koniec procesu, nie praca). Na Windows CPU jest `null` — liczą się wyjście i git.
+export function progressSince(previous, current) {
+  return current.output > previous.output
+    || current.git !== previous.git
+    || (current.cpu ?? 0) > (previous.cpu ?? 0)
+}
+
+// Kontrola postępu co `intervalMs` (#424). Każdy krok porównuje z poprzednią próbką, więc okno decyzji
+// to dokładnie jeden krok — niezależnie od tego, kiedy wystrzelił timer. Decyzję podejmuje `onTick`
+// (zob. `nextDeadline`). Źródła, zegar i harmonogram są wstrzyknięte.
 export function watchProgress({
   read,
-  onStall,
-  intervalMs = STALL_CHECK_MIN * 60_000,
+  onTick,
+  intervalMs = PROGRESS_STEP_MIN * 60_000,
   now = Date.now,
   schedule = setInterval,
   unschedule = clearInterval,
@@ -571,17 +592,65 @@ export function watchProgress({
   let changedAt = now()
   const tick = () => {
     const current = read()
-    const progressed = current.output > previous.output
-      || current.git !== previous.git
-      || (current.cpu ?? 0) > (previous.cpu ?? 0)
+    const progressed = progressSince(previous, current)
     previous = current
     if (progressed) changedAt = now()
-    const idleMs = now() - changedAt
-    if (!progressed) onStall({ idleMs })
-    return { progressed, idleMs }
+    onTick({ progressed, idleMs: now() - changedAt })
   }
   const timer = schedule(tick, intervalMs)
   return { tick, stop: () => unschedule(timer) }
+}
+
+// Decyzja na kroku postępu (#424). Czas i termin w ms od startu, bez zegara i procesu — da się ją testować.
+// Tolerancja 1 % kroku: timer może wystrzelić o ułamek ms przed terminem, a wtedy nie wolno zabić
+// wykonawcy przedwcześnie. Termin jawny (`--timeout`) tu nie wchodzi — zwykły timer.
+export function nextDeadline({ elapsedMs, deadlineMs, progressed, stepMs, ceilingMs }) {
+  if (elapsedMs < deadlineMs - stepMs / 100) return { action: "wait" }
+  if (!progressed) return { action: "kill", reason: "no-progress" }
+  if (deadlineMs >= ceilingMs) return { action: "kill", reason: "ceiling" }
+  return { action: "extend", deadlineMs: Math.min(deadlineMs + stepMs, ceilingMs) }
+}
+
+// Zdarzenie wyjścia do wykrywania pętli (#424): błąd albo wywołanie narzędzia (opencode rysuje je jako
+// `→`, `⚙`, `$`). Limit i błędny model agy mają własne ścieżki (LIMIT, MODEL), więc nie są pętlą.
+const ANSI_ESCAPE = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g
+const LOOP_ERROR_LINE = /^(?:ERROR|Error|error|FATAL|Fatal|fatal)\s*:|^Traceback \(most recent call last\)|^[A-Za-z_][\w.]*(?:Error|Exception)\b:/
+const LOOP_TOOL_LINE = /^(?:→|⚙|\$) \S/
+export function loopEventKey(line) {
+  const clean = line.replace(ANSI_ESCAPE, "").trim()
+  if (!clean || LIMIT_PATTERN.test(clean) || AGY_MODEL_ERROR.test(clean)) return null
+  return LOOP_ERROR_LINE.test(clean) || LOOP_TOOL_LINE.test(clean) ? clean : null
+}
+
+// Wykrywacz pętli (#424): ta sama treść zdarzenia `repeats` razy z rzędu. Zwykłe linie nie zrywają serii,
+// inne zdarzenie tak. Pętla to seria, w której odcisk repo (`fingerprint()`) nie zmienił się od drugiego
+// zdarzenia do N-tego: wykonawca, który edytuje między błędami, nie jest w pętli. Odcisk liczymy dopiero
+// przy powtórce, więc zwykłe zdarzenia nie wołają gita. Dla `repeats` ≥ 3 okno ma sens.
+export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
+  let streak = null
+  return {
+    feed(line, fingerprint) {
+      const key = loopEventKey(line)
+      if (key === null) return null
+      if (streak === null || streak.key !== key) {
+        streak = { key, count: 1, fp: null }
+        return null
+      }
+      streak.count += 1
+      if (streak.count === 2) streak.fp = fingerprint()
+      if (streak.count < repeats) return null
+      if (fingerprint() === streak.fp) return { key, count: streak.count }
+      streak = { key, count: 1, fp: null }
+      return null
+    },
+  }
+}
+
+// Odcisk stanu repo (#424): HEAD, `git status` i treść diffa. Poza repo albo przy błędzie gita składnik
+// jest pusty — odcisk stały, a pętlę liczy sama seria wyjścia.
+function repoFingerprint() {
+  const parts = [git("rev-parse", "HEAD"), git("status", "--porcelain"), git("diff", "HEAD")]
+  return createHash("sha1").update(parts.map((part) => part ?? "").join("\0")).digest("hex")
 }
 
 // Checker zacięcia (#397): tani model z `models.claude.light` tylko opisuje, co robi wykonawca.
@@ -921,8 +990,25 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let stallReported = false
   // Ogon wyjścia (64 KB) — komunikat limitu rozpoznajemy dopiero po zakończeniu wykonawcy.
   let outputTail = ""
-  // Bajty wyjścia wykonawcy (bez heartbeatu wrappera) — źródło postępu kontroli co 30 min (#397).
+  // Bajty wyjścia wykonawcy (bez heartbeatu wrappera) — źródło postępu kontroli co krok (#424).
   let outBytes = 0
+  // Przyczyna zabicia drzewa (#424): pierwszy, kto zabija, ustala klasę HANG i wpis raportu.
+  // `timeout` — jawny `--timeout`; `no-progress` i `ceiling` — kontrola postępu; `loop` — wykrywacz pętli.
+  let killReason = null
+  let killIdleMs = 0
+  let loopNote = null
+  let stallNote = null
+  let stallTree = null
+  let stallDescribed = null
+  const loops = createLoopDetector()
+  const stopForLoop = (hit) => {
+    killReason = "loop"
+    loopNote = `${hit.count}× ${hit.key}`
+    stallTree = processSnapshot(child.pid)
+    log(`[headless] pętla: ${loopNote} — zabijam drzewo ${name}\n`)
+    log(stallTree)
+    killTree(child)
+  }
   const capture = (source, stream) => {
     source.setEncoding("utf8")
     partial.set(source, "")
@@ -936,6 +1022,11 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       partial.set(source, parts.pop())
       tail.push(...parts.filter((l) => l.trim()))
       tail.splice(0, tail.length - TAIL_LINES)
+      // Wykrywacz pętli widzi tylko pełne linie.
+      for (const line of parts) {
+        const hit = loops.feed(line, repoFingerprint)
+        if (hit && killReason === null) stopForLoop(hit)
+      }
     })
   }
   capture(child.stdout, process.stdout)
@@ -950,6 +1041,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     tail: fullTail(),
     config: config?.line,
     stall: stallNote,
+    loop: loopNote,
     tree: stallTree,
     changes: noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: false })),
   })
@@ -976,24 +1068,37 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const poll = process.platform === "win32" ? setInterval(() => snapshotDescendants(child.pid), 5000) : undefined
   if (poll) snapshotDescendants(child.pid)
 
-  let timedOut = false
-  const timer = setTimeout(() => {
-    timedOut = true
+  // Termin jawny (`--timeout`) to twardy limit: zwykły timer, bez przedłużania. Bez flagi termin
+  // przedłuża kontrola postępu co krok; decyzję podejmuje `nextDeadline` (#424).
+  const explicit = opts.timeoutExplicit
+  const timer = explicit ? setTimeout(() => {
+    killReason ??= "timeout"
     killTree(child)
-  }, opts.timeoutMin * 60_000)
-  // Brak postępu przez STALL_CHECK_MIN min: zrzut drzewa i zabicie jak przy timeoucie, klasa HANG (#397).
-  // Najpierw zrzut i zabicie, potem opis checkera w tle; raport końcowy czeka na `stallDescribed`.
-  let stalled = false
-  let stallNote = null
-  let stallTree = null
-  let stallDescribed = null
-  const progress = watchProgress({
-    intervalMs: stallCheckMs(),
+  }, opts.timeoutMin * 60_000) : null
+  let deadlineMs = explicit ? opts.timeoutMin * 60_000 : defaultTimeoutMs()
+  const stepMs = progressStepMs()
+  const ceilingMs = timeoutCeilingMs()
+  const progress = explicit ? null : watchProgress({
+    intervalMs: stepMs,
     read: () => ({ output: outBytes, git: gitState(), cpu: cpuTicksOfTree(child.pid) }),
-    onStall: ({ idleMs }) => {
-      // Kolejny tick w trakcie umierania drzewa nie robi drugiego zrzutu ani checkera.
-      if (stalled) return
-      stalled = true
+    onTick: ({ progressed, idleMs }) => {
+      if (killReason !== null) return
+      const step = nextDeadline({ elapsedMs: Date.now() - started, deadlineMs, progressed, stepMs, ceilingMs })
+      if (step.action === "wait") return
+      if (step.action === "extend") {
+        deadlineMs = step.deadlineMs
+        log(`[headless] postęp w ostatnim kroku — termin przedłużony do ${minutes(deadlineMs)} min (sufit ${minutes(ceilingMs)} min)\n`)
+        return
+      }
+      killReason = step.reason
+      killIdleMs = idleMs
+      if (killReason === "ceiling") {
+        log(`[headless] sufit ${minutes(ceilingMs)} min — zabijam drzewo ${name}\n`)
+        killTree(child)
+        return
+      }
+      // Brak postępu w ostatnim kroku przy terminie: zrzut drzewa i zabicie, klasa HANG (#397).
+      // Najpierw zrzut i zabicie, potem opis checkera w tle; raport końcowy czeka na `stallDescribed`.
       const checkerInput = { tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") }
       stallTree = processSnapshot(child.pid)
       log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
@@ -1019,7 +1124,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     clearTimeout(timer)
     clearInterval(poll)
     clearInterval(heartbeat)
-    progress.stop()
+    progress?.stop()
     await killTree(child)
   }
   if (current.stopping) await new Promise(() => {})
@@ -1027,13 +1132,15 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // `closed` złapany od startu — `close` mógł już przyjść przed `exit`.
   await Promise.race([closed, new Promise((done) => setTimeout(done, 3000))])
   current.child = null
-  if (timedOut) {
+  if (killReason === "timeout") {
     call.actions.push(`zabito drzewo procesów (timeout ${opts.timeoutMin} min)`)
     log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   }
+  if (killReason === "ceiling") call.actions.push(`zabito drzewo procesów (sufit ${minutes(ceilingMs)} min)`)
+  if (killReason === "loop") call.actions.push(`zabito drzewo procesów (pętla: ${loopNote})`)
   await stallDescribed
-  if (stalled) call.actions.push(`zabito drzewo procesów (brak postępu ${minutes(stallCheckMs())} min)`)
-  const hung = timedOut || stalled
+  if (killReason === "no-progress") call.actions.push(`zabito drzewo procesów (brak postępu ${minutes(killIdleMs)} min)`)
+  const hung = killReason !== null
   // Limit dostawcy to pauza do resetu, nie błąd — host ponawia po godzinie z linii PAUSE.
   // Limit wygrywa z timeoutem: wykonawca mógł wisieć na limicie do końca czasu.
   let pause = null
@@ -1062,7 +1169,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // PAUSE tylko u ostatniego — host czyta ją jako „przejmij”, a zastępca jeszcze nie ruszył.
   // Timeout i limit dają kod ≠ 0, więc `code === 0` wystarcza do oceny SUSPECT.
   const changes = noteUntrailed(repoChanges({ startHead, startStash, checkNoChanges: code === 0 && startClean }))
-  const reportArgs = { startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, changes }
+  const reportArgs = { startHead, tail: fullTail(), pause: last ? pause : null, config: config?.line, invalidModel, stall: stallNote, loop: loopNote, changes }
   log(finalReport({ ...reportArgs, tree: stallTree }))
   // Dla zastępcy bez drzewa procesów i przycięty — prompt bywa argumentem CLI z limitem długości.
   const handoff = finalReport(reportArgs)
@@ -1110,12 +1217,13 @@ function repoChanges({ startHead, startStash, checkNoChanges }) {
 
 // Raport końcowy — zawsze, także po timeoucie: co wykonawca zostawił w drzewie, w historii
 // i w stashu. Stasha nie zdejmujemy (`pop` może dać konflikt) — tylko ostrzeżenie.
-export function finalReport({ startHead, tail, pause, config, invalidModel, stall, tree, changes }) {
+export function finalReport({ startHead, tail, pause, config, invalidModel, stall, loop, tree, changes }) {
   const { status, added, suspect, untrailed } = changes
   const out = ["[headless] raport końcowy"]
   if (pause) out.push(`## ${pause}`)
   if (invalidModel) out.push(`## nieznany model: ${invalidModel}`)
   if (stall) out.push(`## zacięcie: ${stall}`)
+  if (loop) out.push(`## pętla: ${loop}`)
   if (tree) out.push("## drzewo procesów przy zabiciu", tree.trimEnd())
   if (suspect) out.push("## SUSPECT=no-changes")
   // Skąd wzięty config wykonawcy (worktree): główny checkout albo brak — nigdy cicho.
