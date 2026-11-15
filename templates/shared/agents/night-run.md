@@ -43,7 +43,8 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
     i w NIGHT-RUN REPORT.
 - Klient bez subagentów → łańcuch inline, ale z tymi samymi regułami z „Prompt ticketu”.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
-  „#155 pomiń PDF”, inny próg dużego ticketu; `watchdog: próg N, życie M` — progi watchdoga, §7).
+  „#155 pomiń PDF”, inny próg dużego ticketu; `watchdog: próg N, życie M` — progi watchdoga, §7;
+  `ctx: <sufiks>` — sufiks katalogu CTX nocy, §6).
 - **Model ticketu** (`MODEL`) z celu, np. „model: sonnet”; w Claude parametr `model` Agenta
   (tylko aliasy: sonnet/opus/haiku/fable). Brak lub „gdzie uważasz” → model sesji; tańszy tylko
   dla ticketu mechanicznego (≤2 kryteria, 1 aplikacja, bez pieniędzy, płatności
@@ -66,8 +67,8 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
 
 `/goal` opcjonalny: noc działa sama. Wznawianie nocy = watchdog `.ai/night-run-watchdog.sh`
 + tik `CronCreate` co 4 h (krok 7), nie warunek `/goal`. Domyślnie bez limitu pauz i bez
-końca nocy; cel z `pauzy: N` (po N-tej pauzie halt C) albo `koniec: HH:MM` (teraz ≥ koniec →
-halt C) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu celu”).
+końca nocy; cel z `pauzy: N` (po N-tej pauzie halt C), `koniec: HH:MM` (teraz ≥ koniec →
+halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, krok 6) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu celu”).
 
 - **Lista issue** — `#N` przed pierwszym argumentem z `/`. Brak → kolejka (krok 4).
 - **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
@@ -162,6 +163,7 @@ nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie
 - Warunek wykonania `needs-local` (także z listy ręcznej i przy `ready-for-agent`):
   - na hoście `vps` (`Host: vps` z nagłówka CTX / `kit-ai host`) → pomijasz, w raporcie `skipped: needs-local`;
   - na hoście `local` (`Host: local`) → bierzesz normalnie (bez pomijania).
+- **Ticket w innej nocy:** przed podjęciem każdego ticketu (z kolejki lub listy ręcznej) sprawdzasz inne katalogi CTX tego dnia (`~/.cache/night-run-<repo>-<data>*/` poza Twoim `$CTX_DIR`). Ticket z listy, który w pliku `context.md` innego CTX tego dnia ma w `## Stan` krok ≠ `koniec` (ticket trwający w innej nocy) → pomijasz, w raporcie `skipped: w innej nocy <katalog>` (gdzie `<katalog>` to nazwa tamtego katalogu CTX, np. `night-run-<repo>-<data>` albo `night-run-<repo>-<data>-b`).
 
 ### 5. Kolejność
 
@@ -171,10 +173,15 @@ Kolejność topologiczna, przy remisie z celu. Otwarty blokujący spoza listy �
 
 ### 6. Plik kontekstu nocy
 
-Katalog nocy: `CTX_DIR=~/.cache/night-run-<repo>-<data>/` — `CTX=$CTX_DIR/context.md`,
+Katalog nocy: domyślnie `CTX_DIR=~/.cache/night-run-<repo>-<data>/` (gdzie `<data>` to `YYYY-MM-DD`) — `CTX=$CTX_DIR/context.md`,
 raz na noc, poniżej ~150 linii, sekcje. Wszędzie (prompt ticketu, `CronCreate`, Read/Write)
 pełna ścieżka z `$HOME` zamiast `~`. `~/.cache` przeżywa restart hosta, `/tmp` nie —
 nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
+
+- **Sufiks CTX dla równoległych nocy:** dwie noce w tym samym repo i dniu (równoległe workspace'y)
+  mają osobne katalogi CTX, `## Stan`, watchdogi i cron, i nie ruszają nawzajem swoich ticketów.
+  - **Cel `ctx: <sufiks>`** (np. `ctx: a`, `ctx: b`, `ctx: test`) → `CTX_DIR=~/.cache/night-run-<repo>-<data>-<sufiks>/`.
+  - **Bez `ctx:`:** jeśli katalog dnia `~/.cache/night-run-<repo>-<data>/` istnieje, a jego `## Stan` ma krok ≠ `koniec` (noc w toku) → przydzielasz automatyczny sufiks `-b`, `-c`… (`CTX_DIR=~/.cache/night-run-<repo>-<data>-b/`, `...-c/` itd., pierwszy wolny katalog lub z krokiem `koniec`) z linią w raporcie (`Sufiks CTX: automatyczny <sufiks> (noc w toku w <katalog>)`). Gdy katalog dnia nie istnieje lub ma krok `koniec` → używasz bazowego `CTX_DIR=~/.cache/night-run-<repo>-<data>/` bez sufiksu.
 
 - **Nagłówek:** uruchom raz na noc w repo `kit-ai night-ctx` i wklej wynik **bez zmian** na
   początek CTX (BASE, `Host:`, bramki szybkie, język, linia-znacznik generatora
@@ -227,7 +234,7 @@ więc nie jest mechanizmem oczekiwania.
 - **Jeden watchdog naraz:** przed odnowieniem sprawdź listę zadań w tle; działa → `TaskStop`,
   nie dubluj.
 - **Cron co 4 h jako siatka:** cron łapie to, co ginie razem z sesją (watchdog) i pauzę
-  dłuższą niż życie watchdoga. **`CronList` przed `CronCreate`** — obowiązkowo, także przy wznowieniu sesji (cron przeżywa wznowienie i działa obok nowego): jest już cron o tym
+  dłuższą niż życie watchdoga. **`CronList` przed `CronCreate`** — obowiązkowo, także przy wznowieniu sesji (cron przeżywa wznowienie i działa obok nowego): jest już cron dla tej nocy (dla tego `<CTX>`) o tym
   harmonogramie → nic nie tworzysz. Inaczej `CronCreate`, recurring `57 */4 * * *`, z promptem
   i wpisaną na sztywno ścieżką CTX: `night-run tik: przeczytaj sekcję „Tick watchdoga i crona” w /night-run
   i „## Stan” w <CTX>, działaj wg niej.` Tik crona to tura z kontekstem, więc nie częściej niż co 4 h.
@@ -243,7 +250,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 ## Łańcuch na ticket — dokładnie ten
 
 1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): `N`, `BASE`, `CTX` + „Prompt ticketu”
-   dosłownie, z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
+   dosłownie, z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Przed startem ticketu upewnij się, że żaden inny CTX tego dnia nie ma go w `## Stan` jako trwającego (reguła z kroku 4; w razie kolizji pomijasz: `skipped: w innej nocy <katalog>`). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
    poprawiasz `## Stan`, jeśli hand-back zmienia krok. Z `/headless` kroki 2–3 promptu
@@ -576,6 +583,7 @@ Przed wysłaniem raportu:
 ## NIGHT-RUN REPORT
 Baza: <BASE> — <powód>
 Host: <vps | local> (z `kit-ai host`; nagłówek CTX)
+Sufiks CTX: <brak / z celu: <sufiks> / automatyczny: <sufiks> (noc w toku w <katalog>)>
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
 Wykonawca: <EXEC / subagent / subagent (brak /headless)> · Review: <skille z argumentów / domyślne>
@@ -593,7 +601,7 @@ Retro: <liczba znalezisk> (kit <n> · projekt <n> · agent <n> · zewnętrzne <n
 | #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
 | #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
-| #J | skipped: needs-local / skipped: <etykieta> / halted | — | — | — | etykieta stanu albo link do komentarza halted | — |
+| #J | skipped: needs-local / skipped: <etykieta> / skipped: w innej nocy <katalog> / halted | — | — | — | etykieta stanu, inna noc albo link do komentarza halted | — |
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako
@@ -612,7 +620,7 @@ Raporty review i findingi w podsumowaniu nocy podlegają tej samej regule język
 <dla każdego handoff-*.md sekcja ### #<N> z treścią pliku (fakty dla następcy: modele, serwisy, endpointy, migracje, zmienione kontrakty); brak handoffów → „brak”>
 ```
 
-**Kontrakt raportu:** przed wysłaniem sprawdź każde pole powyższego bloku. Pole, którego nie dotyczy (np. `Pauzy limitu`, `Orkiestrator` poza Claude Code, `Wznowienia per ticket` bez wznowień), dostaje `n/d — <powód>`. Dane, których brak mimo wysiłku, dostają `brak danych: <powód>`. Pola nie wolno pominąć.
+**Kontrakt raportu:** przed wysłaniem sprawdź każde pole powyższego bloku. Pole, którego nie dotyczy (np. Sufiks CTX bez sufiksu → `brak`, `Pauzy limitu`, `Orkiestrator` poza Claude Code, `Wznowienia per ticket` bez wznowień), dostaje `n/d — <powód>` (lub `brak`). Dane, których brak mimo wysiłku, dostają `brak danych: <powód>`. Pola nie wolno pominąć.
 
 **Nowe ekrany:** pliki dodane w katalogach `routes-web` / `routes-mobile` (`.ai/project.md
 ## Ścieżki`) przez PR-y zmergowane tej nocy — tylko pliki nowe:
