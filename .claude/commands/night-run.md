@@ -273,7 +273,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
    przed CI — krok `ci`. Dalej kroki 6–8 promptu.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
-5. Zapisz Przekazanie z hand-backu do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy), dopisz wpis do indeksu w `CTX` (`#N → handoff-<N>.md`), a w rozmowie orkiestratora zostaw tylko jedną linię stanu: `#N: <stan> <PR> <koszt>` (dzięki temu kontekst orkiestratora nie rośnie z każdym ticketem). Policz koszt ticketu (sekcja „Pomiar”), `git checkout $BASE && git pull` przed następnym ticketem.
+5. Zapisz Przekazanie z hand-backu do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy), dopisz wpis do indeksu w `CTX` (`#N → handoff-<N>.md`), a w rozmowie orkiestratora zostaw tylko jedną linię stanu: `#N: <stan> <PR> <koszt>` (dzięki temu kontekst orkiestratora nie rośnie z każdym ticketem). Policz koszt ticketu (sekcja „Pomiar”); powrót do bazy przed następnym ticketem: gdy `.git` jest plikiem (linked worktree, np. `[ -f .git ]`), `git fetch origin` i `git switch --detach origin/$BASE`; w głównym checkoucie bez zmian: `git checkout $BASE && git pull`.
 
 Hand-back needs-human albo halt od subagenta → sekcja „Gdy ticket napotka problem”.
 
@@ -337,7 +337,7 @@ Kroki:
    Na VPS (`Host: vps` w nagłówku <CTX>) `uv run` zawsze z `--no-sync`.
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
-6. Poprawki z review (po `--fix`: zebrane przez `/git-commit` w osobnym commicie i sprawdzone ponownym CI), potem `/git-end` (review zrobione, nie czekaj). W prompcie `/git-end`
+6. Poprawki z review (po `--fix`: zebrane przez `/git-commit` w osobnym commicie i sprawdzone ponownym CI), potem `/git-end --stay` (review zrobione, nie czekaj). W prompcie `/git-end`
    przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi (nagłówki sekcji
    i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian). **CI
    pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;

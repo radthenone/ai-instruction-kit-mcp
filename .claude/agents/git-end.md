@@ -24,7 +24,8 @@ Gdy user poda help — wypisz i zakończ (bez push/PR):
 # /git-end — pomoc
 
 Push bieżącego feature brancha + `gh pr create` z `Closes #N`. Po pushu wraca na branch
-sprzed `/git-start` (jeśli zapisany), jeśli nie — zostaje na feature branchu.
+sprzed `/git-start` (jeśli zapisany), jeśli nie — zostaje na feature branchu. Flaga `--stay`
+pomija powrót i zostawia checkout na branchu feature (przydatne np. w procedurach automatycznych).
 
 ## Kiedy
 Po `/git-start`, implementacji, **`/git-commit`** (jeśli były lokalne zmiany) i **Twoim** `/review-*` (napraw findings).
@@ -33,6 +34,7 @@ Po `/git-start`, implementacji, **`/git-commit`** (jeśli były lokalne zmiany) 
 | Komenda | Efekt |
 |---------|--------|
 | `/git-end` | Push + PR (numer issue z nazwy brancha `feat/42-…`) |
+| `/git-end --stay` | Push + PR bez powrotu na poprzedni branch (zostaje na branchu feature) |
 | `/git-end --help` | Ta pomoc |
 
 Brudne drzewo (uncommitted) → najpierw **`/git-commit`**, potem znowu `/git-end`.
@@ -265,22 +267,46 @@ mutation($threadId: ID!) {
 
 ### 5. Powrót na branch sprzed `/git-start`
 
-Po udanym push+PR, **nie zostawaj** na feature branchu — wróć tam skąd user startował:
+Po udanym push+PR, sprawdź czy wywołanie zawierało flagę `--stay`:
+
+- **Gdy wywołano `/git-end --stay`:** agent pomija powrót na poprzedni branch i zostaje na branchu ticketu / feature (np. w nocy dla rund CodeRabbit i kolejnych commitów).
+- **W przeciwnym razie (brak flagi `--stay`):** agent wykonuje logikę powrotu na branch `PREV` sprzed `/git-start` (sprawdzając czy `PREV` nie jest zajęty w innym worktree):
+  1. Odczytaj `PREV` z configu: `git config "branch.${CUR_BRANCH}.startedFrom"`.
+  2. Sprawdź czy `PREV` istnieje lokalnie (`git show-ref --verify --quiet "refs/heads/$PREV"`).
+  3. Sprawdź czy `PREV` nie jest wybrany w innym worktree (`git worktree list --porcelain`).
+  4. Gdy `PREV` jest wybrany w innym worktree (zajęty checkout), brak configu lub `PREV` nie istnieje lokalnie → agent zostaje na branchu ticketu, bez błędu.
+  5. Gdy `PREV` jest wolny i istnieje lokalnie → przełącz się na `PREV` (`git checkout "$PREV"`).
 
 ```bash
-CUR_BRANCH=$(git branch --show-current)
-PREV=$(git config "branch.${CUR_BRANCH}.startedFrom" 2>/dev/null || true)
-if [[ -n "$PREV" ]] && git show-ref --verify --quiet "refs/heads/$PREV"; then
-  git checkout "$PREV"
+if [[ "$*" == *"--stay"* ]]; then
+  # Flaga --stay pomija powrót na poprzedni branch — zostań na branchu ticketu
+  CUR_BRANCH=$(git branch --show-current)
+  echo "Flaga --stay aktywna — pozostaję na branchu $CUR_BRANCH"
+else
+  # Brak --stay: powrót na branch PREV sprzed /git-start
+  CUR_BRANCH=$(git branch --show-current)
+  PREV=$(git config "branch.${CUR_BRANCH}.startedFrom" 2>/dev/null || true)
+  if [[ -n "$PREV" ]] && git show-ref --verify --quiet "refs/heads/$PREV"; then
+    if git worktree list --porcelain 2>/dev/null | grep -q "^branch refs/heads/$PREV$"; then
+      # PREV jest wybrany w innym worktree → zostań na branchu ticketu bez błędu
+      echo "PREV ($PREV) jest zajęty w innym worktree — pozostaję na branchu $CUR_BRANCH"
+    else
+      git checkout "$PREV" 2>/dev/null || true
+    fi
+  else
+    echo "Brak zapisanego PREV lub branch nie istnieje — pozostaję na branchu $CUR_BRANCH"
+  fi
 fi
 ```
 
 Bezpieczne bo **po pushu** — praca feature brancha jest już na remote, nic nie ginie.
-Brak configu (branch stworzony ręcznie, nie przez `/git-start`) albo `PREV` już nie istnieje
-lokalnie → **zostań** na feature branchu, nie zgaduj docelowego (nie myl z `--base` PR-a —
+Brak configu (branch stworzony ręcznie, nie przez `/git-start`), `PREV` już nie istnieje
+lokalnie albo `PREV` jest wybrany w innym worktree → **zostań** na feature branchu, bez błędu i nie zgaduj docelowego (nie myl z `--base` PR-a —
 to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 
 ### 6. Raport
+
+Raport oddajesz **wyłącznie po uzyskaniu końcowego stanu checks** (zielone checks z `gh pr checks --watch`, błąd CI lub potwierdzony brak checks po timeout). Raport bez końcowego stanu `gh pr checks` (przed zakończeniem `gh pr checks --watch`) jest zakazany.
 
 ```markdown
 ## /git-end OK
@@ -288,6 +314,7 @@ to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 - PR: <url>
 - Base: … (target PR-a — merge base, nie branch powrotu)
 - Closes: #N
+- Checks: … (końcowy stan z `gh pr checks`: pass / fail / brak checks po timeout)
 - Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
 - Rundy CodeRabbit: … (0–3 albo „pominięto — brak coderabbit w integrations”)
 - IDE teraz na: … (branch powrotu jeśli był zapisany, inaczej nadal branch feature)
@@ -300,3 +327,4 @@ to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 - Nie `gh pr merge` bez wyraźnej prośby + green CI.  
 - Nie sekretów w commitach.
 - Czerwone CI (`gh pr checks --watch`): hand-back z logiem CI, kodu nie naprawiasz.
+- Zakaz oddawania raportu bez końcowego stanu `gh pr checks` (nigdy nie oddawaj wyniku przed zakończeniem `gh pr checks --watch`).
