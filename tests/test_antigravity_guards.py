@@ -287,6 +287,37 @@ class AntigravityBootstrapGuardsTest(unittest.TestCase):
         mcp_entry = next(e for e in pre if e["matcher"] == "call_mcp_tool|^mcp_")
         self.assertTrue(any("server-guard.mjs" in h["command"] for h in mcp_entry["hooks"]), mcp_entry)
 
+    def test_hook_command_resolves_from_any_cwd(self) -> None:
+        """Launcher nie zależy od cwd hosta (worktree T3, adapter ACP) i nie wymaga shebanga."""
+        workspace = self._install("antigravity")
+        (workspace / "sub" / "dir").mkdir(parents=True)
+        pre = json.loads((workspace / ".agents" / "hooks.json").read_text(encoding="utf-8"))["kit-guards"]["PreToolUse"]
+        command = pre[0]["hooks"][0]["command"]  # git-guard dla run_command
+        payload = _antigravity("run_command", {"CommandLine": "git reset --hard"})
+        for cwd in (workspace, workspace / ".agents", workspace / "sub" / "dir"):
+            with self.subTest(cwd=str(cwd.relative_to(workspace))):
+                proc = subprocess.run(
+                    command, shell=True, input=json.dumps(payload), capture_output=True,
+                    text=True, encoding="utf-8", cwd=cwd, check=False,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(json.loads(proc.stdout)["decision"], "deny", proc.stdout)
+                self.assertIn("git-guard", proc.stdout)
+
+    def test_hook_command_without_hooks_dir_denies_with_stderr(self) -> None:
+        workspace = self._install("antigravity")
+        command = json.loads((workspace / ".agents" / "hooks.json").read_text(encoding="utf-8"))[
+            "kit-guards"
+        ]["PreToolUse"][0]["hooks"][0]["command"]
+        shutil.rmtree(workspace / ".agents" / "hooks")
+        proc = subprocess.run(
+            command, shell=True, input="{}", capture_output=True, text=True,
+            encoding="utf-8", cwd=workspace, check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(json.loads(proc.stdout)["decision"], "deny")
+        self.assertIn("invoke-hook.js", proc.stderr)
+
     def test_reinstall_merges_kit_key_without_clobbering_user_hooks(self) -> None:
         workspace = self._install("antigravity")
         path = workspace / ".agents" / "hooks.json"
@@ -348,9 +379,9 @@ class AntigravityReadmeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.readme = (KIT_ROOT / "README.md").read_text(encoding="utf-8")
 
-    def test_adapter_row_uses_hooks_json_cwd(self) -> None:
+    def test_adapter_row_uses_cwd_independent_launcher(self) -> None:
         row = next(line for line in self.readme.splitlines() if line.startswith("| Antigravity | `node "))
-        self.assertIn("`node hooks/invoke-hook.js <guard>.mjs --to antigravity`", row)
+        self.assertIn("`node -e \"<launcher>\" <guard>.mjs --to antigravity`", row)
 
     def test_matchers_match_template(self) -> None:
         pre = json.loads(HOOKS_TEMPLATE.read_text(encoding="utf-8"))["kit-guards"]["PreToolUse"]

@@ -4,6 +4,8 @@
     ".vscode/mcp.json",
     ".codex/config.toml",
     ".agents/mcp_config.json",
+    ".agents/hooks.json",
+    ".agents/hooks",
     "opencode.json",
     ".ai/.kit-bootstrap.json",
     ".ai/.kit-doctor.json",
