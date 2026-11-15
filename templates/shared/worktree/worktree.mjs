@@ -185,6 +185,35 @@ function askServerGuard(mainRoot, command) {
   return { allowed: true };
 }
 
+function copyMissingRecursive(srcDir, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcEntry = path.join(srcDir, entry.name);
+    const destEntry = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      if (lexists(destEntry)) {
+        try {
+          const destStat = fs.lstatSync(destEntry);
+          if (destStat.isDirectory() && !destStat.isSymbolicLink()) {
+            copyMissingRecursive(srcEntry, destEntry);
+          }
+        } catch {
+          // pomiń w razie błędu stat
+        }
+      } else {
+        copyMissingRecursive(srcEntry, destEntry);
+      }
+    } else if (!lexists(destEntry)) {
+      try {
+        fs.copyFileSync(srcEntry, destEntry);
+      } catch {
+        // pomiń w razie błędu kopiowania
+      }
+    }
+  }
+}
+
 function performCopy(mainRoot, wtPath, copyList, warnings) {
   const copied = [];
   for (const item of copyList || []) {
@@ -198,7 +227,7 @@ function performCopy(mainRoot, wtPath, copyList, warnings) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      fs.cpSync(src, dest, { recursive: true, force: false });
+      copyMissingRecursive(src, dest);
       copied.push(item);
     } else if (!lexists(dest)) {
       fs.copyFileSync(src, dest);
