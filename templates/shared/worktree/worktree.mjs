@@ -195,15 +195,15 @@ function performCopy(mainRoot, wtPath, copyList, warnings) {
       continue;
     }
     if (!fs.existsSync(src)) continue;
-    if (lexists(dest)) continue;
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      fs.cpSync(src, dest, { recursive: true });
-    } else {
+      fs.cpSync(src, dest, { recursive: true, force: false });
+      copied.push(item);
+    } else if (!lexists(dest)) {
       fs.copyFileSync(src, dest);
+      copied.push(item);
     }
-    copied.push(item);
   }
   return copied;
 }
