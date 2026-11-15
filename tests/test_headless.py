@@ -47,6 +47,9 @@ echo $! > "$HEADLESS_TEST_DIR/child"
 echo "wynik wykonawcy"
 if [ -n "$FAKE_PROGRESS" ]; then i=0; while [ "$i" -lt "$FAKE_PROGRESS" ]; do echo "krok $i"; sleep 0.1; i=$((i+1)); done; fi
 if [ -n "$FAKE_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP" ]; do echo "Error: boom"; if [ -n "$FAKE_LOOP_EDIT" ]; then echo "$i" >> tracked.txt; fi; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
+case " $FAKE_LOOP_FOR " in *" $(basename "$0") "*) i=0; while [ "$i" -lt 5 ]; do echo "Error: boom"; i=$((i+1)); done; sleep 300; exit 0;; esac
+if [ -n "$FAKE_TOOL_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_TOOL_LOOP" ]; do echo "→ Read tests/x.py"; i=$((i+1)); done; fi
+if [ -n "$FAKE_LOOP_UNTRACKED" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP_UNTRACKED" ]; do echo "Error: boom"; echo "$i" >> untracked-edit.txt; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
 if [ -n "$FAKE_COMMIT" ]; then echo c > commit.txt; git add commit.txt; git commit -qm "${FAKE_COMMIT_MSG:-praca wykonawcy}"; fi
 if [ -n "$FAKE_DIRTY" ]; then echo mod >> tracked.txt; fi
 if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
@@ -797,7 +800,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.chain_profile()
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x",
-            FAKE_HANG_FOR="opencode2", HEADLESS_DEFAULT_TIMEOUT_MS="400", HEADLESS_PROGRESS_STEP_MS="200",
+            FAKE_HANG_FOR="opencode2", HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="400",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
@@ -816,7 +819,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.chain_profile()
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x",
-            FAKE_HANG_FOR="opencode2", FAKE_IGNORE_TERM="1", HEADLESS_DEFAULT_TIMEOUT_MS="200", HEADLESS_PROGRESS_STEP_MS="100",
+            FAKE_HANG_FOR="opencode2", FAKE_IGNORE_TERM="1", HEADLESS_DEFAULT_TIMEOUT_MS="800", HEADLESS_PROGRESS_STEP_MS="400",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.headless_log().count("— zabijam drzewo opencode"), 1)
@@ -832,10 +835,10 @@ class HeadlessWrapperTest(unittest.TestCase):
                 self.assertEqual(self.last_row(result)["klasa"], "OK")
 
     def test_progress_extends_default_deadline_until_worker_finishes(self) -> None:
-        # Bez `--timeout` termin to 400 ms, krok 200 ms; wykonawca pisze co 0,1 s przez ok. 1 s.
+        # Bez `--timeout` termin to 800 ms, krok 400 ms; wykonawca pisze co 0,1 s przez ok. 2 s (zapas na obciążony CI).
         result = self.run_wrapper(
-            "--host", "claude", "opencode", "x", FAKE_PROGRESS="10",
-            HEADLESS_DEFAULT_TIMEOUT_MS="400", HEADLESS_PROGRESS_STEP_MS="200", HEADLESS_TIMEOUT_CEILING_MS="5000",
+            "--host", "claude", "opencode", "x", FAKE_PROGRESS="20",
+            HEADLESS_DEFAULT_TIMEOUT_MS="800", HEADLESS_PROGRESS_STEP_MS="400", HEADLESS_TIMEOUT_CEILING_MS="10000",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("termin przedłużony", self.headless_log())
@@ -848,13 +851,16 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("termin przedłużony", self.headless_log())
 
     def test_progressing_worker_is_stopped_at_ceiling(self) -> None:
+        # Termin 800 ms, krok 400 ms, sufit 2 s: przedłużenia 800 → 1200 → 1600 → 2000, potem zabicie.
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x", FAKE_PROGRESS="300",
-            HEADLESS_DEFAULT_TIMEOUT_MS="300", HEADLESS_PROGRESS_STEP_MS="100", HEADLESS_TIMEOUT_CEILING_MS="800",
+            HEADLESS_DEFAULT_TIMEOUT_MS="800", HEADLESS_PROGRESS_STEP_MS="400", HEADLESS_TIMEOUT_CEILING_MS="2000",
         )
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("sufit", self.headless_log())
         self.assertEqual((self.last_row(result)["klasa"], self.last_row(result)["kod"]), ("HANG", 124))
+        # Zabicie sufitem zapisuje zrzut drzewa jak zacięcie i pętla (#424).
+        self.assertIn("## drzewo procesów przy zabiciu", self.headless_log())
 
     def test_repeated_identical_error_is_loop_hang_before_limit(self) -> None:
         # Bez `--timeout` limit to 60 min; pętla ma zabić wykonawcę znacznie wcześniej (sleep 30 s).
@@ -869,10 +875,41 @@ class HeadlessWrapperTest(unittest.TestCase):
         # Między błędami wykonawca dopisuje do śledzonego pliku, więc repo się zmienia i to nie jest pętla.
         self.git_repo()
         result = self.run_wrapper(
-            "--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_LOOP_EDIT="1", FAKE_LOOP_PAUSE="0.2", **self.GIT_ENV,
+            "--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_LOOP_EDIT="1", FAKE_LOOP_PAUSE="0.3", **self.GIT_ENV,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("## pętla", self.headless_log())
+
+    def test_identical_errors_with_untracked_edits_between_are_not_a_loop(self) -> None:
+        # Wykonawca dopisuje do nowego, nieśledzonego pliku: `git status` pokazuje go jako `??` bez zmian,
+        # więc o zmianie decyduje rozmiar i mtime w odcisku repo (#424).
+        self.git_repo()
+        result = self.run_wrapper(
+            "--host", "claude", "opencode", "x", FAKE_LOOP_UNTRACKED="5", FAKE_LOOP_PAUSE="0.3", **self.GIT_ENV,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("## pętla", self.headless_log())
+
+    def test_claude_final_text_with_repeated_error_lines_is_not_a_loop(self) -> None:
+        # claude -p drukuje tylko finalny tekst: powtórzone linie błędu w odpowiedzi nie są pętlą (#424).
+        result = self.run_wrapper("--host", "opencode", "claude", "x", FAKE_LOOP="5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("## pętla", self.headless_log())
+
+    def test_repeated_tool_call_lines_are_loop_hang_before_limit(self) -> None:
+        # Wywołania narzędzi (`→`) jak w wyjściu opencode: ta sama linia 5 razy z rzędu, repo bez zmian.
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_TOOL_LOOP="5", FAKE_SLEEP="30")
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("## pętla: 5× → Read tests/x.py", self.headless_log())
+        self.assertEqual((self.last_row(result)["klasa"], self.last_row(result)["kod"]), ("HANG", 124))
+
+    def test_loop_hands_task_1_to_1_to_fallback_executor(self) -> None:
+        self.chain_profile()
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_LOOP_FOR="opencode2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "calls").read_text(encoding="utf-8").split(), ["opencode2", "agy"])
+        self.assertIn("## pętla: 5× Error: boom", self.headless_log())
+        self.assertIn("przekazuję zadanie 1:1: opencode → antigravity", self.headless_log())
 
     def test_exhausted_chain_of_hangs_is_hang_row_in_report(self) -> None:
         self.chain_profile()
@@ -1796,7 +1833,7 @@ def node_export(expression: str, cwd: Path) -> Any:
     return json.loads(result.stdout)
 
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+@unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessStallProfileTest(unittest.TestCase):
     """Tani model checkera zacięcia z `models.claude.light` w Profilu (#397)."""
 
@@ -1817,7 +1854,8 @@ clients: claude,opencode
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         (self.root / ".ai").mkdir()
-        (self.root / ".ai/project.profile.yaml").write_text(self.PROFILE, encoding="utf-8")
+        # LF także na Windows: parser profilu dzieli linie po "\n", a write_text zapisuje CRLF.
+        (self.root / ".ai/project.profile.yaml").write_bytes(self.PROFILE.encode("utf-8"))
 
     def test_reads_claude_light_from_models_block(self) -> None:
         self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
@@ -1861,7 +1899,7 @@ def run_watch(snapshots: list[dict], ticks: list[int], root: Path) -> dict:
     return node_export(js, root)
 
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+@unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessProgressSourcesTest(unittest.TestCase):
     """Źródła postępu (CPU z /proc, wyjście, git) i kontrola co krok 10 min na wstrzykniętym zegarze (#397, #424)."""
 
@@ -2153,8 +2191,54 @@ class HeadlessDecisionTest(unittest.TestCase):
         )
         self.assertEqual(result, [None, None, None, "ValueError: bad value"])
 
+    def test_repeated_extensions_then_stall_is_killed_at_the_last_deadline(self) -> None:
+        # Postęp w krokach 1 i 2 przedłuża termin 60 → 70 → 80 min; brak postępu w kroku 3 zabija w 80. minucie.
+        result = node_export(
+            """(() => {
+  const stepMs = 600000;
+  let deadlineMs = 3600000;
+  const out = [];
+  for (const [elapsedMs, progressed] of [[3600000, true], [4200000, true], [4800000, false]]) {
+    const step = h.nextDeadline({ elapsedMs, deadlineMs, progressed, stepMs, ceilingMs: 7200000 });
+    out.push(step);
+    if (step.action === "extend") deadlineMs = step.deadlineMs;
+  }
+  return out;
+})()""",
+            self.root,
+        )
+        self.assertEqual(
+            result,
+            [
+                {"action": "extend", "deadlineMs": 4200000},
+                {"action": "extend", "deadlineMs": 4800000},
+                {"action": "kill", "reason": "no-progress"},
+            ],
+        )
 
-@unittest.skipUnless(shutil.which("node") and os.name != "nt", "brak node albo Windows")
+    def git_init_with_commit(self) -> None:
+        """Repo z jednym commitem do testów odcisku; użytkownik gita ustawiony w samym poleceniu."""
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True)
+
+        git("init", "-q")
+        (self.root / "tracked.txt").write_text("a\n", encoding="utf-8")
+        git("add", "tracked.txt")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start")
+
+    def test_repo_fingerprint_sees_untracked_file_edits(self) -> None:
+        # `git status` pokazuje nieśledzony plik jako `??` także po edycji, więc odcisk musi patrzeć na zawartość (#424).
+        self.git_init_with_commit()
+        first = node_export("h.repoFingerprint()", self.root)
+        (self.root / "new.txt").write_text("raz\n", encoding="utf-8")
+        second = node_export("h.repoFingerprint()", self.root)
+        (self.root / "new.txt").write_text("raz\ndwa\n", encoding="utf-8")
+        third = node_export("h.repoFingerprint()", self.root)
+        self.assertEqual(len({first, second, third}), 3)
+
+
+@unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessStallCheckerTest(unittest.TestCase):
     """Checker zacięcia tylko opisuje stan (tani model z Profilu), nie decyduje o zabiciu (#397)."""
 

@@ -34,7 +34,7 @@
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
 import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -159,6 +159,9 @@ const EXECUTORS = {
     // Treść przez stdin — bez limitu długości linii poleceń i bez cytowania.
     args: (model) => ["-p", "--permission-mode", "bypassPermissions", ...(model ? ["--model", model] : [])],
     stdin: true,
+    // `claude -p` drukuje tylko finalny tekst, bez wywołań narzędzi: powtórzone linie błędu w odpowiedzi
+    // dałyby fałszywy HANG przy niezmienionym repo, więc pętli tego wykonawcy nie wykrywamy (#424).
+    loopDetect: false,
   },
   opencode: {
     // `--standalone`: prywatny serwer jako proces potomny, nie usługa w tle — inaczej
@@ -646,10 +649,20 @@ export function createLoopDetector({ repeats = LOOP_REPEATS } = {}) {
   }
 }
 
-// Odcisk stanu repo (#424): HEAD, `git status` i treść diffa. Poza repo albo przy błędzie gita składnik
-// jest pusty — odcisk stały, a pętlę liczy sama seria wyjścia.
-function repoFingerprint() {
-  const parts = [git("rev-parse", "HEAD"), git("status", "--porcelain"), git("diff", "HEAD")]
+// Odcisk stanu repo (#424): HEAD, `git status`, treść diffa i pliki nieśledzone (rozmiar i mtime). `git status`
+// pokazuje nieśledzony plik jako `??` także po jego edycji, dlatego same linie statusu nie wystarczą.
+// Poza repo albo przy błędzie gita składnik jest pusty — odcisk stały, a pętlę liczy sama seria wyjścia.
+export function repoFingerprint() {
+  const untracked = lines(git("ls-files", "--others", "--exclude-standard") ?? "")
+  const files = untracked.map((file) => {
+    try {
+      const stat = statSync(file)
+      return `${file}\0${stat.size}\0${stat.mtimeMs}`
+    } catch {
+      return `${file}\0missing`
+    }
+  })
+  const parts = [git("rev-parse", "HEAD"), git("status", "--porcelain"), git("diff", "HEAD"), ...files]
   return createHash("sha1").update(parts.map((part) => part ?? "").join("\0")).digest("hex")
 }
 
@@ -1000,7 +1013,8 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   let stallNote = null
   let stallTree = null
   let stallDescribed = null
-  const loops = createLoopDetector()
+  // Wykrywacz pętli tylko tam, gdzie wykonawca drukuje zdarzenia na bieżąco (#424, zob. EXECUTORS.claude).
+  const loops = executor.loopDetect === false ? null : createLoopDetector()
   const stopForLoop = (hit) => {
     killReason = "loop"
     loopNote = `${hit.count}× ${hit.key}`
@@ -1023,9 +1037,11 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       tail.push(...parts.filter((l) => l.trim()))
       tail.splice(0, tail.length - TAIL_LINES)
       // Wykrywacz pętli widzi tylko pełne linie.
-      for (const line of parts) {
-        const hit = loops.feed(line, repoFingerprint)
-        if (hit && killReason === null) stopForLoop(hit)
+      if (loops) {
+        for (const line of parts) {
+          const hit = loops.feed(line, repoFingerprint)
+          if (hit && killReason === null) stopForLoop(hit)
+        }
       }
     })
   }
@@ -1093,7 +1109,9 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       killReason = step.reason
       killIdleMs = idleMs
       if (killReason === "ceiling") {
+        stallTree = processSnapshot(child.pid)
         log(`[headless] sufit ${minutes(ceilingMs)} min — zabijam drzewo ${name}\n`)
+        log(stallTree)
         killTree(child)
         return
       }
