@@ -836,10 +836,10 @@ class HeadlessWrapperTest(unittest.TestCase):
                 self.assertEqual(self.last_row(result)["klasa"], "OK")
 
     def test_progress_extends_default_deadline_until_worker_finishes(self) -> None:
-        # Bez `--timeout` termin to 800 ms, krok 400 ms; wykonawca pisze co 0,1 s przez ok. 2 s (zapas na obciążony CI).
+        # Bez `--timeout` termin to 1,2 s, krok 0,6 s; wykonawca pisze co 0,1 s przez ok. 3 s (zapas na obciążony CI).
         result = self.run_wrapper(
-            "--host", "claude", "opencode", "x", FAKE_PROGRESS="20",
-            HEADLESS_DEFAULT_TIMEOUT_MS="800", HEADLESS_PROGRESS_STEP_MS="400", HEADLESS_TIMEOUT_CEILING_MS="10000",
+            "--host", "claude", "opencode", "x", FAKE_PROGRESS="30",
+            HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="600", HEADLESS_TIMEOUT_CEILING_MS="10000",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("termin przedłużony", self.headless_log())
@@ -852,10 +852,10 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn("termin przedłużony", self.headless_log())
 
     def test_progressing_worker_is_stopped_at_ceiling(self) -> None:
-        # Termin 800 ms, krok 400 ms, sufit 2 s: przedłużenia 800 → 1200 → 1600 → 2000, potem zabicie.
+        # Termin 1,2 s, krok 0,6 s, sufit 3 s: przedłużenia 1200 → 1800 → 2400 → 3000, potem zabicie.
         result = self.run_wrapper(
             "--host", "claude", "opencode", "x", FAKE_PROGRESS="300",
-            HEADLESS_DEFAULT_TIMEOUT_MS="800", HEADLESS_PROGRESS_STEP_MS="400", HEADLESS_TIMEOUT_CEILING_MS="2000",
+            HEADLESS_DEFAULT_TIMEOUT_MS="1200", HEADLESS_PROGRESS_STEP_MS="600", HEADLESS_TIMEOUT_CEILING_MS="3000",
         )
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("sufit", self.headless_log())
@@ -876,7 +876,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         # Między błędami wykonawca dopisuje do śledzonego pliku, więc repo się zmienia i to nie jest pętla.
         self.git_repo()
         result = self.run_wrapper(
-            "--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_LOOP_EDIT="1", FAKE_LOOP_PAUSE="0.3", **self.GIT_ENV,
+            "--host", "claude", "opencode", "x", FAKE_LOOP="5", FAKE_LOOP_EDIT="1", FAKE_LOOP_PAUSE="0.5", **self.GIT_ENV,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("## pętla", self.headless_log())
@@ -886,7 +886,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         # więc o zmianie decyduje rozmiar i mtime w odcisku repo (#424).
         self.git_repo()
         result = self.run_wrapper(
-            "--host", "claude", "opencode", "x", FAKE_LOOP_UNTRACKED="5", FAKE_LOOP_PAUSE="0.3", **self.GIT_ENV,
+            "--host", "claude", "opencode", "x", FAKE_LOOP_UNTRACKED="5", FAKE_LOOP_PAUSE="0.5", **self.GIT_ENV,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("## pętla", self.headless_log())
@@ -2144,15 +2144,50 @@ class HeadlessDecisionTest(unittest.TestCase):
         self.assertEqual(result[-1], {"key": "Error: boom", "count": 5})
 
     def test_other_event_breaks_the_streak(self) -> None:
+        # Pięć błędów po wywołaniach narzędzi to pętla; inny błąd na piątym miejscu przerywa serię (#424).
         result = node_export(
             """(() => {
-  const d = h.createLoopDetector();
-  const lines = ["Error: boom", "Error: boom", "Error: boom", "Error: boom", "Error: other", "Error: boom"];
-  return lines.map((line) => d.feed(line, () => "same"));
+  const sequence = (last) => {
+    const d = h.createLoopDetector();
+    const out = [];
+    for (let i = 0; i < 5; i++) {
+      d.feed(`\\u2192 Bash: proba ${i}`, () => "same");
+      out.push(d.feed(i === 4 ? last : "Error: boom", () => "same"));
+    }
+    return out;
+  };
+  return { control: sequence("Error: boom"), broken: sequence("Error: other") };
 })()""",
             self.root,
         )
-        self.assertEqual(result, [None] * 6)
+        self.assertEqual(result["control"][-1], {"key": "Error: boom", "count": 5})
+        self.assertEqual(result["broken"], [None] * 5)
+
+    def test_loop_note_is_in_final_report(self) -> None:
+        # Wpis pętli trafia do raportu końcowego jak zacięcie i zrzut drzewa (#424).
+        report = node_export(
+            """(() => h.finalReport({ startHead: null, tail: [], loop: "5\\u00d7 Error: boom",
+  changes: { status: "", added: [], suspect: false, untrailed: [] } }))()""",
+            self.root,
+        )
+        self.assertIn("## pętla: 5× Error: boom", report)
+
+    def test_tool_glyphs_are_all_recognized(self) -> None:
+        # Wywołania narzędzi opencode: `→`, `⚙` i `$` (#424).
+        result = node_export(
+            """(() => [
+  '\\u2192 Read tests/x.py',
+  '\\u2699 execute {"code": 1}',
+  '$ git status',
+  'Error: boom',
+].map((line) => h.loopEventKey(line)))()""",
+            self.root,
+        )
+        self.assertEqual(result, ["→ Read tests/x.py", '⚙ execute {"code": 1}', "$ git status", "Error: boom"])
+
+    def test_git_state_is_null_outside_a_repo(self) -> None:
+        # Poza repo `git rev-parse` zawodzi: stan nieznany (null), a nie pusty tekst (#424).
+        self.assertIsNone(node_export("h.gitState()", self.root))
 
     def test_repo_change_between_repeats_is_not_a_loop(self) -> None:
         # Odcisk liczony przy drugim powtórzeniu ("a") i piątym ("b"): wykonawca edytował między błędami.

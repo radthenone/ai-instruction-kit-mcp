@@ -521,7 +521,7 @@ function git(...args) {
 
 // Stan gita jako źródło postępu: HEAD i git status (#397). Null, gdy git nie odpowiada (poza repo albo
 // przejściowy błąd): wtedy nie ma porównania, więc błąd gita nie daje fałszywego postępu.
-const gitState = () => {
+export const gitState = () => {
   const head = git("rev-parse", "HEAD")
   const status = git("status", "--porcelain")
   return head === null || status === null ? null : `${head}\n${status}`
