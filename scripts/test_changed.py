@@ -113,6 +113,28 @@ def get_base_branch(root: Path = ROOT) -> str:
     return "dev"
 
 
+def _clean_git_env() -> dict[str, str]:
+    """Usuń zmienne GIT_* lokalizujące obce repozytorium lub indeks."""
+    env = os.environ.copy()
+    for key in list(env.keys()):
+        if key.startswith("GIT_") and key not in {"GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"}:
+            del env[key]
+    return env
+
+
+def _git_cmd(args: list[str], root: Path) -> subprocess.CompletedProcess[str]:
+    cmd = ["git", "-c", "core.quotepath=false", *args]
+    return subprocess.run(
+        cmd,
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_clean_git_env(),
+    )
+
+
 def get_merge_base_and_changes(base_branch: str | None = None, root: Path = ROOT) -> list[str]:
     """
     Wybierz zmienione pliki: diff względem merge-base z origin/<base> (lub <base>),
@@ -123,30 +145,32 @@ def get_merge_base_and_changes(base_branch: str | None = None, root: Path = ROOT
 
     # Ustal ref bazy: preferuj origin/<base>, potem lokalny <base>
     target_ref = f"origin/{base_branch}"
-    res = subprocess.run(["git", "rev-parse", "--verify", target_ref], cwd=str(root), capture_output=True, text=True)
+    res = _git_cmd(["rev-parse", "--verify", target_ref], root)
     if res.returncode != 0:
         target_ref = base_branch
-        res = subprocess.run(["git", "rev-parse", "--verify", target_ref], cwd=str(root), capture_output=True, text=True)
+        res = _git_cmd(["rev-parse", "--verify", target_ref], root)
         if res.returncode != 0:
             target_ref = "HEAD"
 
-    mb_res = subprocess.run(["git", "merge-base", "HEAD", target_ref], cwd=str(root), capture_output=True, text=True)
+    mb_res = _git_cmd(["merge-base", "HEAD", target_ref], root)
     merge_base = mb_res.stdout.strip() if mb_res.returncode == 0 else ""
 
     changed: set[str] = set()
 
     def run_git(args: list[str]) -> list[str]:
-        cmd = ["git", "-c", "core.quotepath=false", *args]
-        r = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
-        if r.returncode == 0:
-            return [line.strip().replace("\\", "/") for line in r.stdout.splitlines() if line.strip()]
-        return []
+        r = _git_cmd(args, root)
+        if r.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)} zwrócił kod {r.returncode}: {r.stderr.strip()}")
+        return [line.strip().replace("\\", "/") for line in r.stdout.splitlines() if line.strip()]
 
     if merge_base:
         changed.update(run_git(["diff", "--name-only", merge_base, "HEAD"]))
     elif target_ref != "HEAD":
         # Fallback dla shallow clone lub odłączonej historii
-        branch_diff = run_git(["diff", "--name-only", f"{target_ref}...HEAD"])
+        try:
+            branch_diff = run_git(["diff", "--name-only", f"{target_ref}...HEAD"])
+        except RuntimeError:
+            branch_diff = []
         if branch_diff:
             changed.update(branch_diff)
         else:

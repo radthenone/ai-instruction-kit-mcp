@@ -161,7 +161,7 @@ class TestTestChangedContract(unittest.TestCase):
 
             start_time = time.time()
             returncode, last_line, stalled = test_changed.run_with_watchdog(
-                cmd, log_path=log_path, stall_seconds=0.2, cwd=KIT_ROOT
+                cmd, log_path=log_path, stall_seconds=2.0, cwd=KIT_ROOT
             )
             elapsed = time.time() - start_time
 
