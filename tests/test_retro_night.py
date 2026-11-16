@@ -193,6 +193,21 @@ class NightRunScanTests(unittest.TestCase):
         self._scan()
         self.assertEqual(self._findings(f"{NIGHT_SESSION}-357"), [])
 
+    def test_mtime_error_on_one_log_does_not_stop_the_scan(self) -> None:
+        cutoff = datetime(2026, 11, 1, tzinfo=UTC).timestamp()
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=cutoff + 1)
+        self._log("headless-358.log", RUN_HEADER + TICKET.replace("357", "358") + ATTEMPT + REPORT, mtime=cutoff + 1)
+        real_mtime = retro._mtime
+
+        def flaky_mtime(path: Path) -> float:
+            if path.name == "headless-357.log":
+                raise PermissionError("brak dostępu")
+            return real_mtime(path)
+
+        with mock.patch.object(retro, "_mtime", side_effect=flaky_mtime):
+            sessions = retro.night_sessions(self.night.parent, "olivin-app", cutoff=cutoff, opencode_log=None)
+        self.assertEqual([session.session_id for session in sessions], [f"{NIGHT_SESSION}-358"])
+
     def test_unreadable_night_root_does_not_stop_the_scan(self) -> None:
         self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT)
         with mock.patch.object(Path, "iterdir", side_effect=PermissionError("brak dostępu")):

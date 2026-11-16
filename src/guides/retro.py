@@ -629,6 +629,12 @@ def headless_runs(workspace: Path) -> list[Path]:
     ]
 
 
+def _own_report(text: str) -> str:
+    """Tekst od ostatniego ``raport końcowy``; czysty raport wklejony echem wcześniej nie liczy się jako własny."""
+    final = text.rfind(HEADLESS_REPORT)
+    return text[final:] if final != -1 else text
+
+
 def parse_headless_run(run_dir: Path) -> ParsedSession:
     """Sygnały przebiegu headless: ostatni kod wyjścia z ``headless.log`` i czystość drzewa po wyjściu 0."""
     try:
@@ -641,7 +647,7 @@ def parse_headless_run(run_dir: Path) -> ParsedSession:
         signals.append(Signal("headless_exit", "exit-missing", "brak linii kod wyjścia w headless.log"))
     elif exits[-1] != "0":
         signals.append(Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}")))
-    elif HEADLESS_CLEAN.search(text):
+    elif HEADLESS_CLEAN.search(_own_report(text)):
         signals.append(Signal("headless_no_change", "exit0-clean-tree", "kod wyjścia: 0, czyste drzewo po przebiegu"))
     return ParsedSession(session_id=run_dir.name, files=1, signals=signals)
 
@@ -739,9 +745,20 @@ def _run_start(stamp: str) -> datetime | None:
         return None
 
 
+def _safe_mtime(path: Path) -> float | None:
+    """Czas modyfikacji albo None, gdy plik zniknął lub nie daje się odczytać (skan go pomija)."""
+    try:
+        return _mtime(path)
+    except OSError:
+        return None
+
+
 def _fresh(path: Path, cutoff: float | None) -> bool:
     """Plik zmieniony od ``cutoff`` (``--since``); bez cutoffu każdy plik jest świeży."""
-    return cutoff is None or _mtime(path) >= cutoff
+    if cutoff is None:
+        return True
+    mtime = _safe_mtime(path)
+    return mtime is not None and mtime >= cutoff
 
 
 def _night_halt(path: Path) -> tuple[str | None, Signal] | None:
@@ -815,8 +832,9 @@ def _load_ticket(logs: list[Path]) -> _Ticket:
         start = _run_start(match.group(1)) if match else None
         if start is not None:
             starts.append(start)
-    if starts and logs:
-        end = datetime.fromtimestamp(max(_mtime(path) for path in logs), tz=timezone.utc)
+    mtimes = [mtime for mtime in map(_safe_mtime, logs) if mtime is not None]
+    if starts and mtimes:
+        end = datetime.fromtimestamp(max(mtimes), tz=timezone.utc)
         ticket.window = (min(starts), end)
     return ticket
 
@@ -1030,12 +1048,12 @@ def scan_command(
     mains = [
         main
         for main in sorted(base.glob("*.jsonl"))
-        if SESSION_ID.fullmatch(main.stem) and (cutoff is None or _mtime(main) >= cutoff)
+        if SESSION_ID.fullmatch(main.stem) and _fresh(main, cutoff)
     ]
     runs = [
         run
         for run in headless_runs(workspace)
-        if cutoff is None or _mtime(run / "headless.log") >= cutoff
+        if _fresh(run / "headless.log", cutoff)
     ]
     nights = (
         night_sessions(night_root, repo_name(workspace), cutoff=cutoff, opencode_log=opencode_log)
