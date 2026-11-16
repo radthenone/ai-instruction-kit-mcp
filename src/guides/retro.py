@@ -806,13 +806,15 @@ def night_sessions(
         halt_fresh = halt is not None and _fresh(halt_path, cutoff)
         tickets: dict[str, _Ticket] = {}
         for number, logs in all_logs.items():
-            if any(_fresh(path, cutoff) for path in logs) or (halt_fresh and halt[0] == number):
+            if any(_fresh(path, cutoff) for path in logs) or (halt_fresh and halt is not None and halt[0] == number):
                 tickets[number] = _Ticket(logs=logs)
-        if halt is not None and halt[0] is None:
-            if halt_fresh:
-                sessions.append(ParsedSession(session_id=f"night-{stamp}-halt", files=0, signals=[halt[1]]))
-        elif halt is not None and (halt[0] in tickets or halt_fresh):
-            tickets.setdefault(halt[0], _Ticket()).signals.append(halt[1])
+        if halt is not None:
+            halt_number, halt_signal = halt
+            if halt_number is None:
+                if halt_fresh:
+                    sessions.append(ParsedSession(session_id=f"night-{stamp}-halt", files=0, signals=[halt_signal]))
+            elif halt_number in tickets or halt_fresh:
+                tickets.setdefault(halt_number, _Ticket()).signals.append(halt_signal)
         for ticket in tickets.values():
             texts = [_read_text(path) for path in ticket.logs]
             ticket.attempts = len(ticket.logs)
