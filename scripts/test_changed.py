@@ -95,6 +95,10 @@ def kill_active_processes() -> None:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
         except OSError:
             pass
 
@@ -371,7 +375,10 @@ def run_with_watchdog(
     tests_dir = str((cwd / "tests").resolve())
     src_dir = str((cwd / "src").resolve())
     existing_pythonpath = run_env.get("PYTHONPATH", "")
-    run_env["PYTHONPATH"] = f"{tests_dir}:{src_dir}:{existing_pythonpath}" if existing_pythonpath else f"{tests_dir}:{src_dir}"
+    parts = [tests_dir, src_dir]
+    if existing_pythonpath:
+        parts.append(existing_pythonpath)
+    run_env["PYTHONPATH"] = os.pathsep.join(parts)
     kwargs["env"] = run_env
 
     try:
@@ -382,6 +389,8 @@ def run_with_watchdog(
         return (1, f"błąd uruchomienia: {exc}", False)
 
     ACTIVE_PROCS.add(proc)
+    if CANCEL_EVENT.is_set():
+        kill_active_processes()
     last_change_time = time.time()
     last_size = 0
     stalled = False
