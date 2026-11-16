@@ -1845,7 +1845,7 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
 
     def test_monitor_is_armed_on_anchored_wrapper_lines_only(self) -> None:
         self.assertIn(
-            r"tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'",
+            r"tail -n +<P+1> -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'",
             self.text,
         )
 
@@ -1861,10 +1861,12 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
     def test_wakeup_is_the_backup_for_the_monitor_lifetime_and_rearms(self) -> None:
         self.assertIn("`ScheduleWakeup` na 30 min", self.text)
         self.assertIn("Monitor` wygasa po 30 min", self.text)
-        self.assertIn("uzbrój `Monitor` i `ScheduleWakeup` ponownie", self.text)
+        self.assertIn("uzbrój `Monitor` od `P+1` i `ScheduleWakeup` ponownie", self.text)
 
-    def test_rearm_checks_the_last_wrapper_line_first(self) -> None:
-        self.assertIn("przed ponownym uzbrojeniem `Monitor` sprawdź ostatnią linię `[headless]`", self.text)
+    def test_wakeup_reads_lines_since_the_recorded_position_before_rearm(self) -> None:
+        self.assertIn(r"tail -n +<P+1> <log> | grep '^\[headless\]'", self.text)
+        self.assertIn("`wc -l < <log>`", self.text)
+        self.assertNotIn("tail -n0", self.text)
 
     def test_end_is_read_again_before_treating_the_task_as_failed(self) -> None:
         self.assertIn(r"ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1`", self.text)

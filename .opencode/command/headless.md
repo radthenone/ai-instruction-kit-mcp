@@ -72,8 +72,8 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
 
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
-   `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log; ścieżka z pierwszej linii `[headless] log: <log>`:
-   `tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'`.
+   `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log od pozycji `P+1` (`P` to liczba linii zapamiętana przy ostatnim przetworzeniu, na starcie `P=0`); ścieżka z pierwszej linii `[headless] log: <log>`:
+   `tail -n +<P+1> -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'`.
    Wzorzec jest zakotwiczony na początku linii wrappera, bo wykonawca wypisuje do logu własny tekst. Budzi na cztery rodzaje
    linii: `[headless] kod wyjścia: <kod>` (koniec wywołania), `[headless] sygnał SIG…` (zabicie sygnałem),
    `… przekazuję zadanie 1:1` (przekazanie 1:1 po błędzie albo limicie) i `[headless] możliwe zacięcie: brak wyjścia od <n> min`
@@ -82,9 +82,10 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Gdy jej nie ma, sprawdź, czy zadanie w tle nadal żyje (stan zadania albo powiadomienie tła). Jeśli już nie żyje,
    ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1` (wrapper mógł skończyć się między sprawdzeniami).
    Dopiero bez kodu wyjścia to sygnał albo błąd wrappera: przeczytaj ostatnią linię `[headless]` i nie uzbrajaj ponownie.
-   Zapas: `Monitor` wygasa po 30 min, więc `ScheduleWakeup` na 30 min. Po każdym wybudzeniu bez `kod wyjścia`
-   przed ponownym uzbrojeniem `Monitor` sprawdź ostatnią linię `[headless]` (zdarzenia z przerwy w nasłuchu), potem
-   uzbrój `Monitor` i `ScheduleWakeup` ponownie, aż do końca wywołania (`kod wyjścia` albo powiadomienie tła).
+   Zapas: `Monitor` wygasa po 30 min, więc `ScheduleWakeup` na 30 min. Po każdym wybudzeniu (powiadomienie `Monitor` albo `ScheduleWakeup`) przeczytaj linie od `P+1` do końca:
+   `tail -n +<P+1> <log> | grep '^\[headless\]'` (zdarzenia z przerwy w nasłuchu), zapamiętaj `P` jako `wc -l < <log>`,
+   dopiero potem uzbrój `Monitor` od `P+1` i `ScheduleWakeup` ponownie, aż do końca wywołania (`kod wyjścia` albo powiadomienie tła).
+   Bez `P` zdarzenia z przerwy byłyby pominięte.
    Klienty bez tych narzędzi czytają log jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu
    w ostatnim kroku (10 min: bajty wyjścia, zmiana `HEAD`/`git status`, a z `/proc` także CPU) albo sufit
    120 min, a wrapper przechodzi dalej 1:1. Pętla (to samo wywołanie narzędzia 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,
