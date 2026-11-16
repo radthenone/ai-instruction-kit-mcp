@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest import mock
 
 from guides import retro
 
@@ -155,6 +156,48 @@ class NightRunScanTests(unittest.TestCase):
         self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=old)
         self._scan(since="2026-11-01")
         self.assertFalse((self.cache / "olivin-app" / f"{NIGHT_SESSION}-halt.jsonl").exists())
+
+    def test_since_does_not_move_opencode_errors_to_other_tickets(self) -> None:
+        def header(stamp: str) -> str:
+            return f"[headless] log: ~/projects/olivin-app-night/.ai/headless-runs/{stamp}-opencode/headless.log\n"
+
+        self._log(
+            "headless-357.log",
+            header("2026-10-28T22-00-00-000Z") + TICKET + ATTEMPT + REPORT,
+            mtime=datetime(2026, 10, 28, 23, 0, tzinfo=UTC).timestamp(),
+        )
+        self._log(
+            "headless-358.log",
+            header("2026-10-28T21-00-00-000Z") + TICKET.replace("357", "358") + ATTEMPT + REPORT,
+            mtime=datetime(2026, 11, 10, tzinfo=UTC).timestamp(),
+        )
+        self.opencode_log.write_text(
+            _opencode(
+                "2026-10-28T22:30:00.000Z",
+                "ERROR",
+                "Failed to drain Session",
+                "FileSystem.DirectoryNotFoundError: Directory not found: /home/tester/x",
+            ),
+            encoding="utf-8",
+        )
+        self._scan(since="2026-11-01")
+        self.assertFalse((self.cache / "olivin-app" / f"{NIGHT_SESSION}-357.jsonl").exists())
+        self.assertEqual(self._findings(f"{NIGHT_SESSION}-358"), [])
+
+    def test_clean_report_echoed_earlier_does_not_hide_final_changes(self) -> None:
+        final = (
+            "[headless] raport końcowy\n## git status --short\n M src/x.py\n"
+            "## git log 1fc3fea..HEAD --oneline\n(brak commitów)\n"
+        )
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT + final + "[headless] kod wyjścia: 0\n")
+        self._scan()
+        self.assertEqual(self._findings(f"{NIGHT_SESSION}-357"), [])
+
+    def test_unreadable_night_root_does_not_stop_the_scan(self) -> None:
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT)
+        with mock.patch.object(Path, "iterdir", side_effect=PermissionError("brak dostępu")):
+            message = self._scan()
+        self.assertTrue(message.startswith("retro:"))
 
     def test_last_exit_line_of_a_log_decides_over_echoed_ones(self) -> None:
         self._log(

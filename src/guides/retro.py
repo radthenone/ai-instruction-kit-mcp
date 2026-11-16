@@ -684,7 +684,11 @@ def night_run_dirs(night_root: Path, repo: str) -> list[tuple[str, Path]]:
         return []
     pattern = re.compile(rf"night-run-{re.escape(repo)}-(\d{{4}}-\d{{2}}-\d{{2}}(?:-[A-Za-z0-9_-]+)?)")
     found: list[tuple[str, Path]] = []
-    for path in sorted(night_root.iterdir()):
+    try:
+        entries = sorted(night_root.iterdir())
+    except OSError:
+        return []
+    for path in entries:
         match = pattern.fullmatch(path.name)
         if match and path.is_dir():
             found.append((match.group(1), path))
@@ -756,7 +760,9 @@ def _exit_signals(text: str) -> list[Signal]:
     if exits:
         if exits[-1] != "0":
             return [Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}"))]
-        if HEADLESS_CLEAN.search(text):
+        # Czysty stan liczy się tylko z końcowego raportu; wcześniejszy wklejony echem go nie zastępuje.
+        final = text.rfind(HEADLESS_REPORT)
+        if final != -1 and HEADLESS_CLEAN.search(text[final:]):
             return [Signal("headless_no_change", "exit0-clean-tree", "kod wyjścia: 0, czyste drzewo po przebiegu")]
         return []
     if HEADLESS_REPORT in text:
@@ -782,6 +788,25 @@ def _unused_replay(signal: Signal) -> str:
     return "unknown"
 
 
+def _load_ticket(logs: list[Path]) -> _Ticket:
+    """Próby, klasy wyjścia i okno ticketu z jego logów; filtr ``--since`` działa dopiero przy zapisie."""
+    texts = [_read_text(path) for path in logs]
+    ticket = _Ticket(logs=logs, attempts=len(logs))
+    for text in texts:
+        ticket.signals.extend(_exit_signals(text))
+    starts: list[datetime] = []
+    for text in texts:
+        # Pierwszy nagłówek pliku to start tego wywołania; późniejsze to echo zagnieżdżonych przebiegów.
+        match = HEADLESS_RUN_LOG.search(text)
+        start = _run_start(match.group(1)) if match else None
+        if start is not None:
+            starts.append(start)
+    if starts and logs:
+        end = datetime.fromtimestamp(max(_mtime(path) for path in logs), tz=timezone.utc)
+        ticket.window = (min(starts), end)
+    return ticket
+
+
 def night_sessions(
     night_root: Path, repo: str, *, cutoff: float | None, opencode_log: Path | None
 ) -> list[ParsedSession]:
@@ -797,52 +822,43 @@ def night_sessions(
     sessions: list[ParsedSession] = []
     for stamp, night_dir in night_run_dirs(night_root, repo):
         all_logs: dict[str, list[Path]] = {}
-        for path in sorted(night_dir.iterdir()):
+        try:
+            entries = sorted(night_dir.iterdir())
+        except OSError:
+            continue
+        for path in entries:
             match = NIGHT_LOG.fullmatch(path.name)
             if match and path.is_file():
                 all_logs.setdefault(match.group("ticket"), []).append(path)
         halt_path = night_dir / "halt.md"
         halt = _night_halt(halt_path)
         halt_fresh = halt is not None and _fresh(halt_path, cutoff)
-        tickets: dict[str, _Ticket] = {}
-        for number, logs in all_logs.items():
-            if any(_fresh(path, cutoff) for path in logs) or (halt_fresh and halt is not None and halt[0] == number):
-                tickets[number] = _Ticket(logs=logs)
-        if halt is not None:
-            halt_number, halt_signal = halt
-            if halt_number is None:
-                if halt_fresh:
-                    sessions.append(ParsedSession(session_id=f"night-{stamp}-halt", files=0, signals=[halt_signal]))
-            elif halt_number in tickets or halt_fresh:
-                tickets.setdefault(halt_number, _Ticket()).signals.append(halt_signal)
-        for ticket in tickets.values():
-            texts = [_read_text(path) for path in ticket.logs]
-            ticket.attempts = len(ticket.logs)
-            for text in texts:
-                ticket.signals.extend(_exit_signals(text))
-            starts: list[datetime] = []
-            for text in texts:
-                # Pierwszy nagłówek pliku to start tego wywołania; późniejsze to echo zagnieżdżonych przebiegów.
-                match = HEADLESS_RUN_LOG.search(text)
-                start = _run_start(match.group(1)) if match else None
-                if start is not None:
-                    starts.append(start)
-            if starts and ticket.logs:
-                end = datetime.fromtimestamp(max(_mtime(path) for path in ticket.logs), tz=timezone.utc)
-                ticket.window = (min(starts), end)
+        halt_ticket = halt[0] if halt is not None else None
+        if halt is not None and halt_ticket is None and halt_fresh:
+            sessions.append(ParsedSession(session_id=f"night-{stamp}-halt", files=0, signals=[halt[1]]))
+        # Okna i atrybucja błędów opencode liczą się po wszystkich ticketach nocy; cutoff wybiera tylko zapis.
+        tickets = {number: _load_ticket(logs) for number, logs in all_logs.items()}
+        if halt is not None and halt_ticket is not None:
+            tickets.setdefault(halt_ticket, _Ticket()).signals.append(halt[1])
         windows = {number: ticket.window for number, ticket in tickets.items() if ticket.window is not None}
         errors = read_opencode_errors(opencode_log) if windows and opencode_log is not None else []
         for number, signals in _opencode_signals(windows, errors).items():
             tickets[number].signals.extend(signals)
         for number, ticket in sorted(tickets.items(), key=lambda item: int(item[0])):
-            sessions.append(
-                ParsedSession(
-                    session_id=f"night-{stamp}-{number}",
-                    files=len(ticket.logs),
-                    signals=ticket.signals,
-                    attempts=ticket.attempts,
-                )
+            included = (
+                cutoff is None
+                or any(_fresh(path, cutoff) for path in ticket.logs)
+                or (halt_fresh and halt_ticket == number)
             )
+            if included:
+                sessions.append(
+                    ParsedSession(
+                        session_id=f"night-{stamp}-{number}",
+                        files=len(ticket.logs),
+                        signals=ticket.signals,
+                        attempts=ticket.attempts,
+                    )
+                )
     return sessions
 
 
