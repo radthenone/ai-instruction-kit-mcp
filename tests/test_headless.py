@@ -328,6 +328,17 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.calls(), ["agy", "opencode2"])
         self.assertIn("antigravity → opencode", self.headless_log())
 
+    def test_unknown_limit_probes_quota_once_for_a_model_list(self) -> None:
+        # Nieznany komunikat limitu (#293): `/quota` idzie raz po błędzie, a jego tekst pomija
+        # pustą grupę kolejnego modelu listy bez drugiego wywołania (#460).
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        self.run_wrapper(
+            "--host", "claude", "gemini", "--model", "gemini-3.8-flash-high,gemini-3.8-flash-low", "x",
+            FAKE_FAIL_FOR="agy", FAKE_QUOTA="Gemini Models\t1000\t0%\t2026-11-18T00:00:00Z\n",
+        )
+        self.assertEqual(self.calls(), ["agy", "agy /quota", "opencode2"])
+
     def test_fallback_skips_executor_outside_profile(self) -> None:
         self.profile("claude,opencode")
         self.fake("agy")
@@ -382,6 +393,35 @@ class HeadlessWrapperTest(unittest.TestCase):
         "Gemini Models\\tWeekly Limit Remaining\\t0%\\t2099-01-01T10:00:00Z\\n"
         "Claude and GPT models\\tFive Hour Limit Remaining\\t100%\\t2099-01-01T09:00:00Z\\n"
     )
+
+    def test_limited_model_then_empty_group_keeps_pause_in_report(self) -> None:
+        self.profile("claude,antigravity")
+        (self.bin / "agy").write_text(AGY_BY_MODEL, encoding="utf-8")
+        (self.bin / "agy").chmod(0o755)
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "claude-sonnet-4-6,gemini-3.8-flash-high", "treść",
+            FAKE_LIMIT_MODELS="claude-sonnet-4-6",
+            FAKE_QUOTA="Gemini Models\\tWeekly\\t0%\\t2099-01-01T10:00:00Z\\n",
+        )
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertEqual((self.root / "models").read_text(encoding="utf-8").splitlines(), ["claude-sonnet-4-6"])
+        self.assertIn("## PAUSE=rate-limit", result.stdout.split("raport końcowy", 1)[1])
+
+    def test_attempt_without_quota_text_makes_next_model_reread_quota(self) -> None:
+        # Próba z tekstowym limitem nie czyta quota, więc kolejny model musi pobrać je ponownie (#460).
+        self.profile("claude,antigravity")
+        (self.bin / "agy").write_text(AGY_BY_MODEL, encoding="utf-8")
+        (self.bin / "agy").chmod(0o755)
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model",
+            "gemini-3.8-flash-high,claude-sonnet-4-6,gemini-3.8-flash-low", "treść",
+            FAKE_LIMIT_MODELS="gemini-3.8-flash-high claude-sonnet-4-6",
+            FAKE_QUOTA="Gemini Models\\tWeekly\\t0%\\t2099-01-01T10:00:00Z\\n",
+        )
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertEqual((self.root / "models").read_text(encoding="utf-8").splitlines(),
+                         ["gemini-3.8-flash-high", "claude-sonnet-4-6"])
+        self.assertEqual((self.root / "quota-calls").read_text(encoding="utf-8").splitlines(), ["/quota", "/quota"])
 
     def test_agy_failure_with_exhausted_quota_is_rate_limit_pause(self) -> None:
         self.profile("claude,antigravity")
@@ -1885,6 +1925,105 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
 
     def test_old_until_grep_recipe_is_gone(self) -> None:
         self.assertNotIn("until grep -q ^EXIT=", self.text)
+
+
+@unittest.skipUnless(shutil.which("node"), "brak node")
+class HeadlessModelChainTest(unittest.TestCase):
+    """Łańcuch modeli w jednym wykonawcy (#460): czyste funkcje, bez uruchamiania wykonawcy."""
+
+    QUOTA_GEMINI_EMPTY = "Gemini Models\t1000\t0%\t2026-11-18T00:00:00Z\nClaude and GPT models\t1000\t40%\t2026-11-18T00:00:00Z\n"
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def call(self, expression: str) -> Any:
+        return node_export(expression, self.root)
+
+    def test_model_list_splits_on_commas_and_drops_blanks(self) -> None:
+        self.assertEqual(
+            self.call('h.parseModels("gemini-3.8-flash-high, claude-opus-4-6-thinking,,")'),
+            ["gemini-3.8-flash-high", "claude-opus-4-6-thinking"],
+        )
+
+    def test_only_limit_and_hang_move_to_the_next_model(self) -> None:
+        self.assertEqual(
+            self.call('[h.continuesWithNextModel("LIMIT"), h.continuesWithNextModel("HANG"), '
+                      'h.continuesWithNextModel("ERROR"), h.continuesWithNextModel("MODEL")]'),
+            [True, True, False, False],
+        )
+
+    def test_single_model_plan_is_the_old_chain(self) -> None:
+        self.assertEqual(
+            self.call('h.modelPlan({ models: ["claude-opus-4-6-thinking"], emptyGroups: [] })'),
+            [{"model": "claude-opus-4-6-thinking", "skip": None}],
+        )
+
+    def test_empty_quota_group_skips_a_later_model_with_its_group_as_reason(self) -> None:
+        plan = self.call(
+            f"h.modelPlan({{ models: [\"claude-sonnet-4-6\", \"gemini-3.8-flash-high\"], "
+            f"emptyGroups: h.emptyQuotaGroups({json.dumps(self.QUOTA_GEMINI_EMPTY)}) }})"
+        )
+        self.assertEqual(
+            plan,
+            [
+                {"model": "claude-sonnet-4-6", "skip": None},
+                {"model": "gemini-3.8-flash-high", "skip": "Gemini Models"},
+            ],
+        )
+
+    def test_first_model_is_never_skipped_by_quota(self) -> None:
+        plan = self.call('h.modelPlan({ models: ["gemini-3.8-flash-high"], emptyGroups: ["Gemini Models"] })')
+        self.assertEqual(plan, [{"model": "gemini-3.8-flash-high", "skip": None}])
+
+    def test_quota_group_follows_the_model_family(self) -> None:
+        self.assertEqual(
+            self.call('[h.quotaGroupOf("gemini-3.8-flash-high"), h.quotaGroupOf("claude-opus-4-6-thinking"), '
+                      'h.quotaGroupOf("gpt-oss-120b-medium"), h.quotaGroupOf("nieznany")]'),
+            ["Gemini Models", "Claude and GPT models", "Claude and GPT models", None],
+        )
+
+    def test_only_zero_percent_groups_count_as_empty(self) -> None:
+        self.assertEqual(
+            self.call(f"h.emptyQuotaGroups({json.dumps(self.QUOTA_GEMINI_EMPTY)})"),
+            ["Gemini Models"],
+        )
+
+    def test_handoff_prompt_adds_killed_report_only_after_hang(self) -> None:
+        base = {"basePrompt": "T", "sessionFooter": "F", "name": "antigravity", "code": 124, "report": "R"}
+        self.assertEqual(self.call(f"h.handoffPrompt({json.dumps({**base, 'klasa': 'LIMIT'})})"), "TF")
+        self.assertEqual(
+            self.call(f"h.handoffPrompt({json.dumps({**base, 'klasa': 'HANG'})})"),
+            "T\n\n---\nRaport zabitego wykonawcy (antigravity, kod 124):\nRF",
+        )
+
+    def test_unknown_model_family_uses_gemini_quota_group(self) -> None:
+        self.assertEqual(
+            self.call('[h.quotaGroupFor("mistral-large"), h.quotaGroupFor("claude-opus-4-6-thinking")]'),
+            ["Gemini Models", "Claude and GPT models"],
+        )
+
+    def test_agy_config_list_is_the_same_as_cli_list(self) -> None:
+        self.assertEqual(
+            self.call('[h.agyModelsFromConfig(["gemini-3.8-flash-high", "claude-opus-4-6-thinking"]), '
+                      'h.agyModelsFromConfig("gemini-3.8-flash-high"), h.agyModelsFromConfig(undefined)]'),
+            [["gemini-3.8-flash-high", "claude-opus-4-6-thinking"], ["gemini-3.8-flash-high"], []],
+        )
+        self.assertEqual(
+            self.call('h.agyModelsFromConfig(["gemini-3.8-flash-high", "claude-opus-4-6-thinking"])'),
+            self.call('h.parseModels("gemini-3.8-flash-high,claude-opus-4-6-thinking")'),
+        )
+
+
+AGY_BY_MODEL = """#!/bin/sh
+if [ "$1" = -p ] && [ "$2" = /quota ]; then echo /quota >> "$HEADLESS_TEST_DIR/quota-calls"; printf '%b' "$FAKE_QUOTA"; exit 0; fi
+model=""
+while [ $# -gt 0 ]; do if [ "$1" = --model ]; then model="$2"; fi; shift; done
+echo "$model" >> "$HEADLESS_TEST_DIR/models"
+case " $FAKE_LIMIT_MODELS " in *" $model "*) echo "Error: rate limit reached"; exit 1;; esac
+echo "wynik wykonawcy"
+"""
 
 
 def node_export(expression: str, cwd: Path) -> Any:

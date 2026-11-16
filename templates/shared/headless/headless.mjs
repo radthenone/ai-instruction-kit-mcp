@@ -2,7 +2,7 @@
 /**
  * Wrapper `/headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
  *
- *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
+ *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
  *
  * Treść: argumenty po fladze albo (bez nich) stdin — słowo w słowo, plus stała stopka.
  * `--host` wstawia bootstrap w pliku agenta każdego klienta; wykonawca musi być w tabeli
@@ -152,6 +152,12 @@ Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 ## Problemy
 <co nie wyszło albo „brak”>`
 
+// `agy -p /quota`: tekst z wierszami `<grupa>\t<limit>\t<procent>%\t<ISO reset>`; brak tekstu → null.
+const agyQuotaText = (bin) => {
+  const r = spawnSync(bin, ["-p", "/quota"], { encoding: "utf8", timeout: QUOTA_TIMEOUT_MS, windowsHide: true })
+  return r.status === 0 && r.stdout ? r.stdout : null
+}
+
 // Tabela wykonawców: klient → binarki (pierwsza znaleziona w PATH) i argumenty.
 // Nowy wykonawca = nowy wiersz; tylko klienci z guardami kita (patrz README /headless).
 const EXECUTORS = {
@@ -193,18 +199,20 @@ const EXECUTORS = {
       return [
         "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
         "--dangerously-skip-permissions",
-        "--model", model || cfg.model || "gemini-3.8-flash-medium",
+        "--model", model || agyModelsFromConfig(cfg.model)[0] || "gemini-3.8-flash-medium",
         ...(cfg.effort ? ["--effort", cfg.effort] : []),
       ]
     },
     stdin: false,
     // Komunikat limitu agy nieznany (#293), więc po błędzie pytamy wprost: `agy -p /quota` daje
     // wiersze `<grupa>\t<limit>\t<procent>%\t<ISO reset>`. Grupa `Gemini Models` na 0% = limit.
-    quota: (bin) => {
-      const r = spawnSync(bin, ["-p", "/quota"], { encoding: "utf8", timeout: QUOTA_TIMEOUT_MS, windowsHide: true })
-      if (r.status !== 0 || !r.stdout) return null
-      const empty = lines(r.stdout).map((l) => l.trimEnd().split("\t"))
-        .filter(([group, , left]) => group === "Gemini Models" && /^0+%$/.test(left?.trim() || ""))
+    // Tekst `/quota` do sprawdzenia pustych grup przed kolejnym modelem (#460).
+    quotaText: agyQuotaText,
+    // Grupa modelu na 0% po błędzie = limit tego modelu (osobne grupy Gemini oraz Claude i GPT).
+    quota: (bin, group, text = agyQuotaText(bin)) => {
+      if (!text || !group) return null
+      const empty = lines(text).map((l) => l.trimEnd().split("\t"))
+        .filter(([g, , left]) => g === group && /^0+%$/.test(left?.trim() || ""))
       if (!empty.length) return null
       const resets = empty.map(([, , , at]) => Date.parse(at)).filter((t) => !Number.isNaN(t))
       return { reset: resets.length ? new Date(Math.min(...resets)).toISOString() : null }
@@ -215,6 +223,56 @@ const EXECUTORS = {
 const EXECUTOR_ALIASES = { gemini: "antigravity" }
 // Zastępcy przy limicie, w tej kolejności, po wywołanym wykonawcy; po ostatnim przejmuje host.
 const FALLBACK_ORDER = ["opencode", "antigravity"]
+
+// Modele z `--model a,b` albo z listy w `.agents/agy.json`; puste pozycje odpadają.
+export function parseModels(text) {
+  return String(text ?? "").split(",").map((m) => m.trim()).filter(Boolean)
+}
+
+// `model` z `.agents/agy.json`: tekst (także po przecinkach) albo tablica; brak → [].
+export function agyModelsFromConfig(model) {
+  if (Array.isArray(model)) return model.map((m) => String(m).trim()).filter(Boolean)
+  return parseModels(model)
+}
+
+// Tylko limit (75) i HANG idą do kolejnego modelu tego samego wykonawcy; reszta do zastępcy.
+export function continuesWithNextModel(klasa) {
+  return klasa === "LIMIT" || klasa === "HANG"
+}
+
+// Grupa limitów agy dla modelu: Gemini osobno, Claude i GPT razem; nieznany model → null.
+export function quotaGroupOf(model) {
+  if (/^gemini/i.test(model)) return "Gemini Models"
+  if (/^(claude|gpt)/i.test(model)) return "Claude and GPT models"
+  return null
+}
+
+// Grupy z 0% w `agy -p /quota` (wiersze `<grupa>\t<limit>\t<procent>%\t<ISO reset>`).
+export function emptyQuotaGroups(text) {
+  return lines(text).map((l) => l.trimEnd().split("\t"))
+    .filter(([, , left]) => /^0+%$/.test(left?.trim() || ""))
+    .map(([group]) => group)
+}
+
+// Grupa limitu dla modelu; nieznana rodzina liczona jak dotąd, przez grupę Gemini.
+export function quotaGroupFor(model) {
+  return quotaGroupOf(model) ?? "Gemini Models"
+}
+
+// Treść dla zastępcy albo kolejnego modelu; po HANG dokleja raport zabitego wykonawcy (#397, #408).
+export function handoffPrompt({ basePrompt, sessionFooter, name, code, report, klasa }) {
+  return klasa === "HANG"
+    ? `${basePrompt}\n\n---\nRaport zabitego wykonawcy (${name}, kod ${code}):\n${report}${sessionFooter}`
+    : `${basePrompt}${sessionFooter}`
+}
+
+// Plan modeli jednego wykonawcy: pierwszy zawsze idzie; kolejny pomijany, gdy jego grupa quota jest pusta.
+export function modelPlan({ models, emptyGroups = [] }) {
+  return models.map((model, i) => {
+    const group = i > 0 ? quotaGroupOf(model) : null
+    return { model, skip: group && emptyGroups.includes(group) ? group : null }
+  })
+}
 
 function agyConfig() {
   const path = join(".agents", "agy.json")
@@ -966,6 +1024,8 @@ async function main() {
     })
   }
 
+  // `--model a,b` to lista modeli wywołanego wykonawcy (#460); pusta lista = domyślny model.
+  const cliModels = parseModels(opts.model)
   let code = null
   for (const [i, { name, executor, bin, needsShell, why }] of chain.entries()) {
     const next = chain.slice(i + 1).find((c) => !c.why)?.name
@@ -974,9 +1034,40 @@ async function main() {
       if (!next) break
       continue
     }
-    // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
-    const outcome = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
+    // Modele tego wykonawcy po kolei: wywołany dostaje `--model`, zastępca listę z agy.json albo domyślny.
+    // Limit i HANG idą do kolejnego modelu tego samego wykonawcy; dopiero koniec listy przekazuje zadanie dalej.
+    const listed = i === 0 && cliModels.length ? cliModels : name === "antigravity" ? agyModelsFromConfig(agyConfig().model) : []
+    const modelList = listed.length ? listed : [""]
+    let outcome = null
+    let pauseReported = false
+    let quotaText // ostatni `/quota` tej listy: pobrany po błędzie poprzedniego modelu albo przed kolejnym
+    for (const [m, model] of modelList.entries()) {
+      const lastModel = m === modelList.length - 1
+      // Grupa quota sprawdzana przed każdym kolejnym modelem; pierwszy zawsze idzie.
+      if (m > 0 && executor.quotaText && quotaText === undefined) quotaText = executor.quotaText(bin)
+      const emptyGroups = m > 0 && quotaText !== undefined ? emptyQuotaGroups(quotaText ?? "") : []
+      const step = modelPlan({ models: modelList, emptyGroups })[m]
+      if (step.skip) {
+        call.actions.push(`pominięto model ${model}: pusta grupa quota ${step.skip}`)
+        log(`[headless] pomijam model ${model}: pusta grupa quota ${step.skip}\n`)
+        continue
+      }
+      const t0 = Date.now()
+      pauseReported = !next && lastModel
+      outcome = await runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last: pauseReported })
+      // Odczyt sprzed tej próby już nie obowiązuje: bez nowego odczytu następny model pobierze quota sam (#460).
+      quotaText = outcome.quotaText
+      // Pojedynczy model zostaje jak dotąd; wiersz per model dotyczy tylko listy (#460, decyzja 3).
+      if (modelList.length > 1) call.actions.push(`model ${model || "domyślny"}: ${call.klasa} (${((Date.now() - t0) / 60000).toFixed(1)} min)`)
+      if (!continuesWithNextModel(call.klasa) || lastModel) break
+      log(`[headless] ${call.klasa} modelu ${model || "domyślnego"} — kolejny model ${name}\n`)
+      // Po HANG kolejny model dostaje raport zabitego, jak zastępca wykonawcy (#397, #408).
+      if (call.klasa === "HANG") prompt = handoffPrompt({ basePrompt, sessionFooter, name, code: outcome.code, report: outcome.report, klasa: call.klasa })
+    }
+    // Pierwszy model zawsze startuje, więc `outcome` istnieje.
     code = outcome.code
+    // PAUSE idzie do raportu tylko od ostatniego modelu listy; gdy później modele pominięto, dopisujemy ją tu.
+    if (!next && code === PAUSE_CODE && outcome.pause && !pauseReported) log(`## ${outcome.pause}\n`)
     // Zły model agy to błąd konfiguracji, nie wykonawcy: zastępca go nie naprawi, więc kończymy od razu.
     if (code === 0 || !next || call.klasa === "MODEL") {
       if (code !== 0 && !next) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
@@ -987,9 +1078,7 @@ async function main() {
     call.actions.push(`przekazano 1:1: ${name} → ${next}`)
     log(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
     // Zadanie 1:1; po zabiciu (HANG) plus raport zabitego wykonawcy (#397, #408).
-    prompt = call.klasa === "HANG"
-      ? `${basePrompt}\n\n---\nRaport zabitego wykonawcy (${name}, kod ${code}):\n${outcome.report}${sessionFooter}`
-      : `${basePrompt}${sessionFooter}`
+    prompt = handoffPrompt({ basePrompt, sessionFooter, name, code, report: outcome.report, klasa: call.klasa })
   }
   if (current.stopping) return
   // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
@@ -1225,12 +1314,16 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     && AGY_MODEL_LIST.test(outTail) && AGY_MODEL_ERROR.test(outTail)
   if (isInvalidModel) {
     const available = parseAvailableModels(outTail)
-    const detectedModel = detectUnknownModel(outTail, model || agyConfig().model)
+    const detectedModel = detectUnknownModel(outTail, model || agyModelsFromConfig(agyConfig().model)[0])
     invalidModel = `${detectedModel ? `model ${detectedModel}` : "model"} nieznany wykonawcy agy${available.length ? `; dostępne: ${available.join(", ")}` : ""}`
     log(`[headless] ${invalidModel}\n`)
     code = 2
   }
-  const quota = failed && !isInvalidModel && !textLimit && executor.quota ? executor.quota(bin) : null
+  const quotaGroup = executor.quota ? quotaGroupFor(model || agyModelsFromConfig(agyConfig().model)[0] || "gemini-3.8-flash-medium") : null
+  // `/quota` po błędzie idzie raz: ten sam tekst wykrywa limit i pomija puste grupy kolejnego modelu (#460).
+  const needsQuota = failed && !isInvalidModel && !textLimit && executor.quota
+  const quotaText = needsQuota && executor.quotaText ? executor.quotaText(bin) : undefined
+  const quota = needsQuota ? executor.quota(bin, quotaGroup, quotaText) : null
   if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
@@ -1249,7 +1342,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
-  return { code, report }
+  return { code, report, pause, quotaText }
 }
 
 // Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 i po sygnale — klasa wiersza i dzialanie (#398).
