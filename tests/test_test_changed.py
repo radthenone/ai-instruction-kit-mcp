@@ -132,6 +132,12 @@ class TestTestChangedContract(unittest.TestCase):
             msg=f"Pliki bez pokrycia w testach (strażnik mapy): {uncovered}",
         )
 
+    def test_deleted_test_file_is_skipped(self) -> None:
+        """Usunięty plik testowy nie jest dodawany do listy wykonania."""
+        mods, reason = test_changed.resolve_modules_for_file("tests/test_deleted_nonexistent.py", root=KIT_ROOT)
+        self.assertEqual(mods, [])
+        self.assertIn("pominięto", reason)
+
     def test_watchdog_kills_on_frozen_log(self) -> None:
         """
         Watchdog na sztucznie zamrożonym logu zwraca kod != 0 i ubija proces.
@@ -143,14 +149,24 @@ class TestTestChangedContract(unittest.TestCase):
             cmd = [sys.executable, "-c", sleep_code]
 
             start_time = time.time()
-            returncode, last_line = test_changed.run_with_watchdog(
+            returncode, last_line, stalled = test_changed.run_with_watchdog(
                 cmd, log_path=log_path, stall_seconds=0.2, cwd=KIT_ROOT
             )
             elapsed = time.time() - start_time
 
+            self.assertTrue(stalled)
             self.assertNotEqual(returncode, 0)
             self.assertLess(elapsed, 10.0, "Watchdog powinien ubić proces szybko po stallu")
             self.assertIn("test_frozen_start", last_line)
+
+    def test_pythonpath_includes_tests_directory_in_execution(self) -> None:
+        """Podprocesy testowe widzą moduł _shell dzięki PYTHONPATH w run_with_watchdog."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            log_dir = Path(tmp_dir)
+            # test_git_start_no_track jest szybkim testem (ułamki sekundy)
+            res = test_changed.run_module("test_git_start_no_track", log_dir=log_dir, stall_seconds=30.0, root=KIT_ROOT)
+            self.assertEqual(res["status"], "OK")
+            self.assertEqual(res["returncode"], 0)
 
     def test_cli_all_flag(self) -> None:
         """Flaga --all wybiera wszystkie moduły z tests/."""
@@ -171,6 +187,18 @@ class TestTestChangedContract(unittest.TestCase):
         selected, is_all, reasons = test_changed.resolve_test_targets([], root=KIT_ROOT)
         self.assertFalse(is_all)
         self.assertEqual(set(selected), set(test_changed.FAST_CORE))
+
+    def test_cli_invalid_arguments_validation(self) -> None:
+        """Walidacja argumentów CLI odrzuca -j 0 i --stall-min <= 0."""
+        for invalid_args in (["-j", "0"], ["--stall-min", "-1"], ["--stall-min", "0"]):
+            proc = subprocess.run(
+                [sys.executable, str(KIT_ROOT / "scripts" / "test_changed.py"), "--dry-run", *invalid_args],
+                cwd=str(KIT_ROOT),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(proc.returncode, 0)
 
 
 if __name__ == "__main__":

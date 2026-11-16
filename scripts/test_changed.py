@@ -101,13 +101,21 @@ def get_merge_base_and_changes(base_branch: str | None = None, root: Path = ROOT
     changed: set[str] = set()
 
     def run_git(args: list[str]) -> list[str]:
-        r = subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+        cmd = ["git", "-c", "core.quotepath=false", *args]
+        r = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
         if r.returncode == 0:
             return [line.strip().replace("\\", "/") for line in r.stdout.splitlines() if line.strip()]
         return []
 
     if merge_base:
         changed.update(run_git(["diff", "--name-only", merge_base, "HEAD"]))
+    elif target_ref != "HEAD":
+        # Fallback dla shallow clone lub odłączonej historii
+        branch_diff = run_git(["diff", "--name-only", f"{target_ref}...HEAD"])
+        if branch_diff:
+            changed.update(branch_diff)
+        else:
+            changed.update(run_git(["diff", "--name-only", "HEAD"]))
     else:
         changed.update(run_git(["diff", "--name-only", "HEAD"]))
 
@@ -145,9 +153,15 @@ def resolve_modules_for_file(
     4. Fallback grep: wyszukiwanie pełnej ścieżki lub nazwy pliku w tests/*.py i tests/*.sh
     """
     norm_path = file_path.replace("\\", "/").strip()
+    if not norm_path:
+        return [], "pusta ścieżka pominięta"
+
     p = Path(norm_path)
 
+    # 0. Sam plik testowy
     if norm_path.startswith("tests/"):
+        if not (root / norm_path).is_file():
+            return [], f"{norm_path} usunięty/brakujący plik testu (pominięto)"
         if norm_path.endswith(".py") and p.name != "_shell.py":
             return [p.stem], f"{norm_path} → {p.stem} (sam moduł testu)"
         if norm_path.endswith(".sh"):
@@ -180,7 +194,9 @@ def resolve_modules_for_file(
     for t_name, content in test_contents.items():
         if norm_path in content or file_name in content:
             mod_name = Path(t_name).stem if t_name.endswith(".py") else t_name
-            matches.append(mod_name)
+            # Unikaj dodawania test_shell_suites jeśli suity .sh są odpalane bezpośrednio
+            if mod_name != "test_shell_suites":
+                matches.append(mod_name)
 
     matches = sorted(set(matches))
     if matches:
@@ -214,7 +230,8 @@ def resolve_test_targets(
 
     if is_all:
         tests_dir = root / "tests"
-        all_py = [p.stem for p in tests_dir.glob("test_*.py") if p.name != "_shell.py"]
+        # Wykluczamy _shell.py oraz test_shell_suites.py (bo suity .sh odpalamy osobno)
+        all_py = [p.stem for p in tests_dir.glob("test_*.py") if p.name not in ("_shell.py", "test_shell_suites.py")]
         all_sh = [p.name for p in tests_dir.glob("test_*.sh")]
         selected.update(all_py)
         selected.update(all_sh)
@@ -226,14 +243,22 @@ def resolve_test_targets(
 
 
 def _read_last_test_line(log_path: Path) -> str:
-    """Odczytaj ostatnią istotną linię z logu (nazwa testu lub błąd)."""
+    """Odczytaj ostatnią istotną linię z logu z buforem od końca pliku."""
     if not log_path.is_file():
         return "(brak pliku logu)"
     try:
-        lines = [line.strip() for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
-        if not lines:
-            return "(log pusty)"
-        return lines[-1]
+        with open(log_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
+                return "(log pusty)"
+            read_size = min(size, 8192)
+            f.seek(size - read_size)
+            chunk = f.read().decode("utf-8", errors="replace")
+            lines = [line.strip() for line in chunk.splitlines() if line.strip()]
+            if not lines:
+                return "(log pusty)"
+            return lines[-1]
     except OSError:
         return "(błąd odczytu logu)"
 
@@ -244,11 +269,11 @@ def run_with_watchdog(
     stall_seconds: float = 600.0,
     cwd: Path = ROOT,
     env: dict[str, str] | None = None,
-) -> tuple[int, str]:
+) -> tuple[int, str, bool]:
     """
     Uruchom zadanie podprocesu, przekierowując stdout/stderr do log_path.
     Jeśli plik logu nie zmienia rozmiaru przez ponad stall_seconds:
-    ubija całe drzewo procesów i zwraca kod != 0.
+    ubija całe drzewo procesów i zwraca kod != 0 oraz stalled=True.
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(log_path, "wb")
@@ -256,6 +281,14 @@ def run_with_watchdog(
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
+
+    # Upewnij się, że PYTHONPATH zawiera katalogi tests i src
+    tests_dir = str(cwd / "tests")
+    src_dir = str(cwd / "src")
+    existing_pp = run_env.get("PYTHONPATH", "")
+    prefix = f"{tests_dir}{os.pathsep}{src_dir}"
+    run_env["PYTHONPATH"] = f"{prefix}{os.pathsep}{existing_pp}" if existing_pp else prefix
+
     # Wyłącz buforowanie w Pythonie, aby watchdog widział aktualny log
     run_env["PYTHONUNBUFFERED"] = "1"
 
@@ -273,34 +306,32 @@ def run_with_watchdog(
     except Exception as exc:
         log_file.write(f"Nie udało się uruchomić procesu: {exc}\n".encode("utf-8"))
         log_file.close()
-        return (1, f"błąd uruchomienia: {exc}")
+        return (1, f"błąd uruchomienia: {exc}", False)
 
     last_change_time = time.time()
     last_size = 0
     stalled = False
 
-    while proc.poll() is None:
-        time.sleep(0.05)
-        try:
-            current_size = log_path.stat().st_size
-        except OSError:
-            current_size = 0
+    try:
+        while proc.poll() is None:
+            time.sleep(0.05)
+            try:
+                current_size = log_path.stat().st_size
+            except OSError:
+                current_size = 0
 
-        if current_size != last_size:
-            last_size = current_size
-            last_change_time = time.time()
-        elif time.time() - last_change_time > stall_seconds:
-            stalled = True
-            break
-
-    if stalled:
+            if current_size != last_size:
+                last_size = current_size
+                last_change_time = time.time()
+            elif time.time() - last_change_time > stall_seconds:
+                stalled = True
+                break
+    except (KeyboardInterrupt, SystemExit):
+        stalled = False
         if os.name != "nt":
             try:
                 pgid = os.getpgid(proc.pid)
-                os.killpg(pgid, signal.SIGTERM)
-                time.sleep(0.2)
-                if proc.poll() is None:
-                    os.killpg(pgid, signal.SIGKILL)
+                os.killpg(pgid, signal.SIGKILL)
             except OSError:
                 pass
         else:
@@ -309,17 +340,35 @@ def run_with_watchdog(
                 capture_output=True,
                 check=False,
             )
-        try:
-            proc.wait(timeout=2.0)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        raise
+    finally:
+        if stalled:
+            if os.name != "nt":
+                try:
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                    time.sleep(0.2)
+                    if proc.poll() is None:
+                        os.killpg(pgid, signal.SIGKILL)
+                except OSError:
+                    pass
+            else:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                    check=False,
+                )
+            try:
+                proc.wait(timeout=2.0)
+            except (subprocess.TimeoutExpired, OSError):
+                proc.kill()
 
-    log_file.flush()
-    log_file.close()
+        log_file.flush()
+        log_file.close()
 
     last_line = _read_last_test_line(log_path)
     returncode = 124 if stalled else (proc.returncode if proc.returncode is not None else 1)
-    return (returncode, last_line)
+    return (returncode, last_line, stalled)
 
 
 def run_module(
@@ -339,8 +388,9 @@ def run_module(
                 "module": module_name,
                 "status": "SKIP",
                 "time": 0.0,
-                "log": str(log_path.relative_to(root)),
+                "log": "-",
                 "returncode": 0,
+                "last_line": "pominięto: brak bash w PATH",
             }
         script_path = tests_dir / module_name
         cmd = [bash, "--noprofile", "--norc", posix_path(script_path)]
@@ -350,15 +400,20 @@ def run_module(
         cmd = [sys.executable, "-m", "unittest", mod_arg]
 
     start = time.time()
-    code, last_line = run_with_watchdog(cmd, log_path=log_path, stall_seconds=stall_seconds, cwd=root)
+    code, last_line, stalled = run_with_watchdog(cmd, log_path=log_path, stall_seconds=stall_seconds, cwd=root)
     elapsed = time.time() - start
 
-    status = "OK" if code == 0 else ("STALL" if code == 124 else "FAIL")
+    try:
+        log_rel = str(log_path.relative_to(root)).replace("\\", "/")
+    except ValueError:
+        log_rel = str(log_path).replace("\\", "/")
+
+    status = "STALL" if stalled else ("OK" if code == 0 else "FAIL")
     return {
         "module": module_name,
         "status": status,
         "time": round(elapsed, 2),
-        "log": str(log_path.relative_to(root)).replace("\\", "/"),
+        "log": log_rel,
         "returncode": code,
         "last_line": last_line,
     }
@@ -375,10 +430,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.jobs < 1:
+        parser.error("Liczba zadań (-j) musi być większa lub równa 1")
+    if args.stall_min <= 0:
+        parser.error("Limit ciszy (--stall-min) musi być większy od 0")
+
     if args.all:
         tests_dir = ROOT / "tests"
         selected = list(FAST_CORE)
-        py_mods = sorted(p.stem for p in tests_dir.glob("test_*.py") if p.name != "_shell.py" and p.stem not in FAST_CORE)
+        py_mods = sorted(p.stem for p in tests_dir.glob("test_*.py") if p.name not in ("_shell.py", "test_shell_suites.py") and p.stem not in FAST_CORE)
         sh_mods = sorted(p.name for p in tests_dir.glob("test_*.sh"))
         selected.extend(py_mods)
         selected.extend(sh_mods)
