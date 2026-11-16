@@ -651,6 +651,7 @@ HEADLESS_RUN_LOG = re.compile(
     r"^\[headless\] log: \S*headless-runs/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-", re.MULTILINE
 )
 HEADLESS_REPORT = "[headless] raport końcowy"
+HEADLESS_SIGNAL = re.compile(r"^\[headless\] sygnał SIG[A-Z0-9]+", re.MULTILINE)
 HALT_TICKET = re.compile(r"#(\d+)")
 _LOGFMT = re.compile(r'(\w+)=("(?:[^"\\]|\\.)*"|\S*)')
 _CAUSE_TYPE = re.compile(r"[A-Za-z_][\w.]*")
@@ -766,6 +767,11 @@ def _exit_signals(text: str) -> list[Signal]:
     tail = text[final:]
     exits = HEADLESS_EXIT.findall(tail)
     if not exits:
+        # Przebieg zabity sygnałem nie zapisuje kodu wyjścia, ale jego linia `sygnał` jest w logu przed raportem.
+        killed = HEADLESS_SIGNAL.search(text)
+        if killed:
+            line = text[killed.start():].split("\n", 1)[0]
+            return [Signal("headless_exit", "killed-signal", evidence(line))]
         return []
     if exits[-1] != "0":
         return [Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}"))]

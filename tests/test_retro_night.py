@@ -199,6 +199,16 @@ class NightRunScanTests(unittest.TestCase):
             message = self._scan()
         self.assertTrue(message.startswith("retro:"))
 
+    def test_signal_killed_run_is_a_failed_exit_not_old_format(self) -> None:
+        self._log(
+            "headless-357.log",
+            RUN_HEADER + TICKET + ATTEMPT
+            + "[headless] sygnał SIGTERM po 1837.7 s od startu wykonawcy (wrapper pid 4242, ppid 4241)\n" + REPORT,
+        )
+        self._scan()
+        [finding] = self._findings(f"{NIGHT_SESSION}-357")
+        self.assertEqual(finding["fingerprint"], retro.fingerprint("headless_exit", "killed-signal"))
+
     def test_exit_line_echoed_before_report_of_old_format_is_not_an_exit(self) -> None:
         self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + "[headless] kod wyjścia: 1\n" + REPORT)
         self._scan()
