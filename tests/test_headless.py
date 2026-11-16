@@ -1835,6 +1835,58 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.argv()[0], "opencode2")
 
 
+class HeadlessWatchProcedureTest(unittest.TestCase):
+    """Procedura /headless uzbraja Monitor na log; zapas ScheduleWakeup tylko w /loop (#425); test czyta treść szablonu."""
+
+    TEMPLATE = KIT_ROOT / "templates/shared/agents/headless.md"
+
+    def setUp(self) -> None:
+        self.text = self.TEMPLATE.read_text(encoding="utf-8")
+
+    def test_monitor_is_armed_on_anchored_wrapper_lines_only(self) -> None:
+        self.assertIn(
+            r"tail -n +<P+1> -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'",
+            self.text,
+        )
+
+    def test_wakeup_checks_whether_the_background_task_still_lives(self) -> None:
+        self.assertIn("czy zadanie w tle nadal żyje", self.text)
+        self.assertIn("aż do końca wywołania", self.text)
+        self.assertNotIn("Gdy jej nie ma, wywołanie trwa.", self.text)
+
+    def test_monitor_wakes_on_end_handover_and_stall_lines(self) -> None:
+        for line in ("[headless] kod wyjścia: <kod>", "przekazuję zadanie 1:1", "[headless] możliwe zacięcie: brak wyjścia od <n> min"):
+            self.assertIn(line, self.text)
+
+    def test_wakeup_is_the_loop_only_backup_and_monitor_rearms(self) -> None:
+        self.assertIn("`ScheduleWakeup` jest przewidziany tylko dla trybu `/loop`", self.text)
+        self.assertIn("Poza `/loop` zapasu czasowego nie ma", self.text)
+        self.assertIn("Monitor` wygasa po 30 min", self.text)
+        self.assertIn("uzbrój nowy `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`)", self.text)
+        self.assertIn("i, w `/loop`, `ScheduleWakeup` na 30 min od razu", self.text)
+
+    def test_previous_monitor_is_stopped_before_rearm(self) -> None:
+        self.assertIn("zatrzymaj poprzedni `Monitor` (`TaskStop` po jego `task_id`", self.text)
+        self.assertLess(
+            self.text.index("zatrzymaj poprzedni `Monitor`"),
+            self.text.index("uzbrój nowy `Monitor` od `P+1`"),
+        )
+
+    def test_wakeup_reads_lines_since_the_recorded_position_before_rearm(self) -> None:
+        self.assertIn(r"grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'", self.text)
+        self.assertNotIn("wc -l", self.text)
+        self.assertNotIn("tail -n0", self.text)
+
+    def test_end_is_read_again_before_treating_the_task_as_failed(self) -> None:
+        self.assertIn(r"ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1`", self.text)
+
+    def test_notification_is_confirmed_by_the_last_wrapper_line(self) -> None:
+        self.assertIn(r"grep '^\[headless\] kod wyjścia:' <log> | tail -1", self.text)
+
+    def test_old_until_grep_recipe_is_gone(self) -> None:
+        self.assertNotIn("until grep -q ^EXIT=", self.text)
+
+
 def node_export(expression: str, cwd: Path) -> Any:
     """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
     script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify(await ({expression})));"
