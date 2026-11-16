@@ -1055,7 +1055,8 @@ async function main() {
       const t0 = Date.now()
       pauseReported = !next && lastModel
       outcome = await runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last: pauseReported })
-      if (outcome.quotaText !== undefined) quotaText = outcome.quotaText
+      // Odczyt sprzed tej próby już nie obowiązuje: bez nowego odczytu następny model pobierze quota sam (#460).
+      quotaText = outcome.quotaText
       // Pojedynczy model zostaje jak dotąd; wiersz per model dotyczy tylko listy (#460, decyzja 3).
       if (modelList.length > 1) call.actions.push(`model ${model || "domyślny"}: ${call.klasa} (${((Date.now() - t0) / 60000).toFixed(1)} min)`)
       if (!continuesWithNextModel(call.klasa) || lastModel) break

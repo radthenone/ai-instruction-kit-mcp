@@ -405,7 +405,23 @@ class HeadlessWrapperTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 75, result.stderr)
         self.assertEqual((self.root / "models").read_text(encoding="utf-8").splitlines(), ["claude-sonnet-4-6"])
-        self.assertIn("## PAUSE=rate-limit", result.stdout)
+        self.assertIn("## PAUSE=rate-limit", result.stdout.split("raport końcowy", 1)[1])
+
+    def test_attempt_without_quota_text_makes_next_model_reread_quota(self) -> None:
+        # Próba z tekstowym limitem nie czyta quota, więc kolejny model musi pobrać je ponownie (#460).
+        self.profile("claude,antigravity")
+        (self.bin / "agy").write_text(AGY_BY_MODEL, encoding="utf-8")
+        (self.bin / "agy").chmod(0o755)
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model",
+            "gemini-3.8-flash-high,claude-sonnet-4-6,gemini-3.8-flash-low", "treść",
+            FAKE_LIMIT_MODELS="gemini-3.8-flash-high claude-sonnet-4-6",
+            FAKE_QUOTA="Gemini Models\\tWeekly\\t0%\\t2099-01-01T10:00:00Z\\n",
+        )
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertEqual((self.root / "models").read_text(encoding="utf-8").splitlines(),
+                         ["gemini-3.8-flash-high", "claude-sonnet-4-6"])
+        self.assertEqual((self.root / "quota-calls").read_text(encoding="utf-8").splitlines(), ["/quota", "/quota"])
 
     def test_agy_failure_with_exhausted_quota_is_rate_limit_pause(self) -> None:
         self.profile("claude,antigravity")
@@ -2001,7 +2017,7 @@ class HeadlessModelChainTest(unittest.TestCase):
 
 
 AGY_BY_MODEL = """#!/bin/sh
-if [ "$1" = -p ] && [ "$2" = /quota ]; then printf '%b' "$FAKE_QUOTA"; exit 0; fi
+if [ "$1" = -p ] && [ "$2" = /quota ]; then echo /quota >> "$HEADLESS_TEST_DIR/quota-calls"; printf '%b' "$FAKE_QUOTA"; exit 0; fi
 model=""
 while [ $# -gt 0 ]; do if [ "$1" = --model ]; then model="$2"; fi; shift; done
 echo "$model" >> "$HEADLESS_TEST_DIR/models"
