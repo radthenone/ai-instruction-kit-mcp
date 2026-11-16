@@ -1,6 +1,7 @@
 """Retro: deterministyczny skaner sesji agentów (#371, część (a) #338).
 
-Czyta transkrypty Claude Code (JSONL razem z subagentami) i wyciąga sygnały: deny
+Czyta transkrypty Claude Code (JSONL razem z subagentami), nocne logi ``night-run`` i
+``opencode.log`` (#423) i wyciąga sygnały: deny
 guardów, błędy narzędzi, blokady harnessu, błędy API, powtórzone wywołania, zgodność
 z ``get_overlay`` przed edycją kodu oraz koszt sesji. Do ``~/.cache`` trafia tylko
 znormalizowany tekst i zamaskowane evidence, nigdy całe wiadomości. Nic tu nie woła
@@ -115,6 +116,7 @@ class ParsedSession:
     branch: str | None = None
     signals: list[Signal] = field(default_factory=list)
     metrics: SessionMetrics = field(default_factory=SessionMetrics)
+    attempts: int | None = None
 
 
 @dataclass
@@ -533,6 +535,17 @@ def default_cache_root() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "retro"
 
 
+def default_night_root() -> Path:
+    """Katalog ``~/.cache``, w którym nocne runy zapisują ``night-run-<repo>-<data>/``."""
+    return Path.home() / ".cache"
+
+
+def default_opencode_log() -> Path:
+    """``opencode.log`` CLI opencode: pod ``$XDG_DATA_HOME`` albo ``~/.local/share``."""
+    data_home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    return data_home / "opencode" / "log" / "opencode.log"
+
+
 def parse_since(value: str, *, now: datetime) -> float:
     """``Nd`` (ostatnie N dni) albo ``YYYY-MM-DD`` (północ czasu lokalnego) jako znacznik czasu."""
     days = _SINCE_DAYS.fullmatch(value)
@@ -633,6 +646,190 @@ def parse_headless_run(run_dir: Path) -> ParsedSession:
     return ParsedSession(session_id=run_dir.name, files=1, signals=signals)
 
 
+NIGHT_LOG = re.compile(r"headless-(?P<ticket>\d+)[\w-]*\.log")
+HEADLESS_RUN_LOG = re.compile(
+    r"^\[headless\] log: \S*headless-runs/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-", re.MULTILINE
+)
+HEADLESS_REPORT = "[headless] raport końcowy"
+HALT_TICKET = re.compile(r"#(\d+)")
+_LOGFMT = re.compile(r'(\w+)=("(?:[^"\\]|\\.)*"|\S*)')
+_CAUSE_TYPE = re.compile(r"[A-Za-z_][\w.]*")
+_PATH_TOKEN = re.compile(r"\S*[/\\]\S*")
+_RUN_STAMP = "%Y-%m-%dT%H-%M-%S-%fZ"
+_OPENCODE_STAMP = "%Y-%m-%dT%H:%M:%S.%fZ"
+
+
+@dataclass(frozen=True)
+class _OpencodeError:
+    """Błąd ``level=ERROR`` z ``opencode.log``: klucz i zamaskowany dowód, bez surowego ``cause=``."""
+
+    at: datetime
+    key: str
+    evidence: str
+
+
+@dataclass
+class _Ticket:
+    """Jeden nocny ticket: wszystkie jego logi, próby i sygnały (jedna Sesja)."""
+
+    logs: list[Path] = field(default_factory=list)
+    attempts: int = 0
+    signals: list[Signal] = field(default_factory=list)
+    window: tuple[datetime, datetime] | None = None
+
+
+def night_run_dirs(night_root: Path, repo: str) -> list[tuple[str, Path]]:
+    """Katalogi ``night-run-<repo>-<data>[-<sufiks>]``; nazwa repo musi pasować w całości, nie prefiksem."""
+    if not night_root.is_dir():
+        return []
+    pattern = re.compile(rf"night-run-{re.escape(repo)}-(\d{{4}}-\d{{2}}-\d{{2}}(?:-[A-Za-z0-9_-]+)?)")
+    found: list[tuple[str, Path]] = []
+    for path in sorted(night_root.iterdir()):
+        match = pattern.fullmatch(path.name)
+        if match and path.is_dir():
+            found.append((match.group(1), path))
+    return found
+
+
+def read_opencode_errors(path: Path) -> list[_OpencodeError]:
+    """Linie ``level=ERROR`` z ``opencode.log``; WARN i prośba o pomoc (``ShowHelp``) nie są sygnałem."""
+    try:
+        handle = path.open(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    errors: list[_OpencodeError] = []
+    with handle:
+        for line in handle:
+            if "level=ERROR" not in line or "ShowHelp" in line:
+                continue
+            fields = {name: value.strip('"') for name, value in _LOGFMT.findall(line)}
+            if fields.get("level") != "ERROR":
+                continue
+            try:
+                at = datetime.strptime(fields.get("timestamp", ""), _OPENCODE_STAMP).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            message = fields.get("message", "")
+            cause = _CAUSE_TYPE.match(fields.get("cause", ""))
+            cause_type = cause.group(0) if cause else ""
+            # Klucz bez ścieżek, ID i ``run=``: 22 linie z różnymi ścieżkami dają jeden fingerprint.
+            key = normalize(f"{_PATH_TOKEN.sub('', message)} {cause_type}")
+            text = f"{message}: {cause_type}" if cause_type else message
+            errors.append(_OpencodeError(at=at, key=key, evidence=evidence(text)))
+    return errors
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _run_start(stamp: str) -> datetime | None:
+    """Początek przebiegu z nazwy katalogu runu (``<ts>-<wykonawca>``, ``ts`` w UTC)."""
+    try:
+        return datetime.strptime(stamp, _RUN_STAMP).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _night_halt(path: Path, cutoff: float | None) -> tuple[str | None, Signal] | None:
+    """Pierwsza linia ``halt.md``: ticket z pierwszego ``#N`` w tej linii, bez numeru zostaje Sesja nocy."""
+    if not path.is_file() or (cutoff is not None and _mtime(path) < cutoff):
+        return None
+    lines = _read_text(path).splitlines()
+    first = lines[0] if lines else ""
+    match = HALT_TICKET.search(first)
+    signal = Signal("night_halt", normalize(mask(first)) or "halt", evidence(first) or "halt.md")
+    return (match.group(1) if match else None, signal)
+
+
+def _exit_signals(text: str) -> list[Signal]:
+    """Klasa wyjścia jednego logu. Stary format (``raport końcowy`` bez kodu wyjścia) nie daje klasy."""
+    exits = HEADLESS_EXIT.findall(text)
+    if exits:
+        if exits[-1] != "0":
+            return [Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}"))]
+        if HEADLESS_CLEAN.search(text):
+            return [Signal("headless_no_change", "exit0-clean-tree", "kod wyjścia: 0, czyste drzewo po przebiegu")]
+        return []
+    if HEADLESS_REPORT in text:
+        return []
+    return [Signal("headless_exit", "exit-missing", "brak linii kod wyjścia i raportu końcowego w logu nocy")]
+
+
+def _opencode_signals(
+    windows: dict[str, tuple[datetime, datetime]], errors: list[_OpencodeError]
+) -> dict[str, list[Signal]]:
+    """Błąd trafia do ticketu, którego okno go obejmuje; przy nakładaniu do najpóźniej zaczętego okna."""
+    found: dict[str, list[Signal]] = {}
+    for error in errors:
+        owners = [(start, number) for number, (start, end) in windows.items() if start <= error.at <= end]
+        if owners:
+            _, number = max(owners)
+            found.setdefault(number, []).append(Signal("opencode_error", error.key, error.evidence))
+    return found
+
+
+def _unused_replay(signal: Signal) -> str:
+    """Sygnały nocne nie są odtwarzane; replay dotyczy tylko deny guardów z JSONL sesji."""
+    return "unknown"
+
+
+def night_sessions(
+    night_root: Path, repo: str, *, cutoff: float | None, opencode_log: Path | None
+) -> list[ParsedSession]:
+    """Sesje nocne repo: jeden ticket (wszystkie logi i próby) to jedna Sesja.
+
+    Próba to plik logu ``headless-<N>[-rK].log`` (jedno wywołanie ``/headless``). Linie wykonawcy
+    wklejone do logu (np. ``cat`` własnego ``headless.log``) nie tworzą prób ani klas.
+    Okno ticketu w ``opencode.log`` to od startu wywołania do mtime jego logów.
+    Halt bez numeru ticketu zostaje na Sesji nocy ``night-<data>``.
+    """
+    sessions: list[ParsedSession] = []
+    for stamp, night_dir in night_run_dirs(night_root, repo):
+        tickets: dict[str, _Ticket] = {}
+        for path in sorted(night_dir.iterdir()):
+            match = NIGHT_LOG.fullmatch(path.name)
+            if match and path.is_file() and (cutoff is None or _mtime(path) >= cutoff):
+                tickets.setdefault(match.group("ticket"), _Ticket()).logs.append(path)
+        halt = _night_halt(night_dir / "halt.md", cutoff)
+        if halt is not None and halt[0] is None:
+            sessions.append(ParsedSession(session_id=f"night-{stamp}", files=0, signals=[halt[1]]))
+        elif halt is not None:
+            tickets.setdefault(halt[0], _Ticket()).signals.append(halt[1])
+        for ticket in tickets.values():
+            texts = [_read_text(path) for path in ticket.logs]
+            ticket.attempts = len(ticket.logs)
+            for text in texts:
+                ticket.signals.extend(_exit_signals(text))
+            starts: list[datetime] = []
+            for text in texts:
+                # Pierwszy nagłówek pliku to start tego wywołania; późniejsze to echo zagnieżdżonych przebiegów.
+                match = HEADLESS_RUN_LOG.search(text)
+                start = _run_start(match.group(1)) if match else None
+                if start is not None:
+                    starts.append(start)
+            if starts and ticket.logs:
+                end = datetime.fromtimestamp(max(_mtime(path) for path in ticket.logs), tz=timezone.utc)
+                ticket.window = (min(starts), end)
+        windows = {number: ticket.window for number, ticket in tickets.items() if ticket.window is not None}
+        errors = read_opencode_errors(opencode_log) if windows and opencode_log is not None else []
+        for number, signals in _opencode_signals(windows, errors).items():
+            tickets[number].signals.extend(signals)
+        for number, ticket in sorted(tickets.items(), key=lambda item: int(item[0])):
+            sessions.append(
+                ParsedSession(
+                    session_id=f"night-{stamp}-{number}",
+                    files=len(ticket.logs),
+                    signals=ticket.signals,
+                    attempts=ticket.attempts,
+                )
+            )
+    return sessions
+
+
 def _scan_files(
     files: list[Path],
     *,
@@ -678,17 +875,18 @@ def _write_entries(
     repo = repo_name(workspace)
     base = {"schema": SCHEMA_VERSION, "source": source, "repo": repo, "kit_sha": sha, "session": session_id}
     stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
-    records: list[dict] = [
-        {
-            "type": "session",
-            **base,
-            "scanned_at": stamp,
-            "branch": parsed.branch,
-            "files": parsed.files,
-            "metrics": asdict(parsed.metrics),
-            "findings": len(findings),
-        }
-    ]
+    session_record: dict = {
+        "type": "session",
+        **base,
+        "scanned_at": stamp,
+        "branch": parsed.branch,
+        "files": parsed.files,
+        "metrics": asdict(parsed.metrics),
+        "findings": len(findings),
+    }
+    if parsed.attempts is not None:
+        session_record["attempts"] = parsed.attempts
+    records: list[dict] = [session_record]
     for finding in findings:
         records.append(
             {
@@ -749,6 +947,8 @@ def scan_command(
     kit_root: Path,
     runner: Callable[[Signal], str] | None = None,
     now: datetime | None = None,
+    night_root: Path | None = None,
+    opencode_log: Path | None = None,
 ) -> str:
     """Tekst wyniku ``kit-ai retro scan``: jedna sesja (``session``) albo sesje repo, opcjonalnie od ``since``."""
     stamp = now or datetime.now(timezone.utc)
@@ -791,7 +991,12 @@ def scan_command(
         for run in headless_runs(workspace)
         if cutoff is None or _mtime(run / "headless.log") >= cutoff
     ]
-    if not mains and not runs:
+    nights = (
+        night_sessions(night_root, repo_name(workspace), cutoff=cutoff, opencode_log=opencode_log)
+        if night_root is not None
+        else []
+    )
+    if not mains and not runs and not nights:
         return f"retro: brak sesji i przebiegów headless w {base}"
     found_total = 0
     for main in mains:
@@ -819,7 +1024,18 @@ def scan_command(
             now=stamp,
         )
         found_total += len(findings)
+    for night in nights:
+        _, findings = _write_entries(
+            night,
+            source="night",
+            workspace=workspace,
+            cache_root=cache_root,
+            replay=_unused_replay,
+            sha=sha,
+            now=stamp,
+        )
+        found_total += len(findings)
     return (
-        f"retro: sesje: {len(mains)}, przebiegi headless: {len(runs)}, znaleziska: {found_total} "
-        f"→ {cache_root / repo_name(workspace)}"
+        f"retro: sesje: {len(mains)}, przebiegi headless: {len(runs)}, sesje nocne: {len(nights)}, "
+        f"znaleziska: {found_total} → {cache_root / repo_name(workspace)}"
     )
