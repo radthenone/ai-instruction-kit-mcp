@@ -17,7 +17,7 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 ## Składnia
 
 ```text
-/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] "<treść>"
+/headless <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
 Przykłady (host → wywołanie):
@@ -32,7 +32,7 @@ Limit dostawcy, brak postępu albo pętla (`HANG`), inny błąd wykonawcy albo b
 tę samą treść 1:1 drugiemu tańszemu wykonawcy: `opencode → gemini` albo `gemini → opencode` (pomija hosta
 i klientów spoza `clients:`). Ostatni z limitem → kod `75` i zadanie przejmuje host (krok 2).
 Ostatni z innym błędem → jego kod wyjścia i wiersz `HANG`/`ERROR` w raporcie.
-Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywołania).
+Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--model` dotyczy tylko wykonawcy z wywołania).
 
 - `<wykonawca>` — klient z `clients:` w `.ai/project.profile.yaml`, inny niż host, z trybem
   headless (dziś: `claude`, `opencode`, `antigravity`; alias `gemini` = `antigravity`).
@@ -41,6 +41,10 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
   projektowego configu, więc wrapper czyta `.agents/agy.json` (gitignored, edytujesz sam),
   np. `{"model": "gemini-3.8-flash-high"}` albo `{"model": "gemini-3.8-flash", "effort": "high"}`
   (poziom w sufiksie nazwy albo w `effort`, nie oba); bez pliku `gemini-3.8-flash-medium`.
+  Lista modeli (`--model a,b` albo `{"model": ["a", "b"]}`): kolejne modele tego samego wykonawcy idą przed
+  zmianą wykonawcy, gdy poprzedni dostał limit albo `HANG`. Pusta grupa limitu agy (odczyt limitów CLI agy:
+  `Gemini Models` albo `Claude and GPT models` na 0%) pomija model z wpisem `pominięto model …` w raporcie.
+  Przykład: `/headless gemini --model gemini-3.8-flash-high,claude-opus-4-6-thinking "..."`.
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
 - `--timeout` — minuty. Bez flagi termin 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana `HEAD`/`git status` (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout` to twardy limit bez przedłużania. Liczony osobno dla każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.

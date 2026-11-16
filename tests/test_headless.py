@@ -1887,6 +1887,81 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
         self.assertNotIn("until grep -q ^EXIT=", self.text)
 
 
+@unittest.skipUnless(shutil.which("node"), "brak node")
+class HeadlessModelChainTest(unittest.TestCase):
+    """Łańcuch modeli w jednym wykonawcy (#460): czyste funkcje, bez uruchamiania wykonawcy."""
+
+    QUOTA_GEMINI_EMPTY = "Gemini Models\t1000\t0%\t2026-11-18T00:00:00Z\nClaude and GPT models\t1000\t40%\t2026-11-18T00:00:00Z\n"
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def call(self, expression: str) -> Any:
+        return node_export(expression, self.root)
+
+    def test_model_list_splits_on_commas_and_drops_blanks(self) -> None:
+        self.assertEqual(
+            self.call('h.parseModels("gemini-3.8-flash-high, claude-opus-4-6-thinking,,")'),
+            ["gemini-3.8-flash-high", "claude-opus-4-6-thinking"],
+        )
+
+    def test_only_limit_and_hang_move_to_the_next_model(self) -> None:
+        self.assertEqual(
+            self.call('[h.continuesWithNextModel("LIMIT"), h.continuesWithNextModel("HANG"), '
+                      'h.continuesWithNextModel("ERROR"), h.continuesWithNextModel("MODEL")]'),
+            [True, True, False, False],
+        )
+
+    def test_single_model_plan_is_the_old_chain(self) -> None:
+        self.assertEqual(
+            self.call('h.modelPlan({ models: ["claude-opus-4-6-thinking"], emptyGroups: [] })'),
+            [{"model": "claude-opus-4-6-thinking", "skip": None}],
+        )
+
+    def test_empty_quota_group_skips_a_later_model_with_its_group_as_reason(self) -> None:
+        plan = self.call(
+            f"h.modelPlan({{ models: [\"claude-sonnet-4-6\", \"gemini-3.8-flash-high\"], "
+            f"emptyGroups: h.emptyQuotaGroups({json.dumps(self.QUOTA_GEMINI_EMPTY)}) }})"
+        )
+        self.assertEqual(
+            plan,
+            [
+                {"model": "claude-sonnet-4-6", "skip": None},
+                {"model": "gemini-3.8-flash-high", "skip": "Gemini Models"},
+            ],
+        )
+
+    def test_first_model_is_never_skipped_by_quota(self) -> None:
+        plan = self.call('h.modelPlan({ models: ["gemini-3.8-flash-high"], emptyGroups: ["Gemini Models"] })')
+        self.assertEqual(plan, [{"model": "gemini-3.8-flash-high", "skip": None}])
+
+    def test_quota_group_follows_the_model_family(self) -> None:
+        self.assertEqual(
+            self.call('[h.quotaGroupOf("gemini-3.8-flash-high"), h.quotaGroupOf("claude-opus-4-6-thinking"), '
+                      'h.quotaGroupOf("gpt-oss-120b-medium"), h.quotaGroupOf("nieznany")]'),
+            ["Gemini Models", "Claude and GPT models", "Claude and GPT models", None],
+        )
+
+    def test_only_zero_percent_groups_count_as_empty(self) -> None:
+        self.assertEqual(
+            self.call(f"h.emptyQuotaGroups({json.dumps(self.QUOTA_GEMINI_EMPTY)})"),
+            ["Gemini Models"],
+        )
+
+    def test_agy_config_list_is_the_same_as_cli_list(self) -> None:
+        self.assertEqual(
+            self.call('[h.agyModelsFromConfig(["gemini-3.8-flash-high", "claude-opus-4-6-thinking"]), '
+                      'h.agyModelsFromConfig("gemini-3.8-flash-high"), h.agyModelsFromConfig(undefined)]'),
+            [["gemini-3.8-flash-high", "claude-opus-4-6-thinking"], ["gemini-3.8-flash-high"], []],
+        )
+        self.assertEqual(
+            self.call('h.agyModelsFromConfig(["gemini-3.8-flash-high", "claude-opus-4-6-thinking"])'),
+            self.call('h.parseModels("gemini-3.8-flash-high,claude-opus-4-6-thinking")'),
+        )
+
+
 def node_export(expression: str, cwd: Path) -> Any:
     """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
     script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify(await ({expression})));"

@@ -2,7 +2,7 @@
 /**
  * Wrapper `/headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
  *
- *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
+ *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
  *
  * Treść: argumenty po fladze albo (bez nich) stdin — słowo w słowo, plus stała stopka.
  * `--host` wstawia bootstrap w pliku agenta każdego klienta; wykonawca musi być w tabeli
@@ -193,18 +193,24 @@ const EXECUTORS = {
       return [
         "-p", prompt.startsWith("-") ? `\n${prompt}` : prompt,
         "--dangerously-skip-permissions",
-        "--model", model || cfg.model || "gemini-3.8-flash-medium",
+        "--model", model || agyModelsFromConfig(cfg.model)[0] || "gemini-3.8-flash-medium",
         ...(cfg.effort ? ["--effort", cfg.effort] : []),
       ]
     },
     stdin: false,
     // Komunikat limitu agy nieznany (#293), więc po błędzie pytamy wprost: `agy -p /quota` daje
     // wiersze `<grupa>\t<limit>\t<procent>%\t<ISO reset>`. Grupa `Gemini Models` na 0% = limit.
-    quota: (bin) => {
+    // Tekst `/quota` do sprawdzenia pustych grup przed kolejnym modelem (#460).
+    quotaText: (bin) => {
       const r = spawnSync(bin, ["-p", "/quota"], { encoding: "utf8", timeout: QUOTA_TIMEOUT_MS, windowsHide: true })
-      if (r.status !== 0 || !r.stdout) return null
+      return r.status === 0 && r.stdout ? r.stdout : null
+    },
+    // Grupa modelu na 0% po błędzie = limit tego modelu (osobne grupy Gemini oraz Claude i GPT).
+    quota: (bin, group) => {
+      const r = spawnSync(bin, ["-p", "/quota"], { encoding: "utf8", timeout: QUOTA_TIMEOUT_MS, windowsHide: true })
+      if (r.status !== 0 || !r.stdout || !group) return null
       const empty = lines(r.stdout).map((l) => l.trimEnd().split("\t"))
-        .filter(([group, , left]) => group === "Gemini Models" && /^0+%$/.test(left?.trim() || ""))
+        .filter(([g, , left]) => g === group && /^0+%$/.test(left?.trim() || ""))
       if (!empty.length) return null
       const resets = empty.map(([, , , at]) => Date.parse(at)).filter((t) => !Number.isNaN(t))
       return { reset: resets.length ? new Date(Math.min(...resets)).toISOString() : null }
@@ -215,6 +221,44 @@ const EXECUTORS = {
 const EXECUTOR_ALIASES = { gemini: "antigravity" }
 // Zastępcy przy limicie, w tej kolejności, po wywołanym wykonawcy; po ostatnim przejmuje host.
 const FALLBACK_ORDER = ["opencode", "antigravity"]
+
+// Modele z `--model a,b` albo z listy w `.agents/agy.json`; puste pozycje odpadają.
+export function parseModels(text) {
+  return String(text ?? "").split(",").map((m) => m.trim()).filter(Boolean)
+}
+
+// `model` z `.agents/agy.json`: tekst (także po przecinkach) albo tablica; brak → [].
+export function agyModelsFromConfig(model) {
+  if (Array.isArray(model)) return model.map((m) => String(m).trim()).filter(Boolean)
+  return parseModels(model)
+}
+
+// Tylko limit (75) i HANG idą do kolejnego modelu tego samego wykonawcy; reszta do zastępcy.
+export function continuesWithNextModel(klasa) {
+  return klasa === "LIMIT" || klasa === "HANG"
+}
+
+// Grupa limitów agy dla modelu: Gemini osobno, Claude i GPT razem; nieznany model → null.
+export function quotaGroupOf(model) {
+  if (/^gemini/i.test(model)) return "Gemini Models"
+  if (/^(claude|gpt)/i.test(model)) return "Claude and GPT models"
+  return null
+}
+
+// Grupy z 0% w `agy -p /quota` (wiersze `<grupa>\t<limit>\t<procent>%\t<ISO reset>`).
+export function emptyQuotaGroups(text) {
+  return lines(text).map((l) => l.trimEnd().split("\t"))
+    .filter(([, , left]) => /^0+%$/.test(left?.trim() || ""))
+    .map(([group]) => group)
+}
+
+// Plan modeli jednego wykonawcy: pierwszy zawsze idzie; kolejny pomijany, gdy jego grupa quota jest pusta.
+export function modelPlan({ models, emptyGroups = [] }) {
+  return models.map((model, i) => {
+    const group = i > 0 ? quotaGroupOf(model) : null
+    return { model, skip: group && emptyGroups.includes(group) ? group : null }
+  })
+}
 
 function agyConfig() {
   const path = join(".agents", "agy.json")
@@ -966,6 +1010,8 @@ async function main() {
     })
   }
 
+  // `--model a,b` to lista modeli wywołanego wykonawcy (#460); pusta lista = domyślny model.
+  const cliModels = parseModels(opts.model)
   let code = null
   for (const [i, { name, executor, bin, needsShell, why }] of chain.entries()) {
     const next = chain.slice(i + 1).find((c) => !c.why)?.name
@@ -974,9 +1020,32 @@ async function main() {
       if (!next) break
       continue
     }
-    // `--model` dotyczy wykonawcy z wywołania; zastępca bierze swój domyślny model.
-    const outcome = await runOnce({ opts, name, executor, bin, needsShell, model: i === 0 ? opts.model : "", prompt, log, current, last: !next })
-    code = outcome.code
+    // Modele tego wykonawcy po kolei: wywołany dostaje `--model`, zastępca listę z agy.json albo domyślny.
+    // Limit i HANG idą do kolejnego modelu tego samego wykonawcy; dopiero koniec listy przekazuje zadanie dalej.
+    const listed = i === 0 && cliModels.length ? cliModels : name === "antigravity" ? agyModelsFromConfig(agyConfig().model) : []
+    const modelList = listed.length ? listed : [""]
+    let outcome = null
+    for (const [m, model] of modelList.entries()) {
+      const lastModel = m === modelList.length - 1
+      const group = m > 0 && executor.quotaText ? quotaGroupOf(model) : null
+      if (group && emptyQuotaGroups(executor.quotaText(bin) ?? "").includes(group)) {
+        call.actions.push(`pominięto model ${model}: pusta grupa quota ${group}`)
+        log(`[headless] pomijam model ${model}: pusta grupa quota ${group}\n`)
+        continue
+      }
+      const t0 = Date.now()
+      outcome = await runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last: !next && lastModel })
+      // Pojedynczy model zostaje jak dotąd; wiersz per model dotyczy tylko listy (#460, decyzja 3).
+      if (modelList.length > 1) call.actions.push(`model ${model || "domyślny"}: ${call.klasa} (${((Date.now() - t0) / 60000).toFixed(1)} min)`)
+      if (!continuesWithNextModel(call.klasa) || lastModel) break
+      log(`[headless] ${call.klasa} modelu ${model || "domyślnego"} — kolejny model ${name}\n`)
+    }
+    // Wszystkie modele pominięte (pusta grupa quota): wykonawca nie wystartował, więc to pauza, nie błąd.
+    if (outcome) code = outcome.code
+    else {
+      call.klasa = "LIMIT"
+      code = PAUSE_CODE
+    }
     // Zły model agy to błąd konfiguracji, nie wykonawcy: zastępca go nie naprawi, więc kończymy od razu.
     if (code === 0 || !next || call.klasa === "MODEL") {
       if (code !== 0 && !next) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
@@ -1225,12 +1294,13 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     && AGY_MODEL_LIST.test(outTail) && AGY_MODEL_ERROR.test(outTail)
   if (isInvalidModel) {
     const available = parseAvailableModels(outTail)
-    const detectedModel = detectUnknownModel(outTail, model || agyConfig().model)
+    const detectedModel = detectUnknownModel(outTail, model || agyModelsFromConfig(agyConfig().model)[0])
     invalidModel = `${detectedModel ? `model ${detectedModel}` : "model"} nieznany wykonawcy agy${available.length ? `; dostępne: ${available.join(", ")}` : ""}`
     log(`[headless] ${invalidModel}\n`)
     code = 2
   }
-  const quota = failed && !isInvalidModel && !textLimit && executor.quota ? executor.quota(bin) : null
+  const quotaGroup = executor.quota ? quotaGroupOf(model || agyModelsFromConfig(agyConfig().model)[0] || "gemini-3.8-flash-medium") : null
+  const quota = failed && !isInvalidModel && !textLimit && executor.quota ? executor.quota(bin, quotaGroup) : null
   if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
