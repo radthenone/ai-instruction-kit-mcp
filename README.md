@@ -1733,6 +1733,20 @@ Regresja: `uv run python -m unittest tests.test_guards` (tabela allow/deny każd
 i `bash tests/test_guard_adapter.sh` (tłumaczenie kontraktu) — odpalane też przez CI
 (`tests/test_shell_suites.py` wciąga suity powłoki do `unittest discover`).
 
+### Szybki lokalny runner testów (`scripts/test_changed.py`)
+
+Do weryfikacji zmian lokalnie w kilka minut runner wybiera moduły powiązane ze zmienionymi plikami (`git diff` względem bazy plus zmiany w drzewie i pliki nietrackowane):
+
+```bash
+uv run --no-sync python scripts/test_changed.py                 # tylko moduły powiązane ze zmianami + szybki rdzeń
+uv run --no-sync python scripts/test_changed.py --dry-run       # tylko wypisuje wybrane moduły bez uruchamiania
+uv run --no-sync python scripts/test_changed.py -j 4            # równoległe uruchamianie zadań
+uv run --no-sync python scripts/test_changed.py --all           # uruchomienie wszystkich modułów testowych
+uv run --no-sync python scripts/test_changed.py --stall-min 5   # watchdog ciszy w logu (domyślnie 10 min)
+```
+
+Logi poszczególnych modułów zapisywane są w `.cache/test-runs/<timestamp>/<moduł>.log`. Pełna suita pozostaje zadaniem CI.
+
 ## Code review (Bugbot + GitHub)
 
 Moduł MCP: `core:code-review` (bundle `devops` lub `architecture`).

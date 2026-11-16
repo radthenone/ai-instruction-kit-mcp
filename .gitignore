@@ -130,3 +130,6 @@ skills-lock.json
 
 # Artefakty /headless (fixture'y, logi przebiegów)
 .ai/headless-runs/
+
+# Cache lokalnych uruchomień testów (scripts/test_changed.py)
+.cache/
