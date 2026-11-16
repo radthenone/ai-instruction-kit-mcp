@@ -559,3 +559,26 @@ class TestCodeRabbitIntegration(unittest.TestCase):
             self.assertTrue(cr_file.is_file())
             self.assertEqual(cr_file.read_text(encoding="utf-8"), "language: \"en-US\"\ncustom_config: true\n")
             self.assertIn(".coderabbit.yaml", buf.getvalue())
+
+    def test_root_coderabbit_matches_rendered_template(self) -> None:
+        """Plik .coderabbit.yaml w root repo kita jest identyczny z wynikiem renderu szablonu (#490)."""
+        root_cr = KIT_ROOT / ".coderabbit.yaml"
+        self.assertTrue(root_cr.is_file(), f"Brak pliku .coderabbit.yaml w root {KIT_ROOT}")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ws = Path(tmp_dir) / "workspace"
+            ws.mkdir()
+            profile = ws / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("name: kit\nlanguage: pl\nintegrations:\n  - coderabbit\n", encoding="utf-8")
+
+            created = render_integrations(ws, KIT_ROOT, profile_data=profile)
+            self.assertIn(".coderabbit.yaml", created)
+
+            rendered_content = (ws / ".coderabbit.yaml").read_bytes()
+            root_content = root_cr.read_bytes()
+            self.assertEqual(
+                root_content,
+                rendered_content,
+                "Plik .coderabbit.yaml w root repo kita różni się od renderu szablonu templates/.coderabbit.yaml (np. brak końcowego \\n)",
+            )
