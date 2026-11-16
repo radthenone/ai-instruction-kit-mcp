@@ -18,10 +18,7 @@ from unittest import mock
 KIT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT_ROOT / "scripts"))
 
-try:
-    import test_changed
-except ImportError:
-    test_changed = None
+import test_changed
 
 
 class TestTestChangedContract(unittest.TestCase):
