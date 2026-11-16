@@ -1836,7 +1836,7 @@ class HeadlessWrapperTest(unittest.TestCase):
 
 
 class HeadlessWatchProcedureTest(unittest.TestCase):
-    """Procedura /headless uzbraja Monitor na log i zapas ScheduleWakeup (#425); test czyta treść szablonu."""
+    """Procedura /headless uzbraja Monitor na log; zapas ScheduleWakeup tylko w /loop (#425); test czyta treść szablonu."""
 
     TEMPLATE = KIT_ROOT / "templates/shared/agents/headless.md"
 
@@ -1858,10 +1858,11 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
         for line in ("[headless] kod wyjścia: <kod>", "przekazuję zadanie 1:1", "[headless] możliwe zacięcie: brak wyjścia od <n> min"):
             self.assertIn(line, self.text)
 
-    def test_wakeup_is_the_backup_for_the_monitor_lifetime_and_rearms(self) -> None:
-        self.assertIn("`ScheduleWakeup` na 30 min", self.text)
+    def test_wakeup_is_the_loop_only_backup_and_monitor_rearms(self) -> None:
+        self.assertIn("`ScheduleWakeup` jest przewidziany tylko dla trybu `/loop`", self.text)
+        self.assertIn("Poza `/loop` zapasu czasowego nie ma", self.text)
         self.assertIn("Monitor` wygasa po 30 min", self.text)
-        self.assertIn("uzbrój `Monitor` od `P+1` i `ScheduleWakeup` ponownie", self.text)
+        self.assertIn("uzbrój `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`)", self.text)
 
     def test_wakeup_reads_lines_since_the_recorded_position_before_rearm(self) -> None:
         self.assertIn(r"grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'", self.text)

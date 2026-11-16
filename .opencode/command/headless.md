@@ -82,9 +82,9 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Gdy jej nie ma, sprawdź, czy zadanie w tle nadal żyje (stan zadania albo powiadomienie tła). Jeśli już nie żyje,
    ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1` (wrapper mógł skończyć się między sprawdzeniami).
    Dopiero bez kodu wyjścia to sygnał albo błąd wrappera: przeczytaj ostatnią linię `[headless]` i nie uzbrajaj ponownie.
-   Zapas: `Monitor` wygasa po 30 min, więc `ScheduleWakeup` na 30 min. Po każdym wybudzeniu (powiadomienie `Monitor` albo `ScheduleWakeup`) przeczytaj nowe linie `[headless]` z numerami:
+   Zapas czasowy: `ScheduleWakeup` jest przewidziany tylko dla trybu `/loop`. Poza `/loop` zapasu czasowego nie ma: `Monitor` wygasa po 30 min, a koniec wywołania przychodzi jako powiadomienie tła. Po każdym wybudzeniu (powiadomienie `Monitor` albo, w `/loop`, `ScheduleWakeup`) przeczytaj nowe linie `[headless]` z numerami:
    `grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'` (zdarzenia z przerwy w nasłuchu), zapamiętaj `P` jako numer
-   ostatniej z nich (bez nowych linii `P` zostaje), dopiero potem uzbrój `Monitor` od `P+1` i `ScheduleWakeup` ponownie,
+   ostatniej z nich (bez nowych linii `P` zostaje), dopiero potem uzbrój `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`),
    aż do końca wywołania (`kod wyjścia` albo powiadomienie tła). Odczyt i `P` pochodzą z jednego polecenia, więc linia
    zapisana później ma numer większy niż `P` i nasłuch od `P+1` ją obejmie.
    Klienty bez tych narzędzi czytają log jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu
