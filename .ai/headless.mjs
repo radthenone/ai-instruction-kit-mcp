@@ -209,8 +209,7 @@ const EXECUTORS = {
     // Tekst `/quota` do sprawdzenia pustych grup przed kolejnym modelem (#460).
     quotaText: agyQuotaText,
     // Grupa modelu na 0% po błędzie = limit tego modelu (osobne grupy Gemini oraz Claude i GPT).
-    quota: (bin, group) => {
-      const text = agyQuotaText(bin)
+    quota: (bin, group, text = agyQuotaText(bin)) => {
       if (!text || !group) return null
       const empty = lines(text).map((l) => l.trimEnd().split("\t"))
         .filter(([g, , left]) => g === group && /^0+%$/.test(left?.trim() || ""))
@@ -1041,10 +1040,12 @@ async function main() {
     const modelList = listed.length ? listed : [""]
     let outcome = null
     let pauseReported = false
+    let quotaText // ostatni `/quota` tej listy: pobrany po błędzie poprzedniego modelu albo przed kolejnym
     for (const [m, model] of modelList.entries()) {
       const lastModel = m === modelList.length - 1
       // Grupa quota sprawdzana przed każdym kolejnym modelem; pierwszy zawsze idzie.
-      const emptyGroups = m > 0 && executor.quotaText ? emptyQuotaGroups(executor.quotaText(bin) ?? "") : []
+      if (m > 0 && executor.quotaText && quotaText === undefined) quotaText = executor.quotaText(bin)
+      const emptyGroups = m > 0 && quotaText !== undefined ? emptyQuotaGroups(quotaText ?? "") : []
       const step = modelPlan({ models: modelList, emptyGroups })[m]
       if (step.skip) {
         call.actions.push(`pominięto model ${model}: pusta grupa quota ${step.skip}`)
@@ -1054,6 +1055,7 @@ async function main() {
       const t0 = Date.now()
       pauseReported = !next && lastModel
       outcome = await runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last: pauseReported })
+      if (outcome.quotaText !== undefined) quotaText = outcome.quotaText
       // Pojedynczy model zostaje jak dotąd; wiersz per model dotyczy tylko listy (#460, decyzja 3).
       if (modelList.length > 1) call.actions.push(`model ${model || "domyślny"}: ${call.klasa} (${((Date.now() - t0) / 60000).toFixed(1)} min)`)
       if (!continuesWithNextModel(call.klasa) || lastModel) break
@@ -1317,7 +1319,10 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     code = 2
   }
   const quotaGroup = executor.quota ? quotaGroupFor(model || agyModelsFromConfig(agyConfig().model)[0] || "gemini-3.8-flash-medium") : null
-  const quota = failed && !isInvalidModel && !textLimit && executor.quota ? executor.quota(bin, quotaGroup) : null
+  // `/quota` po błędzie idzie raz: ten sam tekst wykrywa limit i pomija puste grupy kolejnego modelu (#460).
+  const needsQuota = failed && !isInvalidModel && !textLimit && executor.quota
+  const quotaText = needsQuota && executor.quotaText ? executor.quotaText(bin) : undefined
+  const quota = needsQuota ? executor.quota(bin, quotaGroup, quotaText) : null
   if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
@@ -1336,7 +1341,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   // Klasa wykonawcy idzie do wiersza (#396); kolejność jak w rozstrzyganiu wyniku: limit, model, timeout.
   call.klasa = pause ? "LIMIT" : invalidModel ? "MODEL" : hung ? "HANG" : code !== 0 ? "ERROR"
     : changes.added.length || call.untrailed.length ? "POLITYKA" : changes.suspect ? "SUSPECT" : "OK"
-  return { code, report, pause }
+  return { code, report, pause, quotaText }
 }
 
 // Commity bez trailera zostają w wywołaniu także po przekazaniu 1:1 i po sygnale — klasa wiersza i dzialanie (#398).

@@ -328,6 +328,17 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.calls(), ["agy", "opencode2"])
         self.assertIn("antigravity → opencode", self.headless_log())
 
+    def test_unknown_limit_probes_quota_once_for_a_model_list(self) -> None:
+        # Nieznany komunikat limitu (#293): `/quota` idzie raz po błędzie, a jego tekst pomija
+        # pustą grupę kolejnego modelu listy bez drugiego wywołania (#460).
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        self.run_wrapper(
+            "--host", "claude", "gemini", "--model", "gemini-3.8-flash-high,gemini-3.8-flash-low", "x",
+            FAKE_FAIL_FOR="agy", FAKE_QUOTA="Gemini Models\t1000\t0%\t2026-11-18T00:00:00Z\n",
+        )
+        self.assertEqual(self.calls(), ["agy", "agy /quota", "opencode2"])
+
     def test_fallback_skips_executor_outside_profile(self) -> None:
         self.profile("claude,opencode")
         self.fake("agy")
