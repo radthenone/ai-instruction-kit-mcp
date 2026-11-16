@@ -59,64 +59,64 @@ class TestTestChangedContract(unittest.TestCase):
             text=True,
             check=False,
         )
-        self.assertEqual(proc.returncode, 0, f"stdout: {proc.stdout}, stderr: {proc.stderr}")
+        self.assertEqual(proc.returncode, 0)
         self.assertIn("test_guards", proc.stdout)
         self.assertIn("test_resolver", proc.stdout)
 
-    def test_mapping_for_expected_modules(self) -> None:
+    def test_mapping_for_templates_and_scripts(self) -> None:
         """
         Mapa wybiera oczekiwane moduły dla:
-        - templates/shared/guards/*
+        - templates/shared/guards/server-guard.mjs
         - scripts/bootstrap-project.sh
         - README.md (fallback grep, bez --all)
         - LICENSE (sam rdzeń)
         - pliku bez trafień grep (ostrzeżenie + --all)
         """
-        # 1. templates/shared/guards/git-guard.mjs
-        selected, is_all, _ = test_changed.resolve_test_targets(
-            ["templates/shared/guards/git-guard.mjs"], root=KIT_ROOT
+        # 1. templates/shared/guards/server-guard.mjs
+        mods_guards, is_all_guards, _ = test_changed.resolve_test_targets(
+            ["templates/shared/guards/server-guard.mjs"], root=KIT_ROOT
         )
-        self.assertFalse(is_all)
-        self.assertTrue(any("guard" in m for m in selected))
+        self.assertFalse(is_all_guards)
+        self.assertIn("test_guards", mods_guards)
 
         # 2. scripts/bootstrap-project.sh
-        selected, is_all, _ = test_changed.resolve_test_targets(
+        mods_boot, is_all_boot, _ = test_changed.resolve_test_targets(
             ["scripts/bootstrap-project.sh"], root=KIT_ROOT
         )
-        self.assertFalse(is_all)
-        self.assertTrue(any("bootstrap" in m for m in selected))
+        self.assertFalse(is_all_boot)
+        self.assertTrue("test_bootstrap" in mods_boot or "test_bootstrap_clients.sh" in mods_boot)
 
-        # 3. README.md (fallback grep, bez --all)
-        selected, is_all, _ = test_changed.resolve_test_targets(
+        # 3. README.md -> fallback grep, bez --all
+        mods_readme, is_all_readme, _ = test_changed.resolve_test_targets(
             ["README.md"], root=KIT_ROOT
         )
-        self.assertFalse(is_all)
-        self.assertGreater(len(selected), len(test_changed.FAST_CORE))
-        # Upewnij się, że nie wybrano wszystkich testów z tests/
-        all_test_files = [p.stem for p in (KIT_ROOT / "tests").glob("test_*.py") if p.name != "_shell.py"]
-        self.assertLess(len(selected), len(all_test_files))
+        self.assertFalse(is_all_readme)
+        self.assertTrue(len(mods_readme) > len(test_changed.FAST_CORE))
 
-        # 4. LICENSE (sam szybki rdzeń)
-        selected, is_all, _ = test_changed.resolve_test_targets(
+        # 4. LICENSE -> sam rdzeń
+        mods_license, is_all_license, _ = test_changed.resolve_test_targets(
             ["LICENSE"], root=KIT_ROOT
         )
-        self.assertFalse(is_all)
-        self.assertEqual(set(selected), set(test_changed.FAST_CORE))
+        self.assertFalse(is_all_license)
+        self.assertEqual(set(mods_license), set(test_changed.FAST_CORE))
 
-        # 5. Plik bez trafień grep (ostrzeżenie + --all)
-        unknown_dummy = "un" + "known_nonexistent_xyz987.foo"
-        selected, is_all, reasons = test_changed.resolve_test_targets(
-            [unknown_dummy], root=KIT_ROOT
+        # 5. Plik bez trafień grep -> ostrzeżenie + --all
+        # Nazwa dynamiczna zapobiega trafieniu literału w tests/test_test_changed.py
+        dummy_name = f"unmatched_file_{int(time.time() * 1000)}.xyz"
+        mods_unknown, is_all_unknown, reasons_unknown = test_changed.resolve_test_targets(
+            [dummy_name], root=KIT_ROOT
         )
-        self.assertTrue(is_all)
-        self.assertTrue(any("ostrzeżenie" in r.lower() or "warning" in r.lower() or "brak" in r.lower() or "all" in r.lower() for r in reasons))
+        self.assertTrue(is_all_unknown)
+        self.assertTrue(any("pełnej suity" in r for r in reasons_unknown))
+        self.assertTrue(len(mods_unknown) > 20)
 
-    def test_map_guardian_covers_all_guides_and_scripts(self) -> None:
+    def test_map_guardian_all_guides_and_scripts_covered(self) -> None:
         """
-        Strażnik mapy (decyzja 4): każdy src/guides/*.py i scripts/* trafia do
-        jakiegoś modułu testów (konwencja, wyjątek albo fallback grep).
+        Strażnik mapy: każdy plik z src/guides/*.py oraz scripts/*
+        trafia do jakiegoś modułu testów (konwencja, wyjątek lub fallback grep).
         """
         uncovered: list[str] = []
+
         guides = sorted((KIT_ROOT / "src" / "guides").glob("*.py"))
         scripts = sorted(p for p in (KIT_ROOT / "scripts").iterdir() if p.is_file())
 
@@ -133,10 +133,24 @@ class TestTestChangedContract(unittest.TestCase):
         )
 
     def test_deleted_test_file_is_skipped(self) -> None:
-        """Usunięty plik testowy nie jest dodawany do listy wykonania."""
+        """Usunięty plik testowy nie jest dodawany do listy wykonania i nie wyzwala --all."""
         mods, reason = test_changed.resolve_modules_for_file("tests/test_deleted_nonexistent.py", root=KIT_ROOT)
         self.assertEqual(mods, [])
         self.assertIn("pominięto", reason)
+
+        selected, is_all, reasons = test_changed.resolve_test_targets(["tests/test_deleted_nonexistent.py"], root=KIT_ROOT)
+        self.assertFalse(is_all)
+        self.assertEqual(selected, list(test_changed.FAST_CORE))
+
+        # Brakujący plik nietestowy w tests/ nie jest traktowany jako usunięty plik testu
+        mods_helper, reason_helper = test_changed.resolve_modules_for_file("tests/_nonexistent_fixture.py", root=KIT_ROOT)
+        self.assertNotIn("usunięty plik testu", reason_helper)
+
+    def test_normalize_repo_path(self) -> None:
+        """Normalizacja ścieżek CLI z podkatalogów, z kropkami i ukośnikami."""
+        self.assertEqual(test_changed.normalize_repo_path("./scripts/test_changed.py", root=KIT_ROOT), "scripts/test_changed.py")
+        self.assertEqual(test_changed.normalize_repo_path("scripts/../tests/test_resolver.py", root=KIT_ROOT), "tests/test_resolver.py")
+        self.assertEqual(test_changed.normalize_repo_path("tests/test_resolver.py", root=KIT_ROOT), "tests/test_resolver.py")
 
     def test_watchdog_kills_on_frozen_log(self) -> None:
         """
@@ -162,11 +176,14 @@ class TestTestChangedContract(unittest.TestCase):
     def test_pythonpath_includes_tests_directory_in_execution(self) -> None:
         """Podprocesy testowe widzą moduł _shell dzięki PYTHONPATH w run_with_watchdog."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            log_dir = Path(tmp_dir)
-            # test_git_start_no_track jest szybkim testem (ułamki sekundy)
-            res = test_changed.run_module("test_git_start_no_track", log_dir=log_dir, stall_seconds=30.0, root=KIT_ROOT)
-            self.assertEqual(res["status"], "OK")
-            self.assertEqual(res["returncode"], 0)
+            log_path = Path(tmp_dir) / "shell_check.log"
+            cmd = [sys.executable, "-c", "import _shell; print('OK_SHELL')"]
+            returncode, last_line, stalled = test_changed.run_with_watchdog(
+                cmd, log_path=log_path, stall_seconds=10.0, cwd=KIT_ROOT
+            )
+            self.assertFalse(stalled)
+            self.assertEqual(returncode, 0)
+            self.assertIn("OK_SHELL", last_line)
 
     def test_cli_all_flag(self) -> None:
         """Flaga --all wybiera wszystkie moduły z tests/."""

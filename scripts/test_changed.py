@@ -18,6 +18,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -35,28 +36,28 @@ except ImportError:
     def resolve_bash() -> str | None:
         return shutil.which("bash")
 
-# Szybki rdzeń: zawsze uruchamiany przy każdym przebiegu
+# Szybki rdzeń - uruchamiany ZAWSZE (< 1 s łącznie)
 FAST_CORE: tuple[str, ...] = (
     "test_resolver",
     "test_manifest_mappings",
     "test_mcp_compat",
 )
 
-# Ścieżki całkowicie ignorowane — sam szybki rdzeń
+# Ścieżki ignorowane (sam szybki rdzeń, brak --all)
 IGNORED_PATHS: set[str] = {
     "LICENSE",
 }
 
-# Jawny słownik wyjątków dla mapowania (decyzja 3)
+# Jawna mapa wyjątków: stem pliku źródłowego -> moduły testów
 EXCEPTIONS: dict[str, list[str]] = {
     "agent_classes": ["test_agent_classification"],
     "manifest": ["test_manifest_mappings"],
     "server": ["test_server_instructions", "test_mcp_compat"],
     "server_guard": ["test_guards"],
-    "__main__": ["test_server_instructions"],
-    "__init__": ["test_mcp_compat"],
-    # Skrypty pomocnicze
-    "project_brief": ["test_resolver", "test_doctor", "test_server_instructions"],
+    "worktree": ["test_worktree"],
+    "headless": ["test_headless"],
+    "brief": ["test_brief_rules"],
+    "bootstrap": ["test_bootstrap"],
     "install_agent_skills": ["test_bootstrap_clients.sh", "test_generated_artifacts"],
     "render_agent_commands": ["test_bootstrap_clients.sh", "test_generated_artifacts"],
     "render_server_guard": ["test_guards", "test_lf_writes"],
@@ -65,10 +66,13 @@ EXCEPTIONS: dict[str, list[str]] = {
     "render_integrations": ["test_integrations"],
     "antigravity_hooks": ["test_antigravity_hooks"],
     "test_changed": ["test_test_changed"],
+    "__main__": ["test_server_instructions", "test_mcp_compat"],
+    "project_brief": ["test_kit_brief", "test_resolver"],
 }
 
-# Zbiór aktywnych procesów potomnych
+# Zbiór aktywnych procesów potomnych oraz flaga anulowania
 ACTIVE_PROCS: set[subprocess.Popen] = set()
+CANCEL_EVENT = threading.Event()
 
 
 def kill_active_processes() -> None:
@@ -76,8 +80,14 @@ def kill_active_processes() -> None:
     for proc in list(ACTIVE_PROCS):
         try:
             if os.name != "nt":
-                pgid = os.getpgid(proc.pid)
-                os.killpg(pgid, signal.SIGKILL)
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
             else:
                 subprocess.run(
                     ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
@@ -165,13 +175,33 @@ def normalize_repo_path(path_str: str, root: Path = ROOT) -> str:
     raw = path_str.replace("\\", "/").strip()
     if not raw:
         return ""
+
+    root_resolved = root.resolve()
+    cwd_resolved = Path.cwd().resolve()
+
     p = Path(raw)
     if p.is_absolute():
         try:
-            return str(p.resolve().relative_to(root.resolve())).replace("\\", "/")
+            return str(p.resolve().relative_to(root_resolved)).replace("\\", "/")
         except ValueError:
             return str(p).replace("\\", "/")
-    # Usuń wiodące ./
+
+    # Jeśli podano ścieżkę z poziomu podkatalogu roboczego (np. z cwd)
+    try:
+        from_cwd = (cwd_resolved / raw).resolve()
+        if from_cwd.exists() and from_cwd.is_relative_to(root_resolved):
+            return str(from_cwd.relative_to(root_resolved)).replace("\\", "/")
+    except (ValueError, AttributeError):
+        pass
+
+    # Rozwiąż ewentualne .. lub ./ względem root
+    try:
+        from_root = (root / raw).resolve()
+        if from_root.is_relative_to(root_resolved):
+            return str(from_root.relative_to(root_resolved)).replace("\\", "/")
+    except (ValueError, AttributeError):
+        pass
+
     return re.sub(r"^\./+", "", raw)
 
 
@@ -196,12 +226,16 @@ def resolve_modules_for_file(
 
     # 0. Sam plik testowy
     if norm_path.startswith("tests/"):
+        is_test_file = (norm_path.endswith(".py") and p.name.startswith("test_")) or norm_path.endswith(".sh")
         if not (root / norm_path).is_file():
-            return [], f"{norm_path} usunięty/brakujący plik testu (pominięto)"
-        if norm_path.endswith(".py") and p.name != "_shell.py":
-            return [p.stem], f"{norm_path} → {p.stem} (sam moduł testu)"
-        if norm_path.endswith(".sh"):
-            return [p.name], f"{norm_path} → {p.name} (sama suita powłoki)"
+            if is_test_file:
+                return [], f"{norm_path} usunięty plik testu (pominięto)"
+            # Plik pomocniczy w tests/ (np. tests/_shell.py) przechodzi dalej do wyjątków i fallback grepa
+        else:
+            if norm_path.endswith(".py") and p.name != "_shell.py":
+                return [p.stem], f"{norm_path} → {p.stem} (sam moduł testu)"
+            if norm_path.endswith(".sh"):
+                return [p.name], f"{norm_path} → {p.name} (sama suita powłoki)"
 
     if norm_path in IGNORED_PATHS or p.name in IGNORED_PATHS:
         return [], f"{norm_path} ignorowany (sam szybki rdzeń)"
@@ -218,25 +252,32 @@ def resolve_modules_for_file(
     tests_dir = root / "tests"
     if (tests_dir / f"{candidate}.py").is_file():
         return [candidate], f"{norm_path} → {candidate} (konwencja)"
-    if (tests_dir / f"{candidate}.sh").is_file():
-        return [f"{candidate}.sh"], f"{norm_path} → {candidate}.sh (konwencja)"
 
-    # 3. Fallback grep
+    # 3. Fallback grep w tests/*.py i tests/*.sh
     if test_contents is None:
         test_contents = _get_test_contents(root)
 
-    matches: list[str] = []
-    file_name = p.name
-    for t_name, content in test_contents.items():
-        if norm_path in content or file_name in content:
-            mod_name = Path(t_name).stem if t_name.endswith(".py") else t_name
-            # Unikaj dodawania test_shell_suites jeśli suity .sh są odpalane bezpośrednio
-            if mod_name != "test_shell_suites":
-                matches.append(mod_name)
+    matched_modules: set[str] = set()
+    patterns = [norm_path, p.name]
 
-    matches = sorted(set(matches))
-    if matches:
-        return matches, f"{norm_path} → {', '.join(matches)} (fallback grep)"
+    for test_file_name, content in test_contents.items():
+        if test_file_name == "_shell.py":
+            continue
+        for pat in patterns:
+            if pat in content:
+                if test_file_name.endswith(".py"):
+                    matched_modules.add(Path(test_file_name).stem)
+                elif test_file_name.endswith(".sh"):
+                    matched_modules.add(test_file_name)
+                break
+
+    if matched_modules:
+        # Usuwamy test_shell_suites jeśli dopasowano bezpośrednie skrypty .sh
+        sh_found = [m for m in matched_modules if m.endswith(".sh")]
+        if sh_found and "test_shell_suites" in matched_modules:
+            matched_modules.remove("test_shell_suites")
+        mods = sorted(matched_modules)
+        return mods, f"{norm_path} → {', '.join(mods)} (fallback grep)"
 
     return [], f"ostrzeżenie: brak powiązanych testów dla {norm_path}"
 
@@ -267,7 +308,8 @@ def resolve_test_targets(
             # Ignorowane lub usunięte pliki testów nie wyzwalają pełnej suity
             if norm in IGNORED_PATHS or Path(norm).name in IGNORED_PATHS:
                 continue
-            if norm.startswith("tests/") and not (root / norm).is_file():
+            is_test_file = (norm.endswith(".py") and Path(norm).name.startswith("test_")) or norm.endswith(".sh")
+            if norm.startswith("tests/") and is_test_file and not (root / norm).is_file():
                 continue
             is_all = True
 
@@ -286,68 +328,56 @@ def resolve_test_targets(
 
 
 def _read_last_test_line(log_path: Path) -> str:
-    """Odczytaj ostatnią istotną linię z logu z buforem od końca pliku."""
+    """Odczytaj ostatnią niepustą linię logu testu."""
     if not log_path.is_file():
-        return "(brak pliku logu)"
+        return "brak pliku logu"
     try:
-        with open(log_path, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            if size == 0:
-                return "(log pusty)"
-            read_size = min(size, 8192)
-            f.seek(size - read_size)
-            chunk = f.read().decode("utf-8", errors="replace")
-            lines = [line.strip() for line in chunk.splitlines() if line.strip()]
-            if not lines:
-                return "(log pusty)"
-            return lines[-1]
-    except OSError:
-        return "(błąd odczytu logu)"
+        lines = [line.strip() for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+        return lines[-1] if lines else "pusty log"
+    except Exception as exc:
+        return f"błąd odczytu logu: {exc}"
 
 
 def run_with_watchdog(
     cmd: list[str],
     log_path: Path,
-    stall_seconds: float = 600.0,
+    stall_seconds: float,
     cwd: Path = ROOT,
-    env: dict[str, str] | None = None,
 ) -> tuple[int, str, bool]:
     """
-    Uruchom zadanie podprocesu, przekierowując stdout/stderr do log_path.
-    Jeśli plik logu nie zmienia rozmiaru przez ponad stall_seconds:
-    ubija całe drzewo procesów i zwraca kod != 0 oraz stalled=True.
+    Uruchom polecenie z przekierowaniem stdout/stderr do log_path.
+    Jeśli plik logu nie powiększy się przez stall_seconds, zabij całą grupę procesów.
+
+    Zwraca: (kod_zakończenia, ostatnia_linia, czy_stall).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_file = open(log_path, "wb")
+    log_file = log_path.open("w", encoding="utf-8", buffering=1)
 
-    run_env = os.environ.copy()
-    if env:
-        run_env.update(env)
-
-    # Upewnij się, że PYTHONPATH zawiera katalogi tests i src
-    tests_dir = str(cwd / "tests")
-    src_dir = str(cwd / "src")
-    existing_pp = run_env.get("PYTHONPATH", "")
-    prefix = f"{tests_dir}{os.pathsep}{src_dir}"
-    run_env["PYTHONPATH"] = f"{prefix}{os.pathsep}{existing_pp}" if existing_pp else prefix
-
-    # Wyłącz buforowanie w Pythonie, aby watchdog widział aktualny log
-    run_env["PYTHONUNBUFFERED"] = "1"
-
+    # Uruchamiamy w nowej sesji, by móc ubić całą grupę procesów potomnych
     kwargs: dict = {
         "cwd": str(cwd),
-        "env": run_env,
+        "stdin": subprocess.DEVNULL,
         "stdout": log_file,
         "stderr": subprocess.STDOUT,
     }
     if os.name != "nt":
         kwargs["start_new_session"] = True
+    else:
+        # CREATE_NEW_PROCESS_GROUP na Windows
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+
+    # Zapewnij widoczność tests/ i src/ na PYTHONPATH
+    run_env = os.environ.copy()
+    tests_dir = str((cwd / "tests").resolve())
+    src_dir = str((cwd / "src").resolve())
+    existing_pythonpath = run_env.get("PYTHONPATH", "")
+    run_env["PYTHONPATH"] = f"{tests_dir}:{src_dir}:{existing_pythonpath}" if existing_pythonpath else f"{tests_dir}:{src_dir}"
+    kwargs["env"] = run_env
 
     try:
         proc = subprocess.Popen(cmd, **kwargs)
     except Exception as exc:
-        log_file.write(f"Nie udało się uruchomić procesu: {exc}\n".encode("utf-8"))
+        log_file.write(f"Błąd uruchomienia procesu: {exc}\n")
         log_file.close()
         return (1, f"błąd uruchomienia: {exc}", False)
 
@@ -357,12 +387,17 @@ def run_with_watchdog(
     stalled = False
 
     try:
-        while proc.poll() is None:
-            time.sleep(0.05)
+        while True:
+            ret = proc.poll()
+            if ret is not None:
+                break
+
+            time.sleep(0.1)
+
             try:
                 current_size = log_path.stat().st_size
             except OSError:
-                current_size = 0
+                current_size = last_size
 
             if current_size != last_size:
                 last_size = current_size
@@ -374,8 +409,11 @@ def run_with_watchdog(
         stalled = False
         if os.name != "nt":
             try:
-                pgid = os.getpgid(proc.pid)
-                os.killpg(pgid, signal.SIGKILL)
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            try:
+                proc.kill()
             except OSError:
                 pass
         else:
@@ -390,10 +428,13 @@ def run_with_watchdog(
         if stalled:
             if os.name != "nt":
                 try:
-                    pgid = os.getpgid(proc.pid)
-                    os.killpg(pgid, signal.SIGTERM)
+                    os.killpg(proc.pid, signal.SIGTERM)
                     time.sleep(0.2)
-                    os.killpg(pgid, signal.SIGKILL)
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                try:
+                    proc.kill()
                 except OSError:
                     pass
             else:
@@ -422,6 +463,16 @@ def run_module(
     root: Path = ROOT,
 ) -> dict[str, str | float | int]:
     """Uruchom pojedynczy moduł testów i zwróć metryki."""
+    if CANCEL_EVENT.is_set():
+        return {
+            "module": module_name,
+            "status": "FAIL",
+            "time": 0.0,
+            "log": "anulowano",
+            "returncode": 130,
+            "last_line": "anulowano (SIGINT/SIGTERM)",
+        }
+
     log_path = log_dir / f"{module_name}.log"
     tests_dir = root / "tests"
 
@@ -468,9 +519,9 @@ def run_module(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Szybki lokalny runner testów dla zmienionych plików.")
-    parser.add_argument("files", nargs="*", help="Ścieżki zmienionych plików (domyślnie wykrywane z gita)")
-    parser.add_argument("--dry-run", action="store_true", help="Wypisz wybrane moduły bez uruchamiania")
+    parser = argparse.ArgumentParser(description="Szybki runner testów dla zmienionych plików")
+    parser.add_argument("files", nargs="*", help="Jawna lista plików do przetestowania")
+    parser.add_argument("--dry-run", action="store_true", help="Tylko wypisz wybrane moduły bez uruchamiania")
     parser.add_argument("--all", action="store_true", help="Uruchom wszystkie moduły testów")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Liczba równoległych zadań (domyślnie 1)")
     parser.add_argument("--stall-min", type=float, default=10.0, help="Limit ciszy w logu w minutach (domyślnie 10)")
@@ -483,9 +534,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.stall_min <= 0:
         parser.error("Limit ciszy (--stall-min) musi być większy od 0")
 
+    executor: concurrent.futures.ThreadPoolExecutor | None = None
+
     # Obsługa sygnałów do czyszczenia procesów potomnych
     def sig_handler(signum, frame):
+        CANCEL_EVENT.set()
         kill_active_processes()
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
         sys.exit(130)
 
     try:
@@ -536,22 +595,34 @@ def main(argv: list[str] | None = None) -> int:
     results: list[dict] = []
     try:
         if args.jobs > 1:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-                futures = [
-                    executor.submit(run_module, m, log_dir, stall_sec, ROOT)
-                    for m in selected
-                ]
-                for future in concurrent.futures.as_completed(futures):
-                    res = future.result()
-                    results.append(res)
-                    print(f"[{res['status']}] {res['module']} ({res['time']}s)")
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
+            futures = [
+                executor.submit(run_module, m, log_dir, stall_sec, ROOT)
+                for m in selected
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                if CANCEL_EVENT.is_set():
+                    break
+                res = future.result()
+                results.append(res)
+                print(f"[{res['status']}] {res['module']} ({res['time']}s)")
+            executor.shutdown(wait=True)
+            executor = None
         else:
             for m in selected:
+                if CANCEL_EVENT.is_set():
+                    break
                 res = run_module(m, log_dir, stall_sec, ROOT)
                 results.append(res)
                 print(f"[{res['status']}] {res['module']} ({res['time']}s)")
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
+        CANCEL_EVENT.set()
         kill_active_processes()
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
         print("\nPrzerwano działanie runnera (SIGINT).")
         return 130
 
