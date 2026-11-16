@@ -383,6 +383,19 @@ class HeadlessWrapperTest(unittest.TestCase):
         "Claude and GPT models\\tFive Hour Limit Remaining\\t100%\\t2099-01-01T09:00:00Z\\n"
     )
 
+    def test_limited_model_then_empty_group_keeps_pause_in_report(self) -> None:
+        self.profile("claude,antigravity")
+        (self.bin / "agy").write_text(AGY_BY_MODEL, encoding="utf-8")
+        (self.bin / "agy").chmod(0o755)
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "claude-sonnet-4-6,gemini-3.8-flash-high", "treść",
+            FAKE_LIMIT_MODELS="claude-sonnet-4-6",
+            FAKE_QUOTA="Gemini Models\\tWeekly\\t0%\\t2099-01-01T10:00:00Z\\n",
+        )
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertEqual((self.root / "models").read_text(encoding="utf-8").splitlines(), ["claude-sonnet-4-6"])
+        self.assertIn("## PAUSE=rate-limit", result.stdout)
+
     def test_agy_failure_with_exhausted_quota_is_rate_limit_pause(self) -> None:
         self.profile("claude,antigravity")
         self.fake("agy")
@@ -1950,6 +1963,20 @@ class HeadlessModelChainTest(unittest.TestCase):
             ["Gemini Models"],
         )
 
+    def test_handoff_prompt_adds_killed_report_only_after_hang(self) -> None:
+        base = {"basePrompt": "T", "sessionFooter": "F", "name": "antigravity", "code": 124, "report": "R"}
+        self.assertEqual(self.call(f"h.handoffPrompt({json.dumps({**base, 'klasa': 'LIMIT'})})"), "TF")
+        self.assertEqual(
+            self.call(f"h.handoffPrompt({json.dumps({**base, 'klasa': 'HANG'})})"),
+            "T\n\n---\nRaport zabitego wykonawcy (antigravity, kod 124):\nRF",
+        )
+
+    def test_unknown_model_family_uses_gemini_quota_group(self) -> None:
+        self.assertEqual(
+            self.call('[h.quotaGroupFor("mistral-large"), h.quotaGroupFor("claude-opus-4-6-thinking")]'),
+            ["Gemini Models", "Claude and GPT models"],
+        )
+
     def test_agy_config_list_is_the_same_as_cli_list(self) -> None:
         self.assertEqual(
             self.call('[h.agyModelsFromConfig(["gemini-3.8-flash-high", "claude-opus-4-6-thinking"]), '
@@ -1960,6 +1987,16 @@ class HeadlessModelChainTest(unittest.TestCase):
             self.call('h.agyModelsFromConfig(["gemini-3.8-flash-high", "claude-opus-4-6-thinking"])'),
             self.call('h.parseModels("gemini-3.8-flash-high,claude-opus-4-6-thinking")'),
         )
+
+
+AGY_BY_MODEL = """#!/bin/sh
+if [ "$1" = -p ] && [ "$2" = /quota ]; then printf '%b' "$FAKE_QUOTA"; exit 0; fi
+model=""
+while [ $# -gt 0 ]; do if [ "$1" = --model ]; then model="$2"; fi; shift; done
+echo "$model" >> "$HEADLESS_TEST_DIR/models"
+case " $FAKE_LIMIT_MODELS " in *" $model "*) echo "Error: rate limit reached"; exit 1;; esac
+echo "wynik wykonawcy"
+"""
 
 
 def node_export(expression: str, cwd: Path) -> Any:

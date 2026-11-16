@@ -45,7 +45,7 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
   `Gemini Models` albo `Claude and GPT models` na 0%) pomija model z wpisem `pominięto model …` w raporcie.
   Przykład: `/headless gemini --model gemini-3.8-flash-high,claude-opus-4-6-thinking "..."`.
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
-- `--timeout` — minuty. Bez flagi termin 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana `HEAD`/`git status` (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout` to twardy limit bez przedłużania. Liczony osobno dla każdego wykonawcy w łańcuchu.
+- `--timeout` — minuty. Bez flagi termin 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana `HEAD`/`git status` (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout` to twardy limit bez przedłużania. Liczony osobno dla każdego modelu każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
 - `--ctx <katalog>` — katalog nocy (CTX z `/night-run`); bez flagi wrapper nic nie zapisuje. Z nią
   dopisuje wiersz wywołania (ostatnia linia wyjścia, JSON) do `<katalog>/headless-rows.jsonl`, a przy
