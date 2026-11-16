@@ -443,3 +443,119 @@ class TestReadProfileIntegrations(unittest.TestCase):
                 self.assertEqual(integrations, ["orca", "coderabbit"])
                 self.assertEqual(lang, "en")
                 self.assertEqual(warnings, [])
+
+
+KIT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class TestCodeRabbitIntegration(unittest.TestCase):
+    """Testy kontraktu renderowania konfiguracji CodeRabbit (#457)."""
+
+    def test_coderabbit_template_exists_in_templates(self) -> None:
+        """Szablon .coderabbit.yaml musi istnieć w katalogu templates/ i być poprawnym YAML."""
+        import yaml
+
+        template_path = KIT_ROOT / "templates" / ".coderabbit.yaml"
+        self.assertTrue(
+            template_path.is_file(),
+            f"Brak szablonu .coderabbit.yaml w {template_path}",
+        )
+        content = template_path.read_text(encoding="utf-8")
+        self.assertIn("reviews:", content)
+        self.assertIn("base_branches:", content)
+        # Po podstawieniu języka treść musi być poprawnym YAML
+        substituted = content.replace("{{language}}", "pl-PL")
+        data = yaml.safe_load(substituted)
+        self.assertIsInstance(data, dict)
+        self.assertEqual(data.get("language"), "pl-PL")
+        reviews = data.get("reviews", {})
+        self.assertIsInstance(reviews, dict)
+        auto_review = reviews.get("auto_review", {})
+        self.assertIsInstance(auto_review, dict)
+        self.assertIn("^dev$", auto_review.get("base_branches", []))
+
+    def test_render_creates_coderabbit_when_present_and_omits_when_absent(self) -> None:
+        """Render tworzy .coderabbit.yaml przy wpisie coderabbit i nie tworzy go bez niego."""
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ws = Path(tmp_dir) / "consumer-ws"
+            ws.mkdir()
+            profile = ws / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+
+            # Bez coderabbit w profilu -> nie tworzy .coderabbit.yaml
+            profile.write_text("name: test\nlanguage: pl\nintegrations:\n  - orca\n", encoding="utf-8")
+            created_without = render_integrations(ws, KIT_ROOT, profile_data=profile)
+            self.assertNotIn(".coderabbit.yaml", created_without)
+            self.assertFalse((ws / ".coderabbit.yaml").exists())
+
+            # Z coderabbit w profilu -> tworzy .coderabbit.yaml
+            profile.write_text("name: test\nlanguage: pl\nintegrations:\n  - coderabbit\n", encoding="utf-8")
+            created_with = render_integrations(ws, KIT_ROOT, profile_data=profile)
+            self.assertIn(".coderabbit.yaml", created_with)
+            cr_file = ws / ".coderabbit.yaml"
+            self.assertTrue(cr_file.is_file())
+            content = cr_file.read_text(encoding="utf-8")
+            self.assertIn(KIT_MARKER, content)
+            self.assertIn('language: "pl-PL"', content)
+
+            data = yaml.safe_load(content)
+            self.assertIsInstance(data, dict)
+            self.assertEqual(data.get("language"), "pl-PL")
+            self.assertIn("^dev$", data["reviews"]["auto_review"]["base_branches"])
+
+    def test_remove_deletes_own_coderabbit_file_only(self) -> None:
+        """Remove usuwa tylko własny plik .coderabbit.yaml oznaczony markerem."""
+        import io
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ws = Path(tmp_dir) / "consumer-ws"
+            ws.mkdir()
+            cr_file = ws / ".coderabbit.yaml"
+
+            # 1. Własny plik kita z markerem
+            cr_file.write_text(f"{KIT_MARKER}\nlanguage: \"pl-PL\"\n", encoding="utf-8")
+            removed = render_integrations(ws, KIT_ROOT, remove=True)
+            self.assertIn(".coderabbit.yaml", removed)
+            self.assertFalse(cr_file.exists())
+
+            # 2. Obcy plik użytkownika bez markera
+            cr_file.write_text("language: \"en-US\"\ncustom: true\n", encoding="utf-8")
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                removed_foreign = render_integrations(ws, KIT_ROOT, remove=True)
+            finally:
+                sys.stderr = old_err
+
+            self.assertNotIn(".coderabbit.yaml", removed_foreign)
+            self.assertTrue(cr_file.is_file())
+            self.assertIn(".coderabbit.yaml", buf.getvalue())
+            self.assertEqual(cr_file.read_text(encoding="utf-8"), "language: \"en-US\"\ncustom: true\n")
+
+    def test_render_does_not_overwrite_foreign_coderabbit_file(self) -> None:
+        """Render nie nadpisuje pliku .coderabbit.yaml stworzonego ręcznie przez użytkownika."""
+        import io
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ws = Path(tmp_dir) / "consumer-ws"
+            ws.mkdir()
+            cr_file = ws / ".coderabbit.yaml"
+            cr_file.write_text("language: \"en-US\"\ncustom_config: true\n", encoding="utf-8")
+
+            buf = io.StringIO()
+            old_err = sys.stderr
+            try:
+                sys.stderr = buf
+                created = render_integrations(ws, KIT_ROOT, integrations=["coderabbit"])
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, [])
+            self.assertTrue(cr_file.is_file())
+            self.assertEqual(cr_file.read_text(encoding="utf-8"), "language: \"en-US\"\ncustom_config: true\n")
+            self.assertIn(".coderabbit.yaml", buf.getvalue())
