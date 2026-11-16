@@ -128,6 +128,34 @@ class NightRunScanTests(unittest.TestCase):
         self.assertEqual(self._findings("night-2026-10-28-2"), [])
         self.assertEqual([finding["kind"] for finding in self._findings("night-2026-10-28-2-halt")], ["night_halt"])
 
+    def test_since_includes_a_fresh_halt_for_a_ticket_with_stale_logs(self) -> None:
+        old = datetime(2026, 10, 1, tzinfo=UTC).timestamp()
+        fresh = datetime(2026, 11, 10, tzinfo=UTC).timestamp()
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=old)
+        (self.night / "halt.md").write_text(HALT_WITH_TICKET, encoding="utf-8")
+        os.utime(self.night / "halt.md", (fresh, fresh))
+        self._scan(since="2026-11-01")
+        [finding] = self._findings(f"{NIGHT_SESSION}-357")
+        self.assertEqual(finding["kind"], "night_halt")
+        self.assertEqual(self._records(f"{NIGHT_SESSION}-357")[0]["files"], 1)
+
+    def test_since_keeps_a_stale_halt_when_its_ticket_has_fresh_logs(self) -> None:
+        old = datetime(2026, 10, 1, tzinfo=UTC).timestamp()
+        fresh = datetime(2026, 11, 10, tzinfo=UTC).timestamp()
+        (self.night / "halt.md").write_text(HALT_WITH_TICKET, encoding="utf-8")
+        os.utime(self.night / "halt.md", (old, old))
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=fresh)
+        self._scan(since="2026-11-01")
+        self.assertEqual([finding["kind"] for finding in self._findings(f"{NIGHT_SESSION}-357")], ["night_halt"])
+
+    def test_since_skips_a_stale_halt_without_ticket_number(self) -> None:
+        old = datetime(2026, 10, 1, tzinfo=UTC).timestamp()
+        (self.night / "halt.md").write_text("night-run halted: brak zasobów w CI\n", encoding="utf-8")
+        os.utime(self.night / "halt.md", (old, old))
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=old)
+        self._scan(since="2026-11-01")
+        self.assertFalse((self.cache / "olivin-app" / f"{NIGHT_SESSION}-halt.jsonl").exists())
+
     def test_last_exit_line_of_a_log_decides_over_echoed_ones(self) -> None:
         self._log(
             "headless-357.log",
