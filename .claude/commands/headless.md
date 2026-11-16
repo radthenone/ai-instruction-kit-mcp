@@ -68,19 +68,20 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Zadanie trwa zwykle dłużej niż limit pojedynczej komendy (10 min) — jeśli klient pozwala,
    uruchom komendę w tle i poczekaj na jej koniec; nie przerywaj jej sam. Zakaz czekania przez
    `sleep N; <cmd>` (harness to blokuje) — czekaj na powiadomienie tła; w Claude
-   `run_in_background` z `until grep -q ^EXIT= <log>; do sleep 5; done`. `Monitor` z tą pętlą
-   to opcja, ale wygasa po 30 min i trzeba go uzbroić ponownie.
+   `run_in_background` (wybudzenia w trakcie daje `Monitor` niżej).
    Wrapper po zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
 
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
    `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log; ścieżka z pierwszej linii `[headless] log: <log>`:
-   `tail -n0 -F <log> | grep --line-buffered -E 'kod wyjścia|zakończony klasą|możliwe zacięcie'`.
-   Budzi tylko na trzy linie: `[headless] kod wyjścia: <kod>` (koniec, zadanie skończone), `… zakończony klasą <klasa>`
-   (przekazanie 1:1) i `[headless] możliwe zacięcie: brak wyjścia od <n> min` (ostrzeżenie; samo zacięcie niczego nie zabija).
-   Wtedy czytasz powiadomienie i nie sprawdzasz logu ręcznie.
-   Zapas: `Monitor` wygasa po 30 min, a run trwa dłużej, więc `ScheduleWakeup` na termin runu (`--timeout` albo 60 min, plus 5 min).
-   Po wybudzeniu z zapasu, gdy w logu nie ma `kod wyjścia`, uzbrój `Monitor` i `ScheduleWakeup` ponownie.
+   `tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|.*przekazuję zadanie 1:1)'`.
+   Wzorzec jest zakotwiczony na początku linii wrappera, bo wykonawca wypisuje do logu własny tekst. Budzi na trzy rodzaje
+   linii: `[headless] kod wyjścia: <kod>` (koniec wywołania), `… przekazuję zadanie 1:1` (przekazanie, także po limicie)
+   i `[headless] możliwe zacięcie: brak wyjścia od <n> min` (ostrzeżenie; samo zacięcie niczego nie zabija).
+   Powiadomienie to sygnał do sprawdzenia, nie dowód: potwierdź jedną linią `grep '^\[headless\] kod wyjścia:' <log> | tail -1`.
+   Gdy jej nie ma, wywołanie trwa.
+   Zapas: `Monitor` wygasa po 30 min, więc `ScheduleWakeup` na 30 min. Po każdym wybudzeniu bez `kod wyjścia`
+   uzbrój `Monitor` i `ScheduleWakeup` ponownie, aż do końca runu.
    Klienty bez tych narzędzi czytają log jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu
    w ostatnim kroku (10 min: bajty wyjścia, zmiana `HEAD`/`git status`, a z `/proc` także CPU) albo sufit
    120 min, a wrapper przechodzi dalej 1:1. Pętla (to samo wywołanie narzędzia 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,

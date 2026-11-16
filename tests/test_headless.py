@@ -1843,17 +1843,26 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
     def setUp(self) -> None:
         self.text = self.TEMPLATE.read_text(encoding="utf-8")
 
-    def test_monitor_is_armed_on_the_log_after_starting_the_worker(self) -> None:
-        self.assertIn("tail -n0 -F <log> | grep --line-buffered -E 'kod wyjścia|zakończony klasą|możliwe zacięcie'", self.text)
+    def test_monitor_is_armed_on_anchored_wrapper_lines_only(self) -> None:
+        self.assertIn(
+            r"tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|.*przekazuję zadanie 1:1)'",
+            self.text,
+        )
 
-    def test_monitor_wakes_on_end_class_change_and_stall_lines(self) -> None:
-        for line in ("[headless] kod wyjścia: <kod>", "zakończony klasą <klasa>", "[headless] możliwe zacięcie: brak wyjścia od <n> min"):
+    def test_monitor_wakes_on_end_handover_and_stall_lines(self) -> None:
+        for line in ("[headless] kod wyjścia: <kod>", "przekazuję zadanie 1:1", "[headless] możliwe zacięcie: brak wyjścia od <n> min"):
             self.assertIn(line, self.text)
 
-    def test_schedule_wakeup_is_the_backup_when_monitor_expires(self) -> None:
-        self.assertIn("`ScheduleWakeup` na termin runu", self.text)
+    def test_wakeup_is_the_backup_for_the_monitor_lifetime_and_rearms(self) -> None:
+        self.assertIn("`ScheduleWakeup` na 30 min", self.text)
         self.assertIn("Monitor` wygasa po 30 min", self.text)
         self.assertIn("uzbrój `Monitor` i `ScheduleWakeup` ponownie", self.text)
+
+    def test_notification_is_confirmed_by_the_last_wrapper_line(self) -> None:
+        self.assertIn(r"grep '^\[headless\] kod wyjścia:' <log> | tail -1", self.text)
+
+    def test_old_until_grep_recipe_is_gone(self) -> None:
+        self.assertNotIn("until grep -q ^EXIT=", self.text)
 
 
 def node_export(expression: str, cwd: Path) -> Any:
