@@ -67,6 +67,27 @@ EXCEPTIONS: dict[str, list[str]] = {
     "test_changed": ["test_test_changed"],
 }
 
+# Zbiór aktywnych procesów potomnych
+ACTIVE_PROCS: set[subprocess.Popen] = set()
+
+
+def kill_active_processes() -> None:
+    """Zabij wszystkie aktywne procesy potomne runnera."""
+    for proc in list(ACTIVE_PROCS):
+        try:
+            if os.name != "nt":
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        except OSError:
+            pass
+
 
 def get_base_branch(root: Path = ROOT) -> str:
     """Odczytaj gałąź bazową z .ai/project.md lub domyślną dev/main."""
@@ -139,6 +160,21 @@ def _get_test_contents(root: Path) -> dict[str, str]:
     return contents
 
 
+def normalize_repo_path(path_str: str, root: Path = ROOT) -> str:
+    """Znormalizuj ścieżkę do formatu względnego wobec root z separatorami '/'."""
+    raw = path_str.replace("\\", "/").strip()
+    if not raw:
+        return ""
+    p = Path(raw)
+    if p.is_absolute():
+        try:
+            return str(p.resolve().relative_to(root.resolve())).replace("\\", "/")
+        except ValueError:
+            return str(p).replace("\\", "/")
+    # Usuń wiodące ./
+    return re.sub(r"^\./+", "", raw)
+
+
 def resolve_modules_for_file(
     file_path: str,
     root: Path = ROOT,
@@ -152,7 +188,7 @@ def resolve_modules_for_file(
     3. Konwencja: src/guides/X.py lub scripts/X.py -> test_X
     4. Fallback grep: wyszukiwanie pełnej ścieżki lub nazwy pliku w tests/*.py i tests/*.sh
     """
-    norm_path = file_path.replace("\\", "/").strip()
+    norm_path = normalize_repo_path(file_path, root=root)
     if not norm_path:
         return [], "pusta ścieżka pominięta"
 
@@ -219,14 +255,21 @@ def resolve_test_targets(
     test_contents = _get_test_contents(root)
 
     for f in files:
-        mods, reason = resolve_modules_for_file(f, root=root, test_contents=test_contents)
+        norm = normalize_repo_path(f, root=root)
+        if not norm:
+            continue
+
+        mods, reason = resolve_modules_for_file(norm, root=root, test_contents=test_contents)
         reasons.append(reason)
         if mods:
             selected.update(mods)
         else:
-            norm = f.replace("\\", "/").strip()
-            if norm not in IGNORED_PATHS and Path(norm).name not in IGNORED_PATHS:
-                is_all = True
+            # Ignorowane lub usunięte pliki testów nie wyzwalają pełnej suity
+            if norm in IGNORED_PATHS or Path(norm).name in IGNORED_PATHS:
+                continue
+            if norm.startswith("tests/") and not (root / norm).is_file():
+                continue
+            is_all = True
 
     if is_all:
         tests_dir = root / "tests"
@@ -308,6 +351,7 @@ def run_with_watchdog(
         log_file.close()
         return (1, f"błąd uruchomienia: {exc}", False)
 
+    ACTIVE_PROCS.add(proc)
     last_change_time = time.time()
     last_size = 0
     stalled = False
@@ -342,14 +386,14 @@ def run_with_watchdog(
             )
         raise
     finally:
+        ACTIVE_PROCS.discard(proc)
         if stalled:
             if os.name != "nt":
                 try:
                     pgid = os.getpgid(proc.pid)
                     os.killpg(pgid, signal.SIGTERM)
                     time.sleep(0.2)
-                    if proc.poll() is None:
-                        os.killpg(pgid, signal.SIGKILL)
+                    os.killpg(pgid, signal.SIGKILL)
                 except OSError:
                     pass
             else:
@@ -400,7 +444,11 @@ def run_module(
         cmd = [sys.executable, "-m", "unittest", mod_arg]
 
     start = time.time()
-    code, last_line, stalled = run_with_watchdog(cmd, log_path=log_path, stall_seconds=stall_seconds, cwd=root)
+    try:
+        code, last_line, stalled = run_with_watchdog(cmd, log_path=log_path, stall_seconds=stall_seconds, cwd=root)
+    except Exception as exc:
+        code, last_line, stalled = 1, f"błąd: {exc}", False
+
     elapsed = time.time() - start
 
     try:
@@ -434,6 +482,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Liczba zadań (-j) musi być większa lub równa 1")
     if args.stall_min <= 0:
         parser.error("Limit ciszy (--stall-min) musi być większy od 0")
+
+    # Obsługa sygnałów do czyszczenia procesów potomnych
+    def sig_handler(signum, frame):
+        kill_active_processes()
+        sys.exit(130)
+
+    try:
+        signal.signal(signal.SIGINT, sig_handler)
+        signal.signal(signal.SIGTERM, sig_handler)
+    except (ValueError, OSError):
+        pass
 
     if args.all:
         tests_dir = ROOT / "tests"
@@ -475,21 +534,26 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Katalog logów: {log_dir.relative_to(ROOT)}\n")
 
     results: list[dict] = []
-    if args.jobs > 1:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            futures = [
-                executor.submit(run_module, m, log_dir, stall_sec, ROOT)
-                for m in selected
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                res = future.result()
+    try:
+        if args.jobs > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+                futures = [
+                    executor.submit(run_module, m, log_dir, stall_sec, ROOT)
+                    for m in selected
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    res = future.result()
+                    results.append(res)
+                    print(f"[{res['status']}] {res['module']} ({res['time']}s)")
+        else:
+            for m in selected:
+                res = run_module(m, log_dir, stall_sec, ROOT)
                 results.append(res)
                 print(f"[{res['status']}] {res['module']} ({res['time']}s)")
-    else:
-        for m in selected:
-            res = run_module(m, log_dir, stall_sec, ROOT)
-            results.append(res)
-            print(f"[{res['status']}] {res['module']} ({res['time']}s)")
+    except KeyboardInterrupt:
+        kill_active_processes()
+        print("\nPrzerwano działanie runnera (SIGINT).")
+        return 130
 
     # Sortuj wyniki wg kolejności wyboru
     order_map = {name: i for i, name in enumerate(selected)}
