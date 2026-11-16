@@ -768,9 +768,13 @@ def _exit_signals(text: str) -> list[Signal]:
     exits = HEADLESS_EXIT.findall(tail)
     if not exits:
         # Przebieg zabity sygnałem nie zapisuje kodu wyjścia, ale jego linia `sygnał` jest w logu przed raportem.
-        killed = HEADLESS_SIGNAL.search(text)
-        if killed:
-            line = text[killed.start():].split("\n", 1)[0]
+        # Liczy się tylko sygnał własnego przebiegu: między poprzednim raportem (np. wklejonym echem) a tym.
+        previous = text.rfind(HEADLESS_REPORT, 0, final)
+        start = max(previous, 0)
+        signals = list(HEADLESS_SIGNAL.finditer(text[start:final]))
+        if signals:
+            begin = start + signals[-1].start()
+            line = text[begin:].split("\n", 1)[0]
             return [Signal("headless_exit", "killed-signal", evidence(line))]
         return []
     if exits[-1] != "0":

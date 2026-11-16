@@ -209,6 +209,12 @@ class NightRunScanTests(unittest.TestCase):
         [finding] = self._findings(f"{NIGHT_SESSION}-357")
         self.assertEqual(finding["fingerprint"], retro.fingerprint("headless_exit", "killed-signal"))
 
+    def test_signal_echoed_before_an_earlier_report_is_not_own_signal(self) -> None:
+        echoed = "[headless] sygnał SIGTERM po 12.0 s od startu wykonawcy (wrapper pid 9, ppid 8)\n" + REPORT
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + echoed + REPORT)
+        self._scan()
+        self.assertEqual(self._findings(f"{NIGHT_SESSION}-357"), [])
+
     def test_exit_line_echoed_before_report_of_old_format_is_not_an_exit(self) -> None:
         self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + "[headless] kod wyjścia: 1\n" + REPORT)
         self._scan()
