@@ -1864,8 +1864,8 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
         self.assertIn("uzbrój `Monitor` od `P+1` i `ScheduleWakeup` ponownie", self.text)
 
     def test_wakeup_reads_lines_since_the_recorded_position_before_rearm(self) -> None:
-        self.assertIn(r"tail -n +<P+1> <log> | grep '^\[headless\]'", self.text)
-        self.assertIn("`wc -l < <log>`", self.text)
+        self.assertIn(r"grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'", self.text)
+        self.assertNotIn("wc -l", self.text)
         self.assertNotIn("tail -n0", self.text)
 
     def test_end_is_read_again_before_treating_the_task_as_failed(self) -> None:
