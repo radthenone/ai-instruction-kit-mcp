@@ -42,7 +42,13 @@ from guides.labels import LabelsError, ensure_labels
 from guides.manifest import find_kit_root
 from guides.night_ctx import render_night_ctx
 from guides.resolver import PROFILE_REL_PATH, normalize_language
-from guides.retro import default_cache_root, default_projects_root, scan_command
+from guides.retro import (
+    default_cache_root,
+    default_night_root,
+    default_opencode_log,
+    default_projects_root,
+    scan_command,
+)
 from guides.retro_report import report_command
 from guides.issue_stats import run_issue_stats
 from guides.pr_stats import run_pr_stats
@@ -744,6 +750,8 @@ def main(argv: list[str] | None = None) -> int:
                         projects_root=default_projects_root(),
                         cache_root=default_cache_root(),
                         kit_root=kit_root,
+                        night_root=default_night_root(),
+                        opencode_log=default_opencode_log(),
                     )
                 )
         elif args.command == "issue":

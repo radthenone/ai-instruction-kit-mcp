@@ -740,6 +740,15 @@ class HeadlessRunTests(unittest.TestCase):
         self._log("[headless] kod wyjścia: 0\n[headless] raport końcowy\n## git status --short\n M src/x.py\n")
         self.assertEqual(self._signals(), [])
 
+    def test_clean_report_echoed_before_own_report_is_not_own_clean(self) -> None:
+        self._log(
+            "[headless] raport końcowy\n## git status --short\n(czysto)\n"
+            "## git log 472c5d3..HEAD --oneline\n(brak commitów)\n"
+            "[headless] kod wyjścia: 0\n[headless] raport końcowy\n## git status --short\n M src/x.py\n"
+            "## git log 472c5d3..HEAD --oneline\n(brak commitów)\n"
+        )
+        self.assertEqual(self._signals(), [])
+
     def test_run_without_exit_line_is_reported(self) -> None:
         self._log("[headless] sygnał SIGTERM po 1837.7 s\n")
         self.assertEqual(self._signals(), [("headless_exit", "exit-missing")])
