@@ -199,6 +199,11 @@ class NightRunScanTests(unittest.TestCase):
             message = self._scan()
         self.assertTrue(message.startswith("retro:"))
 
+    def test_exit_line_echoed_before_report_of_old_format_is_not_an_exit(self) -> None:
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + "[headless] kod wyjścia: 1\n" + REPORT)
+        self._scan()
+        self.assertEqual(self._findings(f"{NIGHT_SESSION}-357"), [])
+
     def test_last_exit_line_of_a_log_decides_over_echoed_ones(self) -> None:
         self._log(
             "headless-357.log",
@@ -220,13 +225,13 @@ class NightRunScanTests(unittest.TestCase):
         self.assertEqual(finding["fingerprint"], retro.fingerprint("headless_exit", "exit-missing"))
 
     def test_nonzero_exit_line_is_classified(self) -> None:
-        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + "[headless] kod wyjścia: 1\n")
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT + "[headless] kod wyjścia: 1\n")
         self._scan()
         [finding] = self._findings(f"{NIGHT_SESSION}-357")
         self.assertEqual(finding["fingerprint"], retro.fingerprint("headless_exit", "exit-nonzero"))
 
     def test_zero_exit_with_clean_tree_is_no_change(self) -> None:
-        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + "[headless] kod wyjścia: 0\n" + REPORT)
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT + "[headless] kod wyjścia: 0\n")
         self._scan()
         [finding] = self._findings(f"{NIGHT_SESSION}-357")
         self.assertEqual(finding["fingerprint"], retro.fingerprint("headless_no_change", "exit0-clean-tree"))

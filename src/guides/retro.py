@@ -755,19 +755,23 @@ def _night_halt(path: Path) -> tuple[str | None, Signal] | None:
 
 
 def _exit_signals(text: str) -> list[Signal]:
-    """Klasa wyjścia jednego logu. Stary format (``raport końcowy`` bez kodu wyjścia) nie daje klasy."""
-    exits = HEADLESS_EXIT.findall(text)
-    if exits:
-        if exits[-1] != "0":
-            return [Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}"))]
-        # Czysty stan liczy się tylko z końcowego raportu; wcześniejszy wklejony echem go nie zastępuje.
-        final = text.rfind(HEADLESS_REPORT)
-        if final != -1 and HEADLESS_CLEAN.search(text[final:]):
-            return [Signal("headless_no_change", "exit0-clean-tree", "kod wyjścia: 0, czyste drzewo po przebiegu")]
+    """Klasa wyjścia jednego logu, liczona tylko od ostatniego ``raport końcowy``.
+
+    Linie wklejone echem przed raportem (np. ``cat`` cudzego ``headless.log``) nie są kodem tego przebiegu.
+    Stary format (raport bez kodu wyjścia po nim) nie daje klasy wyjścia.
+    """
+    final = text.rfind(HEADLESS_REPORT)
+    if final == -1:
+        return [Signal("headless_exit", "exit-missing", "brak raportu końcowego w logu nocy")]
+    tail = text[final:]
+    exits = HEADLESS_EXIT.findall(tail)
+    if not exits:
         return []
-    if HEADLESS_REPORT in text:
-        return []
-    return [Signal("headless_exit", "exit-missing", "brak linii kod wyjścia i raportu końcowego w logu nocy")]
+    if exits[-1] != "0":
+        return [Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}"))]
+    if HEADLESS_CLEAN.search(tail):
+        return [Signal("headless_no_change", "exit0-clean-tree", "kod wyjścia: 0, czyste drzewo po przebiegu")]
+    return []
 
 
 def _opencode_signals(
