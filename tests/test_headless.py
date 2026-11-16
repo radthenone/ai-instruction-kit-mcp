@@ -1863,6 +1863,12 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
         self.assertIn("Monitor` wygasa po 30 min", self.text)
         self.assertIn("uzbrój `Monitor` i `ScheduleWakeup` ponownie", self.text)
 
+    def test_rearm_checks_the_last_wrapper_line_first(self) -> None:
+        self.assertIn("przed ponownym uzbrojeniem `Monitor` sprawdź ostatnią linię `[headless]`", self.text)
+
+    def test_end_is_read_again_before_treating_the_task_as_failed(self) -> None:
+        self.assertIn(r"ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1`", self.text)
+
     def test_notification_is_confirmed_by_the_last_wrapper_line(self) -> None:
         self.assertIn(r"grep '^\[headless\] kod wyjścia:' <log> | tail -1", self.text)
 
