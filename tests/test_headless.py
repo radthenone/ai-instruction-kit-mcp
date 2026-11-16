@@ -1845,9 +1845,14 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
 
     def test_monitor_is_armed_on_anchored_wrapper_lines_only(self) -> None:
         self.assertIn(
-            r"tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|.*przekazuję zadanie 1:1)'",
+            r"tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'",
             self.text,
         )
+
+    def test_wakeup_checks_whether_the_background_task_still_lives(self) -> None:
+        self.assertIn("czy zadanie w tle nadal żyje", self.text)
+        self.assertIn("aż do końca wywołania", self.text)
+        self.assertNotIn("Gdy jej nie ma, wywołanie trwa.", self.text)
 
     def test_monitor_wakes_on_end_handover_and_stall_lines(self) -> None:
         for line in ("[headless] kod wyjścia: <kod>", "przekazuję zadanie 1:1", "[headless] możliwe zacięcie: brak wyjścia od <n> min"):

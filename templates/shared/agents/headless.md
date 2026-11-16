@@ -74,14 +74,16 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
    `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log; ścieżka z pierwszej linii `[headless] log: <log>`:
-   `tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|.*przekazuję zadanie 1:1)'`.
-   Wzorzec jest zakotwiczony na początku linii wrappera, bo wykonawca wypisuje do logu własny tekst. Budzi na trzy rodzaje
-   linii: `[headless] kod wyjścia: <kod>` (koniec wywołania), `… przekazuję zadanie 1:1` (przekazanie, także po limicie)
-   i `[headless] możliwe zacięcie: brak wyjścia od <n> min` (ostrzeżenie; samo zacięcie niczego nie zabija).
+   `tail -n0 -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'`.
+   Wzorzec jest zakotwiczony na początku linii wrappera, bo wykonawca wypisuje do logu własny tekst. Budzi na cztery rodzaje
+   linii: `[headless] kod wyjścia: <kod>` (koniec wywołania), `[headless] sygnał SIG…` (zabicie sygnałem),
+   `… przekazuję zadanie 1:1` (przekazanie 1:1 po błędzie albo limicie) i `[headless] możliwe zacięcie: brak wyjścia od <n> min`
+   (ostrzeżenie; samo zacięcie niczego nie zabija).
    Powiadomienie to sygnał do sprawdzenia, nie dowód: potwierdź jedną linią `grep '^\[headless\] kod wyjścia:' <log> | tail -1`.
-   Gdy jej nie ma, wywołanie trwa.
+   Gdy jej nie ma, sprawdź, czy zadanie w tle nadal żyje (stan zadania albo powiadomienie tła). Jeśli nie,
+   wywołanie skończyło się sygnałem albo błędem wrappera: przeczytaj ostatnią linię `[headless]` i nie uzbrajaj ponownie.
    Zapas: `Monitor` wygasa po 30 min, więc `ScheduleWakeup` na 30 min. Po każdym wybudzeniu bez `kod wyjścia`
-   uzbrój `Monitor` i `ScheduleWakeup` ponownie, aż do końca runu.
+   uzbrój `Monitor` i `ScheduleWakeup` ponownie, aż do końca wywołania (`kod wyjścia` albo powiadomienie tła).
    Klienty bez tych narzędzi czytają log jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu
    w ostatnim kroku (10 min: bajty wyjścia, zmiana `HEAD`/`git status`, a z `/proc` także CPU) albo sufit
    120 min, a wrapper przechodzi dalej 1:1. Pętla (to samo wywołanie narzędzia 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,
