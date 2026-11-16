@@ -71,7 +71,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
 
    Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
-   `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log od pozycji `P+1` (`P` to numer ostatniej przetworzonej linii `[headless]`, na starcie `P=0`); ścieżka z pierwszej linii `[headless] log: <log>`:
+   `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log od pozycji `P+1` (`P` to numer ostatniej przetworzonej linii `[headless]`, na starcie `P=0`) i, w `/loop`, `ScheduleWakeup` na 30 min od razu; ścieżka z pierwszej linii `[headless] log: <log>`:
    `tail -n +<P+1> -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'`.
    Wzorzec jest zakotwiczony na początku linii wrappera, bo wykonawca wypisuje do logu własny tekst. Budzi na cztery rodzaje
    linii: `[headless] kod wyjścia: <kod>` (koniec wywołania), `[headless] sygnał SIG…` (zabicie sygnałem),
@@ -83,7 +83,7 @@ Zastępca bierze swój domyślny model (`--model` dotyczy tylko wykonawcy z wywo
    Dopiero bez kodu wyjścia to sygnał albo błąd wrappera: przeczytaj ostatnią linię `[headless]` i nie uzbrajaj ponownie.
    Zapas czasowy: `ScheduleWakeup` jest przewidziany tylko dla trybu `/loop`. Poza `/loop` zapasu czasowego nie ma: `Monitor` wygasa po 30 min, a koniec wywołania przychodzi jako powiadomienie tła. Po każdym wybudzeniu (powiadomienie `Monitor` albo, w `/loop`, `ScheduleWakeup`) przeczytaj nowe linie `[headless]` z numerami:
    `grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'` (zdarzenia z przerwy w nasłuchu), zapamiętaj `P` jako numer
-   ostatniej z nich (bez nowych linii `P` zostaje), dopiero potem uzbrój `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`),
+   ostatniej z nich (bez nowych linii `P` zostaje), dopiero potem zatrzymaj poprzedni `Monitor` (`TaskStop` po jego `task_id`; `tail -F` nie kończy się po pierwszym dopasowaniu) i uzbrój nowy `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`),
    aż do końca wywołania (`kod wyjścia` albo powiadomienie tła). Odczyt i `P` pochodzą z jednego polecenia, więc linia
    zapisana później ma numer większy niż `P` i nasłuch od `P+1` ją obejmie.
    Klienty bez tych narzędzi czytają log jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu

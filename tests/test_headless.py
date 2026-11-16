@@ -1862,7 +1862,15 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
         self.assertIn("`ScheduleWakeup` jest przewidziany tylko dla trybu `/loop`", self.text)
         self.assertIn("Poza `/loop` zapasu czasowego nie ma", self.text)
         self.assertIn("Monitor` wygasa po 30 min", self.text)
-        self.assertIn("uzbrój `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`)", self.text)
+        self.assertIn("uzbrój nowy `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`)", self.text)
+        self.assertIn("i, w `/loop`, `ScheduleWakeup` na 30 min od razu", self.text)
+
+    def test_previous_monitor_is_stopped_before_rearm(self) -> None:
+        self.assertIn("zatrzymaj poprzedni `Monitor` (`TaskStop` po jego `task_id`", self.text)
+        self.assertLess(
+            self.text.index("zatrzymaj poprzedni `Monitor`"),
+            self.text.index("uzbrój nowy `Monitor` od `P+1`"),
+        )
 
     def test_wakeup_reads_lines_since_the_recorded_position_before_rearm(self) -> None:
         self.assertIn(r"grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'", self.text)
