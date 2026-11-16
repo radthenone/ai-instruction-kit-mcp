@@ -107,6 +107,27 @@ class NightRunScanTests(unittest.TestCase):
         self._scan()
         self.assertEqual(self._records(f"{NIGHT_SESSION}-357")[0]["attempts"], 1)
 
+    def test_since_keeps_every_log_of_a_ticket_when_one_is_fresh(self) -> None:
+        old = datetime(2026, 10, 1, tzinfo=UTC).timestamp()
+        fresh = datetime(2026, 11, 10, tzinfo=UTC).timestamp()
+        self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=old)
+        self._log("headless-357-r2.log", RUN_HEADER + TICKET + ATTEMPT + REPORT, mtime=fresh)
+        self._scan(since="2026-11-01")
+        records = self._records(f"{NIGHT_SESSION}-357")
+        self.assertEqual(records[0]["attempts"], 2)
+        self.assertEqual(records[0]["files"], 2)
+
+    def test_night_level_halt_id_does_not_collide_with_ticket_of_base_night(self) -> None:
+        base = self.home_cache / "night-run-olivin-app-2026-10-28"
+        suffixed = self.home_cache / "night-run-olivin-app-2026-10-28-2"
+        base.mkdir()
+        suffixed.mkdir()
+        (base / "headless-2.log").write_text(RUN_HEADER + TICKET.replace("357", "2") + ATTEMPT + REPORT, encoding="utf-8")
+        (suffixed / "halt.md").write_text("night-run halted: brak zasobów w CI\n", encoding="utf-8")
+        self._scan()
+        self.assertEqual(self._findings("night-2026-10-28-2"), [])
+        self.assertEqual([finding["kind"] for finding in self._findings("night-2026-10-28-2-halt")], ["night_halt"])
+
     def test_last_exit_line_of_a_log_decides_over_echoed_ones(self) -> None:
         self._log(
             "headless-357.log",
@@ -150,7 +171,7 @@ class NightRunScanTests(unittest.TestCase):
         self._log("headless-357.log", RUN_HEADER + TICKET + ATTEMPT + REPORT)
         (self.night / "halt.md").write_text("night-run halted: brak zasobów w CI\n", encoding="utf-8")
         self._scan()
-        [finding] = self._findings(NIGHT_SESSION)
+        [finding] = self._findings(f"{NIGHT_SESSION}-halt")
         self.assertEqual(finding["kind"], "night_halt")
         self.assertEqual(self._findings(f"{NIGHT_SESSION}-357"), [])
 

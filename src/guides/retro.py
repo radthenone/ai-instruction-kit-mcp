@@ -734,9 +734,14 @@ def _run_start(stamp: str) -> datetime | None:
         return None
 
 
-def _night_halt(path: Path, cutoff: float | None) -> tuple[str | None, Signal] | None:
+def _fresh(path: Path, cutoff: float | None) -> bool:
+    """Plik zmieniony od ``cutoff`` (``--since``); bez cutoffu każdy plik jest świeży."""
+    return cutoff is None or _mtime(path) >= cutoff
+
+
+def _night_halt(path: Path) -> tuple[str | None, Signal] | None:
     """Pierwsza linia ``halt.md``: ticket z pierwszego ``#N`` w tej linii, bez numeru zostaje Sesja nocy."""
-    if not path.is_file() or (cutoff is not None and _mtime(path) < cutoff):
+    if not path.is_file():
         return None
     lines = _read_text(path).splitlines()
     first = lines[0] if lines else ""
@@ -785,19 +790,28 @@ def night_sessions(
     Próba to plik logu ``headless-<N>[-rK].log`` (jedno wywołanie ``/headless``). Linie wykonawcy
     wklejone do logu (np. ``cat`` własnego ``headless.log``) nie tworzą prób ani klas.
     Okno ticketu w ``opencode.log`` to od startu wywołania do mtime jego logów.
-    Halt bez numeru ticketu zostaje na Sesji nocy ``night-<data>``.
+    Halt bez numeru ticketu zostaje na Sesji nocy ``night-<data>-halt`` (osobna przestrzeń ID).
+    ``cutoff`` wybiera ticket w całości: gdy któryś jego log jest świeży, bierzemy wszystkie logi,
+    bo częściowa Sesja nadpisałaby pełny wynik poprzedniego skanu.
     """
     sessions: list[ParsedSession] = []
     for stamp, night_dir in night_run_dirs(night_root, repo):
-        tickets: dict[str, _Ticket] = {}
+        all_logs: dict[str, list[Path]] = {}
         for path in sorted(night_dir.iterdir()):
             match = NIGHT_LOG.fullmatch(path.name)
-            if match and path.is_file() and (cutoff is None or _mtime(path) >= cutoff):
-                tickets.setdefault(match.group("ticket"), _Ticket()).logs.append(path)
-        halt = _night_halt(night_dir / "halt.md", cutoff)
+            if match and path.is_file():
+                all_logs.setdefault(match.group("ticket"), []).append(path)
+        halt_path = night_dir / "halt.md"
+        halt = _night_halt(halt_path)
+        halt_fresh = halt is not None and _fresh(halt_path, cutoff)
+        tickets: dict[str, _Ticket] = {}
+        for number, logs in all_logs.items():
+            if any(_fresh(path, cutoff) for path in logs) or (halt_fresh and halt[0] == number):
+                tickets[number] = _Ticket(logs=logs)
         if halt is not None and halt[0] is None:
-            sessions.append(ParsedSession(session_id=f"night-{stamp}", files=0, signals=[halt[1]]))
-        elif halt is not None:
+            if halt_fresh:
+                sessions.append(ParsedSession(session_id=f"night-{stamp}-halt", files=0, signals=[halt[1]]))
+        elif halt is not None and (halt[0] in tickets or halt_fresh):
             tickets.setdefault(halt[0], _Ticket()).signals.append(halt[1])
         for ticket in tickets.values():
             texts = [_read_text(path) for path in ticket.logs]
