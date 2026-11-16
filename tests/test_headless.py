@@ -1835,6 +1835,27 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.argv()[0], "opencode2")
 
 
+class HeadlessWatchProcedureTest(unittest.TestCase):
+    """Procedura /headless uzbraja Monitor na log i zapas ScheduleWakeup (#425); test czyta treść szablonu."""
+
+    TEMPLATE = KIT_ROOT / "templates/shared/agents/headless.md"
+
+    def setUp(self) -> None:
+        self.text = self.TEMPLATE.read_text(encoding="utf-8")
+
+    def test_monitor_is_armed_on_the_log_after_starting_the_worker(self) -> None:
+        self.assertIn("tail -n0 -F <log> | grep --line-buffered -E 'kod wyjścia|zakończony klasą|możliwe zacięcie'", self.text)
+
+    def test_monitor_wakes_on_end_class_change_and_stall_lines(self) -> None:
+        for line in ("[headless] kod wyjścia: <kod>", "zakończony klasą <klasa>", "[headless] możliwe zacięcie: brak wyjścia od <n> min"):
+            self.assertIn(line, self.text)
+
+    def test_schedule_wakeup_is_the_backup_when_monitor_expires(self) -> None:
+        self.assertIn("`ScheduleWakeup` na termin runu", self.text)
+        self.assertIn("Monitor` wygasa po 30 min", self.text)
+        self.assertIn("uzbrój `Monitor` i `ScheduleWakeup` ponownie", self.text)
+
+
 def node_export(expression: str, cwd: Path) -> Any:
     """Wynik wyrażenia z eksportów wrappera w node; import nie uruchamia `main`."""
     script = f"import * as h from {json.dumps(WRAPPER.as_uri())};\nconsole.log(JSON.stringify(await ({expression})));"
