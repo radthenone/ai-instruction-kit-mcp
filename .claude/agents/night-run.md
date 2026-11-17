@@ -369,7 +369,9 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 **Clean Slate** przysługuje raz na ticket, po 2. nieudanej rundzie naprawczej albo po zadziałaniu circuit breakera (krok 6 w `night-run-ticket`):
 1. Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`: `git status --porcelain` pusty
    i `git log origin/<branch>..HEAD` pusty; niespełniony warunek, błąd fetch albo komendy → needs-human bez resetu (przypadek A).
-2. Reset: `git switch --detach origin/<BASE>`. Stary branch zostaje; jego PR zamykasz
+2. Reset: `git switch --no-overwrite-ignore --detach origin/<BASE>` (bez tej opcji git nadpisuje pliki
+   ignorowane kolidujące z plikami śledzonymi w bazie); odmowa przełączenia (kolizja z plikiem ignorowanym) → needs-human bez resetu
+   (przypadek A). Stary branch zostaje; jego PR zamykasz
    `gh pr close <PR> --comment "Zastąpiony przez Clean Slate"`. Nowy branch: `<typ>/<N>-<slug>-clean-slate`.
 3. Świeży subagent ticketu od kroku 1, z modelem i effort z linii `Clean Slate:` w nagłówku CTX
    (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.

@@ -102,7 +102,9 @@ class TestCleanSlateProcedure(unittest.TestCase):
         self.assertIn("`git status --porcelain` pusty", text)
         self.assertIn("`git log origin/<branch>..HEAD` pusty", text)
         self.assertIn("needs-human bez resetu", text)
-        self.assertIn("`git switch --detach origin/<BASE>`", text)
+        self.assertIn("`git switch --no-overwrite-ignore --detach origin/<BASE>`", text)
+        self.assertNotIn("`git switch --detach origin/<BASE>`", text)
+        self.assertIn("odmowa przełączenia (kolizja z plikiem ignorowanym) → needs-human bez resetu", text)
         self.assertNotIn("reset --hard origin", text)
         self.assertIn("błąd fetch albo komendy", text)
         self.assertIn("własny sufit 3 rund", text)
@@ -122,14 +124,25 @@ class TestCleanSlateT3Card(unittest.TestCase):
     def test_records_stage_before_removing_worktree(self) -> None:
         text = _flat(T3_CARD)
         section = text[text.index("## 7. Clean Slate") :]
-        stage = section.index("zapisuje w `## Stan` etap Clean Slate ze starym `taskId`")
-        remove = section.index("`node .ai/worktree.mjs remove <katalog>`")
-        delegate = section.index("woła świeży `delegate_task`")
-        new_id = section.index("Nowy `taskId` zastępuje stary w `## Stan`")
-        self.assertLess(stage, remove)
-        self.assertLess(remove, delegate)
-        self.assertLess(delegate, new_id)
-        self.assertIn("nie powtarza usunięcia ani drugiego Clean Slate", text)
+        steps = [
+            "1. zapisuje w `## Stan` etap `clean-slate: w toku` ze starym `taskId`, notatką o błędzie X i ścieżce Y"
+            " oraz ścieżką worktree",
+            "2. usuwa worktree ticketu (`node .ai/worktree.mjs remove <katalog>`)",
+            "3. zapisuje w `## Stan` etap `clean-slate: worktree usunięty`",
+            "4. woła świeży `delegate_task`",
+            "5. zapisuje nowy `taskId` w `## Stan` w miejsce starego",
+        ]
+        positions = [section.index(step) for step in steps]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_resume_reads_recorded_stage_and_note(self) -> None:
+        section = _flat(T3_CARD)[_flat(T3_CARD).index("## 7. Clean Slate") :]
+        self.assertIn("notatkę zapisaną w kroku 1", section)
+        self.assertIn("z `## Stan`, nie z pamięci sesji", section)
+        self.assertIn("etap `clean-slate: w toku` i worktree istnieje → dokończ usunięcie i przejdź do kroku 3", section)
+        self.assertIn("etap `clean-slate: w toku` i worktree już nie istnieje → przejdź do kroku 4", section)
+        self.assertIn("ten sam `clientRequestId`", section)
+        self.assertIn("nigdy drugi `delegate_task` z innym `clientRequestId` dla tego samego Clean Slate", section)
 
 
 if __name__ == "__main__":
