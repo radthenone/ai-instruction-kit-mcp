@@ -134,6 +134,7 @@ class TestNightRunMergeGate(unittest.TestCase):
         card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")
         for field in ("Co zaimplementowano:", "Na czym utknął:", "Hipoteza:", "Wątek T3:"):
             self.assertIn(field, card)
+        self.assertRegex(card, r"(?:^| )PR: <[^>]*pull request[^>]*>")
 
     def test_queue_continues_after_needs_human(self) -> None:
         card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")

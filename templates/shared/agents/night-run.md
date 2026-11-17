@@ -435,6 +435,7 @@ needs-human: <jedno zdanie, co stoi>
 Co zaimplementowano: <zmiany i commity na branchu>
 Na czym utknął: <dokładny błąd albo test>
 Hipoteza: <prawdopodobna przyczyna, np. brak mocka, brak migracji>
+PR: <link do pull requesta ticketu>
 Wątek T3: <link wątku sesji ticketu; poza T3 Code → n/d>
 ```
 
