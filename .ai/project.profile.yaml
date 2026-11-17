@@ -31,6 +31,50 @@ models:
     heavy: opus
     takeover: haiku
 
+t3:
+  targets:
+    claude:
+      light:
+        providerInstanceId: claudeAgent
+        model: claude-haiku-5-5
+        options: [{ id: effort, value: low }]
+      standard:
+        providerInstanceId: claudeAgent
+        model: claude-haiku-5-5
+        options: [{ id: effort, value: max }]
+      heavy:
+        providerInstanceId: claudeAgent
+        model: claude-opus-5-5
+        options: [{ id: effort, value: medium }]
+
+    antigravity:
+      light:
+        providerInstanceId: antigravity
+        model: gemini-3.8-flash
+        options: [{ id: thinking_level, value: low }]
+      standard:
+        providerInstanceId: antigravity
+        model: gemini-3.8-flash
+        options: [{ id: thinking_level, value: high }]
+      heavy:
+        providerInstanceId: antigravity
+        model: claude-opus-4-6-thinking
+        options: [{ id: thinking_level, value: high }]
+
+    opencode:
+      light:
+        providerInstanceId: opencode
+        model: opencode/glm-5.3-flash-free
+        options: [{ id: variant, value: high }]
+      standard:
+        providerInstanceId: opencode
+        model: opencode/deepseek-v4.1-flash-free
+        options: [{ id: variant, value: high }]
+      heavy:
+        providerInstanceId: opencode
+        model: opencode/deepseek-v4.1-flash-free
+        options: [{ id: variant, value: high }]
+
 worktree:
   copy:
     - .mcp.json
