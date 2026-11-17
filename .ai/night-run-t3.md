@@ -36,7 +36,7 @@ Parametry nocy `implementacja: <wykonawca> <model>; review: <wykonawca> <model>`
 | `opencode` | `opencode` | `<provider>/<model>` z listy providera, np. `github-copilot/claude-haiku-5.5` | `[{id: "variant", value: "high"}]` |
 
 Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "claudeAgent", model: "claude-haiku-5-5", options: [{id: "effort", value: "low"}]}`, a review idzie z `role: review`, `mode: wait`, `isolation: shared`.
-- przed pierwszym `delegate_task` w sesji: `orchestrator_capabilities`; nazwy modeli i `options` bierz z jego wyniku, nie z pamięci; `providerInstanceId` w tabeli to nazwa domyślna — gdy `orchestrator_capabilities` zwraca ją jako wyłączoną, a włączona jest dokładnie jedna inna instancja tego samego `driverKind` (np. `opencode2`), użyj jej i wpisz wybraną instancję do raportu; kilka kandydatów albo żadnego → needs-human;
+- przed pierwszym `delegate_task` w sesji: `orchestrator_capabilities`; nazwy modeli i `options` bierz z jego wyniku, nie z pamięci; `providerInstanceId` w tabeli to nazwa domyślna — gdy w wyniku `orchestrator_capabilities` jest wyłączona albo jej nie ma → needs-human; nie wybieraj innej instancji tego samego `driverKind`, nawet gdy włączona jest dokładnie jedna (np. `opencode2`);
 - `options` tylko gdy parametr nocy je podaje albo provider ich wymaga; brak `<model>` → pomiń pole `model` (domyślny model providera);
 - provider albo model niedostępny → needs-human, bez cichej zamiany na inny model i bez fallbacku na natywne narzędzia.
 

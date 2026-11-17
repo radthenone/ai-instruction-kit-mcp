@@ -182,6 +182,13 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("effort", section)
         self.assertIn("review", section)
 
+    def test_disabled_default_provider_instance_is_needs_human(self) -> None:
+        """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertIn("wyłączona albo jej nie ma → needs-human", section)
+        self.assertIn("nie wybieraj innej instancji tego samego `driverKind`", section)
+        self.assertNotIn("użyj jej i wpisz wybraną instancję do raportu", section)
+
     def test_reactive_pr_watch_in_card(self) -> None:
         """#500: nasłuch PR przez link/watch/unwatch_pull_request zamiast pętli gh pr checks --watch."""
         for tool in ("link_pull_request", "watch_pull_request", "unwatch_pull_request"):
