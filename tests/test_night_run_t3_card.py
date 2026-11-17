@@ -170,6 +170,31 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertNotIn("sekcji „Etykiety” w `git-end`", self.card_text)
         self.assertIn("bez prefiksu `(night-run)`", self.card_text)
 
+    def test_model_target_matrix_in_card(self) -> None:
+        """#500: sekcja 2 mapuje `<wykonawca> <model>` na obiekt target T3 Code."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertIn("target", section)
+        for key in ("providerInstanceId", "model", "options"):
+            self.assertIn(key, section)
+        for provider in ("antigravity", "claudeAgent", "opencode"):
+            self.assertIn(f"`{provider}`", section)
+        self.assertIn("thought_level", section)
+        self.assertIn("effort", section)
+        self.assertIn("review", section)
+
+    def test_reactive_pr_watch_in_card(self) -> None:
+        """#500: nasłuch PR przez link/watch/unwatch_pull_request zamiast pętli gh pr checks --watch."""
+        for tool in ("link_pull_request", "watch_pull_request", "unwatch_pull_request"):
+            self.assertIn(tool, self.card_text)
+        self.assertIn("zamiast pętli `gh pr checks --watch`", self.card_text)
+
+    def test_coderabbit_graphql_threads_in_card(self) -> None:
+        """#500: sekcja 5 ma zapytanie reviewThreads i mutację resolveReviewThread."""
+        section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("reviewThreads", section)
+        self.assertIn("resolveReviewThread(input:{threadId:$id})", section)
+        self.assertIn("CodeRabbit", section)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)

@@ -25,6 +25,21 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
   * `mode: async`;
   * `task` — specyfikacja zadania implementacyjnego, testy z timeoutem, log postępu w CTX oraz obowiązkowy hand-back.
 
+### Mapowanie modeli na `target`
+
+Parametry nocy `implementacja: <wykonawca> <model>; review: <wykonawca> <model>` sesja ticketu tłumaczy na obiekt `target` w `delegate_task` (osobno dla implementacji i dla review):
+
+| `<wykonawca>` | `providerInstanceId` | `model` (przykład) | `options` (przykład) |
+|---------------|----------------------|--------------------|----------------------|
+| `claude` | `claudeAgent` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` | `[{id: "effort", value: "medium"}]` |
+| `antigravity` | `antigravity` | model z listy providera | `[{id: "thought_level", value: "high"}]` |
+| `opencode` | `opencode` | `<provider>/<model>` z listy providera | brak albo opcje z listy providera |
+
+Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "claudeAgent", model: "claude-haiku-5-5", options: [{id: "effort", value: "low"}]}`, a review idzie z `role: review`, `mode: wait`, `isolation: shared`.
+- przed pierwszym `delegate_task` w sesji: `orchestrator_capabilities`; nazwy modeli i `options` bierz z jego wyniku, nie z pamięci;
+- `options` tylko gdy parametr nocy je podaje albo provider ich wymaga; brak `<model>` → pomiń pole `model` (domyślny model providera);
+- provider albo model niedostępny → needs-human, bez cichej zamiany na inny model i bez fallbacku na natywne narzędzia.
+
 ## 3. Stan i wznawianie
 
 - Identyfikator zadania `taskId` zwrócony przez `delegate_task` zostaje zapisany w `## Stan` w pliku CTX (`ticket: #<N> taskId: <taskId>`);
@@ -34,11 +49,26 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
 ## 4. Watchdog i cron
 
 - watchdog i cron pominięte: w środowisku T3 nie uruchamia się skryptu `.ai/night-run-watchdog.sh` ani `CronCreate` (T3 samodzielnie zarządza cyklem życia zadań i wątków w tle).
+- nasłuch PR reaktywny, zamiast pętli `gh pr checks --watch` (ani `sleep`, `Monitor`, `ScheduleWakeup`): zaraz po `gh pr create` orkiestrator woła `link_pull_request` z pełnym URL PR, potem `watch_pull_request`; T3 wybudza orkiestratora po zakończeniu checków albo przy nowym komentarzu lub review, a orkiestrator kończy turę zamiast czekać;
+- `unwatch_pull_request` po `MERGED`, po decyzji needs-human dla PR i przed końcem nocy (NIGHT-RUN REPORT) — na każdym PR, który orkiestrator obserwuje.
 
-## 5. Sprzątanie po MERGED
+## 5. Uwagi CodeRabbit i sprzątanie po MERGED
+
+Po wybudzeniu z `watch_pull_request` z nowymi uwagami CodeRabbit (autor `coderabbitai`) orkiestrator przekazuje je sesji ticketu (albo wykonawcy); po pushu poprawki zamyka tylko wątki zaadresowane tą poprawką, przez GraphQL:
+
+```bash
+gh api graphql -F pr=<N> -f owner=<owner> -f repo=<repo> -f query='
+query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+  reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{author{login} path body}}}}}}}'
+gh api graphql -f id=<threadId> -f query='
+mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'
+```
+
+- `reviewThreads` filtruj po `isResolved: false` i autorze `coderabbitai`; `id` wątku idzie do `resolveReviewThread(input:{threadId:$id})`;
+- uwaga niezaadresowana albo odrzucona → wątek zostaje otwarty, z odpowiedzią w wątku (powód), nie zamykany po cichu.
 
 Gdy PR ticketu osiągnie stan `MERGED`:
-1. Orkiestrator woła narzędzie `link_pull_request` z adresem URL zmergowanego PR;
+1. Orkiestrator woła `unwatch_pull_request` dla PR (podpiętego wcześniej przez `link_pull_request`, sekcja 4);
 2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
 3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
