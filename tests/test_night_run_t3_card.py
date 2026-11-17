@@ -186,6 +186,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
             self.card_text,
         )
         self.assertIn("ticket → needs-human z opisem dialogu w raporcie", self.card_text)
+        self.assertIn("po każdym `delegate_task` i przy każdym `task_status`", self.card_text)
+        self.assertIn("brak pewności dopasowania → needs-human", self.card_text)
 
     def test_provider_rotation_only_with_fallback_parameter(self) -> None:
         """#504: rotacja providera przy limicie tylko z parametrem zapas; bez niego needs-human."""
@@ -194,6 +196,9 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("`antigravity` ↔ `claudeAgent`", self.card_text)
         self.assertIn("tylko na podstawie parametru", self.card_text)
         self.assertIn("Bez parametru `zapas` limit → needs-human", self.card_text)
+        self.assertIn("`clientRequestId` z sufiksem `-zapas`", self.card_text)
+        self.assertIn("Pola `night-run.clean-slate` z Profilu mają pierwszeństwo przed zapasem", self.card_text)
+        self.assertIn("albo bez modelu → needs-human", self.card_text)
 
     def test_no_pause_or_polling_when_both_providers_exhausted(self) -> None:
         """#504: wyczerpanie obu providerów → needs-human, bez pauzy i odpytywania o reset."""
