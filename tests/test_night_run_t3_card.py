@@ -176,6 +176,60 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertNotIn("sekcji „Etykiety” w `git-end`", self.card_text)
         self.assertIn("bez prefiksu `(night-run)`", self.card_text)
 
+    def test_model_target_matrix_in_card(self) -> None:
+        """#500: sekcja 2 mapuje `<wykonawca> <model>` na obiekt target T3 Code."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertIn("target", section)
+        for key in ("providerInstanceId", "model", "options"):
+            self.assertIn(key, section)
+        for executor, provider in (("claude", "claudeAgent"), ("antigravity", "antigravity"), ("opencode", "opencode")):
+            self.assertIn(f"| `{executor}` | `{provider}` |", section)
+        self.assertIn("thought_level", section)
+        self.assertIn("effort", section)
+        self.assertIn("review", section)
+        example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
+        self.assertNotIn("options", example)
+        self.assertIn("t3.targets.<wykonawca>.<tier>", section)
+        self.assertIn(".ai/project.profile.yaml", section)
+
+    def test_disabled_default_provider_instance_is_needs_human(self) -> None:
+        """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertIn("wyłączona albo jej nie ma → needs-human", section)
+        self.assertIn("nie wybieraj innej instancji tego samego `driverKind`", section)
+        self.assertNotIn("użyj jej i wpisz wybraną instancję do raportu", section)
+
+    def test_reactive_pr_watch_in_card(self) -> None:
+        """#500: nasłuch PR przez link/watch/unwatch_pull_request zamiast pętli gh pr checks --watch."""
+        for tool in ("link_pull_request", "watch_pull_request", "unwatch_pull_request"):
+            self.assertIn(tool, self.card_text)
+        self.assertIn("zamiast pętli `gh pr checks --watch`", self.card_text)
+
+    def test_coderabbit_graphql_threads_in_card(self) -> None:
+        """#500: sekcja 5 ma zapytanie reviewThreads, mutację resolveReviewThread i treść review dla head."""
+        section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("reviewThreads", section)
+        self.assertIn("resolveReviewThread(input:{threadId:$id})", section)
+        self.assertIn("CodeRabbit", section)
+        # PR #507: treść review CodeRabbit dla bieżącego head commita (uwagi poza diffem)
+        # PR #507 (CodeRabbit): wszystkie strony review, wybór ostatniego wpisu ze wszystkich stron
+        self.assertIn("gh api --paginate --slurp repos/<owner>/<repo>/pulls/<N>/reviews", section)
+        self.assertIn(
+            'flatten | map(select(.user.login == "coderabbitai[bot]" and .commit_id == "<head>")) | last',
+            section,
+        )
+        self.assertIn("Outside diff range", section)
+        self.assertIn("skrócony podgląd", section)
+        # PR #507 (CodeRabbit): błąd gh api albo pusty wynik to needs-human, null to oczekiwanie na review head
+        self.assertIn("set -o pipefail", section)
+        self.assertIn("błąd odczytu review", section)
+        self.assertIn("`null`", section)
+        self.assertIn("poczekaj na review bieżącego head", section)
+        # PR #507 (CodeRabbit): odczyt wcześniejszych review bez commit_id oraz limit czasu null z git-end
+        self.assertIn('map(select(.user.login == "coderabbitai[bot]"))', section)
+        self.assertIn("limit czasu (maks. 10–15 min)", section)
+        self.assertIn("git-end", section)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)
