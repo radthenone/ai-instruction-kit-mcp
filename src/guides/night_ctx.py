@@ -202,7 +202,7 @@ def clean_slate_config(profile: dict[str, object]) -> dict[str, str]:
     return {
         key: str(section[key]).strip()
         for key in CLEAN_SLATE_KEYS
-        if section.get(key) is not None and str(section[key]).strip()
+        if isinstance(section.get(key), (str, int, float)) and str(section[key]).strip()
     }
 
 

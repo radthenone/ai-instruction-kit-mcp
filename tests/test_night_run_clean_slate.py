@@ -44,7 +44,7 @@ class TestCleanSlateProfile(unittest.TestCase):
                 self.assertEqual(clean_slate_config(profile), {})
 
     def test_ignores_unknown_and_empty_keys(self) -> None:
-        profile = {"night-run": {"clean-slate": {"model": "opus", "effort": "", "temperature": 1}}}
+        profile = {"night-run": {"clean-slate": {"model": "opus", "effort": "", "temperature": 1, "provider": ["x"]}}}
         self.assertEqual(clean_slate_config(profile), {"model": "opus"})
 
     def test_ctx_header_line_only_when_configured(self) -> None:
@@ -88,9 +88,11 @@ class TestCleanSlateProcedure(unittest.TestCase):
         text = _flat(NIGHT_RUN)
         self.assertIn("`git status --porcelain` pusty", text)
         self.assertIn("`git log origin/<branch>..HEAD` pusty", text)
-        self.assertIn("inaczej needs-human bez resetu", text)
+        self.assertIn("needs-human bez resetu", text)
         self.assertIn("`git switch --detach origin/<BASE>`", text)
         self.assertNotIn("reset --hard origin", text)
+        self.assertIn("błąd fetch albo komendy", text)
+        self.assertIn("własny sufit 3 rund", text)
 
 
 class TestCleanSlateT3Card(unittest.TestCase):

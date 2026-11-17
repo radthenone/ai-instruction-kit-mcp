@@ -354,7 +354,7 @@ szybkich, krok 6 w `night-run-ticket`), nigdy push.
 **needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po wyczerpaniu sufitu rund (E); kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
 po 3 próbach naprawy (wspólny sufit 3 rund naprawczych CI i CodeRabbit) albo circuit breaker (identyczny błąd, flip-flop,
-eksplozja diffa — krok 6 w `night-run-ticket`); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
+eksplozja diffa — krok 6 w `night-run-ticket`; po 2. rundzie najpierw Clean Slate, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
 błąd builda przy aktualizacji samego lockfile → etykieta
 `needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
@@ -369,13 +369,14 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 
 **Clean Slate** przysługuje raz na ticket, po 2. nieudanej rundzie naprawczej (krok 6 w `night-run-ticket`):
 1. Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`: `git status --porcelain` pusty
-   i `git log origin/<branch>..HEAD` pusty (bez błędu komendy); inaczej needs-human bez resetu (przypadek A).
+   i `git log origin/<branch>..HEAD` pusty; niespełniony warunek, błąd fetch albo komendy → needs-human bez resetu (przypadek A).
 2. Reset: `git switch --detach origin/<BASE>`. Stary branch zostaje; jego PR zamykasz
    `gh pr close <PR> --comment "Zastąpiony przez Clean Slate"`. Nowy branch: `<typ>/<N>-<slug>-clean-slate`.
 3. Świeży subagent ticketu od kroku 1, z modelem i effort z linii `Clean Slate:` w nagłówku CTX
    (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.
    Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty” i notatkę: „Poprzednie podejście zawiodło
-   z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu).
+   z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu). Nowy subagent ma
+   własny sufit 3 rund; drugiego Clean Slate nie ma, więc wyczerpany sufit → needs-human.
 
 ### Zasięg — zanim cokolwiek zrobisz
 
