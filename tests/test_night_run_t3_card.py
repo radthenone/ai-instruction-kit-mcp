@@ -196,7 +196,13 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("`antigravity` ↔ `claudeAgent`", self.card_text)
         self.assertIn("tylko na podstawie parametru", self.card_text)
         self.assertIn("Bez parametru `zapas` limit → needs-human", self.card_text)
-        self.assertIn("`clientRequestId` z sufiksem `-zapas`", self.card_text)
+        self.assertIn("`clientRequestId` o sufiksie `-zapas`", self.card_text)
+        self.assertIn("nowy `taskId` sesji zastępuje stary w `## Stan`", self.card_text)
+        self.assertIn(
+            "Ponowienie po limicie wykonawcy wykonuje sesja ticketu na zapasie; "
+            "wpis `## Stan` pozostaje bez zmian",
+            self.card_text,
+        )
         self.assertIn("Pola `night-run.clean-slate` z Profilu mają pierwszeństwo przed zapasem", self.card_text)
         self.assertIn("albo bez modelu → needs-human", self.card_text)
 
