@@ -9,6 +9,7 @@ Język odpowiedzi, statusy i hand-back: z MCP `get_language` (Profil), niezależ
 ## Reguły wspólne
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev` — nigdy push. Niska pewność (auth, ACL, migracje, concurrency) → needs-human, nie zgaduj.
+Nie skipujesz, nie usuwasz i nie osłabiasz testów. Nie `--no-verify`.
 
 ## Rola
 
@@ -17,7 +18,11 @@ Z kontekstu projektu czytasz tylko część wspólną z `<CTX>` oraz wyłącznie
 
 ## Prompt ticketu
 
-Komendy kitu w krokach uruchamiasz według reguły „Komendy kitu uruchamiasz według klienta”.
+Komendy kitu uruchamiasz według klienta (`/git-*`, `/review-*` i inne w krokach), by działały na modelu z frontmattera:
+- **Claude Code:** agent o nazwie komendy jest w `.claude/agents/<nazwa>.md` → narzędzie `Agent` tego typu bez parametru `model` (model bierze się z frontmattera); brak agenta → `Skill`. Komendy `/git-*` wykonujesz wewnątrz subagenta ticketu.
+- **opencode:** komenda `/<nazwa>` z `.opencode/command/` (model z frontmattera, gdy Profil ma `models.opencode`); brak `model:` → model sesji.
+- **Klienci bez modelu per agent (Cursor, Codex, Antigravity, VS Code, Kiro, Kilo):** inline albo skill na modelu sesji.
+- Jawna forma `<komenda>: model <nazwa>` w parametrach nadpisuje frontmatter komendy tam, gdzie klient ma parametr modelu. Brak agenta/komendy (fallback na Skill albo inline) zapisujesz w hand-backu.
 
 Ticket #<N>, baza <BASE>. Kontekst projektu: <CTX> (część wspólna: nagłówek, mapa, konwencje, pułapki) — przeczytaj go najpierw, zamiast
 AGENTS.md, BUGBOT.md i ADR-ów. ADR czytasz tylko wtedy, gdy issue go wskazuje.
@@ -92,6 +97,7 @@ Kroki:
    do niego, potem `gh issue close <N>` (`Closes` nie zamyka przy merge na niedomyślną).
 
 Reguły:
+- Nie skipujesz, nie usuwasz i nie osłabiasz testów. Nie `--no-verify`.
 - Plik > ~150 linii czytasz zakresami: `codegraph explore` (gdy jest `.codegraph/`) albo
   `grep -n` + `sed -n X,Yp`, wiele odczytów w jednej komendzie. Nigdy całego pliku: ani
   `cat` / `xargs cat`, ani Read bez `offset`/`limit`.
@@ -101,7 +107,7 @@ Reguły:
   inny interpreter), nie liczysz jej do prób naprawy. Wolno użyć alternatywy wskazanej
   w powodzie deny (np. `uv run --no-sync`, `UV_NO_SYNC=1`, `git stash`). Deny
   `server-guard:` → komenda trafia do raportu jako „tylko CI”; dla nowej zależności
-  użyj formy „tylko lock” z sekcji VPS, a dopiero jej błąd builda kończy jako needs-human
+  użyj formy „tylko lock” (`uv lock --no-build`, `uv add|remove <pkg> --no-sync --no-build`, `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`, `bun install/i/add/remove --lockfile-only --ignore-scripts`), a dopiero jej błąd builda kończy jako needs-human
   z `needs-local`. Gdy bez tej komendy nie da
   się ukończyć ticketu (alternatywa nie wystarcza) — kończysz jako needs-human z etykietą
   `needs-local` zamiast `ready-for-human` (komentarz wskazuje zablokowaną komendę i co zrobiono,
