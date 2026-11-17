@@ -76,6 +76,19 @@ class TestCleanSlateProcedure(unittest.TestCase):
         self.assertIn("hand-back `clean-slate`", text)
         self.assertIn("Clean Slate: użyty", text)
 
+    def test_ticket_keeps_clean_slate_branch_name(self) -> None:
+        text = _flat(TICKET)
+        self.assertIn(
+            "Wyjątek: gdy parametry zlecenia zawierają linię „Clean Slate: użyty”, nie zmieniasz nazwy brancha"
+            " na kanoniczną; pracujesz na `<typ>/<N>-<slug>-clean-slate`",
+            text,
+        )
+
+    def test_trigger_includes_circuit_breaker(self) -> None:
+        text = _flat(NIGHT_RUN)
+        self.assertIn("po 2. nieudanej rundzie naprawczej albo po zadziałaniu circuit breakera", text)
+        self.assertIn("po 2. rundzie albo po circuit breakerze najpierw Clean Slate", text)
+
     def test_orchestrator_rule_with_note_and_model(self) -> None:
         text = _flat(NIGHT_RUN)
         self.assertIn("**Clean Slate**", text)
@@ -105,6 +118,18 @@ class TestCleanSlateT3Card(unittest.TestCase):
         self.assertIn("`target.model`", text)
         self.assertIn('`{id: "effort"', text)
         self.assertIn("warunek bezpieczeństwa z `night-run`", text)
+
+    def test_records_stage_before_removing_worktree(self) -> None:
+        text = _flat(T3_CARD)
+        section = text[text.index("## 7. Clean Slate") :]
+        stage = section.index("zapisuje w `## Stan` etap Clean Slate ze starym `taskId`")
+        remove = section.index("`node .ai/worktree.mjs remove <katalog>`")
+        delegate = section.index("woła świeży `delegate_task`")
+        new_id = section.index("Nowy `taskId` zastępuje stary w `## Stan`")
+        self.assertLess(stage, remove)
+        self.assertLess(remove, delegate)
+        self.assertLess(delegate, new_id)
+        self.assertIn("nie powtarza usunięcia ani drugiego Clean Slate", text)
 
 
 if __name__ == "__main__":

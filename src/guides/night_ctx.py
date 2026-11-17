@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -186,7 +187,7 @@ def _profile(workspace: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
-def clean_slate_config(profile: dict[str, object]) -> dict[str, str]:
+def clean_slate_config(profile: Mapping[str, object]) -> dict[str, str]:
     """Model i effort Clean Slate z ``night-run.clean-slate`` w Profilu (#502).
 
     Args:
