@@ -118,6 +118,14 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("przed pierwszym commitem i push", self.card_text)
         self.assertIn("git switch -c <typ>/<N>-<slug>", self.card_text)
 
+    def test_branch_base_checked_before_rename(self) -> None:
+        """PR #505: przed rename/ponownym użyciem brancha T3 sprawdzana jest baza; brak → needs-human."""
+        check = "git fetch origin && git merge-base --is-ancestor origin/<BASE> HEAD"
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        for text in (self.card_text, ticket_text):
+            self.assertIn(check, text)
+            self.assertIn("baza się nie zgadza → needs-human", text)
+
     def test_merged_cleanup_deletes_convention_branch(self) -> None:
         """#498: po MERGED orkiestrator usuwa lokalny branch <typ>/<N>-<slug>."""
         self.assertIn("git branch -d <typ>/<N>-<slug>", self.card_text)
