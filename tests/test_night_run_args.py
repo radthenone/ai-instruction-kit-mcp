@@ -30,7 +30,7 @@ class TestNightRunArgs(unittest.TestCase):
 
     def test_args_syntax(self) -> None:
         self.assertIn(
-            '/night-run #N1 #N2 [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]',
+            '/night-run #N1 #N2 [implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>] [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]',
             self.text,
         )
         self.assertIn("flagi wrappera przekazujesz bez zmian", self.text)
