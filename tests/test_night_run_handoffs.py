@@ -55,9 +55,9 @@ class TestNightRunHandoffContract(unittest.TestCase):
 
     def test_ticket_prompt_scopes_handoffs_to_transitive_blockers(self) -> None:
         """Prompt ticketu podaje listę handoff-<B>.md blokujących przechodnio z listy nocy."""
-        self.assertIn("handoff-<B>.md", self.night_run)
-        self.assertIn("brak blokujących → brak handoffów", self.night_run)
-        self.assertIn("nie czytasz handoffów niezależnych ticketów", self.night_run)
+        self.assertIn("handoff-<B>.md", self.ticket)
+        self.assertIn("brak blokujących → brak handoffów", self.ticket)
+        self.assertIn("nie czytasz handoffów niezależnych ticketów", self.ticket)
 
     def test_night_run_ticket_agent_reads_only_indicated_handoffs(self) -> None:
         """night-run-ticket.md czyta tylko wskazane handoffy blokujących."""
@@ -79,7 +79,7 @@ class TestNightRunHandoffContract(unittest.TestCase):
                 self.assertIn("#N → handoff-<N>.md", text)
                 self.assertIn("handoff-<B>.md", text)
                 self.assertIn("brak blokujących → brak handoffów", text)
-                self.assertIn("nie czytasz handoffów niezależnych ticketów", text)
+                self.assertIn("ani handoffy niezależnych ticketów", text)
                 self.assertIn("## Przekazania", text)
 
         for rel in TICKET_COPIES:

@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_NIGHT_RUN = ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TEMPLATE_TICKET = ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 
 NIGHT_RUN_COPIES = (
     ".claude/agents/night-run.md",
@@ -36,6 +37,7 @@ class TestNightRunReviewCollision(unittest.TestCase):
 
     def setUp(self) -> None:
         self.text = TEMPLATE_NIGHT_RUN.read_text(encoding="utf-8")
+        self.ticket = TEMPLATE_TICKET.read_text(encoding="utf-8")
 
     @property
     def review_args_section(self) -> str:
@@ -44,7 +46,7 @@ class TestNightRunReviewCollision(unittest.TestCase):
 
     @property
     def step_two_section(self) -> str:
-        chain_sec = self.text.split("## Łańcuch na ticket", 1)[1].split("## Prompt ticketu", 1)[0]
+        chain_sec = self.text.split("## Łańcuch na ticket", 1)[1].split("## Zlecenie ticketu", 1)[0]
         return chain_sec.split("2. **Review.**", 1)[1].split("3. **Wznów subagenta", 1)[0]
 
     def test_args_example_uses_review_fix_instead_of_code_review_fix(self) -> None:
@@ -111,7 +113,7 @@ class TestNightRunReviewCollision(unittest.TestCase):
         self.assertIn("`git -C <katalog brancha>`", step_two)
         self.assertIn("git -C <katalog brancha> branch --show-current", step_two)
         self.assertIn("nie odpalasz review na złym diffie", step_two)
-        self.assertIn("katalog (worktree ticketu albo katalog główny)", self.text)
+        self.assertIn("katalog (worktree ticketu albo katalog główny)", self.ticket)
 
     def test_all_client_copies_contain_review_contract(self) -> None:
         """Wszystkie śledzone kopie szablonu night-run u klientów zachowują kontrakt #465."""
@@ -120,7 +122,7 @@ class TestNightRunReviewCollision(unittest.TestCase):
                 copy = (ROOT / rel).read_text(encoding="utf-8")
                 args_sec = copy.split("## Argumenty", 1)[1].split("## Start nocy", 1)[0]
                 review_args = args_sec.split("- **Skille review z argumentów**", 1)[1]
-                chain_sec = copy.split("## Łańcuch na ticket", 1)[1].split("## Prompt ticketu", 1)[0]
+                chain_sec = copy.split("## Łańcuch na ticket", 1)[1].split("## Zlecenie ticketu", 1)[0]
                 step_two = chain_sec.split("2. **Review.**", 1)[1].split("3. **Wznów subagenta", 1)[0]
 
                 self.assertNotIn("`/code-review --fix`", review_args)
@@ -146,12 +148,25 @@ class TestNightRunReviewCollision(unittest.TestCase):
                 self.assertIn("wg reguły z sekcji Argumenty", step_two)
                 self.assertIn("w katalogu brancha ticketu", step_two)
                 self.assertIn("git -C <katalog brancha> branch --show-current", step_two)
-                self.assertIn("katalog (worktree ticketu albo katalog główny)", copy)
+                # checked in ticket_copies below
                 self.assertIn(
                     "dla wbudowanego `/review`: orkiestrator przepisuje findingi do tabeli `Severity | Location | Finding | Fix`",
                     step_two,
                 )
 
+
+
+        ticket_copies = (
+            ".claude/agents/night-run-ticket.md",
+            ".claude/commands/night-run-ticket.md",
+            ".codex/skills/night-run-ticket/SKILL.md",
+            ".github/prompts/night-run-ticket.prompt.md",
+            ".opencode/command/night-run-ticket.md",
+        )
+        for rel in ticket_copies:
+            with self.subTest(ticket_copy=rel):
+                tcopy = (ROOT / rel).read_text(encoding="utf-8")
+                self.assertIn("katalog (worktree ticketu albo katalog główny)", tcopy)
 
 if __name__ == "__main__":
     unittest.main()

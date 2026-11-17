@@ -88,7 +88,8 @@ class TestDesignQuestions(unittest.TestCase):
 class TestAgentsUseDesignSpec(unittest.TestCase):
     def test_night_run_ticket_prompt_and_report(self) -> None:
         text = (AGENTS / "night-run.md").read_text(encoding="utf-8")
-        prompt = text[text.index("## Prompt ticketu") : text.index("## Testy — piramida")]
+        ticket_text = (AGENTS / "night-run-ticket.md").read_text(encoding="utf-8")
+        prompt = ticket_text[ticket_text.index("## Prompt ticketu") :]
         self.assertIn("docs/design/<N>.md", prompt)
         report = text[text.index("## NIGHT-RUN REPORT") :]
         self.assertIn("Nowe ekrany", report)

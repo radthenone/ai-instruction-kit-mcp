@@ -7,6 +7,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 COPIES = (
     ".claude/agents/night-run.md",
     ".claude/commands/night-run.md",
@@ -19,6 +20,7 @@ COPIES = (
 class TestNightRunArgs(unittest.TestCase):
     def setUp(self) -> None:
         self.text = TEMPLATE.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
         self.description = next(ln for ln in self.text.splitlines() if ln.startswith("description:"))
 
     def test_goal_not_required(self) -> None:
@@ -38,10 +40,10 @@ class TestNightRunArgs(unittest.TestCase):
         self.assertIn("nieznany wykonawca → needs-human na starcie nocy", self.text)
 
     def test_headless_replaces_steps_2_3(self) -> None:
-        self.assertIn('2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian', self.text)
-        self.assertIn("Sam nie piszesz kodu", self.text)
-        self.assertIn("Dalej kroki 4–5", self.text)
-        self.assertIn("dosłownie, poza wyborem wariantu kroków 2–3", self.text)
+        self.assertIn('2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian', self.ticket)
+        self.assertIn("Sam nie piszesz kodu", self.ticket)
+        self.assertIn("Dalej kroki 4–5", self.ticket)
+        self.assertIn("dosłownie, poza wyborem wariantu kroków 2–3", self.ticket)
         self.assertIn("klient bez `/headless`", self.text)
 
     def test_review_skills_from_args(self) -> None:
@@ -52,7 +54,7 @@ class TestNightRunArgs(unittest.TestCase):
         self.assertIn("Bez argumentów — **subagent review**", self.text)
         self.assertIn("Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`", self.text)
         chain = self.text.split("## Łańcuch na ticket", 1)[1]
-        self.assertLess(chain.index("2. **Review.**"), chain.index("Dalej kroki 6–8 promptu"))
+        self.assertLess(chain.index("2. **Review.**"), chain.index("Dalej kroki 6–8 w `night-run-ticket`"))
 
     def test_code_review_gets_issue_number(self) -> None:
         """/code-review ma oś Spec — orkiestrator dokleja numer ticketu do wywołania."""
@@ -82,7 +84,7 @@ class TestNightRunArgs(unittest.TestCase):
             "nagłówek tabeli `Severity | Location | Finding | Fix` i wartości Severity bez zmian",
             report_sec,
         )
-        prompt_sec = self.text.split("## Prompt ticketu", 1)[1].split("\n## ", 1)[0]
+        prompt_sec = self.ticket.split("## Prompt ticketu", 1)[1].split("\n## ", 1)[0]
         self.assertIn("findingi review w języku Profilu", prompt_sec)
 
     def test_cost_note_for_headless_and_inline_review(self) -> None:
