@@ -156,7 +156,8 @@ class TestAgentsUseLabels(unittest.TestCase):
         self.assertIn("--remove-label ready-for-agent --add-label ready-for-human", text)
         self.assertIn("nazwy z `triage-labels.md` projektu, nie dosłownie", text)
         self.assertIn("skipped: <etykieta>", text)
-        self.assertIn("AGENT-BRIEF", text)
+        ticket_text = self._text("night-run-ticket.md")
+        self.assertIn("AGENT-BRIEF", ticket_text)
 
     def test_kit_project_agents_offer_provisioning(self) -> None:
         for name in ("kit-project-begin.md", "kit-project-edit.md"):

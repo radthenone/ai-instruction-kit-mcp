@@ -7,6 +7,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 NIGHT_RUN = KIT_ROOT / "templates/shared/agents/night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates/shared/agents/night-run-ticket.md"
 HEADLESS_MD = KIT_ROOT / "templates/shared/agents/headless.md"
 WATCHDOG = KIT_ROOT / "templates/shared/night-run/watchdog.sh"
 
@@ -14,11 +15,12 @@ WATCHDOG = KIT_ROOT / "templates/shared/night-run/watchdog.sh"
 class NightRunHeadlessPauseTest(unittest.TestCase):
     def setUp(self) -> None:
         self.night = NIGHT_RUN.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
 
     def test_ticket_prompt_excludes_executor_pause_from_attempts(self) -> None:
-        self.assertIn("Kod wyjścia wrappera `75`", self.night)
-        self.assertIn("nie liczy się do 2 prób", self.night)
-        self.assertIn("PAUSE=rate-limit reset=<ISO|brak>", self.night)
+        self.assertIn("Kod wyjścia wrappera `75`", self.ticket)
+        self.assertIn("nie liczy się do 2 prób", self.ticket)
+        self.assertIn("PAUSE=rate-limit reset=<ISO|brak>", self.ticket)
 
     def test_pause_entry_format_is_the_watchdog_printf_format(self) -> None:
         watchdog = WATCHDOG.read_text(encoding="utf-8")
@@ -26,13 +28,13 @@ class NightRunHeadlessPauseTest(unittest.TestCase):
         self.assertIn("pauza limitu od <ts>; wznowienie <ts> (epoch N)", self.night)
 
     def test_reset_brak_writes_recheck_epoch_and_who_closes(self) -> None:
-        self.assertIn("gdy `reset=brak`, wpisz «nieznana»", self.night)
-        self.assertIn("`wznowienie <teraz+30 min> (epoch N)`", self.night)
-        self.assertIn("watchdog dopisuje `do`", self.night)
+        self.assertIn("gdy `reset=brak`, wpisz «nieznana»", self.ticket)
+        self.assertIn("`wznowienie <teraz+30 min> (epoch N)`", self.ticket)
+        self.assertIn("watchdog dopisuje `do`", self.ticket)
         self.assertNotIn("bez `brak`", self.night)
 
     def test_executor_pause_is_handled_in_watchdog_tick_and_case_d(self) -> None:
-        self.assertGreaterEqual(self.night.count("pauza wykonawcy do"), 3)
+        self.assertGreaterEqual(self.night.count("pauza wykonawcy do") + self.ticket.count("pauza wykonawcy do"), 3)
         self.assertIn("nie liczy się do wznowień ticketu", self.night)
 
     def test_headless_doc_describes_pause_exit_code(self) -> None:
@@ -43,7 +45,7 @@ class NightRunHeadlessPauseTest(unittest.TestCase):
     def test_suspect_no_changes_guidance_in_headless_and_night_run(self) -> None:
         guidance = r"SUSPECT=no-changes`[^\n]*silniejszym modelu albo oznacz jako needs-human"
         self.assertRegex(HEADLESS_MD.read_text(encoding="utf-8"), guidance)
-        self.assertRegex(self.night, guidance)
+        self.assertRegex(self.ticket, guidance)
 
 
 if __name__ == "__main__":

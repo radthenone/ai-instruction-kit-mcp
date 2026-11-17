@@ -13,6 +13,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 
 REQUIRED_REPORT_FIELDS = (
     "Baza:",
@@ -41,8 +42,9 @@ def _section(text: str, start: str, end: str) -> str:
 class TestNightRunMergeGate(unittest.TestCase):
     def setUp(self) -> None:
         self.text = TEMPLATE.read_text(encoding="utf-8")
-        self.chain = _section(self.text, "## Łańcuch na ticket", "## Prompt ticketu")
-        self.prompt = _section(self.text, "## Prompt ticketu", "## Testy")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.chain = _section(self.text, "## Łańcuch na ticket", "## Zlecenie ticketu")
+        self.prompt = " ".join(self.ticket.split("## Prompt ticketu", 1)[1].split())
         self.case_rules = _section(self.text, "### Przypadki", "## Tick watchdoga")
         self.report = self.text.split("## NIGHT-RUN REPORT", 1)[1]
 

@@ -12,6 +12,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 COPIES = (
     ".claude/agents/night-run.md",
     ".claude/commands/night-run.md",
@@ -25,6 +26,7 @@ CLAUDE_ONLY = "tylko Claude Code"
 class TestNightRunWatchdog(unittest.TestCase):
     def setUp(self) -> None:
         self.text = TEMPLATE.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
 
     def _section(self, start: str, end: str) -> str:
         return self.text.split(start, 1)[1].split(end, 1)[0]
@@ -61,7 +63,7 @@ class TestNightRunWatchdog(unittest.TestCase):
         self.assertIn(CLAUDE_ONLY, notification)
 
     def test_subagent_keeps_turn_while_headless_runs(self) -> None:
-        self.assertIn("Nie kończysz tury, dopóki `/headless` działa w tle", self.text)
+        self.assertIn("Nie kończysz tury, dopóki `/headless` działa w tle", self.ticket)
 
     def test_watchdog_relaunched_once_and_skips_429(self) -> None:
         watchdog = self._section("### 7. Watchdog i cron", "## Łańcuch na ticket")
@@ -82,10 +84,10 @@ class TestNightRunWatchdog(unittest.TestCase):
         self.assertIn("`timeout: 7200000`", tick.split("## Pomiar kosztu", 1)[0])
 
     def test_subagent_waits_with_foreground_bash(self) -> None:
-        self.assertIn("pierwszoplanowym Bash z limitem czasu", self.text)
+        self.assertIn("pierwszoplanowym Bash z limitem czasu", self.ticket)
 
     def test_state_written_in_same_tool_call_as_agent(self) -> None:
-        chain = self._section("## Łańcuch na ticket", "## Prompt ticketu")
+        chain = self._section("## Łańcuch na ticket", "## Zlecenie ticketu")
         step1 = chain.split("1. **Subagent ticketu**", 1)[1].split("2. **Review.**", 1)[0]
         self.assertIn("w tym samym wywołaniu narzędzi co uruchomienie", " ".join(step1.split()))
         self.assertNotIn(CLAUDE_ONLY, step1)

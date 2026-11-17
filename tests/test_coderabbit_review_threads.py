@@ -71,7 +71,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
 
     def test_night_run_merge_gate_includes_bot_threads(self) -> None:
         """Bramka merge night-run blokuje merge przy otwartym wątku bota."""
-        prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        prompt = " ".join(self.night_run_ticket.split("## Prompt ticketu", 1)[1].split("Reguły:", 1)[0].split())
         self.assertIn("coderabbit", prompt)
         self.assertIn("integrations:", prompt)
         self.assertIn("reviewThreads", prompt)
@@ -102,7 +102,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
 
     def test_night_run_merge_gate_gated_on_coderabbit_integration(self) -> None:
         """Bramka wątków bota przed merge w night-run zależy od obecności coderabbit w integrations:."""
-        prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        prompt = " ".join(self.night_run_ticket.split("## Prompt ticketu", 1)[1].split("Reguły:", 1)[0].split())
         self.assertRegex(prompt, r"Bramka merge uwzględnia wątki bota:\*{0,2}\s*gdy `coderabbit` jest w `integrations:`")
         self.assertRegex(prompt, r"(?:brak|bez) `coderabbit` w `integrations:`.*(?:sprawdzenie.*pominięt|pominięt)")
 
@@ -118,7 +118,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
     def test_rounds_owner_and_ci_attempt_accounting(self) -> None:
         """git-end i night-run ustalają właściciela rund i wliczanie czerwonego CI rundy do 3 prób."""
         git_end_norm = " ".join(self.git_end.split())
-        night_run_prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        night_run_prompt = " ".join(self.night_run_ticket.split("## Prompt ticketu", 1)[1].split("Reguły:", 1)[0].split())
         self.assertRegex(git_end_norm, r"(?i)czerwone CI po pushu rundy.*(?:liczy|wlicza).*3 prób")
         self.assertRegex(night_run_prompt, r"(?i)czerwone CI po pushu rundy.*(?:liczy|wlicza).*3 prób")
         self.assertRegex(night_run_prompt, r"(?:Właścicielem|właścicielem).*git-end")
@@ -139,16 +139,16 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
 
     def test_night_run_round_without_code_changes_and_local_host(self) -> None:
         """night-run: runda bez zmian w kodzie pomija commit/push, czeka na head commit, a Host: local czyta po bramkach."""
-        prompt = " ".join(self.night_run.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split())
+        prompt = " ".join(self.night_run_ticket.split("## Prompt ticketu", 1)[1].split("Reguły:", 1)[0].split())
         self.assertRegex(prompt, r"brak zmian w kodzie.*(?:pomiń|pomijasz) commit i push")
         self.assertRegex(prompt, r"review.*head commit")
         self.assertRegex(prompt, r"Host:\s*local.*bez checks.*bramkach szybkich")
 
 
     def test_night_run_merge_gate_fails_closed_on_read_error(self) -> None:
-        self.assertIn("Błąd zapytania GraphQL albo odpowiedź bez danych `reviewThreads`", self.night_run)
-        self.assertIn("bramka fail-closed", self.night_run)
-        self.assertIn("orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo wątków”", self.night_run)
+        self.assertIn("Błąd zapytania GraphQL albo odpowiedź bez danych `reviewThreads`", self.night_run_ticket)
+        self.assertIn("bramka fail-closed", self.night_run_ticket)
+        self.assertIn("orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo wątków”", self.night_run_ticket)
 
 if __name__ == "__main__":
     unittest.main()

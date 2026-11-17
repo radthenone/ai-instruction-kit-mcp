@@ -17,6 +17,7 @@ from _shell import is_ci, posix_path, resolve_bash
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 COPIES = (
     ".claude/agents/night-run.md",
     ".claude/commands/night-run.md",
@@ -32,6 +33,7 @@ REPORT_HEADER = "| Ticket | Stan | Wykonawca | Review | Model | Dowód |"
 class TestNightRunModels(unittest.TestCase):
     def setUp(self) -> None:
         self.text = TEMPLATE.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
 
     def test_per_client_rule_in_template(self) -> None:
         self.assertIn(RULE, self.text)
@@ -44,7 +46,7 @@ class TestNightRunModels(unittest.TestCase):
         self.assertIn("`.opencode/command/`", self.text)
         self.assertIn("model z frontmattera, gdy", self.text)
         self.assertIn("nadpisuje frontmatter", self.text)
-        self.assertIn("fallback przy braku agenta", self.text)
+        self.assertIn("fallback przy braku agenta", self.ticket)
 
     def test_old_nesting_prohibition_is_gone(self) -> None:
         self.assertNotIn("subagent nie uruchomi kolejnych", self.text)
@@ -59,7 +61,7 @@ class TestNightRunModels(unittest.TestCase):
 
     def test_ticket_prompt_git_steps_follow_rule(self) -> None:
         prompt = " ".join(
-            self.text.split("## Prompt ticketu", 1)[1].split("## Testy", 1)[0].split()
+            self.ticket.split("## Prompt ticketu", 1)[1].split("Reguły:", 1)[0].split()
         )
         self.assertEqual(prompt.count(RULE), 1)
         self.assertNotIn("bez `model`", prompt)

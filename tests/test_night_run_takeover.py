@@ -7,20 +7,22 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 NIGHT_RUN = KIT_ROOT / "templates/shared/agents/night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates/shared/agents/night-run-ticket.md"
 
 
 class NightRunTakeoverTest(unittest.TestCase):
     def setUp(self) -> None:
         self.night = NIGHT_RUN.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
 
     def test_exit_75_starts_takeover_subagent_with_verbatim_headless_prompt(self) -> None:
-        self.assertIn("subagenta przejęcia", self.night)
-        self.assertIn("DOSŁOWNIE tą samą treścią", self.night)
+        self.assertIn("subagenta przejęcia", self.ticket)
+        self.assertIn("DOSŁOWNIE tą samą treścią", self.ticket)
 
     def test_limit_mode_switch_defaults_to_takeover(self) -> None:
-        self.assertIn("`LIMIT: przejmij` (domyślny)", self.night)
-        self.assertIn("`LIMIT: czekaj`", self.night)
-        self.assertIn("zostaje powyższa pauza do resetu", self.night)
+        self.assertIn("`LIMIT: przejmij` (domyślny)", self.ticket)
+        self.assertIn("`LIMIT: czekaj`", self.ticket)
+        self.assertIn("zostaje powyższa pauza do resetu", self.ticket)
 
     def test_takeover_alias_goal_override_is_documented(self) -> None:
         self.assertIn("`przejęcie: <alias>`", self.night)
@@ -43,16 +45,16 @@ class NightRunTakeoverTest(unittest.TestCase):
         self.assertIn("nieznany alias przejęcia", self.night)
 
     def test_takeover_inherits_session_effort(self) -> None:
-        self.assertIn("dziedziczy effort sesji", self.night)
+        self.assertIn("dziedziczy effort sesji", self.ticket)
 
     def test_takeover_commits_locally_and_keeps_nesting_limit(self) -> None:
-        self.assertIn("przy limicie zagnieżdżenia 3", self.night)
-        self.assertNotIn("przy limit zagnieżdżenia", self.night)
+        self.assertIn("przy limicie zagnieżdżenia 3", self.ticket)
+        self.assertNotIn("przy limit zagnieżdżenia", self.ticket)
 
     def test_failed_takeover_is_needs_human_not_a_wrapper_attempt(self) -> None:
-        self.assertIn("Przejęcie, które pada", self.night)
-        self.assertIn("needs-human", self.night)
-        self.assertIn("nie liczy się jako druga próba wrappera", self.night)
+        self.assertIn("Przejęcie, które pada", self.ticket)
+        self.assertIn("needs-human", self.ticket)
+        self.assertIn("nie liczy się jako druga próba wrappera", self.ticket)
 
     def test_report_has_takeover_executor_variant(self) -> None:
         self.assertIn("opencode → przejęte (<model>, limit)", self.night)
@@ -60,13 +62,13 @@ class NightRunTakeoverTest(unittest.TestCase):
 
     def test_wrapper_failure_is_one_full_chain_path_not_two_attempts(self) -> None:
         # Wrapper sam przechodzi łańcuch 1:1 (#397), więc ponowienie tym samym wykonawcą to zbędna próba.
-        self.assertIn("nie ponawiasz go tym samym wykonawcą", self.night)
-        self.assertIn("jedna pełna ścieżka", self.night)
+        self.assertIn("nie ponawiasz go tym samym wykonawcą", self.ticket)
+        self.assertIn("jedna pełna ścieżka", self.ticket)
         self.assertNotIn("maks. 2 próby, potem needs-human", self.night)
 
     def test_exhausted_chain_without_limit_goes_to_takeover(self) -> None:
-        self.assertIn("Wyczerpany łańcuch bez limitu", self.night)
-        self.assertIn("klasa `HANG` albo `ERROR`", self.night)
+        self.assertIn("Wyczerpany łańcuch bez limitu", self.ticket)
+        self.assertIn("klasa `HANG` albo `ERROR`", self.ticket)
 
 
 class KitProjectEditTakeoverTest(unittest.TestCase):

@@ -44,6 +44,38 @@ class NightRunTicketAgentTest(unittest.TestCase):
                 copy = (ROOT / rel).read_text(encoding="utf-8")
                 self.assertIn("night-run-ticket", copy)
 
+    def test_separation_of_ticket_prompt_and_order_fields(self) -> None:
+        """Kroki ticketu mieszkają w night-run-ticket.md, a night-run.md zawiera tylko pola zlecenia (#473)."""
+        night_run = TEMPLATE.read_text(encoding="utf-8")
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+
+        markers = (
+            "`/git-start #<N>`",
+            "--- po wznowieniu ---",
+            "**Sprawdzenie przed merge",
+            "Hand-back (bez streszczania pracy)",
+        )
+        for marker in markers:
+            with self.subTest(marker=marker):
+                self.assertIn(marker, ticket, f"Marker '{marker}' powinien znajdować się w night-run-ticket.md")
+                self.assertNotIn(marker, night_run, f"Marker '{marker}' NIE powinien znajdować się w night-run.md")
+
+        order_fields = (
+            "Ticket #N",
+            "BASE",
+            "CTX",
+            "Handoffy blokujących:",
+            "Wykonawca:",
+            "LIMIT",
+            "PRZEJĘCIE:",
+            "Nadpisania:",
+            "Polecenia z celu dla ticketu:",
+            "Język wyjścia:",
+        )
+        for field in order_fields:
+            with self.subTest(order_field=field):
+                self.assertIn(field, night_run, f"Pole zlecenia '{field}' powinno znajdować się w night-run.md")
+
 
 if __name__ == "__main__":
     unittest.main()

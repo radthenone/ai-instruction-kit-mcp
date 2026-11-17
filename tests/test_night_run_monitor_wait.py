@@ -13,6 +13,7 @@ from pathlib import Path
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 HEADLESS_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "headless.md"
 COPIES = (
     ".claude/agents/night-run.md",
@@ -34,6 +35,7 @@ def find_forbidden_sleeps(text: str) -> list[str]:
 class TestNightRunMonitorWait(unittest.TestCase):
     def setUp(self) -> None:
         self.text = TEMPLATE.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
 
     def _background_section(self, text: str) -> str:
         return text.split("- Praca w tle", 1)[1].split("\n- ", 1)[0]
@@ -47,31 +49,31 @@ class TestNightRunMonitorWait(unittest.TestCase):
         )
 
     def test_explicit_ban_on_sleep_cmd(self) -> None:
-        flat = " ".join(self.text.split())
+        flat = " ".join(self.ticket.split())
         self.assertRegex(
             flat,
             r"[Zz]akaz `?sleep N; <cmd>`?",
             msg="Szablon powinien wprost zakazywać `sleep N; <cmd>`",
         )
-        self.assertIn("Blocked: sleep", self.text)
+        self.assertIn("Blocked: sleep", self.ticket)
 
     def test_monitor_pattern_for_claude(self) -> None:
-        background_sec = self._background_section(self.text)
+        background_sec = self._background_section(self.ticket)
         self.assertIn("Monitor", background_sec)
 
     def test_foreground_timeout_stays_for_clients_without_monitor(self) -> None:
-        background_sec = self._background_section(self.text)
+        background_sec = self._background_section(self.ticket)
         self.assertIn("timeout", background_sec)
         self.assertIn("pierwszoplanow", background_sec)
 
     def test_ticket_subagent_waits_in_foreground(self) -> None:
-        paragraph = self._background_section(self.text).split("(tylko Claude Code)", 1)[1]
+        paragraph = self._background_section(self.ticket).split("(tylko Claude Code)", 1)[1]
         self.assertIn("timeout", paragraph)
         self.assertIn("until grep", paragraph)
 
     def test_ci_checks_no_sleep_prefix(self) -> None:
-        self.assertNotIn("sleep 20; gh pr checks", self.text)
-        self.assertIn("gh pr checks", self.text)
+        self.assertNotIn("sleep 20; gh pr checks", self.ticket)
+        self.assertIn("gh pr checks", self.ticket)
 
     def test_headless_template_has_no_waiting_sleep(self) -> None:
         headless_text = HEADLESS_TEMPLATE.read_text(encoding="utf-8")
@@ -84,8 +86,24 @@ class TestNightRunMonitorWait(unittest.TestCase):
         self.assertIn("Monitor", headless_text)
 
     def test_all_rendered_copies_have_no_forbidden_sleep(self) -> None:
+        ticket_copies = (
+            ".claude/agents/night-run-ticket.md",
+            ".claude/commands/night-run-ticket.md",
+            ".codex/skills/night-run-ticket/SKILL.md",
+            ".github/prompts/night-run-ticket.prompt.md",
+            ".opencode/command/night-run-ticket.md",
+        )
         for rel in COPIES:
             with self.subTest(copy=rel):
+                copy_text = (KIT_ROOT / rel).read_text(encoding="utf-8")
+                forbidden = find_forbidden_sleeps(copy_text)
+                self.assertEqual(
+                    forbidden,
+                    [],
+                    msg=f"Kopia {rel} zawiera niedozwolone `sleep \\d+;`: {forbidden}",
+                )
+        for rel in ticket_copies:
+            with self.subTest(ticket_copy=rel):
                 copy_text = (KIT_ROOT / rel).read_text(encoding="utf-8")
                 forbidden = find_forbidden_sleeps(copy_text)
                 self.assertEqual(

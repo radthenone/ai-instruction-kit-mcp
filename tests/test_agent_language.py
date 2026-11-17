@@ -91,7 +91,7 @@ class SourceRuleTest(unittest.TestCase):
                 self.assertNotIn("prompt dla subagenta", text)
 
     def test_night_run_ticket_prompt_forces_handback_language(self) -> None:
-        text = (AGENTS / "night-run.md").read_text(encoding="utf-8")
+        text = (AGENTS / "night-run-ticket.md").read_text(encoding="utf-8")
         start = text.index("Ticket #<N>, baza <BASE>")
         self.assertIn("get_language", text[start:])
 

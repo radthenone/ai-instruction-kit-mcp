@@ -10,6 +10,7 @@ from guides.resolver import resolve_profile
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 COPIES = (
     ".claude/agents/night-run.md",
     ".claude/commands/night-run.md",
@@ -33,17 +34,18 @@ def _bundles_text(host: str) -> str:
 class TestNightRunTemplate(unittest.TestCase):
     def setUp(self) -> None:
         self.text = TEMPLATE.read_text(encoding="utf-8")
+        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
 
     def test_no_tmp_paths(self) -> None:
         self.assertNotIn("/tmp/", self.text)
         self.assertIn("~/.cache/night-run-", self.text)
 
     def test_commit_after_each_green_step(self) -> None:
-        self.assertIn("Commit po każdym zielonym kroku", self.text)
+        self.assertIn("Commit po każdym zielonym kroku", self.ticket)
 
     def test_guard_deny_is_rule_not_failure(self) -> None:
-        self.assertIn("to reguła, nie awaria", self.text)
-        self.assertIn("nie obchodzisz jej", self.text)
+        self.assertIn("to reguła, nie awaria", self.ticket)
+        self.assertIn("nie obchodzisz jej", self.ticket)
 
     def test_report_has_host_line(self) -> None:
         self.assertIn("Host: <vps | local>", self.text)
@@ -61,13 +63,13 @@ class TestNightRunTemplate(unittest.TestCase):
         self.assertIn("znacznik", self.text)
 
     def test_vps_without_ci_skips_merge(self) -> None:
-        self.assertIn("kroki 7–8 pomijasz", self.text)
+        self.assertIn("kroki 7–8 pomijasz", self.ticket)
 
     def test_e2e_marked_not_run_on_vps(self) -> None:
         self.assertIn("nieuruchomione lokalnie (VPS), weryfikuje CI", self.text)
 
     def test_no_sync_only_in_vps_branch(self) -> None:
-        outside = self.text.split("## VPS (tylko", 1)[0]
+        outside = self.ticket.split("## VPS (tylko", 1)[0]
         lines = [ln for ln in outside.splitlines() if "zawsze z `--no-sync`" in ln]
         self.assertNotEqual(lines, [])
         for line in lines:
@@ -75,11 +77,12 @@ class TestNightRunTemplate(unittest.TestCase):
 
     def test_ci_retry_limit_is_three(self) -> None:
         """Pętla poprawek po czerwonym CI w night-run ma limit 3 prób (zamiast 2)."""
-        normalized = " ".join(self.text.split())
-        self.assertIn("ponawiasz `/git-end` (maks. 3 próby)", normalized)
-        self.assertIn("CI czerwone po 3 próbach naprawy", normalized)
-        self.assertNotIn("ponawiasz `/git-end` (maks. 2 próby)", normalized)
-        self.assertNotIn("CI czerwone po 2 próbach naprawy", normalized)
+        normalized_ticket = " ".join(self.ticket.split())
+        normalized_night = " ".join(self.text.split())
+        self.assertIn("ponawiasz `/git-end` (maks. 3 próby)", normalized_ticket)
+        self.assertIn("CI czerwone po 3 próbach naprawy", normalized_night)
+        self.assertNotIn("ponawiasz `/git-end` (maks. 2 próby)", normalized_ticket)
+        self.assertNotIn("CI czerwone po 2 próbach naprawy", normalized_night)
 
     def test_blocking_server_guard_deny_routes_to_needs_local(self) -> None:
         """Blokujący deny server-guard: kończy się needs-human z etykietą needs-local zamiast ready-for-human."""
