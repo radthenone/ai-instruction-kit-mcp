@@ -80,10 +80,10 @@ Kroki:
      Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
      Wyczerpany łańcuch bez limitu (kod ≠ 0 i nie 75, klasa `HANG` albo `ERROR`) idzie tą samą drogą: subagent przejęcia z `PRZEJĘCIE`, bez `LIMIT: czekaj`. Dalej kroki 4–5.
    - **Ścieżka 3 i 4: implementacja: z delegacją lub bez delegacji (gdy parametr Wykonawca zawiera `implementacja:` lub wolny tekst celu):**
-     Łańcuch prowadzi sesja ticketu: woła transport raz na model, w kolejności z łańcucha (`<wykonawca> <model>, <model>; <wykonawca> <model>`).
+     Łańcuch prowadzi sesja ticketu: uruchamia kolejny model z łańcucha (`<wykonawca> <model>, <model>; <wykonawca> <model>`) wyłącznie po wskazanej porażce bieżącego modelu; po skutecznej implementacji i utworzeniu commita kończy łańcuch, aby kolejny model nie powtarzał zadania.
      Transport per wykonawca:
      - **Ścieżka 3 (implementacja: z delegacją):** natywna delegacja klienta, gdy klient obsługuje wykonawcę natywnie (np. narzędzie subagenta / delegacji w danym środowisku).
-     - **Ścieżka 4 (implementacja: bez delegacji):** gdy klient nie obsługuje natywnej delegacji wykonawcy, sesja ticketu woła `/headless <wykonawca> --model <model>`.
+     - **Ścieżka 4 (implementacja: bez delegacji):** gdy klient nie obsługuje natywnej delegacji wykonawcy, sesja ticketu woła `/headless <wykonawca> --model <model>`; ewentualne wewnętrzne przekazania wrappera (przejścia fallback) należy odnotować w raporcie hand-backu jako przejścia na zapas.
      Delegat pracuje w checkoucie sesji ticketu, na branchu z `/git-start`.
 
      **Szablon zlecenia delegata:**
@@ -97,7 +97,7 @@ Kroki:
 
      **Trzy reguły porażki wykonawcy → następny model:**
      Porażką wykonawcy na bieżącym modelu skutkującą przejściem do następnego modelu z łańcucha (odnotowanym w raporcie jako przejście na zapas) jest:
-     1. brak commita i brak hand-backu (brak postępu i nowego commita na branchu oraz brak hand-backu),
+     1. brak commita i brak hand-backu (przejście do następnego modelu następuje zawsze, gdy brakuje nowego commita i hand-backu, niezależnie od tego, czy delegat pozostawił niezacommitowane zmiany),
      2. limit albo quota wykonawcy (błąd 429, wyczerpany limit tokenów lub quota modelu),
      3. przekroczony czas (timeout wykonawcy / brak odpowiedzi).
 

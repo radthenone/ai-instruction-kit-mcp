@@ -62,6 +62,14 @@ class TestNightRunTicketChainContract(unittest.TestCase):
 
         # Ścieżka 4: implementacja: bez delegacji (/headless <wykonawca> --model <model>)
         self.assertIn("/headless <wykonawca> --model <model>", self.ticket)
+        self.assertIn(
+            "ewentualne wewnętrzne przekazania wrappera (przejścia fallback) należy odnotować w raporcie hand-backu jako przejścia na zapas",
+            self.ticket,
+        )
+
+        # Kolejny model wyłącznie po wskazanej porażce; zatrzymanie łańcucha po commicie
+        self.assertIn("wyłącznie po wskazanej porażce", self.ticket)
+        self.assertIn("kończy łańcuch, aby kolejny model nie powtarzał zadania", self.ticket)
 
         # Wszystkie 4 ścieżki i ich rozróżnienie są udokumentowane w procedurze ticketu
         self.assertIn("4 ścieżki", self.ticket)
@@ -88,6 +96,7 @@ class TestNightRunTicketChainContract(unittest.TestCase):
         self.assertIn("limit albo quota wykonawcy", self.ticket)
         self.assertIn("przekroczony czas", self.ticket)
         self.assertIn("następny model", self.ticket)
+        self.assertIn("niezależnie od tego, czy delegat pozostawił niezacommitowane zmiany", self.ticket)
 
     def test_needs_human_on_chain_exhaustion_and_unknown_executor(self) -> None:
         """Łańcuch wyczerpany -> needs-human dla ticketu, noc idzie dalej;
