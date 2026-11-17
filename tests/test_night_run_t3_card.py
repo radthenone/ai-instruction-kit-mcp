@@ -212,6 +212,11 @@ class TestNightRunT3CardContract(unittest.TestCase):
         )
         self.assertIn("Outside diff range", section)
         self.assertIn("skrócony podgląd", section)
+        # PR #507 (CodeRabbit): błąd gh api albo pusty wynik to needs-human, null to oczekiwanie na review head
+        self.assertIn("set -o pipefail", section)
+        self.assertIn("błąd odczytu review", section)
+        self.assertIn("`null`", section)
+        self.assertIn("poczekaj na review bieżącego head", section)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
