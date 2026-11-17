@@ -176,8 +176,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("target", section)
         for key in ("providerInstanceId", "model", "options"):
             self.assertIn(key, section)
-        for provider in ("antigravity", "claudeAgent", "opencode"):
-            self.assertIn(f"`{provider}`", section)
+        for executor, provider in (("claude", "claudeAgent"), ("antigravity", "antigravity"), ("opencode", "opencode")):
+            self.assertIn(f"| `{executor}` | `{provider}` |", section)
         self.assertIn("thought_level", section)
         self.assertIn("effort", section)
         self.assertIn("review", section)

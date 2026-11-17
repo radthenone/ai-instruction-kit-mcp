@@ -33,10 +33,10 @@ Parametry nocy `implementacja: <wykonawca> <model>; review: <wykonawca> <model>`
 |---------------|----------------------|--------------------|----------------------|
 | `claude` | `claudeAgent` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` | `[{id: "effort", value: "medium"}]` |
 | `antigravity` | `antigravity` | model z listy providera | `[{id: "thought_level", value: "high"}]` |
-| `opencode` | `opencode` | `<provider>/<model>` z listy providera | brak albo opcje z listy providera |
+| `opencode` | `opencode` | `<provider>/<model>` z listy providera, np. `github-copilot/claude-haiku-5.5` | `[{id: "variant", value: "high"}]` |
 
 Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "claudeAgent", model: "claude-haiku-5-5", options: [{id: "effort", value: "low"}]}`, a review idzie z `role: review`, `mode: wait`, `isolation: shared`.
-- przed pierwszym `delegate_task` w sesji: `orchestrator_capabilities`; nazwy modeli i `options` bierz z jego wyniku, nie z pamięci;
+- przed pierwszym `delegate_task` w sesji: `orchestrator_capabilities`; nazwy modeli i `options` bierz z jego wyniku, nie z pamięci; `providerInstanceId` w tabeli to nazwa domyślna — gdy `orchestrator_capabilities` zwraca ją jako wyłączoną, a włączona jest dokładnie jedna inna instancja tego samego `driverKind` (np. `opencode2`), użyj jej i wpisz wybraną instancję do raportu; kilka kandydatów albo żadnego → needs-human;
 - `options` tylko gdy parametr nocy je podaje albo provider ich wymaga; brak `<model>` → pomiń pole `model` (domyślny model providera);
 - provider albo model niedostępny → needs-human, bez cichej zamiany na inny model i bez fallbacku na natywne narzędzia.
 
@@ -57,9 +57,10 @@ Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "
 Po wybudzeniu z `watch_pull_request` z nowymi uwagami CodeRabbit (autor `coderabbitai`) orkiestrator przekazuje je sesji ticketu (albo wykonawcy); po pushu poprawki zamyka tylko wątki zaadresowane tą poprawką, przez GraphQL:
 
 ```bash
-gh api graphql -F pr=<N> -f owner=<owner> -f repo=<repo> -f query='
-query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){
-  reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{author{login} path body}}}}}}}'
+gh api graphql --paginate -F pr=<N> -f owner=<owner> -f repo=<repo> -f query='
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+  reviewThreads(first:100,after:$endCursor){pageInfo{hasNextPage endCursor}
+    nodes{id isResolved comments(first:1){nodes{author{login} path body}}}}}}}'
 gh api graphql -f id=<threadId> -f query='
 mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'
 ```
