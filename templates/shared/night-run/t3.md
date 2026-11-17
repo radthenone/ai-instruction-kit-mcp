@@ -9,8 +9,10 @@ Orkiestrator nocy uruchamia sesję dla każdego ticketu za pomocą narzędzia `d
 - `isolation: worktree` — T3 tworzy izolowane worktree dla sesji ticketu z plikami kita i środowiskiem `.venv` (przygotowanymi przez hak `post-checkout`), a T3 nadaje temu worktree własny branch;
 - `mode: async` — uruchomienie asynchroniczne;
 - `clientRequestId` — klucz idempotencji złożony z nazwy katalogu CTX i numeru ticketu (np. `<nazwa katalogu CTX>-<numer ticketu>`); ponowienie z tym samym `clientRequestId` nie tworzy drugiego dziecka;
-- `task` — wskazuje procedurę `night-run-ticket`, podaje parametry zlecenia (baza `<BASE>`, ścieżka `<CTX>`, handoffy blokujących, treść issue, reguły) i wprost zezwala na dalszą delegację (sesja ticketu ma pełne prawo delegować implementację i podzadania);
-- `role: general`, `title: "Night-run ticket #<N>"`.
+- `task` — wskazuje procedurę `night-run-ticket`, podaje parametry zlecenia (baza `<BASE>`, ścieżka `<CTX>`, nazwa brancha `<typ>/<N>-<slug>` (ta sama wartość co `title`; sesja ticketu jej nie wyprowadza), handoffy blokujących, treść issue, reguły) i wprost zezwala na dalszą delegację (sesja ticketu ma pełne prawo delegować implementację i podzadania);
+- `role: general`, `title: "<typ>/<N>-<slug>"` — tytuł to nazwa brancha z konwencji kita (`/git-start`, np. `feat/475-enforce-branch-naming`), z której T3 wyprowadza nazwę brancha worktree; nie wolny tekst.
+
+Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę: `git fetch origin` (błąd fetch → needs-human); niepusty `git status --porcelain` (brudne worktree) → needs-human; gdy `git merge-base --is-ancestor HEAD origin/<BASE>` zwraca 0 i `git status --porcelain` jest pusty, wykonuje `git merge --ff-only origin/<BASE>` (inny PR zmergował się po utworzeniu worktree); potem `git merge-base --is-ancestor origin/<BASE> HEAD`. Niezerowy kod wyjścia (rozbieżna historia albo brudne worktree; baza się nie zgadza → needs-human): bez zmiany nazwy, bez ponownego użycia brancha, ticket nie jest kontynuowany. Potem sprawdza `git branch --show-current`. Gdy T3 nadało inną nazwę niż `<typ>/<N>-<slug>` z `task`, natychmiast wykonuje `git branch -m <typ>/<N>-<slug>` (przed pierwszym commitem i push), żeby PR powstał pod nazwą z konwencji. Pusty wynik (odłączony HEAD) → `git switch -c <typ>/<N>-<slug>`. Branch o tej nazwie już istnieje (odmowa `-m`) → needs-human, nigdy `-M`. Potem `/git-start` użyje aktywnego brancha `<typ>/<N>-<slug>` zamiast tworzyć nowy.
 
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
@@ -36,7 +38,7 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła narzędzie `link_pull_request` z adresem URL zmergowanego PR;
 2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
-3. Orkiestrator usuwa lokalny branch nadany przez T3: `git branch -d <branch>` na branchu nadanym przez T3;
+3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
 
 ## 6. Pola raportu (NIGHT-RUN REPORT)

@@ -206,6 +206,10 @@ użytkownika. Komenda pada na braku scope `project` → pomiń krok i jedna lini
 
 ### 2–3. Branch
 
+Aktywny branch issue: `PREV_BRANCH` ma już postać `<typ>/<N>-…` dla tego `N` (np. worktree
+T3 Code przemianowane przez `/night-run`) → zostań na nim, nie twórz nowego brancha,
+bez `startedFrom` (wskazywałby na ten sam branch). Pozostałe przypadki jak niżej.
+
 Czysty tree + issue: `gh issue develop N --name "…" --base <baza> --checkout`.  
 Brudny: `checkout -b` od `origin/<baza>` jak wyżej.
 

@@ -31,6 +31,7 @@ from guides.bootstrap import run_bootstrap
 KIT_ROOT = Path(__file__).resolve().parents[1]
 CARD_TEMPLATE = KIT_ROOT / "templates" / "shared" / "night-run" / "t3.md"
 AGENT_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 
 
 class TestNightRunT3CardContract(unittest.TestCase):
@@ -108,6 +109,58 @@ class TestNightRunT3CardContract(unittest.TestCase):
             "bez -D" in self.card_text
             or "bez `-D`" in self.card_text
         )
+
+    def test_branch_naming_contract_in_card(self) -> None:
+        """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
+        self.assertIn('title: "<typ>/<N>-<slug>"', self.card_text)
+        self.assertIn("git branch --show-current", self.card_text)
+        self.assertIn("git branch -m <typ>/<N>-<slug>", self.card_text)
+        self.assertIn("przed pierwszym commitem i push", self.card_text)
+        self.assertIn("git switch -c <typ>/<N>-<slug>", self.card_text)
+
+    def test_branch_base_checked_before_rename(self) -> None:
+        """PR #505: przed rename/ponownym użyciem brancha T3 sprawdzana jest baza; brak → needs-human."""
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        for text in (self.card_text, ticket_text):
+            self.assertIn("git fetch origin", text)
+            self.assertIn("git merge-base --is-ancestor origin/<BASE> HEAD", text)
+            self.assertIn("baza się nie zgadza → needs-human", text)
+
+    def test_clean_worktree_fast_forwarded_before_base_check(self) -> None:
+        """PR #505: czyste worktree za origin/<BASE> idzie fast-forward; rozbieżna historia → needs-human."""
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        for text in (self.card_text, ticket_text):
+            ff = text.index("git merge --ff-only origin/<BASE>")
+            self.assertLess(text.index("git merge-base --is-ancestor HEAD origin/<BASE>"), ff)
+            self.assertLess(text.index("git status --porcelain"), ff)
+            self.assertLess(ff, text.index("git merge-base --is-ancestor origin/<BASE> HEAD"))
+            self.assertIn("rozbieżna historia albo brudne worktree", text)
+
+    def test_merged_cleanup_deletes_convention_branch(self) -> None:
+        """#498: po MERGED orkiestrator usuwa lokalny branch <typ>/<N>-<slug>."""
+        self.assertIn("git branch -d <typ>/<N>-<slug>", self.card_text)
+
+    def test_ticket_agent_verifies_branch_in_t3(self) -> None:
+        """#498: krok 1 night-run-ticket weryfikuje nazwę brancha w T3 Code."""
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("W T3 Code (worktree z `delegate_task`", ticket_text)
+        self.assertIn("git branch -m <typ>/<N>-<slug>", ticket_text)
+        self.assertIn("nigdy `-M`", ticket_text)
+
+    def test_task_carries_exact_branch_name(self) -> None:
+        """PR #505: task podaje nazwę brancha równą title; sesja jej nie wyprowadza."""
+        self.assertIn("nazwa brancha `<typ>/<N>-<slug>` (ta sama wartość co `title`", self.card_text)
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("nazwę brancha z `task` bez zmian", ticket_text)
+
+    def test_git_start_reuses_active_issue_branch(self) -> None:
+        """PR #505: /git-start nie tworzy nowego brancha, gdy aktywny to już <typ>/<N>-… issue."""
+        git_start = (KIT_ROOT / "templates" / "shared" / "agents" / "git-start.md").read_text(encoding="utf-8")
+        self.assertIn("Aktywny branch issue", git_start)
+        self.assertIn("bez `startedFrom`", git_start)
+        self.assertIn("`/git-start` użyje aktywnego brancha", self.card_text)
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("przed `/git-start #<N>`", ticket_text)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
