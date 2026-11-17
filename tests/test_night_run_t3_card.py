@@ -166,6 +166,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
         """#499: karta odnotowuje przekazanie etykiet issue do PR i tytuł bez (night-run)."""
         self.assertIn("--label", self.card_text)
         self.assertIn("etykiety procesowe", self.card_text)
+        self.assertIn("wszystkie etykiety issue", self.card_text)
+        self.assertNotIn("sekcji „Etykiety” w `git-end`", self.card_text)
         self.assertIn("bez prefiksu `(night-run)`", self.card_text)
 
     def test_report_fields_in_card(self) -> None:

@@ -84,7 +84,10 @@ class NightRunTicketAgentTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(f"`{label}`", ticket)
         self.assertIn('--label "<etykieta>"', ticket)
-        self.assertIn("sekcji „Etykiety” w `git-end`", ticket)
+        self.assertIn("wszystkie etykiety issue", ticket)
+        self.assertNotIn("sekcji „Etykiety” w `git-end`", ticket)
+        self.assertNotIn("`type: *`, kategoria, `scope: *`", ticket)
+        self.assertIn("gh label list", ticket)
         self.assertIn("`gh pr create`", ticket)
         self.assertIn("bez prefiksu `(night-run)`", ticket)
 
