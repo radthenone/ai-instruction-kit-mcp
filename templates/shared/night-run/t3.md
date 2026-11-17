@@ -101,7 +101,7 @@ Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełni
    - nowy `clientRequestId`: `<nazwa katalogu CTX>-<numer ticketu>-clean-slate`;
    - `title`: `<typ>/<N>-<slug>-clean-slate`;
    - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1; po rotacji brak pola = wartość z wpisu `zapas: <wykonawca> <model>` w `## Stan` (pola podane w Profilu mają pierwszeństwo);
-   - Profil nadpisuje `provider`, a nie podaje `model` → nowe zadanie nie dziedziczy modelu z innego providera: bierze model z konfiguracji wybranego providera (`orchestrator_capabilities`) albo pomija `target.model` (sekcja 2); Profil nie nadpisuje providera → para provider/model zapasu zostaje;
+   - Profil nadpisuje `provider`, a nie podaje `model` → nowe zadanie nie dziedziczy modelu z innego providera: bierze model z konfiguracji wybranego providera (`orchestrator_capabilities`) albo pomija `target.model` (sekcja 2); Profil nie nadpisuje providera → provider zapasu zostaje; model zapasu zostaje tylko wtedy, gdy profil nie podaje `model`;
    - `task` zawiera linię „Clean Slate: użyty” i notatkę zapisaną w kroku 1;
 5. zapisuje nowy `taskId` w `## Stan` w miejsce starego.
 
