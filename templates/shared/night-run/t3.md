@@ -33,11 +33,11 @@ Parametry nocy `implementacja: <wykonawca> <model>; review: <wykonawca> <model>`
 |---------------|----------------------|--------------------|----------------------|
 | `claude` | `claudeAgent` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` | `[{id: "effort", value: "medium"}]` |
 | `antigravity` | `antigravity` | model z listy providera | `[{id: "thought_level", value: "high"}]` |
-| `opencode` | `opencode` | `<provider>/<model>` z listy providera, np. `github-copilot/claude-haiku-5.5` | `[{id: "variant", value: "high"}]` |
+| `opencode` | `opencode` | `<provider>/<model>` z listy providera, np. `opencode/deepseek-v4.1-flash-free` | `[{id: "variant", value: "high"}]` |
 
 Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "claudeAgent", model: "claude-haiku-5-5"}`, a review idzie z `role: review`, `mode: wait`, `isolation: shared`.
 - przed pierwszym `delegate_task` w sesji: `orchestrator_capabilities`; nazwy modeli i `options` bierz z jego wyniku, nie z pamięci; `providerInstanceId` w tabeli to nazwa domyślna — gdy w wyniku `orchestrator_capabilities` jest wyłączona albo jej nie ma → needs-human; nie wybieraj innej instancji tego samego `driverKind`, nawet gdy włączona jest dokładnie jedna (np. `opencode2`);
-- `options` tylko gdy parametr nocy je podaje albo provider ich wymaga; brak `<model>` → pomiń pole `model` (domyślny model providera);
+- options tylko gdy parametr nocy je podaje (np. `@poziom`, `#wariant` w nazwie modelu lub parametr `effort:` / `variant:`) albo provider ich wymaga; poziom wysiłku orkiestrator tłumaczy na właściwą opcję providera: `id: "effort"` (Claude), `id: "variant"` (OpenCode), `id: "thinking_level"` (Antigravity); brak wskazanego poziomu → pomiń `options` (provider używa wartości `default` z `orchestrator_capabilities`); brak `<model>` → pomiń pole `model` (domyślny model providera);
 - provider albo model niedostępny → needs-human, bez cichej zamiany na inny model i bez fallbacku na natywne narzędzia.
 
 ## 3. Stan i wznawianie
