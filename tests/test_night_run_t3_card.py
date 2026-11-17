@@ -115,6 +115,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn('title: "<typ>/<N>-<slug>"', self.card_text)
         self.assertIn("git branch --show-current", self.card_text)
         self.assertIn("git branch -m <typ>/<N>-<slug>", self.card_text)
+        self.assertIn("przed pierwszym commitem i push", self.card_text)
+        self.assertIn("git switch -c <typ>/<N>-<slug>", self.card_text)
 
     def test_merged_cleanup_deletes_convention_branch(self) -> None:
         """#498: po MERGED orkiestrator usuwa lokalny branch <typ>/<N>-<slug>."""
@@ -123,8 +125,9 @@ class TestNightRunT3CardContract(unittest.TestCase):
     def test_ticket_agent_verifies_branch_in_t3(self) -> None:
         """#498: krok 1 night-run-ticket weryfikuje nazwę brancha w T3 Code."""
         ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
-        self.assertIn("T3 Code", ticket_text)
+        self.assertIn("W T3 Code (worktree z `delegate_task`", ticket_text)
         self.assertIn("git branch -m <typ>/<N>-<slug>", ticket_text)
+        self.assertIn("nigdy `-M`", ticket_text)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
