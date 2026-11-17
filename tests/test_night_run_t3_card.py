@@ -110,6 +110,23 @@ class TestNightRunT3CardContract(unittest.TestCase):
             or "bez `-D`" in self.card_text
         )
 
+    def test_pr_guide_written_after_pr_creation(self) -> None:
+        """Po utworzeniu PR orkiestrator woła write_pull_request_guides (#503)."""
+        self.assertIn("write_pull_request_guides(pullRequests: [", self.card_text)
+        pr_create = self.card_text.index("gh pr create")
+        merged = self.card_text.index("## 5. Sprzątanie po MERGED")
+        guide = self.card_text.index("write_pull_request_guides")
+        self.assertLess(pr_create, guide)
+        self.assertLess(guide, merged)
+
+    def test_thread_archived_after_merged_cleanup(self) -> None:
+        """Po MERGED, worktree i branchu: t3_thread_organize archive (#503)."""
+        call = "t3_thread_organize(action: 'archive', threadId: childThreadId)"
+        self.assertIn(call, self.card_text)
+        self.assertLess(
+            self.card_text.index("git branch -d"), self.card_text.index(call)
+        )
+
     def test_branch_naming_contract_in_card(self) -> None:
         """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
         self.assertIn('title: "<typ>/<N>-<slug>"', self.card_text)
