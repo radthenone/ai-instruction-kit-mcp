@@ -181,6 +181,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("thought_level", section)
         self.assertIn("effort", section)
         self.assertIn("review", section)
+        example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
+        self.assertNotIn("options", example)
 
     def test_disabled_default_provider_instance_is_needs_human(self) -> None:
         """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""
@@ -196,11 +198,16 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("zamiast pętli `gh pr checks --watch`", self.card_text)
 
     def test_coderabbit_graphql_threads_in_card(self) -> None:
-        """#500: sekcja 5 ma zapytanie reviewThreads i mutację resolveReviewThread."""
+        """#500: sekcja 5 ma zapytanie reviewThreads, mutację resolveReviewThread i treść review dla head."""
         section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
         self.assertIn("reviewThreads", section)
         self.assertIn("resolveReviewThread(input:{threadId:$id})", section)
         self.assertIn("CodeRabbit", section)
+        # PR #507: treść review CodeRabbit dla bieżącego head commita (uwagi poza diffem)
+        self.assertIn("gh api repos/<owner>/<repo>/pulls/<N>/reviews", section)
+        self.assertIn("commit_id", section)
+        self.assertIn("Outside diff range", section)
+        self.assertIn("skrócony podgląd", section)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
