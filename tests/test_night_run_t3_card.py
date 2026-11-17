@@ -83,6 +83,11 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("taskId", self.card_text)
         self.assertIn("## Stan", self.card_text)
         self.assertIn("task_status", self.card_text)
+        # Wznowienie archiwizuje wątek, więc childThreadId musi przetrwać w ## Stan.
+        self.assertIn(
+            "`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`",
+            self.card_text,
+        )
         self.assertTrue(
             "nie tworzy drugiego dziecka" in self.card_text
             or "nie tworzy nowego dziecka" in self.card_text
@@ -139,7 +144,13 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertLess(remove, archive)
         self.assertLess(branch, archive)
         # Krok 2 ma regułę dla worktree usuniętego wcześniej.
-        self.assertIn("Ścieżka nie istnieje", self.card_text[remove:branch])
+        step2 = self.card_text[remove:branch]
+        self.assertIn("Ścieżka nie istnieje", step2)
+        # Po „Ścieżka nie istnieje” sprawdzana jest rejestracja worktree.
+        self.assertIn("git worktree list", step2)
+        self.assertIn("git worktree prune", step2)
+        self.assertLess(step2.index("Ścieżka nie istnieje"), step2.index("git worktree prune"))
+        self.assertIn("wpis wskazuje istniejący katalog", step2)
 
     def test_branch_naming_contract_in_card(self) -> None:
         """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
