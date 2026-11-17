@@ -16,7 +16,7 @@ Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę
 
 PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie etykiety issue flagami `--label`; etykiety procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`, `wontfix`) są odrzucane. Tytuł PR to czysty Conventional Commit po angielsku opisujący zmianę domenową, bez prefiksu `(night-run)`.
 
-Po utworzeniu PR orkiestrator woła `write_pull_request_guides(pullRequests: [<URL PR>])`, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
+Po utworzeniu PR orkiestrator woła `write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])`, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
 
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
@@ -46,7 +46,7 @@ Gdy PR ticketu osiągnie stan `MERGED`:
 2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
 3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
-5. Orkiestrator archiwizuje wątek sesji ticketu: `t3_thread_organize(action: 'archive', threadId: childThreadId)` (`childThreadId` z wyniku `delegate_task` sesji ticketu); historia wątku zostaje w archiwum.
+5. Po krokach 2–4 (także po odmowie `-d` z kroku 4) orkiestrator archiwizuje wątek sesji ticketu: `t3_thread_organize(action: 'archive', threadId: childThreadId)` (`childThreadId` z wyniku `delegate_task` sesji ticketu); historia wątku zostaje w archiwum.
 
 ## 6. Pola raportu (NIGHT-RUN REPORT)
 

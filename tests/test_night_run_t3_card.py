@@ -112,7 +112,10 @@ class TestNightRunT3CardContract(unittest.TestCase):
 
     def test_pr_guide_written_after_pr_creation(self) -> None:
         """Po utworzeniu PR orkiestrator woła write_pull_request_guides (#503)."""
-        self.assertIn("write_pull_request_guides(pullRequests: [", self.card_text)
+        self.assertIn(
+            'write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])',
+            self.card_text,
+        )
         pr_create = self.card_text.index("gh pr create")
         merged = self.card_text.index("## 5. Sprzątanie po MERGED")
         guide = self.card_text.index("write_pull_request_guides")
@@ -123,9 +126,12 @@ class TestNightRunT3CardContract(unittest.TestCase):
         """Po MERGED, worktree i branchu: t3_thread_organize archive (#503)."""
         call = "t3_thread_organize(action: 'archive', threadId: childThreadId)"
         self.assertIn(call, self.card_text)
-        self.assertLess(
-            self.card_text.index("git branch -d"), self.card_text.index(call)
-        )
+        merged = self.card_text.index("## 5. Sprzątanie po MERGED")
+        remove = self.card_text.index(".ai/worktree.mjs remove", merged)
+        branch = self.card_text.index("git branch -d", merged)
+        archive = self.card_text.index(call)
+        self.assertLess(remove, archive)
+        self.assertLess(branch, archive)
 
     def test_branch_naming_contract_in_card(self) -> None:
         """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
