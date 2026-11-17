@@ -140,7 +140,7 @@ class TestNightRunT3CardContract(unittest.TestCase):
         """Karta eskalacji needs-human zawiera link do wątku T3 Code (#501)."""
         self.assertIn("Karta eskalacji", self.card_text)
         self.assertIn("Wątek T3:", self.card_text)
-        self.assertIn("childThreadId", self.card_text)
+        self.assertIn("pola `link` z wyniku `delegate_task`", self.card_text)
 
     def test_merged_cleanup_deletes_convention_branch(self) -> None:
         """#498: po MERGED orkiestrator usuwa lokalny branch <typ>/<N>-<slug>."""
