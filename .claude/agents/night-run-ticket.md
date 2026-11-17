@@ -36,7 +36,7 @@ needs-human. Brak speca → layout domyślny z bundla (`stack:frontend:ui-struct
 
 Język odpowiedzi, statusy i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.
 
-Kroki wykonujesz dosłownie, poza wyborem wariantu kroków 2–3 (z `/headless` gdy parametr Wykonawca ≠ brak, bez `/headless` w przeciwnym razie).
+Kroki wykonujesz dosłownie, poza wyborem wariantu kroków 2–3 (4 ścieżki: brak wskazania, jawne /headless, implementacja: z delegacją, implementacja: bez delegacji).
 
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
@@ -44,38 +44,68 @@ Kroki:
    Gdy używasz worktree: zakładasz przez `node .ai/worktree.mjs add [<ścieżka>] <branch>` (zgodnie z regułą git-branch-pr).
    Po merge ticketu usuwasz je przez `node .ai/worktree.mjs remove <ścieżka>`.
    Przy ostrzeżeniu `deps differ from main checkout` oznacz ticket jako „weryfikacja w CI” i nie ufaj lokalnym testom.
-2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian (gdy parametr Wykonawca ≠ brak) —
-   orkiestrator dopisuje `--ctx <CTX_DIR>` (pełna ścieżka katalogu CTX z `$HOME`), a wrapper zapisuje
-   wiersz wywołania do bufora nocy. Reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
-   (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
-   (kod ≠ 0, w tym HANG po 30 min bez postępu) → nie ponawiasz go tym samym wykonawcą: wrapper
-   już przeszedł cały łańcuch 1:1, więc to jedna pełna ścieżka. Wyczerpany łańcuch → przejęcie
-   (niżej), potem needs-human. Dalej kroki 4–5.
-   Linia `SUSPECT=no-changes` w raporcie wrappera (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human (liczy się do 2 prób).
-   Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
-   w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
-   jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (gdy `reset=brak`, wpisz «nieznana»)
-   i kończysz turę. Orkiestrator zapisuje pauzę w `## Stan` jako
-   `pauza limitu od <ts>; wznowienie <ISO+5 min> (epoch N)` (format watchdoga). Gdy `reset=brak`:
-   `wznowienie <teraz+30 min> (epoch N)` — kolejne sprawdzenie, nie zgadywanie godziny.
-   ISO+5 min liczy orkiestrator; linię zamyka sam watchdog (watchdog dopisuje `do`). Po wznowieniu wznawiasz
-   ten sam ticket od kroku 2–3 (`/headless` od nowa, ten sam branch).
-   **Przejęcie zamiast czekania (#257).** Wartości `LIMIT` i `PRZEJĘCIE` z linii kroku 2–3
-   ustawia orkiestrator (łańcuch, krok 1). `LIMIT: czekaj` → zostaje powyższa pauza do resetu
-   (zachowanie z #250). `LIMIT: przejmij` (domyślny) → kod 75 nie czeka: uruchamiasz
-   **subagenta przejęcia** (Agent z parametrem `model` = model z `PRZEJĘCIE`) z DOSŁOWNIE tą samą treścią z
-   cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem wrappera (commity,
-   `git status`, ostatnie linie) i stanem brancha. Effort: bez parametru — subagent przejęcia
-   dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; gdy Skill odrzuci wywołanie skilla z `disable-model-invocation`
-   → needs-human (nie czytasz jego `SKILL.md` i nie odtwarzasz kroków innym sposobem). Przejęcie nie rusza niezacommitowanych zmian
-   (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limicie zagnieżdżenia 3
-   (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
-   Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
-   Wyczerpany łańcuch bez limitu (kod ≠ 0 i nie 75, klasa `HANG` albo `ERROR`) idzie tą samą drogą: subagent przejęcia z `PRZEJĘCIE`, bez `LIMIT: czekaj`.
-2. (bez `/headless`; gdy parametr Wykonawca = brak) Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
-3. (bez `/headless`) Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
-   (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
-   Końcowy `/git-commit` z kroku 5 zostaje.
+2–3. Warianty implementacji (4 ścieżki):
+   - **Ścieżka 1: brak wskazania (bez `/headless`; gdy parametr Wykonawca = brak):**
+     Duży ticket (>3 kryteria akceptacji albo >1 aplikacja/pakiet): plan 5–10 kroków.
+     Test-first: test czerwony → kod → zielony → commit. Commit po każdym zielonym kroku
+     (nie czekasz z commitem do końca ticketu — restart hosta w nocy nie gubi pracy).
+     Końcowy `/git-commit` z kroku 5 zostaje. Dalej kroki 4–5.
+   - **Ścieżka 2: jawne /headless (gdy parametr Wykonawca zaczyna się od `/headless`):**
+     2–3. (z `/headless`) `/headless <wykonawca> [flagi] "<treść>"` z flagami i treścią bez zmian (gdy parametr Wykonawca ≠ brak) —
+     orkiestrator dopisuje `--ctx <CTX_DIR>` (pełna ścieżka katalogu CTX z `$HOME`), a wrapper zapisuje
+     wiersz wywołania do bufora nocy. Reguły ticketu i numer dokleja stopka wrappera. Sam nie piszesz kodu: pilnujesz wrappera
+     (wzorzec „Praca w tle”), sprawdzasz raport (`git stash list`, `git log`). Wrapper pada
+     (kod ≠ 0, w tym HANG po 30 min bez postępu) → nie ponawiasz go tym samym wykonawcą: wrapper
+     już przeszedł cały łańcuch 1:1, więc to jedna pełna ścieżka. Wyczerpany łańcuch → przejęcie
+     (niżej), potem needs-human. Dalej kroki 4–5.
+     Linia `SUSPECT=no-changes` w raporcie wrappera (exit 0 bez zmian i commitów) to podejrzany brak pracy: ponów zadanie na silniejszym modelu albo oznacz jako needs-human (liczy się do 2 prób).
+     Kod wyjścia wrappera `75` = pauza limitu wykonawcy (linia `PAUSE=rate-limit reset=<ISO|brak>`
+     w raporcie) — nie jest próbą: nie liczy się do 2 prób i nie jest needs-human. Nie wykonałeś
+     jeszcze pracy: oddajesz hand-back „pauza wykonawcy do <ISO>” (gdy `reset=brak`, wpisz «nieznana»)
+     i kończysz turę. Orkiestrator zapisuje pauzę w `## Stan` jako
+     `pauza limitu od <ts>; wznowienie <ISO+5 min> (epoch N)` (format watchdoga). Gdy `reset=brak`:
+     `wznowienie <teraz+30 min> (epoch N)` — kolejne sprawdzenie, nie zgadywanie godziny.
+     ISO+5 min liczy orkiestrator; linię zamyka sam watchdog (watchdog dopisuje `do`). Po wznowieniu wznawiasz
+     ten sam ticket od kroku 2–3 (`/headless` od nowa, ten sam branch).
+     **Przejęcie zamiast czekania (#257).** Wartości `LIMIT` i `PRZEJĘCIE` z linii kroku 2–3
+     ustawia orkiestrator (łańcuch, krok 1). `LIMIT: czekaj` → zostaje powyższa pauza do resetu
+     (zachowanie z #250). `LIMIT: przejmij` (domyślny) → kod 75 nie czeka: uruchamiasz
+     **subagenta przejęcia** (Agent z parametrem `model` = model z `PRZEJĘCIE`) z DOSŁOWNIE tą samą treścią z
+     cudzysłowu `/headless <wykonawca> [flagi] "<treść>"` oraz raportem wrappera (commity,
+     `git status`, ostatnie linie) i stanem brancha. Effort: bez parametru — subagent przejęcia
+     dziedziczy effort sesji. Komendy z treści: Skill, gdy dostępny; gdy Skill odrzuci wywołanie skilla z `disable-model-invocation`
+     → needs-human (nie czytasz jego `SKILL.md` i nie odtwarzasz kroków innym sposobem). Przejęcie nie rusza niezacommitowanych zmian
+     (bez `git checkout`/`git stash`), commituje lokalnie (`git commit`); przy limicie zagnieżdżenia 3
+     (orkiestrator → ticket → przejęcie) `/git-commit`, review i `/git-end` dalej robi subagent ticketu.
+     Przejęcie, które pada (błąd albo kolejny limit) → needs-human; nie liczy się jako druga próba wrappera. W hand-backu podaj model przejęcia i jego źródło (cel / Profil / sesja).
+     Wyczerpany łańcuch bez limitu (kod ≠ 0 i nie 75, klasa `HANG` albo `ERROR`) idzie tą samą drogą: subagent przejęcia z `PRZEJĘCIE`, bez `LIMIT: czekaj`. Dalej kroki 4–5.
+   - **Ścieżka 3 i 4: implementacja: z delegacją lub bez delegacji (gdy parametr Wykonawca zawiera `implementacja:` lub wolny tekst celu):**
+     Łańcuch prowadzi sesja ticketu: uruchamia kolejny model z łańcucha (`<wykonawca> <model>, <model>; <wykonawca> <model>`) wyłącznie po wskazanej porażce bieżącego modelu; po skutecznej implementacji i utworzeniu commita kończy łańcuch, aby kolejny model nie powtarzał zadania.
+     Transport per wykonawca:
+     - **Ścieżka 3 (implementacja: z delegacją):** natywna delegacja klienta, gdy klient obsługuje wykonawcę natywnie (np. narzędzie subagenta / delegacji w danym środowisku).
+     - **Ścieżka 4 (implementacja: bez delegacji):** gdy klient nie obsługuje natywnej delegacji wykonawcy, sesja ticketu woła `/headless <wykonawca> --model <model>`; ewentualne wewnętrzne przekazania wrappera (przejścia fallback) należy odnotować w raporcie hand-backu jako przejścia na zapas.
+     Delegat pracuje w checkoucie sesji ticketu, na branchu z `/git-start`.
+
+     **Szablon zlecenia delegata:**
+     Zlecenie przekazywane delegatowi (natywnemu lub przez `/headless`) zawiera:
+     - specyfikację zadania (body issue, uwagi i kontekst z `<CTX>`),
+     - komenda testów z `timeout` (uruchomienie testów z ograniczonym czasem),
+     - obowiązkowy hand-back (raport stanu, commity, dodane pliki, wynik testów),
+     - log postępu w CTX (zapis postępu do pliku w katalogu `$CTX_DIR`),
+     - temat commita w języku Profilu (Conventional Commit: prefiks EN `feat:`/`fix:`, opis w języku z `get_language`),
+     przy czym delegat pracuje w checkoucie sesji ticketu, na branchu z `/git-start`.
+
+     **Trzy reguły porażki wykonawcy → następny model:**
+     Porażką wykonawcy na bieżącym modelu skutkującą przejściem do następnego modelu z łańcucha (odnotowanym w raporcie jako przejście na zapas) jest:
+     1. brak commita i brak hand-backu (przejście do następnego modelu następuje zawsze, gdy brakuje nowego commita i hand-backu, niezależnie od tego, czy delegat pozostawił niezacommitowane zmiany),
+     2. limit albo quota wykonawcy (błąd 429, wyczerpany limit tokenów lub quota modelu),
+     3. przekroczony czas (timeout wykonawcy / brak odpowiedzi).
+
+     **Wyczerpany łańcuch:**
+     Gdy wszystkie modele i wykonawcy w łańcuchu zawiodą (łańcuch wyczerpany) → ticket kończy się statusem `needs-human` (przypadek A, etykieta `ready-for-human`, komentarz na issue), a noc idzie dalej (orkiestrator podejmuje kolejny ticket).
+
+     **Raport per krok:**
+     W hand-backu ticketu przekazujesz: transport (natywna delegacja / `/headless` / subagent), model, przejścia na zapas; Koszt delegata `n/a`, gdy transport nie zostawia logów. Dalej kroki 4–5.
 4. Lokalnie tylko testy dotknięte ticketem + bramki szybkie z <CTX>. Pełny zestaw: CI.
    Na VPS (`Host: vps` w nagłówku <CTX>) `uv run` zawsze z `--no-sync`.
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
@@ -144,5 +174,5 @@ Reguły:
 
 Hand-back (bez streszczania pracy): stan (do review / MERGED / needs-human / halt); branch, katalog (worktree ticketu albo katalog główny), PR,
 link `Final report`; testy unit/x, integration-db/y, integration/z, e2e/w (z komend);
-dodane modele, serwisy, endpointy, migracje; założenia; findingi review w języku Profilu; rundy CodeRabbit: <0–3 / n/d>; model: <per komenda: agent
+dodane modele, serwisy, endpointy, migracje; założenia; findingi review w języku Profilu; rundy CodeRabbit: <0–3 / n/d>; raport per krok: transport, model, przejścia na zapas (koszt delegata n/a bez logów); model: <per komenda: agent
 <nazwa> (<model>) / skill / inline — fallback przy braku agenta>.

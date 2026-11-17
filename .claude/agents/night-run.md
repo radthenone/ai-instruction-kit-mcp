@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Autonomiczna nocna praca na liście issue (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run.
+description: Autonomiczna praca na liście issue w nocy albo w dzień (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run.
 model: opus
 ---
 
@@ -19,7 +19,8 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
 ## Zasady nadrzędne
 
 - **Jesteś orkiestratorem w głównej sesji, nigdy wykonawcą ticketu.** Ticket robi subagent
-  ticketu, review osobny świeży subagent albo skille review z argumentów. Sam nie czytasz
+  ticketu, review osobny świeży subagent albo skille review z argumentów. Łańcuch prowadzi sesja ticketu.
+  Orkiestrator zleca tylko ticket i trzyma jedną linię stanu (`#N: <stan> <PR> <koszt>`). Sam nie czytasz
   kodu i nie odpalasz testów: Twój kontekst ma zostać mały.
 - **Komendy kitu uruchamiasz według klienta** (`/git-*`, `/review-*` i inne z argumentów
   lub promptu ticketu), by działały na modelu z frontmattera agenta, nie sesji:
@@ -59,7 +60,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
 ## Argumenty
 
 ```text
-/night-run #N1 #N2 [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]
+/night-run #N1 #N2 [implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>] [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]
 ```
 
 `/goal` opcjonalny: noc działa sama. Wznawianie nocy = watchdog `.ai/night-run-watchdog.sh`
@@ -67,7 +68,10 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
 końca nocy; cel z `pauzy: N` (po N-tej pauzie halt C), `koniec: HH:MM` (teraz ≥ koniec →
 halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, krok 6) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu celu”).
 
-- **Lista issue** — `#N` przed pierwszym argumentem z `/`. Brak → kolejka (krok 4).
+- **Składnia `krok: wartość` (`implementacja:`, `review:`, `effort:`), spójna z `<komenda>: model <nazwa>`.**
+- **Lista issue** — `#N` przed pierwszym argumentem z `/` lub prefiksem kroku. Brak → kolejka (krok 4).
+- **`implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>`** — wykonawca implementacji z łańcuchem modeli albo z wolnego tekstu celu, który nazywa wykonawcę (wolny tekst celu np. „antigravity wykonuje implementację”). Średnik rozdziela wykonawców, przecinek modele jednego wykonawcy; `@poziom` (np. `@high`) kit tłumaczy na nazwę/parametr danego transportu. Każdy wskazany wykonawca jest sprawdzany raz na starcie nocy przeciw `clients:` w `.ai/project.profile.yaml`: wykonawca spoza `clients:` → `needs-human na starcie nocy` — żaden ticket nie startuje, NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
+- **Brak wskazania i jawne `/headless` → bez zmian:** brak wskazania wykonawcy oznacza implementację bezpośrednią w subagencie ticketu (kroki 2–3 bez `/headless`); jawne `/headless <wykonawca> [flagi] "<treść>"` to wywołanie wrappera `.ai/headless.mjs`.
 - **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
   headless (`EXEC`, `FLAGI`, `TREŚĆ`). Argument kończy zamykający cudzysłów treści
   (cudzysłów obowiązkowy); treść i flagi wrappera przekazujesz bez zmian (`--timeout`
@@ -76,7 +80,7 @@ halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, 
   - klient bez `/headless` (brak skilla/komendy `headless` albo `.ai/headless.mjs`) →
     fallback: implementacja subagentem jak bez argumentu, w raporcie
     `wykonawca: subagent (brak /headless)`;
-  - `EXEC` spoza `clients:` w `.ai/project.profile.yaml` albo równy hostowi (klient tej
+  - wykonawca spoza `clients:` w `.ai/project.profile.yaml` albo równy hostowi (klient tej
     sesji) → nieznany wykonawca → needs-human na starcie nocy — żaden ticket nie startuje,
     NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
 - **Skille review z argumentów** — jeden lub kilka (`/review-edge`, `/review-bugbot`,
@@ -246,14 +250,14 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 
 ## Łańcuch na ticket — dokładnie ten
 
-1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): z parametrami zlecenia z sekcji „Zlecenie ticketu” (kroki 1–8 w `night-run-ticket`), z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Przed startem ticketu upewnij się, że żaden inny CTX tego dnia nie ma go w `## Stan` jako trwającego (reguła z kroku 4; w razie kolizji pomijasz: `skipped: w innej nocy <katalog>`). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
+1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): z parametrami zlecenia z sekcji „Zlecenie ticketu” (kroki 1–8 w `night-run-ticket`), z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Łańcuch prowadzi sesja ticketu. Orkiestrator zleca tylko ticket i trzyma jedną linię stanu (`#N: <stan> <PR> <koszt>`). Przed startem ticketu upewnij się, że żaden inny CTX tego dnia nie ma go w `## Stan` jako trwającego (reguła z kroku 4; w razie kolizji pomijasz: `skipped: w innej nocy <katalog>`). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
-   poprawiasz `## Stan`, jeśli hand-back zmienia krok. W parametrach zlecenia kroki 2–3 w `night-run-ticket` dostają `Wykonawca` z wpisanymi `EXEC`, `FLAGI` i `TREŚĆ` oraz dwiema
+   poprawiasz `## Stan`, jeśli hand-back zmienia krok. W parametrach zlecenia kroki 2–3 w `night-run-ticket` dostają `Wykonawca` z wpisanymi `implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>` albo `/headless <EXEC> [FLAGI] "<TREŚĆ>"` lub `brak`, oraz dwiema
    rozstrzygniętymi wartościami: `LIMIT` (`przejmij` / `czekaj`; z tekstu celu `limit:`, brak → `przejmij`)
    i `PRZEJĘCIE` (alias + źródło): (a) tekst celu `przejęcie: <alias>` (tylko ta noc), (b) Profil
    `models.claude.takeover`, (c) brak → `sesja` (model sesji). Alias z celu spoza `haiku`/`sonnet`/
-   `opus`/`fable` → `sesja` z wpisem w raporcie („nieznany alias przejęcia”). Bez `/headless` pole `Wykonawca` ma wartość `brak`.
+   `opus`/`fable` → `sesja` z wpisem w raporcie („nieznany alias przejęcia”). Bez `/headless` i `implementacja:` pole `Wykonawca` ma wartość `brak`.
 2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
    skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co
    uruchomienie review. Ze skillami review z argumentów: uruchamiasz je **Ty** według reguły
@@ -288,7 +292,7 @@ Przekazujesz subagentowi ticketu parametry zlecenia (orkiestrator nie przepisuje
 ```markdown
 Ticket #N, BASE, CTX: #<N>, baza <BASE>, kontekst <CTX>
 Handoffy blokujących: <lista plików $CTX_DIR/handoff-<B>.md | brak blokujących>
-Wykonawca: /headless <EXEC> [FLAGI] "<TREŚĆ>" --ctx <CTX_DIR> | brak
+Wykonawca: implementacja: <wykonawca> <model>, <model>; <wykonawca> <model> | /headless <EXEC> [FLAGI] "<TREŚĆ>" --ctx <CTX_DIR> | brak
 LIMIT: <przejmij | czekaj>
 PRZEJĘCIE: <alias> (<źródło>)
 Nadpisania: merge-mimo-spec, merge-mimo-wątków | brak
@@ -484,6 +488,8 @@ Retro: <liczba znalezisk> (kit <n> · projekt <n> · agent <n> · zewnętrzne <n
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
 | #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
 | #J | skipped: needs-local / skipped: <etykieta> / skipped: w innej nocy <katalog> / skipped: zależność #N w innej nocy <katalog> / halted | — | — | — | etykieta stanu, inna noc albo link do komentarza halted | — |
+
+Raport per krok: kolumny Wykonawca i Model odnotowują transport (natywna delegacja / `/headless` / subagent), użyty model oraz przejścia na zapas (np. `<model-1> → <model-2> (limit)`). Koszt delegata `n/a`, gdy transport nie zostawia logów.
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako
