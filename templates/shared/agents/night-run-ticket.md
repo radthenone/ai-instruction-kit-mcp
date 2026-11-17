@@ -111,7 +111,7 @@ Kroki:
    Na VPS (`Host: vps` w nagłówku <CTX>) `uv run` zawsze z `--no-sync`.
 5. `/git-commit`. Nie pushujesz. Oddajesz hand-back.
 --- po wznowieniu ---
-6. Poprawki z review (po `--fix`: zebrane przez `/git-commit` w osobnym commicie i sprawdzone ponownym CI), potem `/git-end --stay` (review zrobione, nie czekaj). W prompcie `/git-end`
+6. Poprawki z review (po `--fix`: zebrane przez `/git-commit` w osobnym commicie i sprawdzone ponownym CI). Potwierdzone findingi poprawia wykonawca implementacji z kroków 2–3 (ścieżki 2–4: ten sam wykonawca i model, poprawka razem z testem). Ścieżka 1: poprawiasz sam, razem z testem. Bez `--fix` zapisz poprawki przez `/git-commit` w osobnym commicie przed `/git-end`, bo `/git-end` przy niecommitowanych zmianach zatrzymuje się. Potem `/git-end --stay` (review zrobione, nie czekaj). W prompcie `/git-end`
    przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi (nagłówki sekcji
    i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian). **CI
    pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
