@@ -14,6 +14,8 @@ Orkiestrator nocy uruchamia sesję dla każdego ticketu za pomocą narzędzia `d
 
 Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę: `git fetch origin` (błąd fetch → needs-human); niepusty `git status --porcelain` (brudne worktree) → needs-human; gdy `git merge-base --is-ancestor HEAD origin/<BASE>` zwraca 0 i `git status --porcelain` jest pusty, wykonuje `git merge --ff-only origin/<BASE>` (inny PR zmergował się po utworzeniu worktree); potem `git merge-base --is-ancestor origin/<BASE> HEAD`. Niezerowy kod wyjścia (rozbieżna historia albo brudne worktree; baza się nie zgadza → needs-human): bez zmiany nazwy, bez ponownego użycia brancha, ticket nie jest kontynuowany. Potem sprawdza `git branch --show-current`. Gdy T3 nadało inną nazwę niż `<typ>/<N>-<slug>` z `task`, natychmiast wykonuje `git branch -m <typ>/<N>-<slug>` (przed pierwszym commitem i push), żeby PR powstał pod nazwą z konwencji. Pusty wynik (odłączony HEAD) → `git switch -c <typ>/<N>-<slug>`. Branch o tej nazwie już istnieje (odmowa `-m`) → needs-human, nigdy `-M`. Potem `/git-start` użyje aktywnego brancha `<typ>/<N>-<slug>` zamiast tworzyć nowy.
 
+PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie etykiety issue flagami `--label`; etykiety procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`, `wontfix`) są odrzucane. Tytuł PR to czysty Conventional Commit po angielsku opisujący zmianę domenową, bez prefiksu `(night-run)`.
+
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
 Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-ticket`):

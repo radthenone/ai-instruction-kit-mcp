@@ -162,6 +162,14 @@ class TestNightRunT3CardContract(unittest.TestCase):
         ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("przed `/git-start #<N>`", ticket_text)
 
+    def test_pr_labels_and_clean_title_in_card(self) -> None:
+        """#499: karta odnotowuje przekazanie etykiet issue do PR i tytuł bez (night-run)."""
+        self.assertIn("--label", self.card_text)
+        self.assertIn("etykiety procesowe", self.card_text)
+        self.assertIn("wszystkie etykiety issue", self.card_text)
+        self.assertNotIn("sekcji „Etykiety” w `git-end`", self.card_text)
+        self.assertIn("bez prefiksu `(night-run)`", self.card_text)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)
