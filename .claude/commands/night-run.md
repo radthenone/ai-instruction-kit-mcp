@@ -276,7 +276,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    - bez `/code-review` w domyślnym łańcuchu (Spec sprawdza bramka przed merge) i bez `--fix`.
    Prompt subagenta review: „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    Język wyjścia: <language> (wartość z `get_language`).
-   Dobrane review według typów plików w diffie (zawsze `/review-bugbot` + ewentualne drugie review). Czytaj tylko diff
+   Review w tej kolejności: `/review-bugbot`; gdy diff dotyka plików wykonywalnych (`*.py`, `*.mjs`, `*.js`, `*.ts`, `*.sh`), jedno dodatkowe review: `/review-security` > review stacku (Tier ≠ `none`) > `/review-edge`. Maks. 2 review; bez `/code-review` i `--fix`. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
    bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`; nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Linie `Ręcznie:` / `Recznie:` są niesprawdzalne w diffie: wiersz Spec ze statusem `niesprawdzalne`, nie High. Nie edytuj.” Zapisz jego id w `## Stan`.
    Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
