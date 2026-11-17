@@ -31,6 +31,8 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
 - po przerwaniu sesji orkiestratora lub restarcie wznowienie następuje przez odpytanie `task_status` na podstawie zapisanego `taskId`;
 - ponowienie wywołania z tym samym `clientRequestId` nie tworzy drugiego dziecka.
 
+- Karta eskalacji needs-human (sekcja „Karta eskalacji” w `night-run`): pole `Wątek T3:` to wartość pola `link` z wyniku `delegate_task` sesji ticketu, wstawiona dosłownie.
+
 ## 4. Watchdog i cron
 
 - watchdog i cron pominięte: w środowisku T3 nie uruchamia się skryptu `.ai/night-run-watchdog.sh` ani `CronCreate` (T3 samodzielnie zarządza cyklem życia zadań i wątków w tle).

@@ -350,9 +350,10 @@ szybkich, krok 6 w `night-run-ticket`), nigdy push.
 
 ### Wyzwalacze
 
-**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po 3. rundzie (E); kryterium akceptacji niejasne albo sprzeczne
+**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po wyczerpaniu sufitu rund (E); kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
+po 3 próbach naprawy (wspólny sufit 3 rund naprawczych CI i CodeRabbit) albo circuit breaker (identyczny błąd, flip-flop,
+eksplozja diffa — krok 6 w `night-run-ticket`); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
 błąd builda przy aktualizacji samego lockfile → etykieta
 `needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
@@ -365,8 +366,9 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 
 ### Zasięg — zanim cokolwiek zrobisz
 
-Które tickety z listy od tego zależą: jawnie (blocked-by) i niejawnie (zmieniony model,
-pole, serwis, endpoint, z którego korzysta inny — treść issue + pliki `handoff-<B>.md` blokujących / indeks w `CTX`).
+Które tickety z listy od tego zależą: wyłącznie jawnie, przez relację `blocked_by` (treść
+issue / indeks w `CTX`), przechodnio: C blokowany przez B, a B przez A → po eskalacji A
+tickety B i C są w zasięgu.
 
 ### Przypadki
 
@@ -383,7 +385,7 @@ pole, serwis, endpoint, z którego korzysta inny — treść issue + pliki `hand
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3 w `night-run-ticket`. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu albo otwarte wątki bota CodeRabbit po 3. rundzie): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
+- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu albo otwarte wątki bota CodeRabbit po wyczerpaniu sufitu rund): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
 
 Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
@@ -419,6 +421,22 @@ Wpływ: blokuje #X, #Y · nie blokuje #Z
 Stan kodu: branch <nazwa> wypchnięty / porzucony
 Wywołanie headless: <wiersz JSON z ostatniej linii wyjścia wrappera; bez wywołania → n/d>
 ```
+
+### Karta eskalacji
+
+Przy wyczerpanym sufcie rund albo circuit breakerze komentarz na issue to karta, nie zrzut logów:
+
+```markdown
+needs-human: <jedno zdanie, co stoi>
+
+Co zaimplementowano: <zmiany i commity na branchu>
+Na czym utknął: <dokładny błąd albo test>
+Hipoteza: <prawdopodobna przyczyna, np. brak mocka, brak migracji>
+PR: <link do pull requesta ticketu>
+Wątek T3: <link wątku sesji ticketu; poza T3 Code → n/d>
+```
+
+Po needs-human orkiestrator od razu bierze kolejne niezależne issue; blokuje tylko relacja `blocked_by`.
 
 ## Tick watchdoga i crona (tylko Claude Code)
 
