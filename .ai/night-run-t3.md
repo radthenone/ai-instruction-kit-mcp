@@ -9,10 +9,10 @@ Orkiestrator nocy uruchamia sesję dla każdego ticketu za pomocą narzędzia `d
 - `isolation: worktree` — T3 tworzy izolowane worktree dla sesji ticketu z plikami kita i środowiskiem `.venv` (przygotowanymi przez hak `post-checkout`), a T3 nadaje temu worktree własny branch;
 - `mode: async` — uruchomienie asynchroniczne;
 - `clientRequestId` — klucz idempotencji złożony z nazwy katalogu CTX i numeru ticketu (np. `<nazwa katalogu CTX>-<numer ticketu>`); ponowienie z tym samym `clientRequestId` nie tworzy drugiego dziecka;
-- `task` — wskazuje procedurę `night-run-ticket`, podaje parametry zlecenia (baza `<BASE>`, ścieżka `<CTX>`, handoffy blokujących, treść issue, reguły) i wprost zezwala na dalszą delegację (sesja ticketu ma pełne prawo delegować implementację i podzadania);
+- `task` — wskazuje procedurę `night-run-ticket`, podaje parametry zlecenia (baza `<BASE>`, ścieżka `<CTX>`, nazwa brancha `<typ>/<N>-<slug>` (ta sama wartość co `title`; sesja ticketu jej nie wyprowadza), handoffy blokujących, treść issue, reguły) i wprost zezwala na dalszą delegację (sesja ticketu ma pełne prawo delegować implementację i podzadania);
 - `role: general`, `title: "<typ>/<N>-<slug>"` — tytuł to nazwa brancha z konwencji kita (`/git-start`, np. `feat/475-enforce-branch-naming`), z której T3 wyprowadza nazwę brancha worktree; nie wolny tekst.
 
-Sesja ticketu zaraz po starcie sprawdza `git branch --show-current`. Gdy T3 nadało inną nazwę niż `<typ>/<N>-<slug>`, natychmiast wykonuje `git branch -m <typ>/<N>-<slug>` (przed pierwszym commitem i push), żeby PR powstał pod nazwą z konwencji. Pusty wynik (odłączony HEAD) → `git switch -c <typ>/<N>-<slug>`. Branch o tej nazwie już istnieje (odmowa `-m`) → needs-human, nigdy `-M`.
+Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) sprawdza `git branch --show-current`. Gdy T3 nadało inną nazwę niż `<typ>/<N>-<slug>` z `task`, natychmiast wykonuje `git branch -m <typ>/<N>-<slug>` (przed pierwszym commitem i push), żeby PR powstał pod nazwą z konwencji. Pusty wynik (odłączony HEAD) → `git switch -c <typ>/<N>-<slug>`. Branch o tej nazwie już istnieje (odmowa `-m`) → needs-human, nigdy `-M`. Potem `/git-start` użyje aktywnego brancha `<typ>/<N>-<slug>` zamiast tworzyć nowy.
 
 ## 2. Wykonawca implementacji (z sesji ticketu)
 

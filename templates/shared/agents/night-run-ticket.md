@@ -42,7 +42,7 @@ Kroki wykonujesz dosłownie, poza wyborem wariantu kroków 2–3 (4 ścieżki: b
 Kroki:
 1. `/git-start #<N>`. Branch musi wychodzić z <BASE>; inaczej
    `gh issue develop <N> --name <typ>/<N>-<slug> --base <BASE> --checkout`.
-   W T3 Code (worktree z `delegate_task`, branch nadany przez T3): sprawdź `git branch --show-current`;
+   W T3 Code (worktree z `delegate_task`, branch nadany przez T3), przed `/git-start #<N>`: weź nazwę brancha z `task` bez zmian i sprawdź `git branch --show-current`;
    gdy różni się od `<typ>/<N>-<slug>`, od razu `git branch -m <typ>/<N>-<slug>` (przed commitem i push); odłączony HEAD → `git switch -c <typ>/<N>-<slug>`; odmowa `-m` (nazwa zajęta) → needs-human, nigdy `-M`.
    Gdy używasz worktree: zakładasz przez `node .ai/worktree.mjs add [<ścieżka>] <branch>` (zgodnie z regułą git-branch-pr).
    Po merge ticketu usuwasz je przez `node .ai/worktree.mjs remove <ścieżka>`.

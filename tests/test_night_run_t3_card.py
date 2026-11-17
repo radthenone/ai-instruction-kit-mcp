@@ -129,6 +129,21 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("git branch -m <typ>/<N>-<slug>", ticket_text)
         self.assertIn("nigdy `-M`", ticket_text)
 
+    def test_task_carries_exact_branch_name(self) -> None:
+        """PR #505: task podaje nazwę brancha równą title; sesja jej nie wyprowadza."""
+        self.assertIn("nazwa brancha `<typ>/<N>-<slug>` (ta sama wartość co `title`", self.card_text)
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("nazwę brancha z `task` bez zmian", ticket_text)
+
+    def test_git_start_reuses_active_issue_branch(self) -> None:
+        """PR #505: /git-start nie tworzy nowego brancha, gdy aktywny to już <typ>/<N>-… issue."""
+        git_start = (KIT_ROOT / "templates" / "shared" / "agents" / "git-start.md").read_text(encoding="utf-8")
+        self.assertIn("Aktywny branch issue", git_start)
+        self.assertIn("bez `startedFrom`", git_start)
+        self.assertIn("`/git-start` użyje aktywnego brancha", self.card_text)
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("przed `/git-start #<N>`", ticket_text)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)
