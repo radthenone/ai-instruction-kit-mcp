@@ -31,13 +31,6 @@ models:
     heavy: opus
     takeover: haiku
 
-# Clean Slate w /night-run (#502): brak sekcji = model jak dotąd.
-# night-run:
-#   clean-slate:
-#     provider: claudeAgent
-#     model: claude-opus-5-5
-#     effort: high
-
 worktree:
   copy:
     - .mcp.json
