@@ -114,7 +114,11 @@ Kroki:
 --- po wznowieniu ---
 6. Poprawki z review (po `--fix`: zebrane przez `/git-commit` w osobnym commicie i sprawdzone ponownym CI). Potwierdzone findingi poprawia wykonawca implementacji z kroków 2–3 (ścieżki 2–4: ten sam wykonawca i model, poprawka razem z testem). Ścieżka 1: poprawiasz sam, razem z testem. Bez `--fix` zapisz poprawki przez `/git-commit` w osobnym commicie przed `/git-end`, bo `/git-end` przy niecommitowanych zmianach zatrzymuje się. Potem `/git-end --stay` (review zrobione, nie czekaj). W prompcie `/git-end`
    przekazujesz treść opisu PR: testy, założenia jako Q z odpowiedzią, niepewne findingi (nagłówki sekcji
-   i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian). **CI
+   i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian), a także
+   etykiety i tytuł dla `gh pr create`: etykiety czytasz `gh issue view <N> --json labels`, odrzucasz etykiety
+   procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`), resztę przekazujesz
+   flagami `--label "<etykieta>"` (po jednej na etykietę). Tytuł PR: czysty Conventional Commit po angielsku
+   opisujący zmianę domenową issue (np. `feat(transport): add T3 Code card`), bez prefiksu `(night-run)`. **CI
    pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
    checki mogą rejestrować się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
    po minucie; nadal brak → przy `Host: local` merge po bramkach szybkich (zapis w `Final report`);

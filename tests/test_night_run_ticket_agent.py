@@ -76,6 +76,17 @@ class NightRunTicketAgentTest(unittest.TestCase):
             with self.subTest(order_field=field):
                 self.assertIn(field, night_run, f"Pole zlecenia '{field}' powinno znajdować się w night-run.md")
 
+    def test_pr_forwards_issue_labels_and_clean_title(self) -> None:
+        """Krok 6: etykiety issue bez procesowych idą flagami --label; tytuł PR bez (night-run) (#499)."""
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("gh issue view <N> --json labels", ticket)
+        for label in ("ready-for-agent", "ready-for-human", "needs-info", "needs-triage"):
+            with self.subTest(label=label):
+                self.assertIn(f"`{label}`", ticket)
+        self.assertIn('--label "<etykieta>"', ticket)
+        self.assertIn("`gh pr create`", ticket)
+        self.assertIn("bez prefiksu `(night-run)`", ticket)
+
 
 if __name__ == "__main__":
     unittest.main()
