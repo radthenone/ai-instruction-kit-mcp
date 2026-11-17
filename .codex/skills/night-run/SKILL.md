@@ -83,7 +83,7 @@ halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, 
     sesji) → nieznany wykonawca → needs-human na starcie nocy — żaden ticket nie startuje,
     NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
 - **Skille review z argumentów** — jeden lub kilka (`/review-edge`, `/review-bugbot`,
-  `/review-security`, `/review --fix`, …), z ich własnymi flagami. Bez nich → review jak dziś (łańcuch, krok 2).
+  `/review-security`, `/review --fix`, …), z ich własnymi flagami. Bez nich → domyślny łańcuch review (łańcuch, krok 2). Skille review z argumentów nadal zastępują domyślny łańcuch.
   Każdy sprawdzasz raz na starcie nocy na liście skilli klienta:
   nieznany skill review → needs-human na starcie nocy — żaden ticket nie startuje,
   NIGHT-RUN REPORT z `needs-human: nieznany skill review <nazwa>`, koniec.
@@ -266,9 +266,15 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    Skille review uruchamiasz w katalogu brancha ticketu (worktree ticketu z hand-backu albo katalog główny, gdy worktree nie był używany): `git -C <katalog brancha>` albo cwd ustawiony na ten katalog. Przed startem sprawdzasz `git -C <katalog brancha> branch --show-current`: inny branch niż branch ticketu → nie odpalasz review na złym diffie, tylko zgłaszasz rozjazd w raporcie nocy (needs-human).
    Od skilla bierzesz tylko tabelę niżej (dla wbudowanego `/review`: orkiestrator przepisuje findingi do tabeli `Severity | Location | Finding | Fix` — nagłówek bez zmian — i oznacza każdy wiersz jako potwierdzony albo niepewny); skill / review z `--fix` poprawia sam — po `--fix` subagent ticketu po
    wznowieniu zbiera poprawki przez `/git-commit` (w osobnym commicie na branchu ticketu) i uruchamia ponowne CI.
-   Bez argumentów — **subagent review** (zawsze nowy): „Review `git diff origin/$BASE...HEAD` na `<branch>`:
+   Bez argumentów — **subagent review** (zawsze nowy), który wykonuje domyślny łańcuch review dobrany po typach plików w diffie:
+   - zawsze `/review-bugbot`;
+   - diff dotyka plików wykonywalnych (`*.py`, `*.mjs`, `*.js`, `*.ts`, `*.sh`) → + jedno review, w kolejności: `/review-security` (auth, sekrety, guardy) > review stacku (Tier ≠ `none`) > `/review-edge`;
+   - sam tekst (`*.md`, docs, szablony procedur) → tylko bugbot;
+   - maks. 2 review na ticket;
+   - bez `/code-review` w domyślnym łańcuchu (Spec sprawdza bramka przed merge) i bez `--fix`.
+   Prompt subagenta review: „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    Język wyjścia: <language> (wartość z `get_language`).
-   `/review-bugbot` + `/review-backend` i/lub `/review-frontend` wg diffa. Czytaj tylko diff
+   Dobrane review według typów plików w diffie (zawsze `/review-bugbot` + ewentualne drugie review). Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
    bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`; nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Linie `Ręcznie:` / `Recznie:` są niesprawdzalne w diffie: wiersz Spec ze statusem `niesprawdzalne`, nie High. Nie edytuj.” Zapisz jego id w `## Stan`.
    Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
@@ -276,7 +282,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    `## Spec`, `TWARDE` / `OCENA`). Bez zmian: nagłówek tabeli `Severity | Location | Finding | Fix`
    i wartości Severity, cytaty kodu, identyfikatory i ścieżki.
 3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z samą
-   tabelą findingów (bez tłumaczenia): potwierdzone → poprawka + test; niepewne → opis PR. Gdy review miało `--fix`, subagent najpierw wykonuje `/git-commit` dla wprowadzonych poprawek i ponawia CI przed `/git-end`. Review z kroku 2 **jest**
+   tabelą findingów (bez tłumaczenia): findingi → wykonawca implementacji, poprawka razem z testem (potwierdzone → poprawka + test; niepewne → opis PR). Gdy review miało `--fix`, subagent najpierw wykonuje `/git-commit` dla wprowadzonych poprawek i ponawia CI przed `/git-end`. Review z kroku 2 **jest**
    potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
    przed CI — krok `ci`. Dalej kroki 6–8 w `night-run-ticket`.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
