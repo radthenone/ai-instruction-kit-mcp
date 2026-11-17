@@ -10,7 +10,9 @@ Orkiestrator nocy uruchamia sesję dla każdego ticketu za pomocą narzędzia `d
 - `mode: async` — uruchomienie asynchroniczne;
 - `clientRequestId` — klucz idempotencji złożony z nazwy katalogu CTX i numeru ticketu (np. `<nazwa katalogu CTX>-<numer ticketu>`); ponowienie z tym samym `clientRequestId` nie tworzy drugiego dziecka;
 - `task` — wskazuje procedurę `night-run-ticket`, podaje parametry zlecenia (baza `<BASE>`, ścieżka `<CTX>`, handoffy blokujących, treść issue, reguły) i wprost zezwala na dalszą delegację (sesja ticketu ma pełne prawo delegować implementację i podzadania);
-- `role: general`, `title: "Night-run ticket #<N>"`.
+- `role: general`, `title: "<typ>/<N>-<slug>"` — tytuł to nazwa brancha z konwencji kita (`/git-start`, np. `feat/475-enforce-branch-naming`), z której T3 wyprowadza nazwę brancha worktree; nie wolny tekst.
+
+Sesja ticketu zaraz po starcie sprawdza `git branch --show-current`. Gdy T3 nadało inną nazwę niż `<typ>/<N>-<slug>`, natychmiast wykonuje `git branch -m <typ>/<N>-<slug>` (przed pierwszym commitem i push), żeby PR powstał pod nazwą z konwencji.
 
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
@@ -36,7 +38,7 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła narzędzie `link_pull_request` z adresem URL zmergowanego PR;
 2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
-3. Orkiestrator usuwa lokalny branch nadany przez T3: `git branch -d <branch>` na branchu nadanym przez T3;
+3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
 
 ## 6. Pola raportu (NIGHT-RUN REPORT)

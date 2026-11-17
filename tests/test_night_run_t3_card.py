@@ -31,6 +31,7 @@ from guides.bootstrap import run_bootstrap
 KIT_ROOT = Path(__file__).resolve().parents[1]
 CARD_TEMPLATE = KIT_ROOT / "templates" / "shared" / "night-run" / "t3.md"
 AGENT_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
+TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 
 
 class TestNightRunT3CardContract(unittest.TestCase):
@@ -108,6 +109,22 @@ class TestNightRunT3CardContract(unittest.TestCase):
             "bez -D" in self.card_text
             or "bez `-D`" in self.card_text
         )
+
+    def test_branch_naming_contract_in_card(self) -> None:
+        """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
+        self.assertIn('title: "<typ>/<N>-<slug>"', self.card_text)
+        self.assertIn("git branch --show-current", self.card_text)
+        self.assertIn("git branch -m <typ>/<N>-<slug>", self.card_text)
+
+    def test_merged_cleanup_deletes_convention_branch(self) -> None:
+        """#498: po MERGED orkiestrator usuwa lokalny branch <typ>/<N>-<slug>."""
+        self.assertIn("git branch -d <typ>/<N>-<slug>", self.card_text)
+
+    def test_ticket_agent_verifies_branch_in_t3(self) -> None:
+        """#498: krok 1 night-run-ticket weryfikuje nazwę brancha w T3 Code."""
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("T3 Code", ticket_text)
+        self.assertIn("git branch -m <typ>/<N>-<slug>", ticket_text)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
