@@ -116,6 +116,20 @@ class TestNightRunMergeGate(unittest.TestCase):
         self.assertIn("więcej niż 10 plików przy zadaniu punktowym", self.prompt)
         self.assertIn("przed 3. rundą", self.prompt)
 
+    def test_identical_error_compares_error_content_not_test_name(self) -> None:
+        self.assertIn("ta sama treść i rodzaj błędu", self.prompt)
+        self.assertIn("nie sama nazwa testu", self.prompt)
+        self.assertIn("różne błędy tego samego testu nie są identyczne", self.prompt)
+        self.assertNotIn("ten sam test albo traceback", self.prompt)
+
+    def test_handback_after_ceiling_or_breaker_carries_card_data(self) -> None:
+        self.assertRegex(
+            self.prompt,
+            r"limit rund albo zadziałał circuit breaker[^.]*hand-back[^.]*dokładny błąd albo test"
+            r"[^.]*hipotezę przyczyny[^.]*zmiany i commity na branchu",
+        )
+        self.assertIn("hand-back z Q1/Q2", self.prompt)
+
     def test_escalation_card_sections(self) -> None:
         card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")
         for field in ("Co zaimplementowano:", "Na czym utknął:", "Hipoteza:", "Wątek T3:"):
@@ -128,13 +142,19 @@ class TestNightRunMergeGate(unittest.TestCase):
 
     def test_escalation_after_ceiling_requires_open_threads(self) -> None:
         self.assertIn("gdy wątki CodeRabbit nadal są otwarte", self.prompt)
-        self.assertIn("kończy rundy bez eskalacji", self.prompt)
+        self.assertIn("zero otwartych wątków przy zielonym CI kończy rundy bez eskalacji", self.prompt)
+        self.assertIn("czerwone CI po wyczerpaniu sufitu → needs-human, nawet bez otwartych wątków", self.prompt)
 
     def test_scope_counts_only_explicit_blocked_by(self) -> None:
         scope = _section(self.text, "### Zasięg — zanim cokolwiek zrobisz", "### Przypadki")
         self.assertIn("wyłącznie jawnie", scope)
         self.assertIn("`blocked_by`", scope)
         self.assertNotIn("niejawnie", scope)
+
+    def test_scope_includes_transitive_blocked_by(self) -> None:
+        scope = _section(self.text, "### Zasięg — zanim cokolwiek zrobisz", "### Przypadki")
+        self.assertIn("przechodnio", scope)
+        self.assertIn("tickety B i C są w zasięgu", scope)
 
 
 if __name__ == "__main__":

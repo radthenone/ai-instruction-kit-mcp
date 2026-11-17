@@ -368,7 +368,8 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 ### Zasięg — zanim cokolwiek zrobisz
 
 Które tickety z listy od tego zależą: wyłącznie jawnie, przez relację `blocked_by` (treść
-issue / indeks w `CTX`).
+issue / indeks w `CTX`), przechodnio: C blokowany przez B, a B przez A → po eskalacji A
+tickety B i C są w zasięgu.
 
 ### Przypadki
 
