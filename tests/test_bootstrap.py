@@ -158,6 +158,7 @@ class TestRealRun(_BootstrapTestCase):
 
             self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
             self.assertTrue((workspace / ".ai" / ".kit-bootstrap.json").is_file())
+            self.assertTrue((workspace / ".ai" / "night-run-t3.md").is_file())
             settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
             self.assertIn("PreToolUse", settings)
 
