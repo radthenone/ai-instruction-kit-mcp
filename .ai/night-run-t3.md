@@ -67,7 +67,7 @@ mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}
 
 - `reviewThreads` filtruj po `isResolved: false` i autorze `coderabbitai`; `id` wątku idzie do `resolveReviewThread(input:{threadId:$id})`;
 - uwaga niezaadresowana albo odrzucona → wątek zostaje otwarty, z odpowiedzią w wątku (powód), nie zamykany po cichu.
-- `reviewThreads` nie obejmuje uwag spoza diffu (sekcja „Outside diff range” w treści review) ani uwag ogólnych, a zdarzenie `watch_pull_request` niesie tylko skrócony podgląd komentarza; pełną treść review czytaj przez `gh api repos/<owner>/<repo>/pulls/<N>/reviews` (pola `state` i `body`) i wybierz ostatni wpis autora `coderabbitai` (w REST `user.login` to `coderabbitai[bot]`) z `commit_id` równym bieżącemu head commitowi PR; uwagi wymagające działania z tej treści przekazuj sesji ticketu razem z uwagami z wątków.
+- `reviewThreads` nie obejmuje uwag spoza diffu (sekcja „Outside diff range” w treści review) ani uwag ogólnych, a zdarzenie `watch_pull_request` niesie tylko skrócony podgląd komentarza; pełną treść review czytaj ze wszystkich stron (endpoint zwraca domyślnie 30 review na stronę, chronologicznie) przez `gh api --paginate --slurp repos/<owner>/<repo>/pulls/<N>/reviews | jq 'flatten | map(select(.user.login == "coderabbitai[bot]" and .commit_id == "<head>")) | last'` (pola `state` i `body`; w REST `user.login` autora `coderabbitai` to `coderabbitai[bot]`, `<head>` to bieżący head commit PR) — wybór ostatniego wpisu po wszystkich stronach, nie po pierwszej; uwagi wymagające działania z tej treści przekazuj sesji ticketu razem z uwagami z wątków.
 
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła `unwatch_pull_request` dla PR (podpiętego wcześniej przez `link_pull_request`, sekcja 4);

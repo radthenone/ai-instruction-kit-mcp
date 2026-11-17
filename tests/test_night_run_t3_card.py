@@ -204,8 +204,12 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("resolveReviewThread(input:{threadId:$id})", section)
         self.assertIn("CodeRabbit", section)
         # PR #507: treść review CodeRabbit dla bieżącego head commita (uwagi poza diffem)
-        self.assertIn("gh api repos/<owner>/<repo>/pulls/<N>/reviews", section)
-        self.assertIn("commit_id", section)
+        # PR #507 (CodeRabbit): wszystkie strony review, wybór ostatniego wpisu ze wszystkich stron
+        self.assertIn("gh api --paginate --slurp repos/<owner>/<repo>/pulls/<N>/reviews", section)
+        self.assertIn(
+            'flatten | map(select(.user.login == "coderabbitai[bot]" and .commit_id == "<head>")) | last',
+            section,
+        )
         self.assertIn("Outside diff range", section)
         self.assertIn("skrócony podgląd", section)
 
