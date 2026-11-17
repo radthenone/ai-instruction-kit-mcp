@@ -126,6 +126,16 @@ class TestNightRunMergeGate(unittest.TestCase):
         self.assertIn("od razu bierze kolejne niezależne issue", card)
         self.assertIn("blokuje tylko relacja `blocked_by`", card)
 
+    def test_escalation_after_ceiling_requires_open_threads(self) -> None:
+        self.assertIn("gdy wątki CodeRabbit nadal są otwarte", self.prompt)
+        self.assertIn("kończy rundy bez eskalacji", self.prompt)
+
+    def test_scope_counts_only_explicit_blocked_by(self) -> None:
+        scope = _section(self.text, "### Zasięg — zanim cokolwiek zrobisz", "### Przypadki")
+        self.assertIn("wyłącznie jawnie", scope)
+        self.assertIn("`blocked_by`", scope)
+        self.assertNotIn("niejawnie", scope)
+
 
 if __name__ == "__main__":
     unittest.main()

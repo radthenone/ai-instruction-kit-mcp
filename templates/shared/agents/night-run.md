@@ -369,8 +369,8 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 
 ### Zasięg — zanim cokolwiek zrobisz
 
-Które tickety z listy od tego zależą: jawnie (blocked-by) i niejawnie (zmieniony model,
-pole, serwis, endpoint, z którego korzysta inny — treść issue + pliki `handoff-<B>.md` blokujących / indeks w `CTX`).
+Które tickety z listy od tego zależą: wyłącznie jawnie, przez relację `blocked_by` (treść
+issue / indeks w `CTX`).
 
 ### Przypadki
 
