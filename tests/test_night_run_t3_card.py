@@ -176,6 +176,33 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertNotIn("sekcji „Etykiety” w `git-end`", self.card_text)
         self.assertIn("bez prefiksu `(night-run)`", self.card_text)
 
+    def test_pending_requests_auto_approve_only_own_worktree_trust(self) -> None:
+        """#504: auto-zatwierdzenie tylko zaufania do worktree tej nocy; inne dialogi → needs-human."""
+        self.assertIn("t3_pending_request(action: 'list')", self.card_text)
+        self.assertIn("wyłącznie pytanie o zaufanie do worktree utworzonego przez tę noc", self.card_text)
+        self.assertIn("pod katalogiem worktree T3 tego uruchomienia", self.card_text)
+        self.assertIn(
+            "Każdy inny oczekujący dialog (także uprawnienia narzędzi) nie jest zatwierdzany automatycznie",
+            self.card_text,
+        )
+        self.assertIn("ticket → needs-human z opisem dialogu w raporcie", self.card_text)
+
+    def test_provider_rotation_only_with_fallback_parameter(self) -> None:
+        """#504: rotacja providera przy limicie tylko z parametrem zapas; bez niego needs-human."""
+        self.assertIn("bez cichej zmiany providera", self.card_text)
+        self.assertIn("`zapas: <wykonawca> <model>`", self.card_text)
+        self.assertIn("`antigravity` ↔ `claudeAgent`", self.card_text)
+        self.assertIn("tylko na podstawie parametru", self.card_text)
+        self.assertIn("Bez parametru `zapas` limit → needs-human", self.card_text)
+
+    def test_no_pause_or_polling_when_both_providers_exhausted(self) -> None:
+        """#504: wyczerpanie obu providerów → needs-human, bez pauzy i odpytywania o reset."""
+        self.assertIn("wyczerpanie obu providerów) → needs-human", self.card_text)
+        self.assertIn(
+            "bez pauzy, `sleep`, `ScheduleWakeup` ani odpytywania o reset limitu", self.card_text
+        )
+        self.assertIn("wznowienie robi człowiek", self.card_text)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)

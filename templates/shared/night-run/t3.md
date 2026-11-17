@@ -16,6 +16,8 @@ Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę
 
 PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie etykiety issue flagami `--label`; etykiety procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`, `wontfix`) są odrzucane. Tytuł PR to czysty Conventional Commit po angielsku opisujący zmianę domenową, bez prefiksu `(night-run)`.
 
+Limit providera (429 / quota) w sesji ticketu albo wykonawcy → bez cichej zmiany providera. Rotacja jest dozwolona tylko wtedy, gdy parametry nocy podają zapasowego wykonawcę (`zapas: <wykonawca> <model>`): kolejne zadania dostają `target.providerInstanceId` i `target.model` z tego parametru; działa w obie strony (`antigravity` ↔ `claudeAgent`), ale tylko na podstawie parametru. Bez parametru `zapas` limit → needs-human. Limit także na zapasowym (wyczerpanie obu providerów) → needs-human, bez pauzy, `sleep`, `ScheduleWakeup` ani odpytywania o reset limitu; wznowienie robi człowiek.
+
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
 Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-ticket`):
@@ -36,6 +38,7 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
 ## 4. Watchdog i cron
 
 - watchdog i cron pominięte: w środowisku T3 nie uruchamia się skryptu `.ai/night-run-watchdog.sh` ani `CronCreate` (T3 samodzielnie zarządza cyklem życia zadań i wątków w tle).
+- oczekujące prośby: orkiestrator sprawdza `t3_pending_request(action: 'list')` i automatycznie zatwierdza (`action: 'respond'`) wyłącznie pytanie o zaufanie do worktree utworzonego przez tę noc (ścieżka pod katalogiem worktree T3 tego uruchomienia). Każdy inny oczekujący dialog (także uprawnienia narzędzi) nie jest zatwierdzany automatycznie: ticket → needs-human z opisem dialogu w raporcie.
 
 ## 5. Sprzątanie po MERGED
 
