@@ -87,7 +87,10 @@ class NightRunTicketAgentTest(unittest.TestCase):
         self.assertIn("wszystkie etykiety issue", ticket)
         self.assertNotIn("sekcji „Etykiety” w `git-end`", ticket)
         self.assertNotIn("`type: *`, kategoria, `scope: *`", ticket)
-        self.assertIn("gh label list", ticket)
+        self.assertIn("gh label list --limit 1000 --json name", ticket)
+        self.assertIn("potwierdzono brak", ticket)
+        self.assertIn("""--label '"backend,api"'""", ticket)
+        self.assertIn("podwajasz", ticket)
         self.assertIn("`gh pr create`", ticket)
         self.assertIn("bez prefiksu `(night-run)`", ticket)
 

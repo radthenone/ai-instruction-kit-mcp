@@ -117,8 +117,11 @@ Kroki:
    i podsumowanie w języku Profilu; nagłówek tabeli, wartości Severity, cytaty kodu i ścieżki bez zmian), a także
    etykiety i tytuł dla `gh pr create`: wszystkie etykiety issue (`gh issue view <N> --json labels
    -q '.labels[].name'`) poza etykietami procesowymi stanu: `ready-for-agent`, `ready-for-human`, `needs-info`,
-   `needs-triage`, `wontfix`; etykiety spoza `gh label list` pomijasz z jedną linijką w body PR; pozostałe
-   przekazujesz flagami `--label "<etykieta>"` (po jednej na etykietę). Tytuł PR: czysty Conventional Commit po angielsku
+   `needs-triage`, `wontfix`; istnienie sprawdzasz w pełnej liście `gh label list --limit 1000 --json name
+   -q '.[].name'` (domyślny limit to 30) i etykietę pomijasz z jedną linijką w body PR tylko wtedy, gdy
+   potwierdzono brak jej nazwy w tej liście; pozostałe przekazujesz flagami `--label "<etykieta>"` (po jednej na
+   etykietę). Wartość `--label` jest parsowana jak pole CSV: nazwę z przecinkiem lub cudzysłowem ujmujesz
+   w podwójne cudzysłowy, a wewnętrzne cudzysłowy podwajasz (np. `--label '"backend,api"'`). Tytuł PR: czysty Conventional Commit po angielsku
    opisujący zmianę domenową issue (np. `feat(transport): add T3 Code card`), bez prefiksu `(night-run)`. **CI
    pilnuje agent `git-end`:** `gh pr checks <PR> --watch` wzorcem „Praca w tle” (bez `sleep N; <cmd>`;
    checki mogą rejestrować się z opóźnieniem). `EXIT` ≠ 0 i w logu `no checks reported` → powtórz raz
