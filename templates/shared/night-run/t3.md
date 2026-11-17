@@ -43,7 +43,7 @@ Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-
 
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła narzędzie `link_pull_request` z adresem URL zmergowanego PR;
-2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
+2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`; gdy komenda zgłosi „Ścieżka nie istnieje”, worktree został usunięty wcześniej — krok 2 uznaje się za wykonany i orkiestrator przechodzi do kroku 3; inna odmowa zatrzymuje sprzątanie i trafia do raportu;
 3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
 5. Po krokach 2–4 (także po odmowie `-d` z kroku 4) orkiestrator archiwizuje wątek sesji ticketu: `t3_thread_organize(action: 'archive', threadId: childThreadId)` (`childThreadId` z wyniku `delegate_task` sesji ticketu); historia wątku zostaje w archiwum.

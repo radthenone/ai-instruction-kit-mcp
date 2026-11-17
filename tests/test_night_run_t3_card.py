@@ -138,6 +138,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
         archive = self.card_text.index(call)
         self.assertLess(remove, archive)
         self.assertLess(branch, archive)
+        # Krok 2 ma regułę dla worktree usuniętego wcześniej.
+        self.assertIn("Ścieżka nie istnieje", self.card_text[remove:branch])
 
     def test_branch_naming_contract_in_card(self) -> None:
         """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
