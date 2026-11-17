@@ -51,3 +51,23 @@ W końcowym raporcie nocy (NIGHT-RUN REPORT):
 - Czas trwania: czas z wątków (na podstawie metadanych i znaczników czasu z zadań T3);
 - Tokeny delegatów: tokeny delegatów „n/d”;
 - Model: model „niepotwierdzony”, gdy `executedModel` jest `null` (np. dla wykonawców, w których T3 zwraca `executedModel: null`).
+
+## 7. Clean Slate
+
+Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełniony jest warunek bezpieczeństwa z `night-run`, orkiestrator wykonuje kroki w tej kolejności; każdy zapis w `## Stan` to osobny krok:
+1. zapisuje w `## Stan` etap `clean-slate: w toku` ze starym `taskId`, notatką o błędzie X i ścieżce Y oraz ścieżką worktree (`ticket: #<N> clean-slate: w toku, <stary taskId>, <ścieżka worktree>, notatka: <X, Y>`);
+2. usuwa worktree ticketu (`node .ai/worktree.mjs remove <katalog>`);
+3. zapisuje w `## Stan` etap `clean-slate: worktree usunięty`;
+4. woła świeży `delegate_task` jak w sekcji 1, z różnicami:
+   - nowy `clientRequestId`: `<nazwa katalogu CTX>-<numer ticketu>-clean-slate`;
+   - `title`: `<typ>/<N>-<slug>-clean-slate`;
+   - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1;
+   - `task` zawiera linię „Clean Slate: użyty” i notatkę zapisaną w kroku 1;
+5. zapisuje nowy `taskId` w `## Stan` w miejsce starego.
+
+Wznowienie bierze etap, ścieżkę worktree i notatkę z `## Stan`, nie z pamięci sesji:
+- etap `clean-slate: w toku` i worktree istnieje → dokończ usunięcie i przejdź do kroku 3;
+- etap `clean-slate: w toku` i worktree już nie istnieje → przejdź do kroku 4;
+- etap `clean-slate: worktree usunięty` bez nowego `taskId` → przejdź do kroku 4.
+
+Krok 4 przy wznowieniu podaje ten sam `clientRequestId`, więc T3 wznawia zlecenie bez nowego `taskId`; nigdy drugi `delegate_task` z innym `clientRequestId` dla tego samego Clean Slate i nigdy drugi Clean Slate na ticket.

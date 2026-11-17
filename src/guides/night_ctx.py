@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -28,6 +29,7 @@ CI_TRIGGERS = ("pull_request", "pull_request_target", "push")
 _CI_EXCLUDE = re.compile(r"\b(deploy|publish|release|secret)\b", re.IGNORECASE)
 _GATE_LIMIT = 4
 _GATE_TICK = re.compile(r"`([^`]+)`")
+CLEAN_SLATE_KEYS = ("provider", "model", "effort")
 
 
 def marker(host: str) -> str:
@@ -185,6 +187,26 @@ def _profile(workspace: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
+def clean_slate_config(profile: Mapping[str, object]) -> dict[str, str]:
+    """Model i effort Clean Slate z ``night-run.clean-slate`` w Profilu (#502).
+
+    Args:
+        profile: Wczytany Profil projektu.
+
+    Returns:
+        dict: Niepuste ``provider`` / ``model`` / ``effort``; brak albo zły typ sekcji → ``{}``.
+    """
+    night = profile.get("night-run")
+    section = night.get("clean-slate") if isinstance(night, dict) else None
+    if not isinstance(section, dict):
+        return {}
+    return {
+        key: str(section[key]).strip()
+        for key in CLEAN_SLATE_KEYS
+        if isinstance(section.get(key), (str, int, float)) and str(section[key]).strip()
+    }
+
+
 def render_night_ctx(workspace: Path, *, host: str | None = None) -> str:
     """Złóż nagłówek CTX nocy ze znacznikiem generatora."""
     workspace = workspace.resolve()
@@ -200,6 +222,16 @@ def render_night_ctx(workspace: Path, *, host: str | None = None) -> str:
     base, base_reason = base_branch(workspace, overlay_text)
     gates, gate_source = quick_gates(workspace, overlay_text)
     gate_text = ", ".join(f"`{gate}`" for gate in gates)
+    clean_slate = clean_slate_config(profile)
+    clean_slate_lines = (
+        [
+            "- Clean Slate: "
+            + ", ".join(f"{key} `{value}`" for key, value in clean_slate.items())
+            + " — źródło: Profil"
+        ]
+        if clean_slate
+        else []
+    )
     return "\n".join(
         [
             f"# Kontekst nocy — {name}",
@@ -210,6 +242,7 @@ def render_night_ctx(workspace: Path, *, host: str | None = None) -> str:
             f"- Host: `{host}` — źródło: `kit-ai host` (`detect_host_profile()`)",
             f"- Bramki szybkie: {gate_text} — źródło: {gate_source}",
             f"- Język: `{language}` — źródło: Profil",
+            *clean_slate_lines,
             "- Pełny zestaw testów: tylko CI",
             "",
         ]

@@ -39,6 +39,14 @@ integrations: []
 #   claude:
 #     light: haiku
 
+# Clean Slate w /night-run (#502) — model świeżego subagenta po 2. nieudanej rundzie
+# naprawczej. Brak sekcji = model jak dotąd; każde pole opcjonalne.
+# night-run:
+#   clean-slate:
+#     provider: claudeAgent
+#     model: claude-opus-5-5
+#     effort: high
+
 # Git worktree (.ai/worktree.mjs) — konfiguracja Managed Worktree kita (ADR-0014).
 # Worktree jest opcjonalny. Brak sekcji = domyślne kopiowanie plików maszynowych
 # (konfiguracje MCP, .env itp.) i automatyczny overlay venv. Zapisz w Profilu tylko
