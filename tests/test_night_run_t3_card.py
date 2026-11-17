@@ -120,11 +120,21 @@ class TestNightRunT3CardContract(unittest.TestCase):
 
     def test_branch_base_checked_before_rename(self) -> None:
         """PR #505: przed rename/ponownym użyciem brancha T3 sprawdzana jest baza; brak → needs-human."""
-        check = "git fetch origin && git merge-base --is-ancestor origin/<BASE> HEAD"
         ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
         for text in (self.card_text, ticket_text):
-            self.assertIn(check, text)
+            self.assertIn("git fetch origin", text)
+            self.assertIn("git merge-base --is-ancestor origin/<BASE> HEAD", text)
             self.assertIn("baza się nie zgadza → needs-human", text)
+
+    def test_clean_worktree_fast_forwarded_before_base_check(self) -> None:
+        """PR #505: czyste worktree za origin/<BASE> idzie fast-forward; rozbieżna historia → needs-human."""
+        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        for text in (self.card_text, ticket_text):
+            ff = text.index("git merge --ff-only origin/<BASE>")
+            self.assertLess(text.index("git merge-base --is-ancestor HEAD origin/<BASE>"), ff)
+            self.assertLess(text.index("git status --porcelain"), ff)
+            self.assertLess(ff, text.index("git merge-base --is-ancestor origin/<BASE> HEAD"))
+            self.assertIn("rozbieżna historia albo brudne worktree", text)
 
     def test_merged_cleanup_deletes_convention_branch(self) -> None:
         """#498: po MERGED orkiestrator usuwa lokalny branch <typ>/<N>-<slug>."""
