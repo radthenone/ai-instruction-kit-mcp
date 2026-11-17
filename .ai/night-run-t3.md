@@ -16,7 +16,7 @@ Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę
 
 PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie etykiety issue flagami `--label`; etykiety procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`, `wontfix`) są odrzucane. Tytuł PR to czysty Conventional Commit po angielsku opisujący zmianę domenową, bez prefiksu `(night-run)`.
 
-Po utworzeniu PR orkiestrator woła `write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])`, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
+Sesja ticketu tworzy PR w kroku 6 i zwraca jego URL dopiero w hand-backu, więc orkiestrator woła `write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])` po otrzymaniu hand-backu z URL PR, nie w trakcie review, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
 
 ## 2. Wykonawca implementacji (z sesji ticketu)
 

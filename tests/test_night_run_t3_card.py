@@ -121,6 +121,12 @@ class TestNightRunT3CardContract(unittest.TestCase):
         guide = self.card_text.index("write_pull_request_guides")
         self.assertLess(pr_create, guide)
         self.assertLess(guide, merged)
+        guide_line = next(
+            line
+            for line in self.card_text.splitlines()
+            if "write_pull_request_guides" in line
+        )
+        self.assertIn("po otrzymaniu hand-backu z URL PR", guide_line)
 
     def test_thread_archived_after_merged_cleanup(self) -> None:
         """Po MERGED, worktree i branchu: t3_thread_organize archive (#503)."""
