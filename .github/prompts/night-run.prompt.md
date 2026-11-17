@@ -350,8 +350,9 @@ szybkich, krok 6 w `night-run-ticket`), nigdy push.
 ### Wyzwalacze
 
 **needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po 3. rundzie (E); kryterium akceptacji niejasne albo sprzeczne
-z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 3 próbach naprawy; blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
+z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; wyczerpany
+sufit 3 rund naprawczych (CI i CodeRabbit łącznie) albo circuit breaker (identyczny błąd, flip-flop,
+eksplozja diffa — krok 6 w `night-run-ticket`); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
 błąd builda przy aktualizacji samego lockfile → etykieta
 `needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
@@ -418,6 +419,21 @@ Wpływ: blokuje #X, #Y · nie blokuje #Z
 Stan kodu: branch <nazwa> wypchnięty / porzucony
 Wywołanie headless: <wiersz JSON z ostatniej linii wyjścia wrappera; bez wywołania → n/d>
 ```
+
+### Karta eskalacji
+
+Przy wyczerpanym sufcie rund albo circuit breakerze komentarz na issue to karta, nie zrzut logów:
+
+```markdown
+needs-human: <jedno zdanie, co stoi>
+
+Co zaimplementowano: <zmiany i commity na branchu>
+Na czym utknął: <dokładny błąd albo test>
+Hipoteza: <prawdopodobna przyczyna, np. brak mocka, brak migracji>
+Wątek T3: <link do wątku sesji ticketu; poza T3 Code → n/d>
+```
+
+Po needs-human orkiestrator od razu bierze kolejne niezależne issue; blokuje tylko relacja `blocked_by`.
 
 ## Tick watchdoga i crona (tylko Claude Code)
 

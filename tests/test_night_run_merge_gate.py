@@ -101,6 +101,30 @@ class TestNightRunMergeGate(unittest.TestCase):
         self.assertIn("brak danych:", self.report)
         self.assertIn("n/d —", self.report)
 
+    def test_repair_rounds_share_ceiling_of_three(self) -> None:
+        self.assertIn("sufit 3 rund naprawczych", self.prompt)
+        self.assertIn("łącznie dla CI i CodeRabbit", self.prompt)
+
+    def test_circuit_breaker_conditions_stop_repair_loop(self) -> None:
+        problems = _section(self.text, "## Gdy ticket napotka problem", "## Tick watchdoga")
+        for text in (self.prompt, problems):
+            self.assertIn("circuit breaker", text)
+            self.assertIn("identyczny błąd", text)
+            self.assertIn("flip-flop", text)
+            self.assertIn("eksplozja diffa", text)
+        self.assertIn("więcej niż 10 plików przy zadaniu punktowym", self.prompt)
+        self.assertIn("przed 3. rundą", self.prompt)
+
+    def test_escalation_card_sections(self) -> None:
+        card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")
+        for field in ("Co zaimplementowano:", "Na czym utknął:", "Hipoteza:", "Wątek T3:"):
+            self.assertIn(field, card)
+
+    def test_queue_continues_after_needs_human(self) -> None:
+        card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")
+        self.assertIn("od razu bierze kolejne niezależne issue", card)
+        self.assertIn("blokuje tylko relacja `blocked_by`", card)
+
 
 if __name__ == "__main__":
     unittest.main()
