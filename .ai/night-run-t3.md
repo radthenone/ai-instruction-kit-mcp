@@ -51,3 +51,12 @@ W końcowym raporcie nocy (NIGHT-RUN REPORT):
 - Czas trwania: czas z wątków (na podstawie metadanych i znaczników czasu z zadań T3);
 - Tokeny delegatów: tokeny delegatów „n/d”;
 - Model: model „niepotwierdzony”, gdy `executedModel` jest `null` (np. dla wykonawców, w których T3 zwraca `executedModel: null`).
+
+## 7. Clean Slate
+
+Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełniony jest warunek bezpieczeństwa z `night-run`, orkiestrator usuwa worktree ticketu (`node .ai/worktree.mjs remove <katalog>`) i woła świeży `delegate_task` jak w sekcji 1, z różnicami:
+- nowy `clientRequestId`: `<nazwa katalogu CTX>-<numer ticketu>-clean-slate`;
+- `title`: `<typ>/<N>-<slug>-clean-slate`;
+- z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1;
+- `task` zawiera linię „Clean Slate: użyty” i notatkę o błędzie X i ścieżce Y.
+Nowy `taskId` zastępuje stary w `## Stan`.

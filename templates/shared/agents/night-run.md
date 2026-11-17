@@ -367,6 +367,18 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 
 **Limity:** pauzy limitu bez limitu liczby, chyba że cel ustawia `pauzy: N` (po N-tej → halt C); 2 wznowienia na ticket (inne przyczyny) → needs-human.
 
+### Clean Slate — hand-back `clean-slate`
+
+**Clean Slate** przysługuje raz na ticket, po 2. nieudanej rundzie naprawczej (krok 6 w `night-run-ticket`):
+1. Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`: `git status --porcelain` pusty
+   i `git log origin/<branch>..HEAD` pusty (bez błędu komendy); inaczej needs-human bez resetu (przypadek A).
+2. Reset: `git switch --detach origin/<BASE>`. Stary branch zostaje; jego PR zamykasz
+   `gh pr close <PR> --comment "Zastąpiony przez Clean Slate"`. Nowy branch: `<typ>/<N>-<slug>-clean-slate`.
+3. Świeży subagent ticketu od kroku 1, z modelem i effort z linii `Clean Slate:` w nagłówku CTX
+   (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.
+   Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty” i notatkę: „Poprzednie podejście zawiodło
+   z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu).
+
 ### Zasięg — zanim cokolwiek zrobisz
 
 Które tickety z listy od tego zależą: wyłącznie jawnie, przez relację `blocked_by` (treść
