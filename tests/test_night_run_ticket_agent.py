@@ -80,10 +80,11 @@ class NightRunTicketAgentTest(unittest.TestCase):
         """Krok 6: etykiety issue bez procesowych idą flagami --label; tytuł PR bez (night-run) (#499)."""
         ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("gh issue view <N> --json labels", ticket)
-        for label in ("ready-for-agent", "ready-for-human", "needs-info", "needs-triage"):
+        for label in ("ready-for-agent", "ready-for-human", "needs-info", "needs-triage", "wontfix"):
             with self.subTest(label=label):
                 self.assertIn(f"`{label}`", ticket)
         self.assertIn('--label "<etykieta>"', ticket)
+        self.assertIn("sekcji „Etykiety” w `git-end`", ticket)
         self.assertIn("`gh pr create`", ticket)
         self.assertIn("bez prefiksu `(night-run)`", ticket)
 
