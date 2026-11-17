@@ -205,6 +205,19 @@ class TestNightRunT3CardContract(unittest.TestCase):
         )
         self.assertIn("Pola `night-run.clean-slate` z Profilu mają pierwszeństwo przed zapasem", self.card_text)
         self.assertIn("albo bez modelu → needs-human", self.card_text)
+        # PR #511 (CodeRabbit): użyty zapas trafia do `## Stan`, Clean Slate bierze z niego brakujące pola
+        self.assertIn("zapisuje w `## Stan` użytego wykonawcę i model (`zapas: <wykonawca> <model>`)", self.card_text)
+        section = self.card_text.split("## 7.", 1)[1]
+        self.assertIn("brak pola = wartość z wpisu `zapas: <wykonawca> <model>` w `## Stan`", section)
+        self.assertIn("pola podane w Profilu mają pierwszeństwo", section)
+
+    def test_clean_slate_does_not_inherit_model_across_providers(self) -> None:
+        """PR #511 (CodeRabbit): nadpisany provider bez modelu nie dziedziczy modelu innego providera."""
+        section = self.card_text.split("## 7.", 1)[1]
+        self.assertIn("nie dziedziczy modelu z innego providera", section)
+        self.assertIn("model z konfiguracji wybranego providera (`orchestrator_capabilities`)", section)
+        self.assertIn("pomija `target.model` (sekcja 2)", section)
+        self.assertIn("Profil nie nadpisuje providera → para provider/model zapasu zostaje", section)
 
     def test_no_pause_or_polling_when_both_providers_exhausted(self) -> None:
         """#504: wyczerpanie obu providerów → needs-human, bez pauzy i odpytywania o reset."""
