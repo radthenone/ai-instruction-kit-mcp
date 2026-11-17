@@ -122,6 +122,10 @@ class TestNightRunDefaultReview(unittest.TestCase):
         self.assertIn("Potwierdzone findingi poprawia wykonawca implementacji z kroków 2–3", step_six)
         self.assertIn("ścieżki 2–4: ten sam wykonawca i model, poprawka razem z testem", step_six)
         self.assertIn("Ścieżka 1: poprawiasz sam, razem z testem", step_six)
+        self.assertIn(
+            "Bez `--fix` zapisz poprawki przez `/git-commit` w osobnym commicie przed `/git-end`, bo `/git-end` przy niecommitowanych zmianach zatrzymuje się.",
+            step_six,
+        )
         self.assertIn("Potem `/git-end --stay`", step_six)
 
     def test_args_review_skills_override_default_chain(self) -> None:
@@ -175,6 +179,10 @@ class TestNightRunDefaultReview(unittest.TestCase):
                 self.assertIn("Potwierdzone findingi poprawia wykonawca implementacji z kroków 2–3", step_six)
                 self.assertIn("ścieżki 2–4: ten sam wykonawca i model, poprawka razem z testem", step_six)
                 self.assertIn("Ścieżka 1: poprawiasz sam, razem z testem", step_six)
+                self.assertIn(
+                    "Bez `--fix` zapisz poprawki przez `/git-commit` w osobnym commicie przed `/git-end`, bo `/git-end` przy niecommitowanych zmianach zatrzymuje się.",
+                    step_six,
+                )
                 self.assertIn("Potem `/git-end --stay`", step_six)
 
 
