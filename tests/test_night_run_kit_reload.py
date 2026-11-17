@@ -5,7 +5,7 @@ Sprawdzają:
 - warunek źródła kita (manifest.yaml w root) i ścieżek templates/ oraz src/guides/,
 - pominięcie w repo aplikacji (brak manifest.yaml w root),
 - warunek czystego drzewa (git status --porcelain puste) przed pullem; brudne drzewo -> pominięcie z wpisem w raporcie,
-- przy czystym drzewie: git fetch origin, git pull --ff-only na bazie (bez przełączania branchy), potem kit-ai reload .,
+- przy czystym drzewie: git fetch origin, git pull --ff-only origin "$BASE" na bazie (bez przełączania branchy), potem kit-ai reload .,
 - orkiestrator czyta ponownie zmienione sekcje procedury; subagenci i agenci /git-* biorą nową wersję przy starcie,
 - błąd reloadu -> wpis w raporcie nocy i utworzenie nowego issue (gh issue create),
 - obecność szwów reloadu we wszystkich kopiach u klientów (COPIES).
@@ -45,6 +45,7 @@ class TestNightRunKitReloadContract(unittest.TestCase):
         merged_pos = self.chain.index("MERGED")
         reload_match = re.search(r"(?i)reload.*kit|odświeżeni.*kit", self.chain)
         self.assertIsNotNone(reload_match)
+        assert reload_match is not None
         self.assertGreater(reload_match.start(), merged_pos)
 
     def test_kit_source_and_paths_condition(self) -> None:
@@ -63,9 +64,9 @@ class TestNightRunKitReloadContract(unittest.TestCase):
         )
 
     def test_pull_ff_only_and_reload_command(self) -> None:
-        """Przy czystym drzewie: git fetch origin, git pull --ff-only na bazie (bez przełączania branchy), potem kit-ai reload ."""
+        """Przy czystym drzewie: git fetch origin, git pull --ff-only origin \"$BASE\" na bazie (bez przełączania branchy), potem kit-ai reload ."""
         self.assertIn("git fetch origin", self.chain)
-        self.assertIn("git pull --ff-only", self.chain)
+        self.assertIn('git pull --ff-only origin "$BASE"', self.chain)
         self.assertRegex(self.chain, r"bez przełączania branchy|bez przelaczania branchy")
         self.assertIn("kit-ai reload .", self.chain)
 
@@ -98,7 +99,7 @@ class TestNightRunKitReloadContract(unittest.TestCase):
                 self.assertIn("templates/", chain)
                 self.assertIn("src/guides/", chain)
                 self.assertIn("git status --porcelain", chain)
-                self.assertIn("git pull --ff-only", chain)
+                self.assertIn('git pull --ff-only origin "$BASE"', chain)
                 self.assertIn("kit-ai reload .", chain)
                 self.assertIn("gh issue create", chain)
 

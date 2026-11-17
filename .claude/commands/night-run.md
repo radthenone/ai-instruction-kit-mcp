@@ -293,7 +293,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    Gdy zmergowany ticket dotyczy repozytorium będącego źródłem kita (weryfikacja: `manifest.yaml` w root repozytorium, np. `[ -f manifest.yaml ]`):
    - **Warunek:** diff zmergowanego PR dotyka ścieżek `templates/` albo `src/guides/`. Repo aplikacji (brak `manifest.yaml` w root) albo brak zmian w tych ścieżkach → krok pominięty.
    - **Czyste drzewo robocze:** przed pullem sprawdź stan drzewa: `git status --porcelain`. Gdy drzewo jest brudne (`git status --porcelain` niepuste) → pominięcie z wpisem w raporcie nocy (`pominięto reload kita: brudne drzewo robocze`).
-   - **Pull i reload:** przy czystym drzewie (`git status --porcelain` puste) wykonaj `git fetch origin`, następnie `git pull --ff-only` na bazie (bez przełączania branchy), potem `kit-ai reload .`.
+   - **Pull i reload:** przy czystym drzewie (`git status --porcelain` puste) wykonaj `git fetch origin`, następnie `git pull --ff-only origin "$BASE"` (bez przełączania branchy; działa też przy odłączonym HEAD), potem `kit-ai reload .`.
    - **Wczytanie nowej wersji:** orkiestrator czyta ponownie zmienione sekcje swojej procedury (z odświeżonych plików); subagenci i agenci `/git-*` biorą nową wersję sami przy starcie.
    - **Obsługa błędów:** błąd reloadu (`kit-ai reload` zakończone błędem) → wpis w raporcie nocy (`błąd reloadu kita: <szczegóły>`) i utworzenie nowego issue (`gh issue create`), aby problem został naprawiony w kolejnym biegu. Noc idzie dalej.
 
