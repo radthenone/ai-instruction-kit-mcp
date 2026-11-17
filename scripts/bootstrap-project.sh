@@ -799,6 +799,17 @@ install_night_run_watchdog() {
   echo "  + .ai/night-run-watchdog.sh (watchdog /night-run)"
 }
 
+# Karta transportu T3 Code dla /night-run (#474) — instalowana jako .ai/night-run-t3.md.
+# Bez agentów (--skip-agents): usuwana przy reloadzie.
+install_night_run_t3() {
+  if [[ "$SKIP_AGENTS" -ne 0 ]]; then
+    kit_rm .ai/night-run-t3.md
+    return 0
+  fi
+  cp "$KIT_ROOT/templates/shared/night-run/t3.md" "$TARGET/.ai/night-run-t3.md"
+  echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"
+}
+
 # Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
 # (mapa 1:1 z copy_shared_agents / copy_claude_commands / install_codex_agents /
 # render_agent_commands). Tier zmieniony na `none` = agenci znikają przy reload.
@@ -1364,6 +1375,7 @@ remove_kit() {
   PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_integrations.py" \
     --remove "$TARGET" "$TARGET/.ai/project.profile.yaml" "$KIT_ROOT" || true
   kit_rm .ai/night-run-watchdog.sh
+  kit_rm .ai/night-run-t3.md
   kit_rm "$DESIGN_HANDOFF"
   echo ""
   echo "Gotowe. Zostały: .ai/project.md, CONTEXT.md, docs/adr/ i pliki zmienione przez Ciebie."
@@ -1437,6 +1449,7 @@ done
 
 install_headless
 install_night_run_watchdog
+install_night_run_t3
 install_design_handoff
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then

@@ -43,6 +43,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
   - Brak agenta/komendy (fallback na Skill albo inline) zapisujesz w hand-backu
     i w NIGHT-RUN REPORT.
 - Klient bez subagentów → łańcuch inline, ale z tymi samymi regułami z `night-run-ticket`.
+- Gdy sesja ma narzędzie `delegate_task` i plik karty (`.ai/night-run-t3.md`) istnieje, karta zastępuje transport, nie kroki procedury.
 - **Polecenia z tekstu celu mają pierwszeństwo** przed tą procedurą (np. „bez merge, same PR-y”,
   „#155 pomiń PDF”, inny próg dużego ticketu; `watchdog: próg N, życie M` — progi watchdoga, §7;
   `ctx: <sufiks>` — sufiks katalogu CTX nocy, §6).
