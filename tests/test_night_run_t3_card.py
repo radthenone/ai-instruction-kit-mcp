@@ -217,6 +217,10 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("błąd odczytu review", section)
         self.assertIn("`null`", section)
         self.assertIn("poczekaj na review bieżącego head", section)
+        # PR #507 (CodeRabbit): odczyt wcześniejszych review bez commit_id oraz limit czasu null z git-end
+        self.assertIn('map(select(.user.login == "coderabbitai[bot]"))', section)
+        self.assertIn("limit czasu (maks. 10–15 min)", section)
+        self.assertIn("git-end", section)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
