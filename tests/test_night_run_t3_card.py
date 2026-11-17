@@ -183,6 +183,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("review", section)
         example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
         self.assertNotIn("options", example)
+        self.assertIn("t3.targets.<wykonawca>.<tier>", section)
+        self.assertIn(".ai/project.profile.yaml", section)
 
     def test_disabled_default_provider_instance_is_needs_human(self) -> None:
         """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""
