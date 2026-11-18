@@ -252,7 +252,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "opencode", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
         left = sorted(entry.name for entry in legacy.iterdir() if entry.is_dir())
-        self.assertEqual(left, old[-4:])
+        self.assertEqual(left, old[-5:])
 
     def test_antigravity_runs_headless_print_with_prompt_argument(self) -> None:
         self.profile("claude,antigravity")
@@ -639,6 +639,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("claude", result.stderr)
         self.assertIn("Dozwoleni wykonawcy", result.stderr)
         self.assertFalse(self.runs_dir().exists())
+        self.assertFalse((self.root / ".ai/headless-runs").exists())
 
     # --- sprzątanie drzewa procesów -----------------------------------------
 
@@ -1125,6 +1126,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual((row["klasa"], row["kod"], row["wykonawca"], row["log"]), ("POLITYKA", 2, "-", None))
         self.assertIn("nie wywołuje sam siebie", row["sprawdz"])
         self.assertFalse(self.runs_dir().exists())
+        self.assertFalse((self.root / ".ai/headless-runs").exists())
 
     # --- bufor nocy i wycinek logu (#396) -----------------------------------------
 
@@ -2109,6 +2111,12 @@ class HeadlessRunsRootTest(unittest.TestCase):
         """Bez XDG_CACHE_HOME katalog runów leży w ~/.cache."""
         with patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp)}):
             os.environ.pop("XDG_CACHE_HOME", None)
+            root = Path(node_export("h.runsRoot()", cwd=self.main))
+        self.assertEqual(root, self.tmp / ".cache" / "kit-ai" / "headless" / "ai-kit")
+
+    def test_relative_xdg_falls_back_to_home_cache(self) -> None:
+        """Względny XDG_CACHE_HOME jest ignorowany — log nie może trafić do worktree."""
+        with patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp), "XDG_CACHE_HOME": ".cache"}):
             root = Path(node_export("h.runsRoot()", cwd=self.main))
         self.assertEqual(root, self.tmp / ".cache" / "kit-ai" / "headless" / "ai-kit")
 

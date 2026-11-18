@@ -549,7 +549,10 @@ def default_cache_root() -> Path:
 
 def default_headless_root() -> Path:
     """``$XDG_CACHE_HOME/kit-ai/headless`` — runy ``/headless`` poza projektem (#463)."""
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "headless"
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    # Względny XDG ignorujemy jak ``runsRoot()``: log w worktree zniknąłby razem z nim.
+    cache = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".cache"
+    return cache / "kit-ai" / "headless"
 
 
 def default_night_root() -> Path:

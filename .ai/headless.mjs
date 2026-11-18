@@ -37,7 +37,7 @@ import { execFile, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { constants, homedir } from "node:os"
-import { basename, delimiter, dirname, join, resolve } from "node:path"
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
@@ -135,7 +135,7 @@ const footer = (runDir, ticket, language) => `
 Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Ticket #${ticket}: przeczytaj \`gh issue view ${ticket} --comments\` — to specyfikacja zadania.` : ""}
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
-- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add ${join(runDir, 'base')} --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove ${join(runDir, 'base')}\` (nie \`git worktree remove\`).
+- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add "${join(runDir, 'base')}" --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove "${join(runDir, 'base')}"\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
 - Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`${COAUTHOR_TRAILER}\`.
@@ -305,7 +305,10 @@ function mainCheckout() {
 export function runsRoot() {
   const commonDir = git("rev-parse", "--git-common-dir")
   const repoDir = commonDir ? dirname(resolve(process.cwd(), commonDir)) : process.cwd()
-  return join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "kit-ai", "headless", basename(repoDir))
+  // XDG: względna wartość jest ignorowana — inaczej log trafiłby do worktree i zniknął z nim.
+  const xdg = process.env.XDG_CACHE_HOME
+  const cache = xdg && isAbsolute(xdg) ? xdg : join(homedir(), ".cache")
+  return join(cache, "kit-ai", "headless", basename(repoDir))
 }
 
 // Config wykonawcy, którego w worktree nie ma: bierzemy plik z głównego checkoutu.
@@ -445,13 +448,14 @@ function failedRunsWithoutExcerpt(ctx) {
 // Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
 // ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
 // Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
-function pruneRuns(runsDir, current, ctx) {
+// `kept`: ile starszych runów zostaje obok bieżącego (w katalogu bez bieżącego runu — pełne KEEP_RUNS).
+function pruneRuns(runsDir, current, ctx, kept = KEEP_RUNS - 1) {
   const keep = failedRunsWithoutExcerpt(ctx)
   const runs = readdirSync(runsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== current)
     .map((entry) => entry.name)
     .sort()
-  for (const name of runs.slice(0, -(KEEP_RUNS - 1))) {
+  for (const name of runs.slice(0, Math.max(0, runs.length - kept))) {
     if (keep.has(name)) continue
     try {
       rmSync(join(runsDir, name), { recursive: true, force: true })
@@ -998,7 +1002,7 @@ async function main() {
   mkdirSync(runDir, { recursive: true })
   pruneRuns(runsDir, basename(runDir), call.ctx)
   // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
-  if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx)
+  if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx, KEEP_RUNS)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
   const basePrompt = prompt

@@ -1296,7 +1296,7 @@ W logu runu linia `[headless] ticket #N`.
 Push i PR robi host (`/git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
-do `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>-<wykonawca>/headless.log` (poza projektem, także dla worktree; przy starcie kasuje runy poza 5 najnowszymi, z wyjątkiem nieudanych bez wycinka w katalogu nocy);
+do `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>-<wykonawca>/headless.log`, bez (albo z względnym) `XDG_CACHE_HOME` do `~/.cache/kit-ai/headless/<repo>/…` (poza projektem, także dla worktree; przy starcie kasuje runy poza 5 najnowszymi, z wyjątkiem nieudanych bez wycinka w katalogu nocy);
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`

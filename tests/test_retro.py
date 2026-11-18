@@ -737,6 +737,11 @@ class HeadlessRunTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "cache")}):
             self.assertEqual(retro.headless_runs(self.workspace), [run])
 
+    def test_relative_xdg_falls_back_to_home_cache(self) -> None:
+        """Względny XDG_CACHE_HOME jest ignorowany, jak w ``runsRoot()``."""
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": ".cache"}), mock.patch.object(Path, "home", return_value=self.root):
+            self.assertEqual(retro.default_headless_root(), self.root / ".cache" / "kit-ai" / "headless")
+
     def test_project_runs_are_still_found_during_transition(self) -> None:
         """Stare runy w .ai/headless-runs nadal są czytane w okresie przejściowym."""
         self._log("[headless] kod wyjścia: 0\n")
@@ -806,6 +811,10 @@ class HeadlessRunTests(unittest.TestCase):
 
     def test_batch_scan_writes_headless_runs_as_sessions(self) -> None:
         self._log("[headless] kod wyjścia: 2\n")
+        # Pusty cache runów: prawdziwe logi z `~/.cache/kit-ai/headless/my-repo` nie mogą wejść do skanu.
+        xdg = mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "empty-xdg")})
+        xdg.start()
+        self.addCleanup(xdg.stop)
         message = retro.scan_command(
             self.workspace,
             session=None,
