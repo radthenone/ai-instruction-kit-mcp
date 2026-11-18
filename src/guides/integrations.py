@@ -54,7 +54,8 @@ _YAML_ERROR_PREFIX = "błąd składni YAML"
 
 def _has_marker_line(content: str) -> bool:
     """Marker kita liczy się tylko jako cała linia od pierwszej kolumny, bez wcięcia."""
-    return any(line.rstrip() in KIT_MARKERS for line in content.splitlines())
+    # Dzielimy tylko po LF, CRLF i CR: `splitlines()` tnie też po U+2028, a to nie koniec linii w YAML.
+    return any(line.rstrip(" \t") in KIT_MARKERS for line in re.split(r"\r\n|\r|\n", content))
 
 
 def is_kit_managed(path: Path) -> bool:
@@ -154,6 +155,33 @@ def _resolves_to(path: Path, other: Path) -> bool:
         return False
 
 
+def _repeats_key(node: object, key: str, seen: set[int]) -> bool:
+    """
+    Czy w jakiejkolwiek mapie węzła YAML, także tej scalanej przez `<<`, klucz występuje dwa razy.
+
+    Args:
+        node: Węzeł z ``yaml.compose`` (mapa, sekwencja albo skalar).
+        key: Nazwa klucza do policzenia.
+        seen: Id już odwiedzonych węzłów (aliasy mogą wskazywać ten sam węzeł).
+
+    Returns:
+        bool: True, gdy klucz powtarza się w którejś mapie.
+    """
+    import yaml
+
+    if id(node) in seen:
+        return False
+    seen.add(id(node))
+    if isinstance(node, yaml.MappingNode):
+        names = [k.value for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
+        if names.count(key) > 1:
+            return True
+        return any(_repeats_key(child, key, seen) for pair in node.value for child in pair)
+    if isinstance(node, yaml.SequenceNode):
+        return any(_repeats_key(item, key, seen) for item in node.value)
+    return False
+
+
 def _profile_text_prunable(text: str) -> bool:
     """
     Czy treść Profilu daje zgodę na sprzątanie integracji.
@@ -179,8 +207,7 @@ def _profile_text_prunable(text: str) -> bool:
         return False
     if not isinstance(data, dict) or not isinstance(root, yaml.MappingNode):
         return False
-    keys = [key.value for key, _ in root.value if isinstance(key, yaml.ScalarNode)]
-    if keys.count("integrations") > 1:
+    if _repeats_key(root, "integrations", set()):
         return False
     return not parse_integrations(data.get("integrations")).warnings
 
@@ -295,8 +322,8 @@ def _parse_profile_text(profile_path: Path, text: str) -> tuple[list[str], str, 
                 return parsed.integrations, lang, parsed.warnings
             return [], "pl", []
         except yaml.YAMLError as exc:
+            # Ostrzeżenie wypisuje render z jednego odczytu, nie parser.
             msg = f"{_YAML_ERROR_PREFIX} w profilu `{profile_path}`: {exc}"
-            print(f"ostrzeżenie: {msg}", file=sys.stderr)
             return [], "pl", [msg]
 
     # Awaryjny parser linijkowy (gdy brak PyYAML)
@@ -400,7 +427,9 @@ def render_integrations(
                 profile_text = None
                 print(f"ostrzeżenie: nie odczytano Profilu `{profile_path}` — pomijam render i sprzątanie", file=sys.stderr)
             if profile_text is not None:
-                selected_integrations, file_lang, _ = _parse_profile_text(profile_path, profile_text)
+                selected_integrations, file_lang, profile_warnings = _parse_profile_text(profile_path, profile_text)
+                for warning in profile_warnings:
+                    print(f"ostrzeżenie: {warning}", file=sys.stderr)
                 prune = _profile_text_prunable(profile_text)
                 if not language:
                     resolved_lang = file_lang
@@ -487,11 +516,6 @@ def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
         if len(args) > 2
         else (kit_root or Path(__file__).resolve().parents[2])
     )
-
-    if profile_path.is_file():
-        _, _, warnings = _read_profile_integrations(profile_path)
-        for w in warnings:
-            print(f"ostrzeżenie: {w}", file=sys.stderr)
 
     result = render_integrations(
         workspace_root=workspace,

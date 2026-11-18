@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _shell import is_ci
 from guides.integrations import (
     _read_profile_integrations,
     INTEGRATIONS_MAP,
@@ -19,6 +20,25 @@ from guides.integrations import (
     parse_integrations,
     render_integrations,
 )
+
+
+def _make_symlink(link: Path, target: Path | str) -> None:
+    """
+    Utwórz dowiązanie symboliczne potrzebne testowi.
+
+    Lokalnie brak uprawnień kończy test pominięciem, a na CI jest to błąd, bo cichy skip
+    gubi ochronę dowiązań (ta sama zasada co w `_shell.is_ci`).
+
+    Args:
+        link: Ścieżka dowiązania do utworzenia.
+        target: Cel dowiązania.
+    """
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        if is_ci():
+            raise AssertionError(f"brak dowiązań symbolicznych na CI: {exc}") from exc
+        raise unittest.SkipTest(f"brak uprawnień do dowiązań symbolicznych: {exc}") from exc
 
 
 class TestIntegrationsParser(unittest.TestCase):
@@ -644,10 +664,7 @@ class TestIntegrationSafetyEdges(unittest.TestCase):
             workspace = root / "workspace"
             workspace.mkdir()
             outside = root / "outside.yaml"
-            try:
-                (workspace / "orca.yaml").symlink_to(outside)
-            except (OSError, NotImplementedError):
-                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            _make_symlink(workspace / "orca.yaml", outside)
 
             render_integrations(workspace, kit, integrations=["orca"])
 
@@ -708,10 +725,7 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
         """Cykliczne dowiązanie orca.yaml nie przerywa renderu pozostałych integracji."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)
-            try:
-                (workspace / "orca.yaml").symlink_to("orca.yaml")
-            except (OSError, NotImplementedError):
-                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            _make_symlink(workspace / "orca.yaml", "orca.yaml")
 
             created = render_integrations(workspace, KIT_ROOT, integrations=["orca", "coderabbit"])
 
@@ -722,10 +736,7 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)
             (workspace / ".coderabbit.yaml").write_text(f"{KIT_MARKER}\nlanguage: \"pl-PL\"\n", encoding="utf-8")
-            try:
-                (workspace / "orca.yaml").symlink_to("orca.yaml")
-            except (OSError, NotImplementedError):
-                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            _make_symlink(workspace / "orca.yaml", "orca.yaml")
             profile = self._profile(workspace, "integrations: []\n")
 
             render_integrations(workspace, KIT_ROOT, profile_data=profile)
@@ -740,10 +751,7 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
             workspace.mkdir()
             elsewhere = root / "elsewhere.yaml"
             elsewhere.write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
-            try:
-                (workspace / "orca.yaml").symlink_to(elsewhere)
-            except (OSError, NotImplementedError):
-                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            _make_symlink(workspace / "orca.yaml", elsewhere)
             profile = self._profile(workspace, "integrations: []\n")
 
             render_integrations(workspace, KIT_ROOT, profile_data=profile)
@@ -800,10 +808,7 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
             real.mkdir()
             elsewhere = root / "elsewhere.yaml"
             elsewhere.write_text(f"{KIT_MARKER}\nscripts:\n  setup: linked\n", encoding="utf-8")
-            try:
-                (real / "orca.yaml").symlink_to(elsewhere)
-            except (OSError, NotImplementedError):
-                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            _make_symlink(real / "orca.yaml", elsewhere)
             sandbox = root / "sandbox"
             sandbox.mkdir()
             (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: sandbox-copy\n", encoding="utf-8")
@@ -814,6 +819,71 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
                 render_integrations(sandbox, kit, profile_data=profile)
 
             self.assertIn("sandbox-copy", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_unicode_line_separator_inside_yaml_value_is_not_marker(self) -> None:
+        """U+2028 wewnątrz wartości YAML nie dzieli linii: fragment z markerem nie jest markerem pliku."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / "orca.yaml").write_text(
+                'scripts:\n  setup: "a # ai-instruction-kit b"\n', encoding="utf-8"
+            )
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertIn("a # ai-instruction-kit", (workspace / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_duplicate_integrations_inside_merge_key_keeps_kit_files(self) -> None:
+        """Powtórzony `integrations` w mapie scalanej przez `<<` nie daje zgody na sprzątanie."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("<<: {integrations: [orca], integrations: []}\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def _unreadable_profile_setup(self, root: Path) -> tuple[Path, Path, Path]:
+        workspace = root / "ws"
+        workspace.mkdir()
+        kit_root = root / "kit"
+        kit_root.mkdir()
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True)
+        profile.write_bytes(b"\x80\xff integrations: [orca]\n")
+        return workspace, kit_root, profile
+
+    def test_cli_reports_unreadable_profile_instead_of_raising(self) -> None:
+        """CLI nie czyta Profilu przed renderem: nieczytelny plik kończy się ostrzeżeniem, nie wyjątkiem."""
+        import io
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace, kit_root, profile = self._unreadable_profile_setup(Path(tmp_dir))
+            buf = io.StringIO()
+            old_err, sys.stderr = sys.stderr, buf
+            try:
+                exit_code = main(
+                    ["render_integrations.py", str(workspace), str(profile), str(kit_root)], kit_root=kit_root
+                )
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("nie odczytano Profilu", buf.getvalue())
+
+    def test_cli_remove_does_not_read_profile(self) -> None:
+        """Ścieżka --remove nie czyta Profilu, więc nieczytelny Profil nie blokuje usunięcia."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace, kit_root, profile = self._unreadable_profile_setup(Path(tmp_dir))
+
+            exit_code = main(
+                ["render_integrations.py", "--remove", str(workspace), str(profile), str(kit_root)], kit_root=kit_root
+            )
+
+            self.assertEqual(exit_code, 0)
 
 
 class TestCodeRabbitIntegration(unittest.TestCase):
