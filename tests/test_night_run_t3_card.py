@@ -217,7 +217,7 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("nie dziedziczy modelu z innego providera", section)
         self.assertIn("model z konfiguracji wybranego providera (`orchestrator_capabilities`)", section)
         self.assertIn("pomija `target.model` (sekcja 2)", section)
-        self.assertIn("Profil nie nadpisuje providera → provider zapasu zostaje; model zapasu zostaje tylko wtedy, gdy profil nie podaje `model`", section)
+        self.assertIn("Profil nie nadpisuje providera: po rotacji provider zapasu zostaje (a model zapasu zostaje tylko wtedy, gdy profil nie podaje `model`); bez rotacji provider i model pozostają jak w sekcji 1", section)
 
     def test_no_pause_or_polling_when_both_providers_exhausted(self) -> None:
         """#504: wyczerpanie obu providerów → needs-human, bez pauzy i odpytywania o reset."""
