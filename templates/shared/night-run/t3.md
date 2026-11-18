@@ -16,6 +16,8 @@ Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę
 
 PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie etykiety issue flagami `--label`; etykiety procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`, `wontfix`) są odrzucane. Tytuł PR to czysty Conventional Commit po angielsku opisujący zmianę domenową, bez prefiksu `(night-run)`.
 
+Sesja ticketu tworzy PR w kroku 6 i zwraca jego URL dopiero w hand-backu, więc orkiestrator woła `write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])` po otrzymaniu hand-backu z URL PR, nie w trakcie review, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
+
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
 Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-ticket`):
@@ -43,8 +45,8 @@ Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "
 
 ## 3. Stan i wznawianie
 
-- Identyfikator zadania `taskId` zwrócony przez `delegate_task` zostaje zapisany w `## Stan` w pliku CTX (`ticket: #<N> taskId: <taskId>`);
-- po przerwaniu sesji orkiestratora lub restarcie wznowienie następuje przez odpytanie `task_status` na podstawie zapisanego `taskId`;
+- Identyfikator zadania `taskId` i identyfikator wątku `childThreadId` zwrócone przez `delegate_task` zostają zapisane w `## Stan` w pliku CTX (`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`);
+- po przerwaniu sesji orkiestratora lub restarcie wznowienie następuje przez odpytanie `task_status` na podstawie zapisanego `taskId`; `childThreadId` wznowienie odczytuje z tego samego zapisu i przekazuje do kroku 5 sekcji 5 (`t3_thread_organize` z `threadId`);
 - ponowienie wywołania z tym samym `clientRequestId` nie tworzy drugiego dziecka.
 
 - Karta eskalacji needs-human (sekcja „Karta eskalacji” w `night-run`): pole `Wątek T3:` to wartość pola `link` z wyniku `delegate_task` sesji ticketu, wstawiona dosłownie.
@@ -78,9 +80,10 @@ mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}
 
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła `unwatch_pull_request` dla PR (podpiętego wcześniej przez `link_pull_request`, sekcja 4);
-2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
+2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`; gdy komenda zgłosi „Ścieżka nie istnieje”, orkiestrator sprawdza rejestrację worktree: `git worktree list` w głównym checkoucie repozytorium; gdy wpisu ticketu nie ma w `git worktree list`, przechodzi do kroku 3; gdy jedynym wpisem oznaczonym `prunable` jest wpis ticketu, uruchamia `git worktree prune` i dopiero potem przechodzi do kroku 3; gdy `prunable` jest także inny wpis, wpis ticketu wskazuje istniejący katalog albo `git worktree prune` się nie uda, sprzątanie zatrzymuje się i trafia do raportu, bez przejścia do kroku 3; inna odmowa zatrzymuje sprzątanie i trafia do raportu;
 3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
+5. Po krokach 2–4 (także po odmowie `-d` z kroku 4) orkiestrator archiwizuje wątek sesji ticketu: `t3_thread_organize(action: 'archive', threadId: childThreadId)` (`childThreadId` z wyniku `delegate_task` sesji ticketu); historia wątku zostaje w archiwum.
 
 ## 6. Pola raportu (NIGHT-RUN REPORT)
 
@@ -100,7 +103,7 @@ Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełni
    - `title`: `<typ>/<N>-<slug>-clean-slate`;
    - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1;
    - `task` zawiera linię „Clean Slate: użyty” i notatkę zapisaną w kroku 1;
-5. zapisuje nowy `taskId` w `## Stan` w miejsce starego.
+5. zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych (`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`).
 
 Wznowienie bierze etap, ścieżkę worktree i notatkę z `## Stan`, nie z pamięci sesji:
 - etap `clean-slate: w toku` i worktree istnieje → dokończ usunięcie i przejdź do kroku 3;
