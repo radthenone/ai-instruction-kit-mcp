@@ -949,10 +949,21 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
             buf = io.StringIO()
             old_err, sys.stderr = sys.stderr, buf
             try:
-                # Python 3.14: is_file() zwraca False zamiast PermissionError; prawdę mówi dopiero stat().
+                original_stat = Path.stat
+                original_is_file = Path.is_file
+
+                def stat_denied_for_profile(self: Path, *, follow_symlinks: bool = True):
+                    if self == profile:
+                        raise PermissionError("brak dostępu")
+                    return original_stat(self, follow_symlinks=follow_symlinks)
+
+                def is_file_hidden_for_profile(self: Path) -> bool:
+                    # Python 3.14: odmowa dostępu wygląda jak brak pliku; dotyczy tylko Profilu.
+                    return False if self == profile else original_is_file(self)
+
                 with (
-                    mock.patch.object(Path, "is_file", return_value=False),
-                    mock.patch.object(Path, "stat", side_effect=PermissionError("brak dostępu")),
+                    mock.patch.object(Path, "is_file", is_file_hidden_for_profile),
+                    mock.patch.object(Path, "stat", stat_denied_for_profile),
                 ):
                     created = render_integrations(workspace, KIT_ROOT, profile_data=profile)
             finally:
