@@ -542,19 +542,14 @@ def default_projects_root() -> Path:
     return Path.home() / ".claude" / "projects"
 
 
-def _xdg_cache_home() -> Path:
-    """``$XDG_CACHE_HOME`` albo ``~/.cache`` — wspólna reguła cache kita."""
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-
-
 def default_cache_root() -> Path:
     """``$XDG_CACHE_HOME/kit-ai/retro`` albo ``~/.cache/kit-ai/retro``."""
-    return _xdg_cache_home() / "kit-ai" / "retro"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "retro"
 
 
 def default_headless_root() -> Path:
     """``$XDG_CACHE_HOME/kit-ai/headless`` — runy ``/headless`` poza projektem (#463)."""
-    return _xdg_cache_home() / "kit-ai" / "headless"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "headless"
 
 
 def default_night_root() -> Path:
