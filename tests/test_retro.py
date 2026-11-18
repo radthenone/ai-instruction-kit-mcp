@@ -706,6 +706,10 @@ class HeadlessRunTests(unittest.TestCase):
         self.workspace = self.root / "my-repo"
         self.run_dir = self.workspace / ".ai" / "headless-runs" / self.RUN
         self.run_dir.mkdir(parents=True)
+        # Repo nad katalogiem tymczasowym nie może podmienić nazwy checkoutu.
+        ceiling = mock.patch.dict(os.environ, {"GIT_CEILING_DIRECTORIES": str(self.root)})
+        ceiling.start()
+        self.addCleanup(ceiling.stop)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -736,6 +740,12 @@ class HeadlessRunTests(unittest.TestCase):
         (run / "headless.log").write_text("", encoding="utf-8")
         with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "cache")}):
             self.assertEqual(retro.headless_runs(self.workspace), [run])
+
+    @unittest.skipUnless(os.name == "nt", "ścieżka bez dysku ma sens tylko na Windows")
+    def test_rooted_xdg_without_drive_is_used_on_windows(self) -> None:
+        """``\\cache`` (bez dysku) jest używane, tak jak w ``runsRoot()`` w node."""
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": "\\cache"}):
+            self.assertEqual(retro.default_headless_root(), Path("\\cache") / "kit-ai" / "headless")
 
     def test_relative_xdg_falls_back_to_home_cache(self) -> None:
         """Względny XDG_CACHE_HOME jest ignorowany, jak w ``runsRoot()``."""

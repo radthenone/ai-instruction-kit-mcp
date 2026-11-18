@@ -135,7 +135,7 @@ const footer = (runDir, ticket, language) => `
 Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Ticket #${ticket}: przeczytaj \`gh issue view ${ticket} --comments\` — to specyfikacja zadania.` : ""}
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
-- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add "${join(runDir, 'base')}" --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove "${join(runDir, 'base')}"\` (nie \`git worktree remove\`).
+- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add '${join(runDir, 'base')}' --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove '${join(runDir, 'base')}'\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
 - Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`${COAUTHOR_TRAILER}\`.
@@ -998,8 +998,16 @@ async function main() {
 
   // Log poza projektem (#463): nie brudzi gita, a `worktree.mjs remove` go nie kasuje.
   const runsDir = runsRoot()
-  const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
-  mkdirSync(runDir, { recursive: true })
+  mkdirSync(runsDir, { recursive: true })
+  // Katalog wspólny dla worktree: rezerwacja atomowa, przy kolizji w tej samej milisekundzie sufiks z PID.
+  let runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
+  try {
+    mkdirSync(runDir)
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err
+    runDir = `${runDir}-${process.pid}`
+    mkdirSync(runDir)
+  }
   pruneRuns(runsDir, basename(runDir), call.ctx)
   // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
   if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx, KEEP_RUNS)

@@ -2080,6 +2080,10 @@ class HeadlessRunsRootTest(unittest.TestCase):
         self.cache = self.tmp / "cache"
         self.main = self.tmp / "ai-kit"
         self.main.mkdir()
+        # Repo nad katalogiem tymczasowym nie może podmienić nazwy checkoutu.
+        ceiling = patch.dict(os.environ, {"GIT_CEILING_DIRECTORIES": str(self.tmp)})
+        ceiling.start()
+        self.addCleanup(ceiling.stop)
 
     def git(self, cwd: Path, *args: str) -> None:
         subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, env={**os.environ, **self.GIT_ENV})
@@ -2113,6 +2117,13 @@ class HeadlessRunsRootTest(unittest.TestCase):
             os.environ.pop("XDG_CACHE_HOME", None)
             root = Path(node_export("h.runsRoot()", cwd=self.main))
         self.assertEqual(root, self.tmp / ".cache" / "kit-ai" / "headless" / "ai-kit")
+
+    @unittest.skipUnless(os.name == "nt", "ścieżka bez dysku ma sens tylko na Windows")
+    def test_rooted_xdg_without_drive_is_used_on_windows(self) -> None:
+        """`\\cache` (bez dysku) node uznaje za bezwzględne — retro musi wybrać ten sam katalog."""
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": "\\cache"}):
+            root = Path(node_export("h.runsRoot()", cwd=self.main))
+        self.assertEqual(root, Path("\\cache") / "kit-ai" / "headless" / "ai-kit")
 
     def test_relative_xdg_falls_back_to_home_cache(self) -> None:
         """Względny XDG_CACHE_HOME jest ignorowany — log nie może trafić do worktree."""
