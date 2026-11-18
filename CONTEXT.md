@@ -89,7 +89,7 @@ A superseded spelling of a Module ID or of a Capability name, still accepted so 
 _Avoid_: synonym, legacy name, shorthand
 
 **Model tier**:
-The model class an agent or a delegated task belongs to: `light`, `standard`, `heavy`, or `takeover` (Claude only). Each tier has one Target per Client. Not a Tier, which is a layer of the product.
+The model class an agent or a delegated task belongs to: `light`, `standard`, `heavy`, or `takeover` (Claude only). Each tier has at most one Target per Client; `takeover` exists only for Claude. Not a Tier, which is a layer of the product.
 _Avoid_: model level, model class
 
 **Target**:
