@@ -1286,6 +1286,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
+            errors="replace",
             env={"PATH": self.path()},
         )
         time.sleep(1)
