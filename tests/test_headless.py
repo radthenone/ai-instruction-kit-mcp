@@ -243,6 +243,17 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(len(left), 5)
         self.assertEqual(len(left - set(future)), 1)
 
+    def test_legacy_project_runs_are_still_pruned(self) -> None:
+        """Stare runy w `.ai/headless-runs` nadal się przycinają w okresie przejściowym (#463)."""
+        legacy = self.root / ".ai/headless-runs"
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (legacy / name).mkdir(parents=True)
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        left = sorted(entry.name for entry in legacy.iterdir() if entry.is_dir())
+        self.assertEqual(left, old[-4:])
+
     def test_antigravity_runs_headless_print_with_prompt_argument(self) -> None:
         self.profile("claude,antigravity")
         self.fake("agy")
@@ -2076,10 +2087,12 @@ class HeadlessRunsRootTest(unittest.TestCase):
             return Path(node_export("h.runsRoot()", cwd=cwd))
 
     def test_runs_root_is_named_after_checkout(self) -> None:
+        """Nazwa katalogu runów to nazwa głównego checkoutu."""
         self.git(self.main, "init", "-q")
         self.assertEqual(self.runs_root(self.main), self.cache / "kit-ai" / "headless" / "ai-kit")
 
     def test_worktree_uses_main_checkout_name(self) -> None:
+        """Worktree liczy runy pod nazwą głównego checkoutu (#463)."""
         self.git(self.main, "init", "-q")
         self.git(self.main, "commit", "--allow-empty", "-qm", "start")
         wt = self.tmp / "feature-wt"
@@ -2087,11 +2100,13 @@ class HeadlessRunsRootTest(unittest.TestCase):
         self.assertEqual(self.runs_root(wt), self.cache / "kit-ai" / "headless" / "ai-kit")
 
     def test_outside_git_uses_directory_name(self) -> None:
+        """Poza repo git nazwą jest katalog roboczy."""
         plain = self.tmp / "plain"
         plain.mkdir()
         self.assertEqual(self.runs_root(plain), self.cache / "kit-ai" / "headless" / "plain")
 
     def test_without_xdg_falls_back_to_home_cache(self) -> None:
+        """Bez XDG_CACHE_HOME katalog runów leży w ~/.cache."""
         with patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp)}):
             os.environ.pop("XDG_CACHE_HOME", None)
             root = Path(node_export("h.runsRoot()", cwd=self.main))

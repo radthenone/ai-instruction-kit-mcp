@@ -997,6 +997,8 @@ async function main() {
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
   pruneRuns(runsDir, basename(runDir), call.ctx)
+  // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
+  if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
   const basePrompt = prompt

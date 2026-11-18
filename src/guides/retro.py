@@ -542,14 +542,19 @@ def default_projects_root() -> Path:
     return Path.home() / ".claude" / "projects"
 
 
+def _xdg_cache_home() -> Path:
+    """``$XDG_CACHE_HOME`` albo ``~/.cache`` — wspólna reguła cache kita."""
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+
+
 def default_cache_root() -> Path:
     """``$XDG_CACHE_HOME/kit-ai/retro`` albo ``~/.cache/kit-ai/retro``."""
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "retro"
+    return _xdg_cache_home() / "kit-ai" / "retro"
 
 
 def default_headless_root() -> Path:
     """``$XDG_CACHE_HOME/kit-ai/headless`` — runy ``/headless`` poza projektem (#463)."""
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "headless"
+    return _xdg_cache_home() / "kit-ai" / "headless"
 
 
 def default_night_root() -> Path:
@@ -674,9 +679,9 @@ def parse_headless_run(run_dir: Path) -> ParsedSession:
 
 
 NIGHT_LOG = re.compile(r"headless-(?P<ticket>\d+)[\w-]*\.log")
-# Ścieżka z cache (#463) albo z `.ai/headless-runs`; separator `/` lub `\` (Windows).
+# Ścieżka z cache (#463) albo z `.ai/headless-runs`; separator `/` lub `\` (Windows); spacje w ścieżce dozwolone.
 HEADLESS_RUN_LOG = re.compile(
-    r"^\[headless\] log: \S*headless(?:-runs)?[\\/](?:[^\s\\/]+[\\/])?(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-",
+    r"^\[headless\] log: .*headless(?:-runs)?[\\/](?:[^\\/\n]+[\\/])?(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-",
     re.MULTILINE,
 )
 HEADLESS_REPORT = "[headless] raport końcowy"
