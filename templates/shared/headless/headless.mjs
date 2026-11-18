@@ -1027,9 +1027,11 @@ async function main() {
     appendFileSync(logPath, text)
   }
   // Linie wrappera trafiają też do pliku zdarzeń (Monitor, retro); echo wykonawcy zostaje tylko w logu (#489).
+  // Wewnętrzne CR/LF w polach dynamicznych (np. nazwa modelu z wyjścia wykonawcy) kodujemy, żeby nie tworzyły osobnych zdarzeń.
   const event = (text) => {
-    log(text)
-    appendFileSync(eventsPath, text)
+    const line = text.replace(/\r/g, "\\r").replace(/\n(?!$)/g, "\\n")
+    log(line)
+    appendFileSync(eventsPath, line)
   }
   process.stdout.write(`[headless] log: ${logPath}\n`)
   process.stdout.write(`[headless] zdarzenia: ${eventsPath}\n`)

@@ -663,13 +663,20 @@ def _own_report(text: str) -> str:
 def parse_headless_run(run_dir: Path) -> ParsedSession:
     """Sygnały przebiegu headless: ostatni kod wyjścia z ``headless.events.log`` (bez niego z ``headless.log``)
     i czystość drzewa po wyjściu 0 z raportu w ``headless.log``."""
-    log_text = _read_text(run_dir / "headless.log")
     events = run_dir / "headless.events.log"
-    exit_file = events if events.is_file() else run_dir / "headless.log"
-    exits = HEADLESS_EXIT.findall(_read_text(exit_file))
+    if events.is_file():
+        # Najpierw kod wyjścia, potem log: raport jest zapisany przed kodem, więc późniejszy odczyt logu go widzi.
+        exits = HEADLESS_EXIT.findall(_read_text(events))
+        log_text = _read_text(run_dir / "headless.log")
+        exit_name = "headless.events.log"
+    else:
+        # Przebieg bez pliku zdarzeń: kod i raport z jednego odczytu logu.
+        log_text = _read_text(run_dir / "headless.log")
+        exits = HEADLESS_EXIT.findall(log_text)
+        exit_name = "headless.log"
     signals: list[Signal] = []
     if not exits:
-        signals.append(Signal("headless_exit", "exit-missing", f"brak linii kod wyjścia w {exit_file.name}"))
+        signals.append(Signal("headless_exit", "exit-missing", f"brak linii kod wyjścia w {exit_name}"))
     elif exits[-1] != "0":
         signals.append(Signal("headless_exit", "exit-nonzero", evidence(f"kod wyjścia: {exits[-1]}")))
     elif HEADLESS_CLEAN.search(_own_report(log_text)):

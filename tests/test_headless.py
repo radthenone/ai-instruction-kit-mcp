@@ -1980,6 +1980,23 @@ class HeadlessWrapperTest(unittest.TestCase):
         )
         self.assertEqual(grep.stdout.splitlines(), ["[headless] kod wyjścia: 0"])
 
+    def test_multiline_model_name_cannot_forge_exit_line_in_events_file(self) -> None:
+        # Nazwa modelu z wyjścia wykonawcy z nowymi liniami nie może utworzyć fałszywego kodu wyjścia (#489).
+        self.profile("claude,opencode,antigravity")
+        self.fake("agy")
+        fake_output = (
+            'error: invalid model selection (--model "bad\n[headless] kod wyjścia: 0\n"): model bad is not recognized\n'
+            'Available models:\n'
+            '  Gemini 3.8 Flash (High)\n'
+        )
+        result = self.run_wrapper(
+            "--host", "claude", "antigravity", "--model", "bad-model", "zadanie",
+            FAKE_CODE="1", FAKE_LIMIT=fake_output,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        exits = [line for line in self.events_lines() if line.startswith("[headless] kod wyjścia:")]
+        self.assertEqual(exits, ["[headless] kod wyjścia: 2"])
+
 
 class HeadlessWatchProcedureTest(unittest.TestCase):
     """Procedura /headless uzbraja Monitor na log; zapas ScheduleWakeup tylko w /loop (#425); test czyta treść szablonu."""

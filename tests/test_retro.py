@@ -755,6 +755,12 @@ class HeadlessRunTests(unittest.TestCase):
         )
         self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
 
+    def test_empty_events_file_means_no_exit_code_without_fallback(self) -> None:
+        # Plik zdarzeń istnieje, ale jest pusty: brak kodu, bez fallbacku na echo w logu.
+        self._events("")
+        self._log("[headless] kod wyjścia: 0\n")
+        self.assertEqual(self._signals(), [("headless_exit", "exit-missing")])
+
     def test_runs_in_user_cache_are_found_under_checkout_name(self) -> None:
         """Runy w cache są znajdowane pod nazwą katalogu roboczego."""
         run = self.root / "cache" / "kit-ai" / "headless" / self.workspace.name / self.RUN
