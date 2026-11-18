@@ -23,7 +23,8 @@
  * Pierwszeństwo: limit w ogonie wyjścia wygrywa też z timeoutem (75, nie 124).
  *
  * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>/` (#463)
- * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
+ * (ścieżka w pierwszej linii, plik zdarzeń w drugiej). Linie wrappera (`[headless]`) idą też do `headless.events.log`
+ * obok logu (#489): Monitor i retro czytają ten plik, echo wykonawcy zostaje w logu. Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
  * po 2 interwałach ciszy ostrzeżenie o zacięciu. Na końcu (także 124) raport: status, commity
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
  *
@@ -1012,6 +1013,9 @@ async function main() {
   // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
   if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx, KEEP_RUNS)
   const logPath = join(runDir, "headless.log")
+  const eventsPath = join(runDir, "headless.events.log")
+  // Plik istnieje od startu: retro odróżnia nowy run (pusty plik) od starego (brak pliku) (#489).
+  appendFileSync(eventsPath, "")
   call.log = logPath
   const basePrompt = prompt
   const sessionFooter = footer(runDir, call.ticket, profileLanguage())
@@ -1022,9 +1026,15 @@ async function main() {
     stream.write(text)
     appendFileSync(logPath, text)
   }
+  // Linie wrappera trafiają też do pliku zdarzeń (Monitor, retro); echo wykonawcy zostaje tylko w logu (#489).
+  const event = (text) => {
+    log(text)
+    appendFileSync(eventsPath, text)
+  }
   process.stdout.write(`[headless] log: ${logPath}\n`)
+  process.stdout.write(`[headless] zdarzenia: ${eventsPath}\n`)
   // Prompt nie trafia do logu — numer ticketu tak, żeby run dało się przypisać do issue.
-  if (call.ticket) log(`[headless] ticket #${call.ticket}\n`)
+  if (call.ticket) event(`[headless] ticket #${call.ticket}\n`)
 
   // Host, który zabija wrapper (koniec sesji, własny timeout), nie może zostawić wykonawcy
   // z uprawnieniami na edycje i bash.
@@ -1037,7 +1047,7 @@ async function main() {
       const hadChild = !!current.child
       const killing = current.child ? killTree(current.child) : null
       const after = current.started ? ` po ${((Date.now() - current.started) / 1000).toFixed(1)} s od startu wykonawcy` : ""
-      log(`[headless] sygnał ${signal}${after} (wrapper pid ${process.pid}, ppid ${process.ppid})\n`)
+      event(`[headless] sygnał ${signal}${after} (wrapper pid ${process.pid}, ppid ${process.ppid})\n`)
       log(processSnapshot(current.child?.pid))
       await killing
       log(current.report())
@@ -1052,7 +1062,7 @@ async function main() {
   for (const [i, { name, executor, bin, needsShell, why }] of chain.entries()) {
     const next = chain.slice(i + 1).find((c) => !c.why)?.name
     if (why) {
-      log(`[headless] ${why}${next ? ` — przekazuję zadanie: ${name} → ${next}` : ""}\n`)
+      event(`[headless] ${why}${next ? ` — przekazuję zadanie: ${name} → ${next}` : ""}\n`)
       if (!next) break
       continue
     }
@@ -1071,18 +1081,18 @@ async function main() {
       const step = modelPlan({ models: modelList, emptyGroups })[m]
       if (step.skip) {
         call.actions.push(`pominięto model ${model}: pusta grupa quota ${step.skip}`)
-        log(`[headless] pomijam model ${model}: pusta grupa quota ${step.skip}\n`)
+        event(`[headless] pomijam model ${model}: pusta grupa quota ${step.skip}\n`)
         continue
       }
       const t0 = Date.now()
       pauseReported = !next && lastModel
-      outcome = await runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last: pauseReported })
+      outcome = await runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, event, current, last: pauseReported })
       // Odczyt sprzed tej próby już nie obowiązuje: bez nowego odczytu następny model pobierze quota sam (#460).
       quotaText = outcome.quotaText
       // Pojedynczy model zostaje jak dotąd; wiersz per model dotyczy tylko listy (#460, decyzja 3).
       if (modelList.length > 1) call.actions.push(`model ${model || "domyślny"}: ${call.klasa} (${((Date.now() - t0) / 60000).toFixed(1)} min)`)
       if (!continuesWithNextModel(call.klasa) || lastModel) break
-      log(`[headless] ${call.klasa} modelu ${model || "domyślnego"} — kolejny model ${name}\n`)
+      event(`[headless] ${call.klasa} modelu ${model || "domyślnego"} — kolejny model ${name}\n`)
       // Po HANG kolejny model dostaje raport zabitego, jak zastępca wykonawcy (#397, #408).
       if (call.klasa === "HANG") prompt = handoffPrompt({ basePrompt, sessionFooter, name, code: outcome.code, report: outcome.report, klasa: call.klasa })
     }
@@ -1092,20 +1102,20 @@ async function main() {
     if (!next && code === PAUSE_CODE && outcome.pause && !pauseReported) log(`## ${outcome.pause}\n`)
     // Zły model agy to błąd konfiguracji, nie wykonawcy: zastępca go nie naprawi, więc kończymy od razu.
     if (code === 0 || !next || call.klasa === "MODEL") {
-      if (code !== 0 && !next) for (const c of chain.slice(i + 1)) log(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
+      if (code !== 0 && !next) for (const c of chain.slice(i + 1)) event(`[headless] brak zastępcy ${c.name}: ${c.why}\n`)
       break
     }
     // Każdy błąd przekazuje zadanie 1:1 zastępcy: limit (75), HANG (timeout albo brak postępu), inny kod (#397).
     const reason = code === PAUSE_CODE ? `limit ${name}` : `${name} zakończony klasą ${call.klasa} (kod ${code})`
     call.actions.push(`przekazano 1:1: ${name} → ${next}`)
-    log(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
+    event(`[headless] ${reason} — przekazuję zadanie 1:1: ${name} → ${next}\n`)
     // Zadanie 1:1; po zabiciu (HANG) plus raport zabitego wykonawcy (#397, #408).
     prompt = handoffPrompt({ basePrompt, sessionFooter, name, code, report: outcome.report, klasa: call.klasa })
   }
   if (current.stopping) return
   // Sygnał w trakcie zapisu wiersza nie może dopisać drugiego.
   current.stopping = true
-  log(`[headless] kod wyjścia: ${code}\n`)
+  event(`[headless] kod wyjścia: ${code}\n`)
   exitWithRow(code, call.klasa ?? "ERROR")
 }
 
@@ -1124,12 +1134,12 @@ function resolveBin(name) {
   return { name, executor, bin, needsShell, why }
 }
 
-async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, current, last }) {
+async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, log, event, current, last }) {
   // Fallback configu tylko w linked worktree; poza nim null i zachowanie bez zmian.
   const config = configFor(executor)
   const args = executor.args(model || config?.model || "", prompt)
   const shownArgs = args.map((a) => (a.includes(prompt) ? "<prompt>" : a))
-  log(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
+  event(`[headless] ${opts.host} → ${name}: ${bin} ${shownArgs.join(" ")} (timeout ${opts.timeoutMin} min)\n`)
 
   const startHead = git("rev-parse", "HEAD")
   // SUSPECT tylko przy czystym starcie — przy brudnym `status` nie odróżni dopisania do już zmienionego pliku.
@@ -1176,7 +1186,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     killReason = "loop"
     loopNote = `${hit.count}× ${hit.key}`
     stallTree = processSnapshot(child.pid)
-    log(`[headless] pętla: ${loopNote} — zabijam drzewo ${name}\n`)
+    event(`[headless] pętla: ${loopNote} — zabijam drzewo ${name}\n`)
     log(stallTree)
     killTree(child)
   }
@@ -1228,13 +1238,13 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const heartbeat = setInterval(() => {
     const status = git("status", "--short")
     const commits = startHead ? git("rev-list", "--count", `${startHead}..HEAD`) : null
-    log(`[headless] ♥ ${minutes(Date.now() - started)} min | pliki: ${status === null ? "?" : lines(status).length}`
+    event(`[headless] ♥ ${minutes(Date.now() - started)} min | pliki: ${status === null ? "?" : lines(status).length}`
       + ` | commity: ${commits ?? "?"} | ostatnio: ${lastLine() || "—"}\n`)
     const silent = Date.now() - lastOutput
     // Tylko ostrzeżenie — zabija kontrola postępu albo `--timeout`. Raz na okres ciszy, żeby host budził się raz.
     if (silent >= 2 * heartbeatMs && !stallReported) {
       stallReported = true
-      log(`[headless] możliwe zacięcie: brak wyjścia od ${minutes(silent)} min\n`)
+      event(`[headless] możliwe zacięcie: brak wyjścia od ${minutes(silent)} min\n`)
     }
   }, heartbeatMs)
   if (executor.stdin) {
@@ -1265,14 +1275,14 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       if (step.action === "wait") return
       if (step.action === "extend") {
         deadlineMs = step.deadlineMs
-        log(`[headless] postęp w ostatnim kroku — termin przedłużony do ${minutes(deadlineMs)} min (sufit ${minutes(ceilingMs)} min)\n`)
+        event(`[headless] postęp w ostatnim kroku — termin przedłużony do ${minutes(deadlineMs)} min (sufit ${minutes(ceilingMs)} min)\n`)
         return
       }
       killReason = step.reason
       killIdleMs = idleMs
       if (killReason === "ceiling") {
         stallTree = processSnapshot(child.pid)
-        log(`[headless] sufit ${minutes(ceilingMs)} min — zabijam drzewo ${name}\n`)
+        event(`[headless] sufit ${minutes(ceilingMs)} min — zabijam drzewo ${name}\n`)
         log(stallTree)
         killTree(child)
         return
@@ -1281,12 +1291,12 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
       // Najpierw zrzut i zabicie, potem opis checkera w tle; raport końcowy czeka na `stallDescribed`.
       const checkerInput = { tail: outputTail, status: git("status", "--short"), idleMs, model: profileModel("claude", "light") }
       stallTree = processSnapshot(child.pid)
-      log(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
+      event(`[headless] brak postępu przez ${minutes(idleMs)} min — zabijam drzewo ${name}\n`)
       log(stallTree)
       killTree(child)
       stallDescribed = describeStall(checkerInput).then((note) => {
         stallNote = note
-        log(`[headless] zacięcie: ${note}\n`)
+        event(`[headless] zacięcie: ${note}\n`)
       }).catch((err) => {
         // Błąd checkera nie może przerwać runOnce przed raportem końcowym i wierszem wywołania.
         stallNote = `checker niedostępny: ${err?.message ?? err}`
@@ -1317,7 +1327,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   current.child = null
   if (killReason === "timeout") {
     call.actions.push(`zabito drzewo procesów (timeout ${opts.timeoutMin} min)`)
-    log(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
+    event(`[headless] timeout po ${opts.timeoutMin} min — drzewo procesów ${name} zabite\n`)
   }
   if (killReason === "ceiling") call.actions.push(`zabito drzewo procesów (sufit ${minutes(ceilingMs)} min)`)
   if (killReason === "loop") call.actions.push(`zabito drzewo procesów (pętla: ${loopNote})`)
@@ -1338,7 +1348,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
     const available = parseAvailableModels(outTail)
     const detectedModel = detectUnknownModel(outTail, model || agyModelsFromConfig(agyConfig().model)[0])
     invalidModel = `${detectedModel ? `model ${detectedModel}` : "model"} nieznany wykonawcy agy${available.length ? `; dostępne: ${available.join(", ")}` : ""}`
-    log(`[headless] ${invalidModel}\n`)
+    event(`[headless] ${invalidModel}\n`)
     code = 2
   }
   const quotaGroup = executor.quota ? quotaGroupFor(model || agyModelsFromConfig(agyConfig().model)[0] || "gemini-3.8-flash-medium") : null
@@ -1346,7 +1356,7 @@ async function runOnce({ opts, name, executor, bin, needsShell, model, prompt, l
   const needsQuota = failed && !isInvalidModel && !textLimit && executor.quota
   const quotaText = needsQuota && executor.quotaText ? executor.quotaText(bin) : undefined
   const quota = needsQuota ? executor.quota(bin, quotaGroup, quotaText) : null
-  if (quota) log(`[headless] /quota ${name}: limit wyczerpany\n`)
+  if (quota) event(`[headless] /quota ${name}: limit wyczerpany\n`)
   if (textLimit || quota) {
     pause = `PAUSE=rate-limit reset=${(quota ? quota.reset : resetIso(outTail)) ?? "brak"}`
     code = PAUSE_CODE

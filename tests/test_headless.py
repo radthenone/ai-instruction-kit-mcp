@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import queue
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import json
 import unittest
@@ -58,6 +60,7 @@ if [ -n "$FAKE_DROP" ]; then git stash drop -q; fi
 if [ -n "$FAKE_STASH" ]; then echo zmiana >> tracked.txt; git stash -q; fi
 if [ -n "$FAKE_PARTIAL" ]; then printf 'bez nowej linii'; fi
 if [ -n "$FAKE_LIMIT" ]; then echo "$FAKE_LIMIT"; fi
+if [ -n "$FAKE_ECHO" ]; then echo "$FAKE_ECHO"; fi
 case " $FAKE_HANG_FOR " in *" $(basename "$0") "*) sleep 300; exit 0;; esac
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 exit "${FAKE_CODE:-0}"
@@ -1900,6 +1903,83 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertIn("kod wyjścia: 0", result.stdout)
         self.assertEqual(self.argv()[0], "opencode2")
 
+    # --- zdarzenia wrappera w osobnym pliku (#489) ---------------------------
+
+    def events_lines(self) -> list[str]:
+        """Linie `headless.events.log` jedynego przebiegu w cache."""
+        files = list(self.runs_dir().glob("*/headless.events.log"))
+        self.assertEqual(len(files), 1, "brak pliku zdarzeń w runie")
+        return files[0].read_text(encoding="utf-8").splitlines()
+
+    def test_echoed_wrapper_line_stays_out_of_events_file(self) -> None:
+        # Wykonawca wypisuje cudzą linię kodu wyjścia (echo logu); prawdziwy kod runu to 0.
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_ECHO="[headless] kod wyjścia: 9")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        exits = [line for line in self.events_lines() if line.startswith("[headless] kod wyjścia:")]
+        self.assertEqual(exits, ["[headless] kod wyjścia: 0"])
+        self.assertIn("[headless] kod wyjścia: 9", self.headless_log())
+
+    def test_events_file_is_created_at_start_and_announced_on_stdout(self) -> None:
+        # Plik zdarzeń istnieje, zanim wrapper cokolwiek zapisze; stdout podaje jego ścieżkę po ścieżce logu (#489).
+        proc = subprocess.Popen(
+            [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
+            cwd=self.root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env={
+                "PATH": self.path(),
+                "HEADLESS_TEST_DIR": str(self.root),
+                "XDG_CACHE_HOME": str(self.cache),
+                "FAKE_SLEEP": "1",
+            },
+        )
+        lines: queue.Queue[str] = queue.Queue()
+
+        def pump() -> None:
+            for line in proc.stdout:
+                lines.put(line)
+
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        announced: Path | None = None
+        exists_when_announced = False
+        deadline = time.time() + 10
+        while announced is None and time.time() < deadline:
+            try:
+                line = lines.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if line.startswith("[headless] zdarzenia: "):
+                announced = Path(line.removeprefix("[headless] zdarzenia: ").strip())
+                exists_when_announced = announced.is_file()
+        proc.wait(timeout=60)
+        reader.join(timeout=10)
+        stderr = proc.stderr.read()
+        proc.stdout.close()
+        proc.stderr.close()
+        self.assertIsNotNone(announced, "wrapper nie podał ścieżki pliku zdarzeń na stdout")
+        self.assertTrue(exists_when_announced, "plik zdarzeń nie istniał w chwili ogłoszenia")
+        self.assertEqual(announced.name, "headless.events.log")
+        self.assertEqual(proc.returncode, 0, stderr)
+
+    def test_monitor_grep_from_template_selects_only_the_real_end_line(self) -> None:
+        # Wzorzec Monitora bierze się z szablonu, nie z kopii w teście; wykonawca-echo nie trafia do pliku zdarzeń (#489).
+        text = (KIT_ROOT / "templates/shared/agents/headless.md").read_text(encoding="utf-8")
+        [command] = [line for line in text.splitlines() if "grep --line-buffered -E '" in line]
+        pattern = command.split("grep --line-buffered -E '", 1)[1].split("'", 1)[0]
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_ECHO="[headless] kod wyjścia: 9")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (events,) = self.runs_dir().glob("*/headless.events.log")
+        grep = subprocess.run(
+            ["grep", "--line-buffered", "-E", pattern, str(events)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(grep.stdout.splitlines(), ["[headless] kod wyjścia: 0"])
+
 
 class HeadlessWatchProcedureTest(unittest.TestCase):
     """Procedura /headless uzbraja Monitor na log; zapas ScheduleWakeup tylko w /loop (#425); test czyta treść szablonu."""
@@ -1911,7 +1991,7 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
 
     def test_monitor_is_armed_on_anchored_wrapper_lines_only(self) -> None:
         self.assertIn(
-            r"tail -n +<P+1> -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'",
+            r"tail -n +<P+1> -F <zdarzenia> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'",
             self.text,
         )
 
@@ -1939,15 +2019,15 @@ class HeadlessWatchProcedureTest(unittest.TestCase):
         )
 
     def test_wakeup_reads_lines_since_the_recorded_position_before_rearm(self) -> None:
-        self.assertIn(r"grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'", self.text)
+        self.assertIn(r"grep -n '^\[headless\]' <zdarzenia> | awk -F: -v p=<P> '$1 > p'", self.text)
         self.assertNotIn("wc -l", self.text)
         self.assertNotIn("tail -n0", self.text)
 
     def test_end_is_read_again_before_treating_the_task_as_failed(self) -> None:
-        self.assertIn(r"ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1`", self.text)
+        self.assertIn(r"ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <zdarzenia> | tail -1`", self.text)
 
     def test_notification_is_confirmed_by_the_last_wrapper_line(self) -> None:
-        self.assertIn(r"grep '^\[headless\] kod wyjścia:' <log> | tail -1", self.text)
+        self.assertIn(r"grep '^\[headless\] kod wyjścia:' <zdarzenia> | tail -1", self.text)
 
     def test_old_until_grep_recipe_is_gone(self) -> None:
         self.assertNotIn("until grep -q ^EXIT=", self.text)
