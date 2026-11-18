@@ -223,6 +223,56 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertNotIn("sekcji „Etykiety” w `git-end`", self.card_text)
         self.assertIn("bez prefiksu `(night-run)`", self.card_text)
 
+    def test_pending_requests_auto_approve_only_own_worktree_trust(self) -> None:
+        """#504: auto-zatwierdzenie tylko zaufania do worktree tej nocy; inne dialogi → needs-human."""
+        self.assertIn("t3_pending_request(action: 'list')", self.card_text)
+        self.assertIn("wyłącznie pytanie o zaufanie do worktree utworzonego przez tę noc", self.card_text)
+        self.assertIn("pod katalogiem worktree T3 tego uruchomienia", self.card_text)
+        self.assertIn(
+            "Każdy inny oczekujący dialog (także uprawnienia narzędzi) nie jest zatwierdzany automatycznie",
+            self.card_text,
+        )
+        self.assertIn("ticket → needs-human z opisem dialogu w raporcie", self.card_text)
+        self.assertIn("po każdym `delegate_task` i przy każdym `task_status`", self.card_text)
+        self.assertIn("brak pewności dopasowania → needs-human", self.card_text)
+
+    def test_provider_rotation_only_with_fallback_parameter(self) -> None:
+        """#504: rotacja providera przy limicie tylko z parametrem zapas; bez niego needs-human."""
+        self.assertIn("bez cichej zmiany providera", self.card_text)
+        self.assertIn("`zapas: <wykonawca> <model>`", self.card_text)
+        self.assertIn("`antigravity` ↔ `claudeAgent`", self.card_text)
+        self.assertIn("tylko na podstawie parametru", self.card_text)
+        self.assertIn("Bez parametru `zapas` limit → needs-human", self.card_text)
+        self.assertIn("`clientRequestId` o sufiksie `-zapas`", self.card_text)
+        self.assertIn("nowy `taskId` sesji zastępuje stary w `## Stan`", self.card_text)
+        self.assertIn(
+            "Ponowienie po limicie wykonawcy wykonuje sesja ticketu na zapasie; "
+            "wpis `## Stan` pozostaje bez zmian",
+            self.card_text,
+        )
+        self.assertIn("Pola `night-run.clean-slate` z Profilu mają pierwszeństwo przed zapasem", self.card_text)
+        self.assertIn("albo bez modelu → needs-human", self.card_text)
+        # PR #511 (CodeRabbit): użyty zapas trafia do `## Stan`, Clean Slate bierze z niego brakujące pola
+        self.assertIn("zapisuje w `## Stan` użytego wykonawcę i model (`zapas: <wykonawca> <model>`)", self.card_text)
+        section = self.card_text.split("## 7.", 1)[1]
+        self.assertIn("brak pola = wartość z wpisu `zapas: <wykonawca> <model>` w `## Stan`", section)
+        self.assertIn("pola podane w Profilu mają pierwszeństwo", section)
+
+    def test_clean_slate_does_not_inherit_model_across_providers(self) -> None:
+        """PR #511 (CodeRabbit): nadpisany provider bez modelu nie dziedziczy modelu innego providera."""
+        section = self.card_text.split("## 7.", 1)[1]
+        self.assertIn("nie dziedziczy modelu z innego providera", section)
+        self.assertIn("model z konfiguracji wybranego providera (`orchestrator_capabilities`)", section)
+        self.assertIn("pomija `target.model` (sekcja 2)", section)
+        self.assertIn("Profil nie nadpisuje providera: po rotacji provider zapasu zostaje (a model zapasu zostaje tylko wtedy, gdy profil nie podaje `model`); bez rotacji provider i model pozostają jak w sekcji 1", section)
+
+    def test_no_pause_or_polling_when_both_providers_exhausted(self) -> None:
+        """#504: wyczerpanie obu providerów → needs-human, bez pauzy i odpytywania o reset."""
+        self.assertIn("wyczerpanie obu providerów) → needs-human", self.card_text)
+        self.assertIn(
+            "bez pauzy, `sleep`, `ScheduleWakeup` ani odpytywania o reset limitu", self.card_text
+        )
+        self.assertIn("wznowienie robi człowiek", self.card_text)
     def test_model_target_matrix_in_card(self) -> None:
         """#500: sekcja 2 mapuje `<wykonawca> <model>` na obiekt target T3 Code."""
         section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]

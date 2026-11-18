@@ -18,6 +18,8 @@ PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie e
 
 Sesja ticketu tworzy PR w kroku 6 i zwraca jego URL dopiero w hand-backu, więc orkiestrator woła `write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])` po otrzymaniu hand-backu z URL PR, nie w trakcie review, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
 
+Limit providera (429 / quota) w sesji ticketu albo wykonawcy → bez cichej zmiany providera. Rotacja jest dozwolona tylko wtedy, gdy parametry nocy podają zapasowego wykonawcę (`zapas: <wykonawca> <model>`): kolejne zadania dostają `target.providerInstanceId` i `target.model` z tego parametru; działa w obie strony (`antigravity` ↔ `claudeAgent`), ale tylko na podstawie parametru. Sesja ticketu, która dostała limit, startuje raz od nowa przez `delegate_task` na zapasie z `clientRequestId` o sufiksie `-zapas`; nowy `taskId` sesji zastępuje stary w `## Stan`. Po ponowieniu na zapasie orkiestrator zapisuje w `## Stan` użytego wykonawcę i model (`zapas: <wykonawca> <model>`). Ponowienie po limicie wykonawcy wykonuje sesja ticketu na zapasie; wpis `## Stan` pozostaje bez zmian (`taskId` sesji ticketu). Pola `night-run.clean-slate` z Profilu mają pierwszeństwo przed zapasem (sekcja 7). `zapas` z tym samym providerem co bieżący albo bez modelu → needs-human. Bez parametru `zapas` limit → needs-human. Limit także na zapasowym (wyczerpanie obu providerów) → needs-human, bez pauzy, `sleep`, `ScheduleWakeup` ani odpytywania o reset limitu; wznowienie robi człowiek.
+
 ## 2. Wykonawca implementacji (z sesji ticketu)
 
 Gdy ticket wymaga delegowania wykonawcy implementacji (kroki 2–3 w `night-run-ticket`):
@@ -54,6 +56,7 @@ Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "
 ## 4. Watchdog i cron
 
 - watchdog i cron pominięte: w środowisku T3 nie uruchamia się skryptu `.ai/night-run-watchdog.sh` ani `CronCreate` (T3 samodzielnie zarządza cyklem życia zadań i wątków w tle).
+- oczekujące prośby: orkiestrator sprawdza `t3_pending_request(action: 'list')` po każdym `delegate_task` i przy każdym `task_status` i automatycznie zatwierdza (`action: 'respond'`) wyłącznie pytanie o zaufanie do worktree utworzonego przez tę noc (ścieżka pod katalogiem worktree T3 tego uruchomienia, porównana ze ścieżką worktree sesji ticketu z wyniku `delegate_task`; brak pewności dopasowania → needs-human). Każdy inny oczekujący dialog (także uprawnienia narzędzi) nie jest zatwierdzany automatycznie: ticket → needs-human z opisem dialogu w raporcie.
 - nasłuch PR reaktywny, zamiast pętli `gh pr checks --watch` (ani `sleep`, `Monitor`, `ScheduleWakeup`): zaraz po `gh pr create` orkiestrator woła `link_pull_request` z pełnym URL PR, potem `watch_pull_request`; T3 wybudza orkiestratora po zakończeniu checków albo przy nowym komentarzu lub review, a orkiestrator kończy turę zamiast czekać;
 - `unwatch_pull_request` po `MERGED`, po decyzji needs-human dla PR i przed końcem nocy (NIGHT-RUN REPORT) — na każdym PR, który orkiestrator obserwuje.
 
@@ -101,7 +104,8 @@ Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełni
 4. woła świeży `delegate_task` jak w sekcji 1, z różnicami:
    - nowy `clientRequestId`: `<nazwa katalogu CTX>-<numer ticketu>-clean-slate`;
    - `title`: `<typ>/<N>-<slug>-clean-slate`;
-   - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1;
+   - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1; po rotacji brak pola = wartość z wpisu `zapas: <wykonawca> <model>` w `## Stan` (pola podane w Profilu mają pierwszeństwo);
+   - Profil nadpisuje `provider`, a nie podaje `model` → nowe zadanie nie dziedziczy modelu z innego providera: bierze model z konfiguracji wybranego providera (`orchestrator_capabilities`) albo pomija `target.model` (sekcja 2); Profil nie nadpisuje providera: po rotacji provider zapasu zostaje (a model zapasu zostaje tylko wtedy, gdy profil nie podaje `model`); bez rotacji provider i model pozostają jak w sekcji 1;
    - `task` zawiera linię „Clean Slate: użyty” i notatkę zapisaną w kroku 1;
 5. zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych (`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`).
 
