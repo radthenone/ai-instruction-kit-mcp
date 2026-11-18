@@ -706,6 +706,10 @@ class HeadlessRunTests(unittest.TestCase):
         self.workspace = self.root / "my-repo"
         self.run_dir = self.workspace / ".ai" / "headless-runs" / self.RUN
         self.run_dir.mkdir(parents=True)
+        # Repo nad katalogiem tymczasowym nie może podmienić nazwy checkoutu.
+        ceiling = mock.patch.dict(os.environ, {"GIT_CEILING_DIRECTORIES": str(self.root)})
+        ceiling.start()
+        self.addCleanup(ceiling.stop)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -728,6 +732,60 @@ class HeadlessRunTests(unittest.TestCase):
             "## git log 472c5d3..HEAD --oneline\n(brak commitów)\n"
         )
         self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
+
+    def test_runs_in_user_cache_are_found_under_checkout_name(self) -> None:
+        """Runy w cache są znajdowane pod nazwą katalogu roboczego."""
+        run = self.root / "cache" / "kit-ai" / "headless" / self.workspace.name / self.RUN
+        run.mkdir(parents=True)
+        (run / "headless.log").write_text("", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "cache")}):
+            self.assertEqual(retro.headless_runs(self.workspace), [run])
+
+    @unittest.skipUnless(os.name == "nt", "ścieżka bez dysku ma sens tylko na Windows")
+    def test_rooted_xdg_without_drive_is_used_on_windows(self) -> None:
+        """``\\cache`` (bez dysku) jest używane, tak jak w ``runsRoot()`` w node."""
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": "\\cache"}):
+            self.assertEqual(retro.default_headless_root(), Path("\\cache") / "kit-ai" / "headless")
+
+    def test_relative_xdg_falls_back_to_home_cache(self) -> None:
+        """Względny XDG_CACHE_HOME jest ignorowany, jak w ``runsRoot()``."""
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": ".cache"}), mock.patch.object(Path, "home", return_value=self.root):
+            self.assertEqual(retro.default_headless_root(), self.root / ".cache" / "kit-ai" / "headless")
+
+    def test_project_runs_are_still_found_during_transition(self) -> None:
+        """Stare runy w .ai/headless-runs nadal są czytane w okresie przejściowym."""
+        self._log("[headless] kod wyjścia: 0\n")
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "empty")}):
+            self.assertEqual(retro.headless_runs(self.workspace), [self.run_dir])
+
+    def test_worktree_finds_runs_under_main_checkout_name(self) -> None:
+        """Worktree znajduje runy pod nazwą głównego checkoutu."""
+        main = self.root / "main"
+        main.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        for args in (["init", "-q"], ["commit", "--allow-empty", "-qm", "start"], ["worktree", "add", "-q", str(self.root / "feature"), "-b", "feature"]):
+            subprocess.run(["git", *args], cwd=main, check=True, capture_output=True, env=env)
+        run = self.root / "cache" / "kit-ai" / "headless" / "main" / self.RUN
+        run.mkdir(parents=True)
+        (run / "headless.log").write_text("", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "cache")}):
+            self.assertEqual(retro.headless_runs(self.root / "feature"), [run])
+
+    def test_log_header_points_to_run_in_cache_or_project(self) -> None:
+        """Nagłówek logu wskazuje run w cache lub w projekcie, także przy spacjach w ścieżce."""
+        stamp = self.RUN.removesuffix("-antigravity")
+        for path in (
+            f"/home/u/.cache/kit-ai/headless/app/{self.RUN}/headless.log",
+            f"C:\\Users\\Jan Kowalski\\AppData\\Local\\kit-ai\\headless\\app\\{self.RUN}\\headless.log",
+            f"/home/u/my projects/app/.ai/headless-runs/{self.RUN}/headless.log",
+            f"C:\\Users\\u\\AppData\\Local\\kit-ai\\headless\\app\\{self.RUN}\\headless.log",
+            f"~/projects/app/.ai/headless-runs/{self.RUN}/headless.log",
+        ):
+            with self.subTest(path=path):
+                match = retro.HEADLESS_RUN_LOG.search(f"[headless] log: {path}\n")
+                if match is None:
+                    self.fail(f"brak dopasowania: {path}")
+                self.assertEqual(match.group(1), stamp)
 
     def test_zero_exit_with_commits_is_not_reported(self) -> None:
         self._log(
@@ -763,6 +821,10 @@ class HeadlessRunTests(unittest.TestCase):
 
     def test_batch_scan_writes_headless_runs_as_sessions(self) -> None:
         self._log("[headless] kod wyjścia: 2\n")
+        # Pusty cache runów: prawdziwe logi z `~/.cache/kit-ai/headless/my-repo` nie mogą wejść do skanu.
+        xdg = mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "empty-xdg")})
+        xdg.start()
+        self.addCleanup(xdg.stop)
         message = retro.scan_command(
             self.workspace,
             session=None,

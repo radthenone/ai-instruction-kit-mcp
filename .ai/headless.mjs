@@ -22,7 +22,7 @@
  * dostawcy wykonawcy (nie błąd; linia `PAUSE=rate-limit reset=<ISO|brak>` w raporcie).
  * Pierwszeństwo: limit w ogonie wyjścia wygrywa też z timeoutem (75, nie 124).
  *
- * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `.ai/headless-runs/<start>/`
+ * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>/` (#463)
  * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
  * po 2 interwałach ciszy ostrzeżenie o zacięciu. Na końcu (także 124) raport: status, commity
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
@@ -36,8 +36,8 @@
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { constants } from "node:os"
-import { basename, delimiter, dirname, join, resolve } from "node:path"
+import { constants, homedir } from "node:os"
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const KNOWN_CLIENTS = ["cursor", "claude", "codex", "vscode", "kiro", "kilo", "antigravity", "opencode"]
@@ -135,7 +135,7 @@ const footer = (runDir, ticket, language) => `
 Zasady tej sesji (headless, bez użytkownika):${ticket ? `
 - Ticket #${ticket}: przeczytaj \`gh issue view ${ticket} --comments\` — to specyfikacja zadania.` : ""}
 - Katalog runu: ${runDir} — logi testów, skrypty i pliki robocze tylko tam, nie w repo.
-- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add ${join(runDir, 'base')} --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove ${join(runDir, 'base')}\` (nie \`git worktree remove\`).
+- Nie używaj \`git stash\`, \`git checkout\` ani \`git reset\`. Porównanie z bazą: \`node .ai/worktree.mjs add '${join(runDir, 'base')}' --detach <ref> --plain\` (nie gołym \`git worktree add --detach\`), na końcu \`node .ai/worktree.mjs remove '${join(runDir, 'base')}'\` (nie \`git worktree remove\`).
 - Ticket z więcej niż 3 kryteriami akceptacji albo więcej niż jedną aplikacją/pakietem: najpierw plan 5–10 kroków.
 - Praca test-first: test czerwony → kod → test zielony → lokalny commit po każdym zielonym kroku.
 - Commity: temat ${topicLanguage(language)} (język \`${language}\` z Profilu), na końcu każdego commita trailer \`${COAUTHOR_TRAILER}\`.
@@ -299,6 +299,18 @@ function mainCheckout() {
   }
 }
 
+// Katalog runów poza projektem (#463): `$XDG_CACHE_HOME/kit-ai/headless/<repo>/`, fallback `~/.cache`.
+// `<repo>` to główny checkout także z linked worktree: `--git-common-dir` wskazuje `<główny>/.git`.
+// Surowa nazwa, bez `norm()` (ono zmienia wielkość liter na Windows), bo Python liczy tak samo.
+export function runsRoot() {
+  const commonDir = git("rev-parse", "--git-common-dir")
+  const repoDir = commonDir ? dirname(resolve(process.cwd(), commonDir)) : process.cwd()
+  // XDG: względna wartość jest ignorowana — inaczej log trafiłby do worktree i zniknął z nim.
+  const xdg = process.env.XDG_CACHE_HOME
+  const cache = xdg && isAbsolute(xdg) ? xdg : join(homedir(), ".cache")
+  return join(cache, "kit-ai", "headless", basename(repoDir))
+}
+
 // Config wykonawcy, którego w worktree nie ma: bierzemy plik z głównego checkoutu.
 // Wykonawcy bez mechanizmu env dostają tylko ostrzeżenie — bez fallbacku (#300).
 function configFor(executor) {
@@ -436,13 +448,14 @@ function failedRunsWithoutExcerpt(ctx) {
 // Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
 // ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
 // Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
-function pruneRuns(runsDir, current, ctx) {
+// `kept`: ile starszych runów zostaje obok bieżącego (w katalogu bez bieżącego runu — pełne KEEP_RUNS).
+function pruneRuns(runsDir, current, ctx, kept = KEEP_RUNS - 1) {
   const keep = failedRunsWithoutExcerpt(ctx)
   const runs = readdirSync(runsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== current)
     .map((entry) => entry.name)
     .sort()
-  for (const name of runs.slice(0, -(KEEP_RUNS - 1))) {
+  for (const name of runs.slice(0, Math.max(0, runs.length - kept))) {
     if (keep.has(name)) continue
     try {
       rmSync(join(runsDir, name), { recursive: true, force: true })
@@ -983,12 +996,21 @@ async function main() {
   // Zły `.agents/agy.json` ma wyjść od razu, nie po limicie pierwszego wykonawcy.
   if (chain.some((c) => c.name === "antigravity" && !c.why)) agyConfig()
 
-  // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
-  const runsDir = resolve(".ai", "headless-runs")
-  const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
-  mkdirSync(runDir, { recursive: true })
-  writeFileSync(join(runsDir, ".gitignore"), "*\n")
+  // Log poza projektem (#463): nie brudzi gita, a `worktree.mjs remove` go nie kasuje.
+  const runsDir = runsRoot()
+  mkdirSync(runsDir, { recursive: true })
+  // Katalog wspólny dla worktree: rezerwacja atomowa, przy kolizji w tej samej milisekundzie sufiks z PID.
+  let runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
+  try {
+    mkdirSync(runDir)
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err
+    runDir = `${runDir}-${process.pid}`
+    mkdirSync(runDir)
+  }
   pruneRuns(runsDir, basename(runDir), call.ctx)
+  // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
+  if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx, KEEP_RUNS)
   const logPath = join(runDir, "headless.log")
   call.log = logPath
   const basePrompt = prompt
