@@ -695,6 +695,127 @@ class TestIntegrationSafetyEdges(unittest.TestCase):
             self.assertFalse((sandbox / "orca.yaml").exists())
 
 
+class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
+    """Dowiązania, cykle i powtórzone klucze w Profilu po review PR #518, runda 3 (#456)."""
+
+    def _profile(self, workspace: Path, body: str) -> Path:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(body, encoding="utf-8")
+        return profile
+
+    def test_cyclic_symlink_does_not_abort_render(self) -> None:
+        """Cykliczne dowiązanie orca.yaml nie przerywa renderu pozostałych integracji."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            try:
+                (workspace / "orca.yaml").symlink_to("orca.yaml")
+            except (OSError, NotImplementedError):
+                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+
+            created = render_integrations(workspace, KIT_ROOT, integrations=["orca", "coderabbit"])
+
+            self.assertIn(".coderabbit.yaml", created)
+
+    def test_cyclic_symlink_does_not_abort_prune(self) -> None:
+        """Cykliczne dowiązanie orca.yaml nie zatrzymuje sprzątania coderabbit po wypisaniu z Profilu."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / ".coderabbit.yaml").write_text(f"{KIT_MARKER}\nlanguage: \"pl-PL\"\n", encoding="utf-8")
+            try:
+                (workspace / "orca.yaml").symlink_to("orca.yaml")
+            except (OSError, NotImplementedError):
+                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / ".coderabbit.yaml").exists())
+
+    def test_user_symlink_to_marked_file_is_kept_on_prune(self) -> None:
+        """Dowiązanie użytkownika do pliku z markerem nie jest plikiem kita i nie znika przy sprzątaniu."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            elsewhere = root / "elsewhere.yaml"
+            elsewhere.write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+            try:
+                (workspace / "orca.yaml").symlink_to(elsewhere)
+            except (OSError, NotImplementedError):
+                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_symlink())
+
+    def test_duplicate_integrations_key_keeps_kit_files(self) -> None:
+        """Powtórzony klucz `integrations` w Profilu nie daje zgody na sprzątanie: PyYAML po cichu bierze ostatni."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("integrations:\n  - orca\nintegrations: []\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_dry_run_in_kit_repo_uses_same_source_as_real_reload(self) -> None:
+        """Dry-run w repo kita wybiera ten sam szablon co realny reload: plik korzenia, nie kopia z templates/."""
+        import os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            (kit / "templates").mkdir(parents=True)
+            (kit / "templates" / "orca.yaml").write_text(
+                f"{KIT_MARKER}\nscripts:\n  setup: template-setup\n", encoding="utf-8"
+            )
+            (kit / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: local-setup\n", encoding="utf-8")
+            sandbox = root / "sandbox"
+            sandbox.mkdir()
+            (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: local-setup\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(kit)}):
+                render_integrations(sandbox, kit, integrations=["orca"])
+
+            self.assertIn("local-setup", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_dry_run_keeps_real_symlink_unplanned(self) -> None:
+        """Dowiązanie w prawdziwym Workspace nie jest nadpisywane ani kasowane w planie, także gdy sandbox ma kopię."""
+        import os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            (kit / "templates").mkdir(parents=True)
+            (kit / "templates" / "orca.yaml").write_text(
+                f"{KIT_MARKER}\nscripts:\n  setup: template-setup\n", encoding="utf-8"
+            )
+            real = root / "consumer"
+            real.mkdir()
+            elsewhere = root / "elsewhere.yaml"
+            elsewhere.write_text(f"{KIT_MARKER}\nscripts:\n  setup: linked\n", encoding="utf-8")
+            try:
+                (real / "orca.yaml").symlink_to(elsewhere)
+            except (OSError, NotImplementedError):
+                self.skipTest("brak uprawnień do dowiązań symbolicznych")
+            sandbox = root / "sandbox"
+            sandbox.mkdir()
+            (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: sandbox-copy\n", encoding="utf-8")
+            profile = self._profile(sandbox, "integrations: []\n")
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(real)}):
+                render_integrations(sandbox, kit, integrations=["orca"])
+                render_integrations(sandbox, kit, profile_data=profile)
+
+            self.assertIn("sandbox-copy", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
+
+
 class TestCodeRabbitIntegration(unittest.TestCase):
     """Testy kontraktu renderowania konfiguracji CodeRabbit (#457)."""
 

@@ -58,8 +58,8 @@ def _has_marker_line(content: str) -> bool:
 
 
 def is_kit_managed(path: Path) -> bool:
-    """Sprawdź, czy plik zawiera linię markera świadczącą o wyrenderowaniu przez kit."""
-    if not path.is_file():
+    """Sprawdź, czy zwykły plik zawiera linię markera świadczącą o wyrenderowaniu przez kit."""
+    if path.is_symlink() or not path.is_file():
         return False
     try:
         return _has_marker_line(path.read_text(encoding="utf-8"))
@@ -84,8 +84,16 @@ def _remove_kit_files(workspace_root: Path, kit_root: Path, names: list[str]) ->
     for name in names:
         info = INTEGRATIONS_MAP[name]
         target = workspace_root / info.target_file
-        if (real_workspace / info.target_file).resolve() == (kit_root / info.template_name).resolve():
+        real_target = real_workspace / info.target_file
+        if _resolves_to(real_target, kit_root / info.template_name):
             # Repo kita: plik celu jest szablonem integracji, nie usuwamy go (także w planie dry-run).
+            continue
+        if real_target.is_symlink() or target.is_symlink():
+            # Dowiązanie nie jest plikiem kita, nawet gdy wskazuje na oznaczony plik (review #518).
+            print(
+                f"pominięto usunięcie `{info.target_file}` — plik jest dowiązaniem symbolicznym",
+                file=sys.stderr,
+            )
             continue
         if not target.is_file():
             continue
@@ -123,31 +131,56 @@ def _real_workspace(workspace_root: Path) -> Path:
         Path: Prawdziwy Workspace albo ``workspace_root``, gdy zmiennej nie ustawiono.
     """
     env_workspace = os.environ.get("KIT_WORKSPACE")
-    return Path(env_workspace).resolve() if env_workspace else workspace_root
+    return Path(env_workspace) if env_workspace else workspace_root
 
 
-def _profile_allows_prune(profile_path: Path) -> bool:
+def _resolves_to(path: Path, other: Path) -> bool:
     """
-    Sprzątaj tylko po pełnym, bezbłędnym odczycie Profilu jako mapy bez nieznanych nazw.
+    Czy ``path`` i ``other`` wskazują to samo miejsce.
 
-    Pusty plik, lista zamiast mapy, błąd YAML, brak PyYAML albo literówka w nazwie
-    integracji oznaczają, że wybór nie pochodzi z poprawnego Profilu, więc nic nie usuwamy.
+    Cykliczne dowiązanie nie jest zgodnością: w Pythonie 3.11 i 3.12 ``resolve()`` rzuca
+    ``RuntimeError``, więc błąd rozwiązania liczymy jako brak zgodności.
 
     Args:
-        profile_path: Ścieżka do ``.ai/project.profile.yaml``.
+        path: Ścieżka do sprawdzenia (może być dowiązaniem).
+        other: Ścieżka odniesienia.
 
     Returns:
-        bool: True, gdy Profil jest poprawną mapą bez ostrzeżeń.
+        bool: True, gdy rozwiązane ścieżki są równe; False także przy błędzie rozwiązania.
+    """
+    try:
+        return path.resolve() == other.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _profile_text_prunable(text: str) -> bool:
+    """
+    Czy treść Profilu daje zgodę na sprzątanie integracji.
+
+    Zgoda wymaga poprawnej mapy YAML, bez ostrzeżeń (także o nieznanych nazwach)
+    i bez powtórzonego klucza ``integrations`` (PyYAML po cichu bierze ostatni).
+    Pusty plik, lista zamiast mapy, błąd YAML i brak PyYAML zgody nie dają.
+
+    Args:
+        text: Treść ``.ai/project.profile.yaml`` (ten sam odczyt, z którego wczytano listę).
+
+    Returns:
+        bool: True, gdy sprzątanie jest dozwolone.
     """
     try:
         import yaml
     except ImportError:
         return False
     try:
-        data = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        root = yaml.compose(text)
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
         return False
-    if not isinstance(data, dict):
+    if not isinstance(data, dict) or not isinstance(root, yaml.MappingNode):
+        return False
+    keys = [key.value for key, _ in root.value if isinstance(key, yaml.ScalarNode)]
+    if keys.count("integrations") > 1:
         return False
     return not parse_integrations(data.get("integrations")).warnings
 
@@ -242,7 +275,11 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list
     """Wczytaj integrations, language i ostrzeżenia z pliku profilu YAML bez twardej zależności od PyYAML."""
     if not profile_path.is_file():
         return [], "pl", []
-    text = profile_path.read_text(encoding="utf-8")
+    return _parse_profile_text(profile_path, profile_path.read_text(encoding="utf-8"))
+
+
+def _parse_profile_text(profile_path: Path, text: str) -> tuple[list[str], str, list[str]]:
+    """Sparsuj treść Profilu; osobno od odczytu pliku, żeby render czytał plik tylko raz."""
     try:
         import yaml
     except ImportError:
@@ -356,10 +393,17 @@ def render_integrations(
     else:
         profile_path = profile_data if isinstance(profile_data, Path) else workspace_root / ".ai" / "project.profile.yaml"
         if profile_path.is_file():
-            selected_integrations, file_lang, _ = _read_profile_integrations(profile_path)
-            prune = _profile_allows_prune(profile_path)
-            if not language:
-                resolved_lang = file_lang
+            # Jeden odczyt: lista integracji i zgoda na sprzątanie pochodzą z tej samej treści (review #518).
+            try:
+                profile_text = profile_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                profile_text = None
+                print(f"ostrzeżenie: nie odczytano Profilu `{profile_path}` — pomijam render i sprzątanie", file=sys.stderr)
+            if profile_text is not None:
+                selected_integrations, file_lang, _ = _parse_profile_text(profile_path, profile_text)
+                prune = _profile_text_prunable(profile_text)
+                if not language:
+                    resolved_lang = file_lang
 
     if prune:
         unlisted = [name for name in INTEGRATIONS_MAP if name not in selected_integrations]
@@ -375,13 +419,15 @@ def render_integrations(
         if not info:
             continue
         target = workspace_root / info.target_file
+        real_target = _real_workspace(workspace_root) / info.target_file
         root_source = kit_root / info.template_name
         dist_candidates = [
             kit_root / "templates" / info.template_name,
             kit_root / "templates" / "shared" / info.template_name,
         ]
         # Repo kita: źródłem jest plik korzenia, nie kopia dystrybucyjna z templates/ (review #518).
-        if target.resolve() == root_source.resolve():
+        # Wybór liczymy na prawdziwym Workspace, żeby dry-run planował to, co zrobi realny reload.
+        if _resolves_to(real_target, root_source):
             template_candidates = [root_source, *dist_candidates]
         else:
             template_candidates = [*dist_candidates, root_source]
@@ -397,7 +443,7 @@ def render_integrations(
             # Dowolna wartość language (nie tylko pl-PL): w repo kita szablonem jest sam plik celu.
             content = re.sub(r'(?m)^language:\s*"[^"]*"', f'language: "{lang_code}"', content)
 
-        if target.is_symlink():
+        if target.is_symlink() or real_target.is_symlink():
             # Zapis szedłby za dowiązaniem poza repo konsumenta (review #518).
             print(
                 f"pominięto `{info.target_file}` — plik jest dowiązaniem symbolicznym",
