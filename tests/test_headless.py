@@ -14,7 +14,7 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = KIT_ROOT / "templates/shared/headless/headless.mjs"
@@ -1935,13 +1935,16 @@ class HeadlessWrapperTest(unittest.TestCase):
                 "FAKE_SLEEP": "1",
             },
         )
+        stdout = proc.stdout
+        stderr = proc.stderr
+        assert stdout is not None and stderr is not None
         lines: queue.Queue[str] = queue.Queue()
 
-        def pump() -> None:
-            for line in proc.stdout:
+        def pump(source: IO[str]) -> None:
+            for line in source:
                 lines.put(line)
 
-        reader = threading.Thread(target=pump, daemon=True)
+        reader = threading.Thread(target=pump, args=(stdout,), daemon=True)
         reader.start()
         announced: Path | None = None
         exists_when_announced = False
@@ -1956,13 +1959,14 @@ class HeadlessWrapperTest(unittest.TestCase):
                 exists_when_announced = announced.is_file()
         proc.wait(timeout=60)
         reader.join(timeout=10)
-        stderr = proc.stderr.read()
-        proc.stdout.close()
-        proc.stderr.close()
-        self.assertIsNotNone(announced, "wrapper nie podał ścieżki pliku zdarzeń na stdout")
+        stderr_text = stderr.read()
+        stdout.close()
+        stderr.close()
+        if announced is None:
+            self.fail("wrapper nie podał ścieżki pliku zdarzeń na stdout")
         self.assertTrue(exists_when_announced, "plik zdarzeń nie istniał w chwili ogłoszenia")
         self.assertEqual(announced.name, "headless.events.log")
-        self.assertEqual(proc.returncode, 0, stderr)
+        self.assertEqual(proc.returncode, 0, stderr_text)
 
     def test_monitor_grep_from_template_selects_only_the_real_end_line(self) -> None:
         # Wzorzec Monitora bierze się z szablonu, nie z kopii w teście; wykonawca-echo nie trafia do pliku zdarzeń (#489).
