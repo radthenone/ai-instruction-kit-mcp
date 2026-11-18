@@ -16,6 +16,8 @@ Sesja ticketu zaraz po starcie (przed `/git-start #<N>`) najpierw sprawdza bazę
 
 PR sesji ticketu (`gh pr create`, krok 6 `night-run-ticket`) dostaje wszystkie etykiety issue flagami `--label`; etykiety procesowe stanu (`ready-for-agent`, `ready-for-human`, `needs-info`, `needs-triage`, `wontfix`) są odrzucane. Tytuł PR to czysty Conventional Commit po angielsku opisujący zmianę domenową, bez prefiksu `(night-run)`.
 
+Sesja ticketu tworzy PR w kroku 6 i zwraca jego URL dopiero w hand-backu, więc orkiestrator woła `write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])` po otrzymaniu hand-backu z URL PR, nie w trakcie review, żeby w zakładce PR Guide w T3 Code powstał przewodnik po zmianach PR.
+
 Limit providera (429 / quota) w sesji ticketu albo wykonawcy → bez cichej zmiany providera. Rotacja jest dozwolona tylko wtedy, gdy parametry nocy podają zapasowego wykonawcę (`zapas: <wykonawca> <model>`): kolejne zadania dostają `target.providerInstanceId` i `target.model` z tego parametru; działa w obie strony (`antigravity` ↔ `claudeAgent`), ale tylko na podstawie parametru. Sesja ticketu, która dostała limit, startuje raz od nowa przez `delegate_task` na zapasie z `clientRequestId` o sufiksie `-zapas`; nowy `taskId` sesji zastępuje stary w `## Stan`. Po ponowieniu na zapasie orkiestrator zapisuje w `## Stan` użytego wykonawcę i model (`zapas: <wykonawca> <model>`). Ponowienie po limicie wykonawcy wykonuje sesja ticketu na zapasie; wpis `## Stan` pozostaje bez zmian (`taskId` sesji ticketu). Pola `night-run.clean-slate` z Profilu mają pierwszeństwo przed zapasem (sekcja 7). `zapas` z tym samym providerem co bieżący albo bez modelu → needs-human. Bez parametru `zapas` limit → needs-human. Limit także na zapasowym (wyczerpanie obu providerów) → needs-human, bez pauzy, `sleep`, `ScheduleWakeup` ani odpytywania o reset limitu; wznowienie robi człowiek.
 
 ## 2. Wykonawca implementacji (z sesji ticketu)
@@ -45,8 +47,8 @@ Przykład: `review: claude claude-haiku-5-5` → `target: {providerInstanceId: "
 
 ## 3. Stan i wznawianie
 
-- Identyfikator zadania `taskId` zwrócony przez `delegate_task` zostaje zapisany w `## Stan` w pliku CTX (`ticket: #<N> taskId: <taskId>`);
-- po przerwaniu sesji orkiestratora lub restarcie wznowienie następuje przez odpytanie `task_status` na podstawie zapisanego `taskId`;
+- Identyfikator zadania `taskId` i identyfikator wątku `childThreadId` zwrócone przez `delegate_task` zostają zapisane w `## Stan` w pliku CTX (`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`);
+- po przerwaniu sesji orkiestratora lub restarcie wznowienie następuje przez odpytanie `task_status` na podstawie zapisanego `taskId`; `childThreadId` wznowienie odczytuje z tego samego zapisu i przekazuje do kroku 5 sekcji 5 (`t3_thread_organize` z `threadId`);
 - ponowienie wywołania z tym samym `clientRequestId` nie tworzy drugiego dziecka.
 
 - Karta eskalacji needs-human (sekcja „Karta eskalacji” w `night-run`): pole `Wątek T3:` to wartość pola `link` z wyniku `delegate_task` sesji ticketu, wstawiona dosłownie.
@@ -74,15 +76,17 @@ mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}
 - `reviewThreads` filtruj po `isResolved: false` i autorze `coderabbitai`; `id` wątku idzie do `resolveReviewThread(input:{threadId:$id})`;
 - uwaga niezaadresowana albo odrzucona → wątek zostaje otwarty, z odpowiedzią w wątku (powód), nie zamykany po cichu;
 - przed pushem poprawki odczytaj pełną treść wszystkich wcześniejszych review CodeRabbit ze wszystkich stron endpointu reviews (potok ze wszystkich stron jw., bez filtra `commit_id`: `set -o pipefail; gh api --paginate --slurp repos/<owner>/<repo>/pulls/<N>/reviews | jq 'flatten | map(select(.user.login == "coderabbitai[bot]"))'`) i uwagi wymagające działania przekaż sesji ticketu razem z uwagami z wątków;
+- przed pushem poprawki w rundzie naprawczej sesja ticketu (albo wykonawca) przegląda całą zmienianą sekcję pod kątem listy znanych klas problemów (aby uwagi sąsiednich fragmentów nie wracały w kolejnych rundach): idempotencja i wznowienie po przerwaniu; kolejność zapisu stanu; polecenia o zakresie globalnym (np. `git worktree prune`); nadpisywanie plików ignorowanych; brak katalogu, rekordu lub pusty wynik; spójność z `git-end`;
 - `reviewThreads` nie obejmuje uwag spoza diffu (sekcja „Outside diff range” w treści review) ani uwag ogólnych, a zdarzenie `watch_pull_request` niesie tylko skrócony podgląd komentarza; pełną treść review czytaj ze wszystkich stron (endpoint zwraca domyślnie 30 review na stronę, chronologicznie) przez `set -o pipefail; gh api --paginate --slurp repos/<owner>/<repo>/pulls/<N>/reviews | jq 'flatten | map(select(.user.login == "coderabbitai[bot]" and .commit_id == "<head>")) | last'` (pola `state` i `body`; w REST `user.login` autora `coderabbitai` to `coderabbitai[bot]`, `<head>` to bieżący head commit PR) — wybór ostatniego wpisu po wszystkich stronach, nie po pierwszej; uwagi wymagające działania z tej treści przekazuj sesji ticketu razem z uwagami z wątków;
 - niezerowy kod wyjścia potoku (błąd `gh api`) albo pusty wynik → `needs-human` (błąd odczytu review), nigdy „brak uwag”;
 - wynik `null` → review bieżącego head nie jest jeszcze odczytane: poczekaj na review bieżącego head (wybudzenie przez `watch_pull_request`) i nie przechodź do merge, dopóki go nie odczytasz; limit czasu (maks. 10–15 min) i postępowanie po jego upływie określa `git-end` (w rundzie 1 sprawdź otwarte wątki bota, a gdy ich brak — odnotuj brak review bota w raporcie; w kolejnych rundach `needs-human`); uwagi wymagające działania z wcześniejszych review nadal przekazuj sesji ticketu.
 
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła `unwatch_pull_request` dla PR (podpiętego wcześniej przez `link_pull_request`, sekcja 4);
-2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`;
+2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`; gdy komenda zgłosi „Ścieżka nie istnieje”, orkiestrator sprawdza rejestrację worktree: `git worktree list` w głównym checkoucie repozytorium; gdy wpisu ticketu nie ma w `git worktree list`, przechodzi do kroku 3; gdy jedynym wpisem oznaczonym `prunable` jest wpis ticketu, uruchamia `git worktree prune` i dopiero potem przechodzi do kroku 3; gdy `prunable` jest także inny wpis, wpis ticketu wskazuje istniejący katalog albo `git worktree prune` się nie uda, sprzątanie zatrzymuje się i trafia do raportu, bez przejścia do kroku 3; inna odmowa zatrzymuje sprzątanie i trafia do raportu;
 3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
+5. Po krokach 2–4 (także po odmowie `-d` z kroku 4) orkiestrator archiwizuje wątek sesji ticketu: `t3_thread_organize(action: 'archive', threadId: childThreadId)` (`childThreadId` z wyniku `delegate_task` sesji ticketu); historia wątku zostaje w archiwum.
 
 ## 6. Pola raportu (NIGHT-RUN REPORT)
 
@@ -103,7 +107,7 @@ Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełni
    - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1; po rotacji brak pola = wartość z wpisu `zapas: <wykonawca> <model>` w `## Stan` (pola podane w Profilu mają pierwszeństwo);
    - Profil nadpisuje `provider`, a nie podaje `model` → nowe zadanie nie dziedziczy modelu z innego providera: bierze model z konfiguracji wybranego providera (`orchestrator_capabilities`) albo pomija `target.model` (sekcja 2); Profil nie nadpisuje providera: po rotacji provider zapasu zostaje (a model zapasu zostaje tylko wtedy, gdy profil nie podaje `model`); bez rotacji provider i model pozostają jak w sekcji 1;
    - `task` zawiera linię „Clean Slate: użyty” i notatkę zapisaną w kroku 1;
-5. zapisuje nowy `taskId` w `## Stan` w miejsce starego.
+5. zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych (`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`).
 
 Wznowienie bierze etap, ścieżkę worktree i notatkę z `## Stan`, nie z pamięci sesji:
 - etap `clean-slate: w toku` i worktree istnieje → dokończ usunięcie i przejdź do kroku 3;

@@ -130,7 +130,7 @@ class TestCleanSlateT3Card(unittest.TestCase):
             "2. usuwa worktree ticketu (`node .ai/worktree.mjs remove <katalog>`)",
             "3. zapisuje w `## Stan` etap `clean-slate: worktree usunięty`",
             "4. woła świeży `delegate_task`",
-            "5. zapisuje nowy `taskId` w `## Stan` w miejsce starego",
+            "5. zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych",
         ]
         positions = [section.index(step) for step in steps]
         self.assertEqual(positions, sorted(positions))

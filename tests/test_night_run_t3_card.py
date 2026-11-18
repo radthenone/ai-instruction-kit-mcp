@@ -83,6 +83,13 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("taskId", self.card_text)
         self.assertIn("## Stan", self.card_text)
         self.assertIn("task_status", self.card_text)
+        # Wznowienie archiwizuje wątek, więc childThreadId musi przetrwać w ## Stan.
+        self.assertIn(
+            "`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`",
+            self.card_text,
+        )
+        # Clean Slate zapisuje nowe oba identyfikatory, inaczej archiwizacja trafi w stary wątek.
+        self.assertIn("zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych", self.card_text)
         self.assertTrue(
             "nie tworzy drugiego dziecka" in self.card_text
             or "nie tworzy nowego dziecka" in self.card_text
@@ -109,6 +116,46 @@ class TestNightRunT3CardContract(unittest.TestCase):
             "bez -D" in self.card_text
             or "bez `-D`" in self.card_text
         )
+
+    def test_pr_guide_written_after_pr_creation(self) -> None:
+        """Po utworzeniu PR orkiestrator woła write_pull_request_guides (#503)."""
+        self.assertIn(
+            'write_pull_request_guides(pullRequests: [{url: "<URL PR>"}])',
+            self.card_text,
+        )
+        pr_create = self.card_text.index("gh pr create")
+        merged = self.card_text.index("sprzątanie po MERGED")
+        guide = self.card_text.index("write_pull_request_guides")
+        self.assertLess(pr_create, guide)
+        self.assertLess(guide, merged)
+        guide_line = next(
+            line
+            for line in self.card_text.splitlines()
+            if "write_pull_request_guides" in line
+        )
+        self.assertIn("po otrzymaniu hand-backu z URL PR", guide_line)
+
+    def test_thread_archived_after_merged_cleanup(self) -> None:
+        """Po MERGED, worktree i branchu: t3_thread_organize archive (#503)."""
+        call = "t3_thread_organize(action: 'archive', threadId: childThreadId)"
+        self.assertIn(call, self.card_text)
+        merged = self.card_text.index("sprzątanie po MERGED")
+        remove = self.card_text.index(".ai/worktree.mjs remove", merged)
+        branch = self.card_text.index("git branch -d", merged)
+        archive = self.card_text.index(call)
+        self.assertLess(remove, archive)
+        self.assertLess(branch, archive)
+        # Krok 2 ma regułę dla worktree usuniętego wcześniej.
+        step2 = self.card_text[remove:branch]
+        self.assertIn("Ścieżka nie istnieje", step2)
+        # Po „Ścieżka nie istnieje” sprawdzana jest rejestracja worktree.
+        self.assertIn("git worktree list", step2)
+        self.assertIn("git worktree prune", step2)
+        self.assertLess(step2.index("Ścieżka nie istnieje"), step2.index("git worktree prune"))
+        # prune tylko przy jedynym wpisie prunable: nie czyści rejestracji cudzych worktree.
+        self.assertIn("jedynym wpisem oznaczonym `prunable` jest wpis ticketu", step2)
+        self.assertIn("wpis ticketu wskazuje istniejący katalog", step2)
+        self.assertIn("gdy wpisu ticketu nie ma w `git worktree list`", step2)
 
     def test_branch_naming_contract_in_card(self) -> None:
         """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""
@@ -279,6 +326,23 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn('map(select(.user.login == "coderabbitai[bot]"))', section)
         self.assertIn("limit czasu (maks. 10–15 min)", section)
         self.assertIn("git-end", section)
+
+    def test_repair_push_reviews_entire_section_with_problem_classes_in_card(self) -> None:
+        """#512: w sekcji 5 karty T3 przed pushem poprawki agent przegląda całą zmienianą sekcję pod kątem listy klas."""
+        section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("przed pushem poprawki", section.lower())
+        self.assertIn("przegląda całą zmienianą sekcję", section)
+        classes = (
+            "idempotencja i wznowienie po przerwaniu",
+            "kolejność zapisu stanu",
+            "polecenia o zakresie globalnym (np. `git worktree prune`)",
+            "nadpisywanie plików ignorowanych",
+            "brak katalogu, rekordu lub pusty wynik",
+            "spójność z `git-end`",
+        )
+        for cls_name in classes:
+            with self.subTest(cls_name=cls_name):
+                self.assertIn(cls_name, section)
 
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
