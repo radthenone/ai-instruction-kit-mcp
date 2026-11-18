@@ -9,6 +9,7 @@ Na start:
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -52,8 +53,8 @@ _YAML_ERROR_PREFIX = "błąd składni YAML"
 
 
 def _has_marker_line(content: str) -> bool:
-    """Marker kita liczy się tylko jako osobna linia, nie wzmianka w środku innej."""
-    return any(line.strip() in KIT_MARKERS for line in content.splitlines())
+    """Marker kita liczy się tylko jako cała linia od pierwszej kolumny, bez wcięcia."""
+    return any(line.rstrip() in KIT_MARKERS for line in content.splitlines())
 
 
 def is_kit_managed(path: Path) -> bool:
@@ -79,23 +80,76 @@ def _remove_kit_files(workspace_root: Path, kit_root: Path, names: list[str]) ->
         list[str]: Względne ścieżki usuniętych plików.
     """
     removed: list[str] = []
+    real_workspace = _real_workspace(workspace_root)
     for name in names:
         info = INTEGRATIONS_MAP[name]
         target = workspace_root / info.target_file
-        if target.resolve() == (kit_root / info.template_name).resolve():
-            # Repo kita: plik celu jest szablonem integracji, nie usuwamy go.
+        if (real_workspace / info.target_file).resolve() == (kit_root / info.template_name).resolve():
+            # Repo kita: plik celu jest szablonem integracji, nie usuwamy go (także w planie dry-run).
             continue
         if not target.is_file():
             continue
-        if is_kit_managed(target):
-            target.unlink()
-            removed.append(info.target_file)
-        else:
+        if not is_kit_managed(target):
             print(
                 f"pominięto usunięcie `{info.target_file}` — plik nie jest zarządzany przez kit",
                 file=sys.stderr,
             )
+            continue
+        try:
+            target.unlink()
+        except OSError as exc:
+            # Jeden zablokowany plik nie może zatrzymać renderu pozostałych integracji.
+            print(
+                f"nie usunięto `{info.target_file}`: {exc} — zostanie usunięty przy kolejnym reloadzie",
+                file=sys.stderr,
+            )
+            continue
+        removed.append(info.target_file)
     return removed
+
+
+def _real_workspace(workspace_root: Path) -> Path:
+    """
+    Zwróć Workspace, którego dotyczy przebieg.
+
+    Przy dry-runie ``workspace_root`` wskazuje kopię w sandboxie, a prawdziwy Workspace
+    jest w ``KIT_WORKSPACE`` (ustawia bootstrap). Ochronę źródła kita liczymy na prawdziwej
+    ścieżce, żeby plan zgadzał się z realnym reloadem.
+
+    Args:
+        workspace_root: Root repo, na którym działa przebieg (może być sandboxem).
+
+    Returns:
+        Path: Prawdziwy Workspace albo ``workspace_root``, gdy zmiennej nie ustawiono.
+    """
+    env_workspace = os.environ.get("KIT_WORKSPACE")
+    return Path(env_workspace).resolve() if env_workspace else workspace_root
+
+
+def _profile_allows_prune(profile_path: Path) -> bool:
+    """
+    Sprzątaj tylko po pełnym, bezbłędnym odczycie Profilu jako mapy bez nieznanych nazw.
+
+    Pusty plik, lista zamiast mapy, błąd YAML, brak PyYAML albo literówka w nazwie
+    integracji oznaczają, że wybór nie pochodzi z poprawnego Profilu, więc nic nie usuwamy.
+
+    Args:
+        profile_path: Ścieżka do ``.ai/project.profile.yaml``.
+
+    Returns:
+        bool: True, gdy Profil jest poprawną mapą bez ostrzeżeń.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return False
+    try:
+        data = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return not parse_integrations(data.get("integrations")).warnings
 
 
 def integration_target_file(name: str) -> str | None:
@@ -287,22 +341,23 @@ def render_integrations(
 
     selected_integrations: list[str] = []
     resolved_lang = language or "pl"
-    # Sprzątamy tylko, gdy wybór pochodzi z Profilu, który dało się wczytać:
+    # Sprzątamy tylko, gdy wybór pochodzi z poprawnie odczytanej mapy Profilu:
     # jawna lista to podzbiór wskazany przez wołającego, a zepsuty Profil to nie „zero integracji”.
     prune = False
 
     if integrations is not None:
         selected_integrations = parse_integrations(integrations).integrations
     elif isinstance(profile_data, dict):
-        selected_integrations = parse_integrations(profile_data.get("integrations")).integrations
-        prune = True
+        parsed = parse_integrations(profile_data.get("integrations"))
+        selected_integrations = parsed.integrations
+        prune = not parsed.warnings
         if not language:
             resolved_lang = str(profile_data.get("language") or "pl")
     else:
         profile_path = profile_data if isinstance(profile_data, Path) else workspace_root / ".ai" / "project.profile.yaml"
         if profile_path.is_file():
-            selected_integrations, file_lang, warnings = _read_profile_integrations(profile_path)
-            prune = not any(w.startswith(_YAML_ERROR_PREFIX) for w in warnings)
+            selected_integrations, file_lang, _ = _read_profile_integrations(profile_path)
+            prune = _profile_allows_prune(profile_path)
             if not language:
                 resolved_lang = file_lang
 
@@ -319,11 +374,17 @@ def render_integrations(
         info = INTEGRATIONS_MAP.get(name)
         if not info:
             continue
-        template_candidates = [
+        target = workspace_root / info.target_file
+        root_source = kit_root / info.template_name
+        dist_candidates = [
             kit_root / "templates" / info.template_name,
             kit_root / "templates" / "shared" / info.template_name,
-            kit_root / info.template_name,
         ]
+        # Repo kita: źródłem jest plik korzenia, nie kopia dystrybucyjna z templates/ (review #518).
+        if target.resolve() == root_source.resolve():
+            template_candidates = [root_source, *dist_candidates]
+        else:
+            template_candidates = [*dist_candidates, root_source]
         template_path = next((p for p in template_candidates if p.is_file()), None)
         if template_path is None:
             print(f"brak szablonu dla {name}", file=sys.stderr)
@@ -336,7 +397,13 @@ def render_integrations(
             # Dowolna wartość language (nie tylko pl-PL): w repo kita szablonem jest sam plik celu.
             content = re.sub(r'(?m)^language:\s*"[^"]*"', f'language: "{lang_code}"', content)
 
-        target = workspace_root / info.target_file
+        if target.is_symlink():
+            # Zapis szedłby za dowiązaniem poza repo konsumenta (review #518).
+            print(
+                f"pominięto `{info.target_file}` — plik jest dowiązaniem symbolicznym",
+                file=sys.stderr,
+            )
+            continue
         if target.is_file() and not is_kit_managed(target):
             print(
                 f"pominięto `{info.target_file}` — istniejący plik nie jest zarządzany przez kit",
