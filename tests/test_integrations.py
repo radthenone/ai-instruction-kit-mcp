@@ -478,6 +478,66 @@ class TestOrcaTemplate(unittest.TestCase):
             self.assertEqual((workspace / "orca.yaml").read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
 
 
+class TestIntegrationOwnershipOnReload(unittest.TestCase):
+    """Reload z Profilu: własność pliku po linii markera, sprzątanie integracji wypisanych z Profilu (#456)."""
+
+    def _write_profile(self, workspace: Path, body: str) -> Path:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(body, encoding="utf-8")
+        return profile
+
+    def test_marker_mentioned_inside_a_line_is_not_ownership(self) -> None:
+        """Plik, który tylko wspomina kit w komentarzu, nie jest plikiem kita."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "orca.yaml"
+            path.write_text("scripts:\n  setup: ./mine.sh  # ai-instruction-kit style, customized\n", encoding="utf-8")
+            self.assertFalse(is_kit_managed(path))
+
+    def test_reload_removes_kit_file_of_integration_unlisted_from_profile(self) -> None:
+        """Wypisanie `orca` z Profilu i reload usuwa orca.yaml wyrenderowany przez kit."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._write_profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+            self._write_profile(workspace, "integrations: []\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_reload_keeps_user_file_of_unlisted_integration(self) -> None:
+        """Plik użytkownika bez markera zostaje, nawet gdy integracji nie ma w Profilu."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / "orca.yaml").write_text("custom: true\n", encoding="utf-8")
+            profile = self._write_profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertEqual((workspace / "orca.yaml").read_text(encoding="utf-8"), "custom: true\n")
+
+    def test_reload_with_broken_profile_keeps_kit_files(self) -> None:
+        """Błąd składni Profilu nie może skasować plików integracji."""
+        import io
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._write_profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            self._write_profile(workspace, "integrations: [unclosed\n")
+
+            old_err, sys.stderr = sys.stderr, io.StringIO()
+            try:
+                render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            finally:
+                sys.stderr = old_err
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+
 class TestCodeRabbitIntegration(unittest.TestCase):
     """Testy kontraktu renderowania konfiguracji CodeRabbit (#457)."""
 

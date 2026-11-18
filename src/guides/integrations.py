@@ -48,15 +48,54 @@ KIT_MARKERS: tuple[str, ...] = (
 )
 
 
+_YAML_ERROR_PREFIX = "błąd składni YAML"
+
+
+def _has_marker_line(content: str) -> bool:
+    """Marker kita liczy się tylko jako osobna linia, nie wzmianka w środku innej."""
+    return any(line.strip() in KIT_MARKERS for line in content.splitlines())
+
+
 def is_kit_managed(path: Path) -> bool:
-    """Sprawdź, czy plik zawiera marker świadczący o wyrenderowaniu przez kit."""
+    """Sprawdź, czy plik zawiera linię markera świadczącą o wyrenderowaniu przez kit."""
     if not path.is_file():
         return False
     try:
-        content = path.read_text(encoding="utf-8")
-        return any(marker in content for marker in KIT_MARKERS)
+        return _has_marker_line(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError):
         return False
+
+
+def _remove_kit_files(workspace_root: Path, kit_root: Path, names: list[str]) -> list[str]:
+    """
+    Usuń pliki wskazanych integracji, o ile są zarządzane przez kit.
+
+    Args:
+        workspace_root: Root repo konsumenta.
+        kit_root: Root instruction-kit.
+        names: Nazwy integracji, których pliki usuwamy.
+
+    Returns:
+        list[str]: Względne ścieżki usuniętych plików.
+    """
+    removed: list[str] = []
+    for name in names:
+        info = INTEGRATIONS_MAP[name]
+        target = workspace_root / info.target_file
+        if target.resolve() == (kit_root / info.template_name).resolve():
+            # Repo kita: plik celu jest szablonem integracji, nie usuwamy go.
+            continue
+        if not target.is_file():
+            continue
+        if is_kit_managed(target):
+            target.unlink()
+            removed.append(info.target_file)
+        else:
+            print(
+                f"pominięto usunięcie `{info.target_file}` — plik nie jest zarządzany przez kit",
+                file=sys.stderr,
+            )
+    return removed
 
 
 def integration_target_file(name: str) -> str | None:
@@ -165,7 +204,7 @@ def _read_profile_integrations(profile_path: Path) -> tuple[list[str], str, list
                 return parsed.integrations, lang, parsed.warnings
             return [], "pl", []
         except yaml.YAMLError as exc:
-            msg = f"błąd składni YAML w profilu `{profile_path}`: {exc}"
+            msg = f"{_YAML_ERROR_PREFIX} w profilu `{profile_path}`: {exc}"
             print(f"ostrzeżenie: {msg}", file=sys.stderr)
             return [], "pl", [msg]
 
@@ -225,6 +264,9 @@ def render_integrations(
       i nie są nadpisywane podczas renderu (zostają pominięte z ostrzeżeniem na stderr).
     - Flaga `remove=True` usuwa wyłącznie pliki zawierające marker kita;
       cudze pliki są pozostawiane z ostrzeżeniem na stderr.
+    - Marker liczy się tylko jako osobna linia pliku, nie wzmianka w środku innej linii.
+    - Render z Profilu (słownik albo plik) usuwa pliki kita integracji, których Profil
+      już nie wymienia. Jawna lista `integrations` ani Profil z błędem składni YAML niczego nie usuwają.
 
     Args:
         workspace_root: Root repo konsumenta.
@@ -241,42 +283,33 @@ def render_integrations(
     kit_root = kit_root.resolve()
 
     if remove:
-        removed: list[str] = []
-        for info in INTEGRATIONS_MAP.values():
-            target = workspace_root / info.target_file
-            if target.resolve() == (kit_root / info.template_name).resolve():
-                # Repo kita: plik celu jest szablonem integracji, nie usuwamy go.
-                continue
-            if target.is_file():
-                if is_kit_managed(target):
-                    target.unlink()
-                    removed.append(info.target_file)
-                else:
-                    print(
-                        f"pominięto usunięcie `{info.target_file}` — plik nie jest zarządzany przez kit",
-                        file=sys.stderr,
-                    )
-        return removed
+        return _remove_kit_files(workspace_root, kit_root, list(INTEGRATIONS_MAP))
 
     selected_integrations: list[str] = []
     resolved_lang = language or "pl"
+    # Sprzątamy tylko, gdy wybór pochodzi z Profilu, który dało się wczytać:
+    # jawna lista to podzbiór wskazany przez wołającego, a zepsuty Profil to nie „zero integracji”.
+    prune = False
 
     if integrations is not None:
         selected_integrations = parse_integrations(integrations).integrations
     elif isinstance(profile_data, dict):
         selected_integrations = parse_integrations(profile_data.get("integrations")).integrations
+        prune = True
         if not language:
             resolved_lang = str(profile_data.get("language") or "pl")
-    elif isinstance(profile_data, Path):
-        selected_integrations, file_lang, _ = _read_profile_integrations(profile_data)
-        if not language:
-            resolved_lang = file_lang
     else:
-        profile_path = workspace_root / ".ai" / "project.profile.yaml"
+        profile_path = profile_data if isinstance(profile_data, Path) else workspace_root / ".ai" / "project.profile.yaml"
         if profile_path.is_file():
-            selected_integrations, file_lang, _ = _read_profile_integrations(profile_path)
+            selected_integrations, file_lang, warnings = _read_profile_integrations(profile_path)
+            prune = not any(w.startswith(_YAML_ERROR_PREFIX) for w in warnings)
             if not language:
                 resolved_lang = file_lang
+
+    if prune:
+        unlisted = [name for name in INTEGRATIONS_MAP if name not in selected_integrations]
+        for rel in _remove_kit_files(workspace_root, kit_root, unlisted):
+            print(f"   - {rel}")
 
     created: list[str] = []
     if not selected_integrations:
@@ -311,7 +344,7 @@ def render_integrations(
             )
             continue
 
-        if not any(marker in content for marker in KIT_MARKERS):
+        if not _has_marker_line(content):
             content = f"{KIT_MARKER}\n{content}"
 
         target.parent.mkdir(parents=True, exist_ok=True)
