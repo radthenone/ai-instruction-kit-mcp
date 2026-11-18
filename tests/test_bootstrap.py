@@ -147,6 +147,43 @@ class TestDryRun(_BootstrapTestCase):
             self.assertEqual(plan.deleted, [])
 
 
+class TestOrcaIntegration(_BootstrapTestCase):
+    """Wpis `orca` w Profilu: bootstrap tworzy orca.yaml, `--remove` usuwa wyrenderowany plik (#456)."""
+
+    def _add_orca_to_profile(self, workspace: Path) -> None:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        text = profile.read_text(encoding="utf-8")
+        self.assertIn("integrations: []", text)
+        profile.write_text(text.replace("integrations: []", "integrations:\n  - orca"), encoding="utf-8")
+
+    def test_orca_yaml_rendered_only_when_listed_in_profile(self) -> None:
+        """orca.yaml powstaje tylko przy wpisie `orca` w Profilu; bez wpisu bootstrap go nie tworzy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+            self._add_orca_to_profile(workspace)
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+
+            self.assertIn("node .ai/worktree.mjs sync .", (workspace / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_remove_deletes_orca_yaml_rendered_by_kit(self) -> None:
+        """`--remove` usuwa orca.yaml wyrenderowany przez kit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            self._add_orca_to_profile(workspace)
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, remove=True)
+
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+
 class TestRealRun(_BootstrapTestCase):
     def test_run_installs_hooks_settings_and_stamp(self) -> None:
         """Kryterium ukończenia z issue #31 — hooki, PreToolUse i stamp na dysku."""

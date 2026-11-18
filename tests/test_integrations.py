@@ -21,6 +21,20 @@ from guides.integrations import (
 )
 
 
+def _make_symlink(link: Path, target: Path | str) -> None:
+    """
+    Utwórz dowiązanie symboliczne potrzebne testowi.
+
+    Brak uprawnień albo obsługi dowiązań to błąd testu, a nie pominięcie: cichy skip zostawia
+    test bez asercji ochrony plików (zasada: nie skipujemy testów, także lokalnie).
+
+    Args:
+        link: Ścieżka dowiązania do utworzenia.
+        target: Cel dowiązania.
+    """
+    link.symlink_to(target)
+
+
 class TestIntegrationsParser(unittest.TestCase):
     """Testy parsowania i walidacji listy integrations z Profilu."""
 
@@ -446,6 +460,529 @@ class TestReadProfileIntegrations(unittest.TestCase):
 
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class TestOrcaTemplate(unittest.TestCase):
+    """Szablon orca.yaml w templates/ to źródło dla konsumentów: wheel nie pakuje pliku z Kit Root (#456)."""
+
+    def test_orca_template_is_kit_marked_and_matches_kit_root_copy(self) -> None:
+        """Szablon ma marker kita i jest identyczny z plikiem orca.yaml w Kit Root."""
+        import yaml
+
+        template = KIT_ROOT / "templates" / "orca.yaml"
+        self.assertTrue(template.is_file(), f"Brak szablonu {template}")
+        self.assertEqual(template.read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
+        content = template.read_text(encoding="utf-8")
+        self.assertIn(KIT_MARKER, content)
+        self.assertEqual(yaml.safe_load(content)["scripts"]["setup"], "node .ai/worktree.mjs sync .")
+
+    def test_render_takes_orca_from_templates_without_kit_root_file(self) -> None:
+        """Kit Root z koła ma `templates/`, a orca.yaml w nim nie istnieje."""
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            kit_root = Path(tmp_dir) / "kit"
+            shutil.copytree(KIT_ROOT / "templates", kit_root / "templates")
+            workspace = Path(tmp_dir) / "workspace"
+            workspace.mkdir()
+
+            created = render_integrations(workspace, kit_root, integrations=["orca"])
+
+            self.assertEqual(created, ["orca.yaml"])
+            self.assertEqual((workspace / "orca.yaml").read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
+
+
+class TestIntegrationOwnershipOnReload(unittest.TestCase):
+    """Reload z Profilu: własność pliku po linii markera, sprzątanie integracji wypisanych z Profilu (#456)."""
+
+    def _write_profile(self, workspace: Path, body: str) -> Path:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(body, encoding="utf-8")
+        return profile
+
+    def test_marker_mentioned_inside_a_line_is_not_ownership(self) -> None:
+        """Plik, który tylko wspomina kit w komentarzu, nie jest plikiem kita."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "orca.yaml"
+            path.write_text("scripts:\n  setup: ./mine.sh  # ai-instruction-kit style, customized\n", encoding="utf-8")
+            self.assertFalse(is_kit_managed(path))
+
+    def test_reload_removes_kit_file_of_integration_unlisted_from_profile(self) -> None:
+        """Wypisanie `orca` z Profilu i reload usuwa orca.yaml wyrenderowany przez kit."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._write_profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+            self._write_profile(workspace, "integrations: []\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_reload_keeps_user_file_of_unlisted_integration(self) -> None:
+        """Plik użytkownika bez markera zostaje, nawet gdy integracji nie ma w Profilu."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / "orca.yaml").write_text("custom: true\n", encoding="utf-8")
+            profile = self._write_profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertEqual((workspace / "orca.yaml").read_text(encoding="utf-8"), "custom: true\n")
+
+    def test_reload_with_broken_profile_keeps_kit_files(self) -> None:
+        """Błąd składni Profilu nie może skasować plików integracji."""
+        import io
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._write_profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            self._write_profile(workspace, "integrations: [unclosed\n")
+
+            old_err, sys.stderr = sys.stderr, io.StringIO()
+            try:
+                render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            finally:
+                sys.stderr = old_err
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+
+class TestIntegrationSafetyEdges(unittest.TestCase):
+    """Brzegi bezpieczeństwa renderu integracji po review PR #518 (#456)."""
+
+    def _profile(self, workspace: Path, body: str) -> Path:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(body, encoding="utf-8")
+        return profile
+
+    def test_indented_marker_inside_user_script_is_not_ownership(self) -> None:
+        """Marker wcięty w bloku `scripts.setup` to treść użytkownika, nie znacznik kita."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / "orca.yaml").write_text(
+                "scripts:\n  setup: |\n    # ai-instruction-kit\n    ./mine.sh\n", encoding="utf-8"
+            )
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertIn("./mine.sh", (workspace / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_profile_that_is_not_a_usable_map_keeps_kit_files(self) -> None:
+        """Pusty Profil albo lista zamiast mapy nie jest pustym wyborem i nie kasuje plików kita."""
+        for broken in ("", "- orca\n"):
+            with self.subTest(profile=broken):
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    workspace = Path(tmp_dir)
+                    profile = self._profile(workspace, "integrations:\n  - orca\n")
+                    render_integrations(workspace, KIT_ROOT, profile_data=profile)
+                    profile.write_text(broken, encoding="utf-8")
+
+                    render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+                    self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_unknown_only_profile_keeps_kit_files(self) -> None:
+        """Literówka w nazwie integracji nie kasuje orca.yaml; zostaje ostrzeżenie."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("integrations:\n  - ocra\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_map_without_integrations_key_prunes_kit_files(self) -> None:
+        """Poprawna mapa bez klucza `integrations` oznacza zero integracji i sprząta pliki kita."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("name: test\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_unlink_failure_does_not_abort_render(self) -> None:
+        """Nieudane usunięcie jednego pliku kita zostawia go do następnego reloadu i nie blokuje renderu."""
+        import io
+        import sys
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / ".coderabbit.yaml").write_text(f"{KIT_MARKER}\nlanguage: \"pl-PL\"\n", encoding="utf-8")
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+
+            buf = io.StringIO()
+            old_err, sys.stderr = sys.stderr, buf
+            try:
+                with mock.patch.object(Path, "unlink", side_effect=PermissionError("zablokowany")):
+                    created = render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, ["orca.yaml"])
+            self.assertIn(".coderabbit.yaml", buf.getvalue())
+
+    def test_self_render_does_not_overwrite_root_orca_yaml(self) -> None:
+        """W repo kita reload nie zastępuje lokalnie zmienionego orca.yaml kopią z templates/."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            kit = Path(tmp_dir) / "kit"
+            (kit / "templates").mkdir(parents=True)
+            (kit / "templates" / "orca.yaml").write_text(
+                f"{KIT_MARKER}\nscripts:\n  setup: template-setup\n", encoding="utf-8"
+            )
+            (kit / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: local-setup\n", encoding="utf-8")
+
+            render_integrations(kit, kit, integrations=["orca"])
+
+            self.assertIn("local-setup", (kit / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_render_does_not_follow_dangling_symlink(self) -> None:
+        """Dowiązanie symboliczne w miejscu orca.yaml nie kieruje zapisu poza repo."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            (kit / "templates").mkdir(parents=True)
+            (kit / "templates" / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+            workspace = root / "workspace"
+            workspace.mkdir()
+            outside = root / "outside.yaml"
+            _make_symlink(workspace / "orca.yaml", outside)
+
+            render_integrations(workspace, kit, integrations=["orca"])
+
+            self.assertFalse(outside.exists())
+
+    def test_dry_run_keeps_kit_source_protected_like_real_reload(self) -> None:
+        """Dry-run w repo kita nie planuje usunięcia orca.yaml, którego prawdziwy reload nie usunie."""
+        import os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            kit.mkdir()
+            (kit / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+            sandbox = root / "sandbox"
+            sandbox.mkdir()
+            (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+            profile = self._profile(sandbox, "integrations: []\n")
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(kit)}):
+                render_integrations(sandbox, kit, profile_data=profile)
+
+            self.assertTrue((sandbox / "orca.yaml").is_file())
+
+    def test_dry_run_plans_removal_of_consumer_file(self) -> None:
+        """Dry-run w zwykłym repo konsumenta planuje usunięcie orca.yaml, bo prawdziwy reload go usunie."""
+        import os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            kit.mkdir()
+            consumer = root / "consumer"
+            consumer.mkdir()
+            sandbox = root / "sandbox"
+            sandbox.mkdir()
+            (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+            profile = self._profile(sandbox, "integrations: []\n")
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(consumer)}):
+                render_integrations(sandbox, kit, profile_data=profile)
+
+            self.assertFalse((sandbox / "orca.yaml").exists())
+
+
+class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
+    """Dowiązania, cykle i powtórzone klucze w Profilu po review PR #518, runda 3 (#456)."""
+
+    def _profile(self, workspace: Path, body: str) -> Path:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(body, encoding="utf-8")
+        return profile
+
+    def test_cyclic_symlink_does_not_abort_render(self) -> None:
+        """Cykliczne dowiązanie orca.yaml nie przerywa renderu pozostałych integracji."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            _make_symlink(workspace / "orca.yaml", "orca.yaml")
+
+            created = render_integrations(workspace, KIT_ROOT, integrations=["orca", "coderabbit"])
+
+            self.assertIn(".coderabbit.yaml", created)
+
+    def test_cyclic_symlink_does_not_abort_prune(self) -> None:
+        """Cykliczne dowiązanie orca.yaml nie zatrzymuje sprzątania coderabbit po wypisaniu z Profilu."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / ".coderabbit.yaml").write_text(f"{KIT_MARKER}\nlanguage: \"pl-PL\"\n", encoding="utf-8")
+            _make_symlink(workspace / "orca.yaml", "orca.yaml")
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / ".coderabbit.yaml").exists())
+
+    def test_user_symlink_to_marked_file_is_kept_on_prune(self) -> None:
+        """Dowiązanie użytkownika do pliku z markerem nie jest plikiem kita i nie znika przy sprzątaniu."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            elsewhere = root / "elsewhere.yaml"
+            elsewhere.write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+            _make_symlink(workspace / "orca.yaml", elsewhere)
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_symlink())
+
+    def test_duplicate_integrations_key_keeps_kit_files(self) -> None:
+        """Powtórzony klucz `integrations` w Profilu nie daje zgody na sprzątanie: PyYAML po cichu bierze ostatni."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("integrations:\n  - orca\nintegrations: []\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_dry_run_in_kit_repo_uses_same_source_as_real_reload(self) -> None:
+        """Dry-run w repo kita wybiera ten sam szablon co realny reload: plik korzenia, nie kopia z templates/."""
+        import os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            (kit / "templates").mkdir(parents=True)
+            (kit / "templates" / "orca.yaml").write_text(
+                f"{KIT_MARKER}\nscripts:\n  setup: template-setup\n", encoding="utf-8"
+            )
+            (kit / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: local-setup\n", encoding="utf-8")
+            sandbox = root / "sandbox"
+            sandbox.mkdir()
+            (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: local-setup\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(kit)}):
+                render_integrations(sandbox, kit, integrations=["orca"])
+
+            self.assertIn("local-setup", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_dry_run_keeps_real_symlink_unplanned(self) -> None:
+        """Dowiązanie w prawdziwym Workspace nie jest nadpisywane ani kasowane w planie, także gdy sandbox ma kopię."""
+        import os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            kit = root / "kit"
+            (kit / "templates").mkdir(parents=True)
+            (kit / "templates" / "orca.yaml").write_text(
+                f"{KIT_MARKER}\nscripts:\n  setup: template-setup\n", encoding="utf-8"
+            )
+            real = root / "consumer"
+            real.mkdir()
+            elsewhere = root / "elsewhere.yaml"
+            elsewhere.write_text(f"{KIT_MARKER}\nscripts:\n  setup: linked\n", encoding="utf-8")
+            _make_symlink(real / "orca.yaml", elsewhere)
+            sandbox = root / "sandbox"
+            sandbox.mkdir()
+            (sandbox / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts:\n  setup: sandbox-copy\n", encoding="utf-8")
+            profile = self._profile(sandbox, "integrations: []\n")
+
+            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(real)}):
+                render_integrations(sandbox, kit, integrations=["orca"])
+                render_integrations(sandbox, kit, profile_data=profile)
+
+            self.assertIn("sandbox-copy", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_unicode_line_separator_inside_yaml_value_is_not_marker(self) -> None:
+        """U+2028 wewnątrz wartości YAML nie dzieli linii: fragment z markerem nie jest markerem pliku."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / "orca.yaml").write_text(
+                'scripts:\n  setup: "a # ai-instruction-kit b"\n', encoding="utf-8"
+            )
+            profile = self._profile(workspace, "integrations: []\n")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertIn("a # ai-instruction-kit", (workspace / "orca.yaml").read_text(encoding="utf-8"))
+
+    def test_duplicate_integrations_inside_merge_key_keeps_kit_files(self) -> None:
+        """Powtórzony `integrations` w mapie scalanej przez `<<` nie daje zgody na sprzątanie."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("<<: {integrations: [orca], integrations: []}\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def _unreadable_profile_setup(self, root: Path) -> tuple[Path, Path, Path]:
+        workspace = root / "ws"
+        workspace.mkdir()
+        kit_root = root / "kit"
+        kit_root.mkdir()
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True)
+        profile.write_bytes(b"\x80\xff integrations: [orca]\n")
+        return workspace, kit_root, profile
+
+    def test_cli_reports_unreadable_profile_instead_of_raising(self) -> None:
+        """CLI nie czyta Profilu przed renderem: nieczytelny plik kończy się ostrzeżeniem, nie wyjątkiem."""
+        import io
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace, kit_root, profile = self._unreadable_profile_setup(Path(tmp_dir))
+            buf = io.StringIO()
+            old_err, sys.stderr = sys.stderr, buf
+            try:
+                exit_code = main(
+                    ["render_integrations.py", str(workspace), str(profile), str(kit_root)], kit_root=kit_root
+                )
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("nie odczytano Profilu", buf.getvalue())
+
+    def test_cli_remove_deletes_kit_file_without_reading_profile(self) -> None:
+        """Ścieżka --remove usuwa oznaczony orca.yaml i nie odczytuje Profilu, nawet nieczytelnego."""
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace, kit_root, profile = self._unreadable_profile_setup(Path(tmp_dir))
+            (workspace / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+
+            with mock.patch("guides.integrations._parse_profile_text") as parse:
+                exit_code = main(
+                    ["render_integrations.py", "--remove", str(workspace), str(profile), str(kit_root)],
+                    kit_root=kit_root,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((workspace / "orca.yaml").exists())
+            parse.assert_not_called()
+
+    def test_cli_remove_accepts_cyclic_profile_symlink(self) -> None:
+        """Ścieżka --remove nie rozwiązuje ścieżki Profilu, więc cykliczne dowiązanie nie blokuje usuwania."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace, kit_root, _ = self._unreadable_profile_setup(Path(tmp_dir))
+            profile = workspace / ".ai" / "cyclic.yaml"
+            _make_symlink(profile, "cyclic.yaml")
+            (workspace / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+
+            exit_code = main(
+                ["render_integrations.py", "--remove", str(workspace), str(profile), str(kit_root)], kit_root=kit_root
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_duplicate_merge_keys_keep_kit_files(self) -> None:
+        """Powtórzony klucz scalania `<<` w Profilu nie daje zgody na sprzątanie: wynik jest niejednoznaczny."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("<<: {integrations: [orca]}\n<<: {integrations: []}\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_non_scalar_key_blocks_prune(self) -> None:
+        """Nieskalarny klucz (`? !!str {=: integrations}`) zdubluje `integrations` po konstrukcji, więc sprzątanie stoi."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("integrations: [orca]\n? !!str {=: integrations}\n: []\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_explicit_override_of_merged_integrations_still_prunes(self) -> None:
+        """Jawne `integrations: []` nadpisujące wartość z `<<` to zwykły wybór, więc sprzątanie zostaje dozwolone."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("<<: {integrations: [orca]}\nintegrations: []\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_profile_access_error_is_reported_not_raised(self) -> None:
+        """Brak dostępu przy sprawdzeniu Profilu kończy się ostrzeżeniem, nie wyjątkiem renderu."""
+        import io
+        import sys
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations: [orca]\n")
+            buf = io.StringIO()
+            old_err, sys.stderr = sys.stderr, buf
+            try:
+                original_stat = Path.stat
+                original_is_file = Path.is_file
+
+                def stat_denied_for_profile(self: Path, *, follow_symlinks: bool = True):
+                    if self == profile:
+                        raise PermissionError("brak dostępu")
+                    return original_stat(self, follow_symlinks=follow_symlinks)
+
+                def is_file_hidden_for_profile(self: Path) -> bool:
+                    # Python 3.14: odmowa dostępu wygląda jak brak pliku; dotyczy tylko Profilu.
+                    return False if self == profile else original_is_file(self)
+
+                with (
+                    mock.patch.object(Path, "is_file", is_file_hidden_for_profile),
+                    mock.patch.object(Path, "stat", stat_denied_for_profile),
+                ):
+                    created = render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, [])
+            self.assertIn("nie odczytano Profilu", buf.getvalue())
+
+
+class TestMakeSymlinkHelper(unittest.TestCase):
+    """Pomocnik dowiązań nigdy nie pomija testu: brak uprawnień ma być widoczny jako błąd."""
+
+    def test_permission_error_fails_instead_of_skipping(self) -> None:
+        """Brak uprawnień do dowiązań kończy się błędem, nie pominięciem testu."""
+        from unittest import mock
+
+        with mock.patch.object(Path, "symlink_to", side_effect=PermissionError("brak uprawnień")):
+            with self.assertRaises(PermissionError):
+                _make_symlink(Path("link.yaml"), "target.yaml")
 
 
 class TestCodeRabbitIntegration(unittest.TestCase):
