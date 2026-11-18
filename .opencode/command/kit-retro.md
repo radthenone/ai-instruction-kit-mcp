@@ -32,7 +32,7 @@ same kroki; zasobów do wczytania nie ma.
    zamaskowanych wartości), wyszukaj go w zapisie sesji i przeczytaj
    10–20 wierszy wokół trafienia. Reszty zapisu nie czytasz. Pole `files` to tylko liczba plików;
    zapis wskazuje `session` i `source`: dla `claude` to `~/.claude/projects/<projekt>/<session>.jsonl`
-   (plus `<session>/subagents/*.jsonl`), dla `headless` to `.ai/headless-runs/<session>/headless.log`.
+   (plus `<session>/subagents/*.jsonl`), dla `headless` to `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<session>/headless.log` (fallback `~/.cache`; przejściowo też `.ai/headless-runs/<session>/headless.log`).
 
 `replay=allow` oznacza, że aktualny guard przepuściłby to wejście: odrzucenie pochodzi z
 przeszłości. `replay=deny` oznacza, że guard nadal odrzuca je, a ocena zależy od tego, czy

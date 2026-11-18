@@ -526,6 +526,18 @@ def repo_name(workspace: Path) -> str:
     return _REPO_CHARS.sub("-", workspace.resolve().name) or "repo"
 
 
+def headless_repo_name(workspace: Path) -> str:
+    """Nazwa głównego checkoutu, także z linked worktree; jak ``runsRoot()`` w ``headless.mjs`` (#463)."""
+    try:
+        common = subprocess.run(
+            ["git", "-C", str(workspace), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return workspace.resolve().name
+    return Path(os.path.normpath(workspace / common)).parent.name
+
+
 def default_projects_root() -> Path:
     return Path.home() / ".claude" / "projects"
 
@@ -533,6 +545,11 @@ def default_projects_root() -> Path:
 def default_cache_root() -> Path:
     """``$XDG_CACHE_HOME/kit-ai/retro`` albo ``~/.cache/kit-ai/retro``."""
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "retro"
+
+
+def default_headless_root() -> Path:
+    """``$XDG_CACHE_HOME/kit-ai/headless`` — runy ``/headless`` poza projektem (#463)."""
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "kit-ai" / "headless"
 
 
 def default_night_root() -> Path:
@@ -620,10 +637,14 @@ HEADLESS_CLEAN = re.compile(
 
 
 def headless_runs(workspace: Path) -> list[Path]:
-    """Przebiegi ``.ai/headless-runs/<run>/`` z plikiem ``headless.log`` (każdy to osobna sesja)."""
-    root = workspace / ".ai" / "headless-runs"
+    """Przebiegi z ``headless.log``, każdy to osobna sesja.
+
+    Źródła: cache ``<repo>/<run>/`` (#463) oraz przejściowo ``.ai/headless-runs/<run>/``.
+    """
+    roots = [default_headless_root() / headless_repo_name(workspace), workspace / ".ai" / "headless-runs"]
     return [
         run
+        for root in roots
         for run in sorted(root.glob("*"))
         if run.is_dir() and SESSION_ID.fullmatch(run.name) and (run / "headless.log").is_file()
     ]
@@ -653,8 +674,10 @@ def parse_headless_run(run_dir: Path) -> ParsedSession:
 
 
 NIGHT_LOG = re.compile(r"headless-(?P<ticket>\d+)[\w-]*\.log")
+# Ścieżka z cache (#463) albo z `.ai/headless-runs`; separator `/` lub `\` (Windows).
 HEADLESS_RUN_LOG = re.compile(
-    r"^\[headless\] log: \S*headless-runs/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-", re.MULTILINE
+    r"^\[headless\] log: \S*headless(?:-runs)?[\\/](?:[^\s\\/]+[\\/])?(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-",
+    re.MULTILINE,
 )
 HEADLESS_REPORT = "[headless] raport końcowy"
 HEADLESS_SIGNAL = re.compile(r"^\[headless\] sygnał SIG[A-Z0-9]+", re.MULTILINE)

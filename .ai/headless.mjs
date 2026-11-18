@@ -22,7 +22,7 @@
  * dostawcy wykonawcy (nie błąd; linia `PAUSE=rate-limit reset=<ISO|brak>` w raporcie).
  * Pierwszeństwo: limit w ogonie wyjścia wygrywa też z timeoutem (75, nie 124).
  *
- * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `.ai/headless-runs/<start>/`
+ * Wyjście wykonawcy idzie dalej i do logu w katalogu runu `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>/` (#463)
  * (ścieżka w pierwszej linii). Co `--heartbeat` minut linia `[headless] ♥` ze stanem repo,
  * po 2 interwałach ciszy ostrzeżenie o zacięciu. Na końcu (także 124) raport: status, commity
  * od startu, nowe wpisy stasha, ostatnie linie wykonawcy. Liczy to Node — zero tokenów.
@@ -36,7 +36,7 @@
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { constants } from "node:os"
+import { constants, homedir } from "node:os"
 import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -297,6 +297,15 @@ function mainCheckout() {
   } catch {
     return null
   }
+}
+
+// Katalog runów poza projektem (#463): `$XDG_CACHE_HOME/kit-ai/headless/<repo>/`, fallback `~/.cache`.
+// `<repo>` to główny checkout także z linked worktree: `--git-common-dir` wskazuje `<główny>/.git`.
+// Surowa nazwa, bez `norm()` (ono zmienia wielkość liter na Windows), bo Python liczy tak samo.
+export function runsRoot() {
+  const commonDir = git("rev-parse", "--git-common-dir")
+  const repoDir = commonDir ? dirname(resolve(process.cwd(), commonDir)) : process.cwd()
+  return join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "kit-ai", "headless", basename(repoDir))
 }
 
 // Config wykonawcy, którego w worktree nie ma: bierzemy plik z głównego checkoutu.
@@ -983,11 +992,10 @@ async function main() {
   // Zły `.agents/agy.json` ma wyjść od razu, nie po limicie pierwszego wykonawcy.
   if (chain.some((c) => c.name === "antigravity" && !c.why)) agyConfig()
 
-  // Katalog runu sam się ignoruje w gicie — log i pliki robocze wykonawcy nie brudzą statusu.
-  const runsDir = resolve(".ai", "headless-runs")
+  // Log poza projektem (#463): nie brudzi gita, a `worktree.mjs remove` go nie kasuje.
+  const runsDir = runsRoot()
   const runDir = join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.executor}`)
   mkdirSync(runDir, { recursive: true })
-  writeFileSync(join(runsDir, ".gitignore"), "*\n")
   pruneRuns(runsDir, basename(runDir), call.ctx)
   const logPath = join(runDir, "headless.log")
   call.log = logPath

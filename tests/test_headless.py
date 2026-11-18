@@ -10,6 +10,7 @@ import time
 import json
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +121,10 @@ class HeadlessWrapperTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
+        # Cache poza repo (#463): logi runów nie mogą trafić do prawdziwego `~/.cache`.
+        cache = tempfile.TemporaryDirectory()
+        self.addCleanup(cache.cleanup)
+        self.cache = Path(cache.name)
         (self.root / ".ai").mkdir()
         self.profile("claude,opencode,codex")
         self.bin = self.root / "bin"
@@ -165,6 +170,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             env={
                 "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
+                "XDG_CACHE_HOME": str(self.cache),
                 # Ta sama strefa co w teście — godziny resetu liczone są w czasie lokalnym.
                 **({"TZ": os.environ["TZ"]} if "TZ" in os.environ else {}),
                 **env,
@@ -174,8 +180,12 @@ class HeadlessWrapperTest(unittest.TestCase):
     def argv(self) -> list[str]:
         return (self.root / "argv").read_text(encoding="utf-8").splitlines()
 
-    def headless_log(self, cwd: Path | str | None = None) -> str:
-        (log,) = Path(cwd or self.root).joinpath(".ai/headless-runs").glob("*/headless.log")
+    def runs_dir(self) -> Path:
+        """Runy poza projektem: `$XDG_CACHE_HOME/kit-ai/headless/<główny checkout>/` (także z worktree)."""
+        return self.cache / "kit-ai" / "headless" / self.root.name
+
+    def headless_log(self) -> str:
+        (log,) = self.runs_dir().glob("*/headless.log")
         return log.read_text(encoding="utf-8")
 
     def assert_tree_killed(self) -> None:
@@ -211,7 +221,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(self.argv()[0], "opencode")
 
     def test_new_run_prunes_all_but_five_newest_runs(self) -> None:
-        runs = self.root / ".ai/headless-runs"
+        runs = self.runs_dir()
         old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
         for name in old:
             (runs / name).mkdir(parents=True)
@@ -223,7 +233,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertNotIn(left[-1], old)
 
     def test_prune_keeps_new_run_when_older_names_sort_later(self) -> None:
-        runs = self.root / ".ai/headless-runs"
+        runs = self.runs_dir()
         future = [f"2999-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
         for name in future:
             (runs / name).mkdir(parents=True)
@@ -617,7 +627,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("claude", result.stderr)
         self.assertIn("Dozwoleni wykonawcy", result.stderr)
-        self.assertFalse((self.root / ".ai/headless-runs").exists())
+        self.assertFalse(self.runs_dir().exists())
 
     # --- sprzątanie drzewa procesów -----------------------------------------
 
@@ -723,6 +733,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             env={
                 "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
+                "XDG_CACHE_HOME": str(self.cache),
                 "FAKE_SLEEP": "30",
                 "FAKE_PARTIAL": "1",
             },
@@ -752,7 +763,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_TRAP": "1"},
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "XDG_CACHE_HOME": str(self.cache), "FAKE_SLEEP": "30", "FAKE_TRAP": "1"},
         )
         deadline = time.time() + 10
         while not (self.root / "child").is_file() and time.time() < deadline:
@@ -1082,7 +1093,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30"},
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "XDG_CACHE_HOME": str(self.cache), "FAKE_SLEEP": "30"},
         )
         deadline = time.time() + 10
         while not (self.root / "child").is_file() and time.time() < deadline:
@@ -1102,7 +1113,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         row = self.last_row(result)
         self.assertEqual((row["klasa"], row["kod"], row["wykonawca"], row["log"]), ("POLITYKA", 2, "-", None))
         self.assertIn("nie wywołuje sam siebie", row["sprawdz"])
-        self.assertFalse((self.root / ".ai/headless-runs").exists())
+        self.assertFalse(self.runs_dir().exists())
 
     # --- bufor nocy i wycinek logu (#396) -----------------------------------------
 
@@ -1125,7 +1136,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30"},
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "XDG_CACHE_HOME": str(self.cache), "FAKE_SLEEP": "30"},
         )
         deadline = time.time() + 10
         while not (self.root / "child").is_file() and time.time() < deadline:
@@ -1199,7 +1210,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             "klasa": klasa,
             "start": start,
             "koniec": start,
-            "log": str(self.root / ".ai/headless-runs" / f"{start}-opencode" / "headless.log"),
+            "log": str(self.runs_dir() / f"{start}-opencode" / "headless.log"),
             "sprawdz": "-" if klasa == "OK" else "sprawdzić wycinek logu (kod i ostatnie linie)",
             "dzialanie": "-",
         }
@@ -1282,13 +1293,13 @@ class HeadlessWrapperTest(unittest.TestCase):
     # --- sprzątanie runów a wycinki w CTX (#396) ----------------------------------
 
     def run_row(self, run: str, klasa: str) -> dict:
-        """Wiersz bufora dla konkretnego runu w `.ai/headless-runs` (log w katalogu tego runu)."""
+        """Wiersz bufora dla konkretnego runu w `runs_dir()` (log w katalogu tego runu)."""
         row = self.report_row("396", "2020-01-01T00:00:00.000Z", klasa)
-        return {**row, "log": str(self.root / ".ai/headless-runs" / run / "headless.log")}
+        return {**row, "log": str(self.runs_dir() / run / "headless.log")}
 
     def prune_fixture(self, ctx: Path, klasa: str) -> list[str]:
         """Siedem starych runów; najstarszy ma wiersz bufora z podaną klasą."""
-        runs = self.root / ".ai/headless-runs"
+        runs = self.runs_dir()
         old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
         for name in old:
             (runs / name).mkdir(parents=True)
@@ -1300,7 +1311,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         old = self.prune_fixture(ctx, "ERROR")
         result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
         self.assertEqual(result.returncode, 0, result.stderr)
-        runs = self.root / ".ai/headless-runs"
+        runs = self.runs_dir()
         self.assertTrue((runs / old[0]).is_dir(), "nieudany run bez wycinka w CTX został skasowany")
         self.assertFalse((runs / old[1]).exists())
 
@@ -1310,14 +1321,14 @@ class HeadlessWrapperTest(unittest.TestCase):
         (ctx / f"headless-excerpt-{old[0]}.txt").write_text("wycinek\n", encoding="utf-8")
         result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse((self.root / ".ai/headless-runs" / old[0]).exists())
+        self.assertFalse((self.runs_dir() / old[0]).exists())
 
     def test_prune_removes_ok_run_without_excerpt(self) -> None:
         ctx = self.ctx_dir()
         old = self.prune_fixture(ctx, "OK")
         result = self.run_wrapper("--host", "claude", "opencode", "--ctx", str(ctx), "x")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse((self.root / ".ai/headless-runs" / old[0]).exists())
+        self.assertFalse((self.runs_dir() / old[0]).exists())
 
     # --- flagi i reguły -----------------------------------------------------
 
@@ -1435,11 +1446,12 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertTrue(first.startswith("[headless] log: "), first)
         return Path(first.removeprefix("[headless] log: "))
 
-    def test_log_holds_executor_output_and_run_dir_is_git_ignored(self) -> None:
+    def test_log_holds_executor_output_outside_project(self) -> None:
         self.git_repo()
         result = self.run_wrapper("--host", "claude", "opencode", "x", **self.GIT_ENV)
         self.assertEqual(result.returncode, 0, result.stderr)
         log = self.log_path(result)
+        self.assertEqual(log.parent.parent, self.runs_dir())
         self.assertIn("wynik wykonawcy", log.read_text(encoding="utf-8"))
         self.assertIn("wynik wykonawcy", result.stdout)
         status = subprocess.run(["git", "status", "--short"], cwd=self.root, capture_output=True, text=True).stdout
@@ -1715,7 +1727,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         proc = subprocess.Popen(
             [NODE, str(WRAPPER), "--host", "claude", "opencode", "x"],
             cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
-            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "FAKE_SLEEP": "30", "FAKE_COMMIT": "1", **self.GIT_ENV},
+            env={"PATH": self.path(), "HEADLESS_TEST_DIR": str(self.root), "XDG_CACHE_HOME": str(self.cache), "FAKE_SLEEP": "30", "FAKE_COMMIT": "1", **self.GIT_ENV},
         )
         deadline = time.time() + 10
         while self.head_hash() == start and time.time() < deadline:
@@ -1737,7 +1749,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.executor_config(), str(main_config))
-        self.assertIn(f"CONFIG=main-checkout {main_config}", self.headless_log(wt))
+        self.assertIn(f"CONFIG=main-checkout {main_config}", self.headless_log())
 
     def test_worktree_reads_model_from_main_checkout_config(self) -> None:
         (self.root / "opencode.json").write_text('{"model": "openrouter/qwen"}', encoding="utf-8")
@@ -1757,7 +1769,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         wt = self.worktree()
         result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("CONFIG=missing — executor default model", self.headless_log(wt))
+        self.assertIn("CONFIG=missing — executor default model", self.headless_log())
         self.assertEqual(self.executor_config(), "")
 
     def test_worktree_with_own_config_gets_no_fallback_line(self) -> None:
@@ -1765,7 +1777,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         (wt / "opencode.json").write_text('{"model": "local/x"}', encoding="utf-8")
         result = self.run_wrapper("--host", "claude", "opencode", "x", cwd=wt)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn("CONFIG=", self.headless_log(wt))
+        self.assertNotIn("CONFIG=", self.headless_log())
         self.assertEqual(self.executor_config(), "")
         self.assertNotIn("--model", self.argv())
 
@@ -1780,7 +1792,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         wt = self.worktree()
         result = self.run_wrapper("--host", "opencode", "claude", "x", cwd=wt)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("CONFIG=missing — executor default model", self.headless_log(wt))
+        self.assertIn("CONFIG=missing — executor default model", self.headless_log())
 
     def test_bad_heartbeat_is_error(self) -> None:
         result = self.run_wrapper("--host", "claude", "opencode", "--heartbeat", "0", "x")
@@ -1868,6 +1880,7 @@ class HeadlessWrapperTest(unittest.TestCase):
             env={
                 "PATH": self.path(),
                 "HEADLESS_TEST_DIR": str(self.root),
+                "XDG_CACHE_HOME": str(self.cache),
             },
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -2036,6 +2049,53 @@ def node_export(expression: str, cwd: Path) -> Any:
     if result.returncode != 0:
         raise AssertionError(result.stderr)
     return json.loads(result.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "brak node")
+class HeadlessRunsRootTest(unittest.TestCase):
+    """Katalog runów poza projektem (#463): `$XDG_CACHE_HOME/kit-ai/headless/<główny checkout>/`.
+
+    Testy w node, nie w `HeadlessWrapperTest` — ten jest pomijany na Windows, a tu logika ścieżki działa wszędzie.
+    """
+
+    GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.cache = self.tmp / "cache"
+        self.main = self.tmp / "ai-kit"
+        self.main.mkdir()
+
+    def git(self, cwd: Path, *args: str) -> None:
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, env={**os.environ, **self.GIT_ENV})
+
+    def runs_root(self, cwd: Path) -> Path:
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache)}):
+            return Path(node_export("h.runsRoot()", cwd=cwd))
+
+    def test_runs_root_is_named_after_checkout(self) -> None:
+        self.git(self.main, "init", "-q")
+        self.assertEqual(self.runs_root(self.main), self.cache / "kit-ai" / "headless" / "ai-kit")
+
+    def test_worktree_uses_main_checkout_name(self) -> None:
+        self.git(self.main, "init", "-q")
+        self.git(self.main, "commit", "--allow-empty", "-qm", "start")
+        wt = self.tmp / "feature-wt"
+        self.git(self.main, "worktree", "add", "-q", str(wt), "-b", "feature")
+        self.assertEqual(self.runs_root(wt), self.cache / "kit-ai" / "headless" / "ai-kit")
+
+    def test_outside_git_uses_directory_name(self) -> None:
+        plain = self.tmp / "plain"
+        plain.mkdir()
+        self.assertEqual(self.runs_root(plain), self.cache / "kit-ai" / "headless" / "plain")
+
+    def test_without_xdg_falls_back_to_home_cache(self) -> None:
+        with patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp)}):
+            os.environ.pop("XDG_CACHE_HOME", None)
+            root = Path(node_export("h.runsRoot()", cwd=self.main))
+        self.assertEqual(root, self.tmp / ".cache" / "kit-ai" / "headless" / "ai-kit")
 
 
 @unittest.skipUnless(shutil.which("node"), "brak node")

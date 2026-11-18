@@ -729,6 +729,43 @@ class HeadlessRunTests(unittest.TestCase):
         )
         self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
 
+    def test_runs_in_user_cache_are_found_under_checkout_name(self) -> None:
+        run = self.root / "cache" / "kit-ai" / "headless" / self.workspace.name / self.RUN
+        run.mkdir(parents=True)
+        (run / "headless.log").write_text("", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "cache")}):
+            self.assertEqual(retro.headless_runs(self.workspace), [run])
+
+    def test_project_runs_are_still_found_during_transition(self) -> None:
+        self._log("[headless] kod wyjścia: 0\n")
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "empty")}):
+            self.assertEqual(retro.headless_runs(self.workspace), [self.run_dir])
+
+    def test_worktree_finds_runs_under_main_checkout_name(self) -> None:
+        main = self.root / "main"
+        main.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        for args in (["init", "-q"], ["commit", "--allow-empty", "-qm", "start"], ["worktree", "add", "-q", str(self.root / "feature"), "-b", "feature"]):
+            subprocess.run(["git", *args], cwd=main, check=True, capture_output=True, env=env)
+        run = self.root / "cache" / "kit-ai" / "headless" / "main" / self.RUN
+        run.mkdir(parents=True)
+        (run / "headless.log").write_text("", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.root / "cache")}):
+            self.assertEqual(retro.headless_runs(self.root / "feature"), [run])
+
+    def test_log_header_points_to_run_in_cache_or_project(self) -> None:
+        stamp = self.RUN.removesuffix("-antigravity")
+        for path in (
+            f"/home/u/.cache/kit-ai/headless/app/{self.RUN}/headless.log",
+            f"C:\\Users\\u\\AppData\\Local\\kit-ai\\headless\\app\\{self.RUN}\\headless.log",
+            f"~/projects/app/.ai/headless-runs/{self.RUN}/headless.log",
+        ):
+            with self.subTest(path=path):
+                match = retro.HEADLESS_RUN_LOG.search(f"[headless] log: {path}\n")
+                if match is None:
+                    self.fail(f"brak dopasowania: {path}")
+                self.assertEqual(match.group(1), stamp)
+
     def test_zero_exit_with_commits_is_not_reported(self) -> None:
         self._log(
             "[headless] kod wyjścia: 0\n## git status --short\n(czysto)\n"
