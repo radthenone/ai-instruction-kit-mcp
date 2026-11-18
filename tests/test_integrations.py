@@ -5,9 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from typing import NoReturn
 
-from _shell import is_ci
 from guides.integrations import (
     _read_profile_integrations,
     INTEGRATIONS_MAP,
@@ -27,29 +25,14 @@ def _make_symlink(link: Path, target: Path | str) -> None:
     """
     Utwórz dowiązanie symboliczne potrzebne testowi.
 
-    Pomijamy test tylko wtedy, gdy system nie pozwala tworzyć dowiązań (brak obsługi albo brak
-    uprawnień). Na CI taki brak jest błędem, bo cichy skip gubi ochronę dowiązań. Każdy inny
-    błąd przygotowania, np. istniejący plik, propaguje bez zmian.
+    Brak uprawnień albo obsługi dowiązań to błąd testu, a nie pominięcie: cichy skip zostawia
+    test bez asercji ochrony plików (zasada: nie skipujemy testów, także lokalnie).
 
     Args:
         link: Ścieżka dowiązania do utworzenia.
         target: Cel dowiązania.
     """
-    try:
-        link.symlink_to(target)
-    except (NotImplementedError, PermissionError) as exc:
-        _symlink_unavailable(exc)
-    except OSError as exc:
-        if getattr(exc, "winerror", None) != 1314:  # ERROR_PRIVILEGE_NOT_HELD: brak uprawnienia SeCreateSymbolicLink
-            raise
-        _symlink_unavailable(exc)
-
-
-def _symlink_unavailable(exc: BaseException) -> NoReturn:
-    """Brak możliwości utworzenia dowiązania: na CI błąd, lokalnie pominięcie testu."""
-    if is_ci():
-        raise AssertionError(f"brak dowiązań symbolicznych na CI: {exc}") from exc
-    raise unittest.SkipTest(f"brak uprawnień do dowiązań symbolicznych: {exc}") from exc
+    link.symlink_to(target)
 
 
 class TestIntegrationsParser(unittest.TestCase):
@@ -930,6 +913,18 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
 
             self.assertTrue((workspace / "orca.yaml").is_file())
 
+    def test_non_scalar_key_blocks_prune(self) -> None:
+        """Nieskalarny klucz (`? !!str {=: integrations}`) zdubluje `integrations` po konstrukcji, więc sprzątanie stoi."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("integrations: [orca]\n? !!str {=: integrations}\n: []\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
     def test_explicit_override_of_merged_integrations_still_prunes(self) -> None:
         """Jawne `integrations: []` nadpisujące wartość z `<<` to zwykły wybór, więc sprzątanie zostaje dozwolone."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -954,7 +949,11 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
             buf = io.StringIO()
             old_err, sys.stderr = sys.stderr, buf
             try:
-                with mock.patch.object(Path, "is_file", side_effect=PermissionError("brak dostępu")):
+                # Python 3.14: is_file() zwraca False zamiast PermissionError; prawdę mówi dopiero stat().
+                with (
+                    mock.patch.object(Path, "is_file", return_value=False),
+                    mock.patch.object(Path, "stat", side_effect=PermissionError("brak dostępu")),
+                ):
                     created = render_integrations(workspace, KIT_ROOT, profile_data=profile)
             finally:
                 sys.stderr = old_err
@@ -964,16 +963,15 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
 
 
 class TestMakeSymlinkHelper(unittest.TestCase):
-    """Pomocnik dowiązań pomija test tylko przy braku uprawnień, a inne błędy przygotowania propaguje."""
+    """Pomocnik dowiązań nigdy nie pomija testu: brak uprawnień ma być widoczny jako błąd."""
 
-    def test_unexpected_os_error_is_not_skipped(self) -> None:
-        """Istniejący plik pod ścieżką dowiązania to błąd przygotowania testu, a nie brak uprawnień."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            link = Path(tmp_dir) / "exists.yaml"
-            link.write_text("x", encoding="utf-8")
+    def test_permission_error_fails_instead_of_skipping(self) -> None:
+        """Brak uprawnień do dowiązań kończy się błędem, nie pominięciem testu."""
+        from unittest import mock
 
-            with self.assertRaises(FileExistsError):
-                _make_symlink(link, "target.yaml")
+        with mock.patch.object(Path, "symlink_to", side_effect=PermissionError("brak uprawnień")):
+            with self.assertRaises(PermissionError):
+                _make_symlink(Path("link.yaml"), "target.yaml")
 
 
 class TestCodeRabbitIntegration(unittest.TestCase):

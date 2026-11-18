@@ -14,6 +14,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_ISREG
 from typing import Any, NamedTuple
 
 
@@ -176,7 +177,9 @@ def _ambiguous_profile_node(node: object, seen: set[int]) -> bool:
         return False
     seen.add(id(node))
     if isinstance(node, yaml.MappingNode):
-        keys = [k for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
+        if any(not isinstance(k, yaml.ScalarNode) for k, _ in node.value):
+            return True  # nieskalarny klucz po konstrukcji może zdublować inny, a PyYAML bierze ostatni
+        keys = [k for k, _ in node.value]
         merges = sum(1 for k in keys if k.tag == "tag:yaml.org,2002:merge")
         integrations = sum(1 for k in keys if k.value == "integrations")
         if merges > 1 or integrations > 1:
@@ -425,11 +428,13 @@ def render_integrations(
     else:
         profile_path = profile_data if isinstance(profile_data, Path) else workspace_root / ".ai" / "project.profile.yaml"
         # Jeden odczyt: lista integracji i zgoda na sprzątanie pochodzą z tej samej treści (review #518).
-        # Sprawdzenie istnienia też w obsłudze błędów, bo brak dostępu do katalogu rzuca PermissionError.
+        # Typ pliku przez stat(): is_file() od Pythona 3.14 zwraca False przy odmowie dostępu.
         profile_text: str | None = None
         try:
-            if profile_path.is_file():
+            if S_ISREG(profile_path.stat().st_mode):
                 profile_text = profile_path.read_text(encoding="utf-8")
+        except (FileNotFoundError, NotADirectoryError):
+            pass  # brak Profilu: po cichu nic nie renderujemy
         except (OSError, UnicodeDecodeError):
             print(f"ostrzeżenie: nie odczytano Profilu `{profile_path}` — pomijam render i sprzątanie", file=sys.stderr)
         if profile_text is not None:
