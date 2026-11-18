@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import NoReturn
 
 from _shell import is_ci
 from guides.integrations import (
@@ -26,8 +27,9 @@ def _make_symlink(link: Path, target: Path | str) -> None:
     """
     Utwórz dowiązanie symboliczne potrzebne testowi.
 
-    Lokalnie brak uprawnień kończy test pominięciem, a na CI jest to błąd, bo cichy skip
-    gubi ochronę dowiązań (ta sama zasada co w `_shell.is_ci`).
+    Pomijamy test tylko wtedy, gdy system nie pozwala tworzyć dowiązań (brak obsługi albo brak
+    uprawnień). Na CI taki brak jest błędem, bo cichy skip gubi ochronę dowiązań. Każdy inny
+    błąd przygotowania, np. istniejący plik, propaguje bez zmian.
 
     Args:
         link: Ścieżka dowiązania do utworzenia.
@@ -35,10 +37,19 @@ def _make_symlink(link: Path, target: Path | str) -> None:
     """
     try:
         link.symlink_to(target)
-    except (OSError, NotImplementedError) as exc:
-        if is_ci():
-            raise AssertionError(f"brak dowiązań symbolicznych na CI: {exc}") from exc
-        raise unittest.SkipTest(f"brak uprawnień do dowiązań symbolicznych: {exc}") from exc
+    except (NotImplementedError, PermissionError) as exc:
+        _symlink_unavailable(exc)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 1314:  # ERROR_PRIVILEGE_NOT_HELD: brak uprawnienia SeCreateSymbolicLink
+            raise
+        _symlink_unavailable(exc)
+
+
+def _symlink_unavailable(exc: BaseException) -> NoReturn:
+    """Brak możliwości utworzenia dowiązania: na CI błąd, lokalnie pominięcie testu."""
+    if is_ci():
+        raise AssertionError(f"brak dowiązań symbolicznych na CI: {exc}") from exc
+    raise unittest.SkipTest(f"brak uprawnień do dowiązań symbolicznych: {exc}") from exc
 
 
 class TestIntegrationsParser(unittest.TestCase):
@@ -874,16 +885,95 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn("nie odczytano Profilu", buf.getvalue())
 
-    def test_cli_remove_does_not_read_profile(self) -> None:
-        """Ścieżka --remove nie czyta Profilu, więc nieczytelny Profil nie blokuje usunięcia."""
+    def test_cli_remove_deletes_kit_file_without_reading_profile(self) -> None:
+        """Ścieżka --remove usuwa oznaczony orca.yaml i nie odczytuje Profilu, nawet nieczytelnego."""
+        from unittest import mock
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace, kit_root, profile = self._unreadable_profile_setup(Path(tmp_dir))
+            (workspace / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
+
+            with mock.patch("guides.integrations._parse_profile_text") as parse:
+                exit_code = main(
+                    ["render_integrations.py", "--remove", str(workspace), str(profile), str(kit_root)],
+                    kit_root=kit_root,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((workspace / "orca.yaml").exists())
+            parse.assert_not_called()
+
+    def test_cli_remove_accepts_cyclic_profile_symlink(self) -> None:
+        """Ścieżka --remove nie rozwiązuje ścieżki Profilu, więc cykliczne dowiązanie nie blokuje usuwania."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace, kit_root, _ = self._unreadable_profile_setup(Path(tmp_dir))
+            profile = workspace / ".ai" / "cyclic.yaml"
+            _make_symlink(profile, "cyclic.yaml")
+            (workspace / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
 
             exit_code = main(
                 ["render_integrations.py", "--remove", str(workspace), str(profile), str(kit_root)], kit_root=kit_root
             )
 
             self.assertEqual(exit_code, 0)
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_duplicate_merge_keys_keep_kit_files(self) -> None:
+        """Powtórzony klucz scalania `<<` w Profilu nie daje zgody na sprzątanie: wynik jest niejednoznaczny."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("<<: {integrations: [orca]}\n<<: {integrations: []}\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_explicit_override_of_merged_integrations_still_prunes(self) -> None:
+        """Jawne `integrations: []` nadpisujące wartość z `<<` to zwykły wybór, więc sprzątanie zostaje dozwolone."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations:\n  - orca\n")
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            profile.write_text("<<: {integrations: [orca]}\nintegrations: []\n", encoding="utf-8")
+
+            render_integrations(workspace, KIT_ROOT, profile_data=profile)
+
+            self.assertFalse((workspace / "orca.yaml").exists())
+
+    def test_profile_access_error_is_reported_not_raised(self) -> None:
+        """Brak dostępu przy sprawdzeniu Profilu kończy się ostrzeżeniem, nie wyjątkiem renderu."""
+        import io
+        import sys
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = self._profile(workspace, "integrations: [orca]\n")
+            buf = io.StringIO()
+            old_err, sys.stderr = sys.stderr, buf
+            try:
+                with mock.patch.object(Path, "is_file", side_effect=PermissionError("brak dostępu")):
+                    created = render_integrations(workspace, KIT_ROOT, profile_data=profile)
+            finally:
+                sys.stderr = old_err
+
+            self.assertEqual(created, [])
+            self.assertIn("nie odczytano Profilu", buf.getvalue())
+
+
+class TestMakeSymlinkHelper(unittest.TestCase):
+    """Pomocnik dowiązań pomija test tylko przy braku uprawnień, a inne błędy przygotowania propaguje."""
+
+    def test_unexpected_os_error_is_not_skipped(self) -> None:
+        """Istniejący plik pod ścieżką dowiązania to błąd przygotowania testu, a nie brak uprawnień."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            link = Path(tmp_dir) / "exists.yaml"
+            link.write_text("x", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                _make_symlink(link, "target.yaml")
 
 
 class TestCodeRabbitIntegration(unittest.TestCase):

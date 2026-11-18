@@ -155,17 +155,20 @@ def _resolves_to(path: Path, other: Path) -> bool:
         return False
 
 
-def _repeats_key(node: object, key: str, seen: set[int]) -> bool:
+def _ambiguous_profile_node(node: object, seen: set[int]) -> bool:
     """
-    Czy w jakiejkolwiek mapie węzła YAML, także tej scalanej przez `<<`, klucz występuje dwa razy.
+    Czy w którejś mapie węzła YAML wynik `integrations` jest niejednoznaczny.
+
+    Niejednoznaczne jest powtórzone `integrations` (PyYAML po cichu bierze ostatnie) oraz
+    powtórzony klucz scalania `<<` w jednej mapie. Pojedyncze `<<`, także z sekwencją map,
+    i jawne nadpisanie odziedziczonej wartości są jednoznaczne.
 
     Args:
         node: Węzeł z ``yaml.compose`` (mapa, sekwencja albo skalar).
-        key: Nazwa klucza do policzenia.
         seen: Id już odwiedzonych węzłów (aliasy mogą wskazywać ten sam węzeł).
 
     Returns:
-        bool: True, gdy klucz powtarza się w którejś mapie.
+        bool: True, gdy wynik zależy od kolejności scalania albo powtórzenia klucza.
     """
     import yaml
 
@@ -173,12 +176,14 @@ def _repeats_key(node: object, key: str, seen: set[int]) -> bool:
         return False
     seen.add(id(node))
     if isinstance(node, yaml.MappingNode):
-        names = [k.value for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
-        if names.count(key) > 1:
+        keys = [k for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
+        merges = sum(1 for k in keys if k.tag == "tag:yaml.org,2002:merge")
+        integrations = sum(1 for k in keys if k.value == "integrations")
+        if merges > 1 or integrations > 1:
             return True
-        return any(_repeats_key(child, key, seen) for pair in node.value for child in pair)
+        return any(_ambiguous_profile_node(child, seen) for pair in node.value for child in pair)
     if isinstance(node, yaml.SequenceNode):
-        return any(_repeats_key(item, key, seen) for item in node.value)
+        return any(_ambiguous_profile_node(item, seen) for item in node.value)
     return False
 
 
@@ -207,7 +212,7 @@ def _profile_text_prunable(text: str) -> bool:
         return False
     if not isinstance(data, dict) or not isinstance(root, yaml.MappingNode):
         return False
-    if _repeats_key(root, "integrations", set()):
+    if _ambiguous_profile_node(root, set()):
         return False
     return not parse_integrations(data.get("integrations")).warnings
 
@@ -419,20 +424,21 @@ def render_integrations(
             resolved_lang = str(profile_data.get("language") or "pl")
     else:
         profile_path = profile_data if isinstance(profile_data, Path) else workspace_root / ".ai" / "project.profile.yaml"
-        if profile_path.is_file():
-            # Jeden odczyt: lista integracji i zgoda na sprzątanie pochodzą z tej samej treści (review #518).
-            try:
+        # Jeden odczyt: lista integracji i zgoda na sprzątanie pochodzą z tej samej treści (review #518).
+        # Sprawdzenie istnienia też w obsłudze błędów, bo brak dostępu do katalogu rzuca PermissionError.
+        profile_text: str | None = None
+        try:
+            if profile_path.is_file():
                 profile_text = profile_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                profile_text = None
-                print(f"ostrzeżenie: nie odczytano Profilu `{profile_path}` — pomijam render i sprzątanie", file=sys.stderr)
-            if profile_text is not None:
-                selected_integrations, file_lang, profile_warnings = _parse_profile_text(profile_path, profile_text)
-                for warning in profile_warnings:
-                    print(f"ostrzeżenie: {warning}", file=sys.stderr)
-                prune = _profile_text_prunable(profile_text)
-                if not language:
-                    resolved_lang = file_lang
+        except (OSError, UnicodeDecodeError):
+            print(f"ostrzeżenie: nie odczytano Profilu `{profile_path}` — pomijam render i sprzątanie", file=sys.stderr)
+        if profile_text is not None:
+            selected_integrations, file_lang, profile_warnings = _parse_profile_text(profile_path, profile_text)
+            for warning in profile_warnings:
+                print(f"ostrzeżenie: {warning}", file=sys.stderr)
+            prune = _profile_text_prunable(profile_text)
+            if not language:
+                resolved_lang = file_lang
 
     if prune:
         unlisted = [name for name in INTEGRATIONS_MAP if name not in selected_integrations]
@@ -510,7 +516,9 @@ def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
         return 1
 
     workspace = Path(args[0]).resolve()
-    profile_path = Path(args[1]).resolve() if len(args) > 1 else workspace / ".ai" / "project.profile.yaml"
+    # Profilu nie rozwiązujemy: `resolve()` rzuca RuntimeError przy cyklicznym dowiązaniu,
+    # a w --remove Profil i tak nie jest czytany.
+    profile_path = Path(args[1]) if len(args) > 1 else workspace / ".ai" / "project.profile.yaml"
     resolved_kit_root = (
         Path(args[2]).resolve()
         if len(args) > 2
