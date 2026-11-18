@@ -88,6 +88,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
             "`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`",
             self.card_text,
         )
+        # Clean Slate zapisuje nowe oba identyfikatory, inaczej archiwizacja trafi w stary wątek.
+        self.assertIn("zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych", self.card_text)
         self.assertTrue(
             "nie tworzy drugiego dziecka" in self.card_text
             or "nie tworzy nowego dziecka" in self.card_text
@@ -150,7 +152,10 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("git worktree list", step2)
         self.assertIn("git worktree prune", step2)
         self.assertLess(step2.index("Ścieżka nie istnieje"), step2.index("git worktree prune"))
-        self.assertIn("wpis wskazuje istniejący katalog", step2)
+        # prune tylko przy jedynym wpisie prunable: nie czyści rejestracji cudzych worktree.
+        self.assertIn("jedynym wpisem oznaczonym `prunable` jest wpis ticketu", step2)
+        self.assertIn("wpis ticketu wskazuje istniejący katalog", step2)
+        self.assertIn("gdy wpisu ticketu nie ma w `git worktree list`", step2)
 
     def test_branch_naming_contract_in_card(self) -> None:
         """#498: title zadania i branch w konwencji <typ>/<N>-<slug>, rename przy rozbieżności."""

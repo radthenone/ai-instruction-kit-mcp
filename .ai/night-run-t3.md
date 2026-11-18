@@ -79,7 +79,7 @@ mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}
 
 Gdy PR ticketu osiągnie stan `MERGED`:
 1. Orkiestrator woła `unwatch_pull_request` dla PR (podpiętego wcześniej przez `link_pull_request`, sekcja 4);
-2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`; gdy komenda zgłosi „Ścieżka nie istnieje”, orkiestrator sprawdza rejestrację worktree: `git worktree list` w głównym checkoucie repozytorium; gdy wpis dotyczy ścieżki, której katalog nie istnieje, uruchamia `git worktree prune` (usuwa wyłącznie nieaktualne wpisy) i dopiero potem przechodzi do kroku 3; gdy wpis wskazuje istniejący katalog albo `git worktree prune` się nie uda, sprzątanie zatrzymuje się i trafia do raportu, bez przejścia do kroku 3; inna odmowa zatrzymuje sprzątanie i trafia do raportu;
+2. Orkiestrator usuwa worktree sesji ticketu: `node .ai/worktree.mjs remove <katalog>`; gdy komenda zgłosi „Ścieżka nie istnieje”, orkiestrator sprawdza rejestrację worktree: `git worktree list` w głównym checkoucie repozytorium; gdy wpisu ticketu nie ma w `git worktree list`, przechodzi do kroku 3; gdy jedynym wpisem oznaczonym `prunable` jest wpis ticketu, uruchamia `git worktree prune` i dopiero potem przechodzi do kroku 3; gdy `prunable` jest także inny wpis, wpis ticketu wskazuje istniejący katalog albo `git worktree prune` się nie uda, sprzątanie zatrzymuje się i trafia do raportu, bez przejścia do kroku 3; inna odmowa zatrzymuje sprzątanie i trafia do raportu;
 3. Orkiestrator usuwa lokalny branch ticketu: `git branch -d <typ>/<N>-<slug>` (branch nadany przez T3 po rename z sekcji 1);
 4. odmowa -d (`git branch -d` zgłasza błąd / odmowę) -> wpis w raporcie, bez -D (zakaz `-D`, nigdy nie wymuszamy usunięcia przez `-D`).
 5. Po krokach 2–4 (także po odmowie `-d` z kroku 4) orkiestrator archiwizuje wątek sesji ticketu: `t3_thread_organize(action: 'archive', threadId: childThreadId)` (`childThreadId` z wyniku `delegate_task` sesji ticketu); historia wątku zostaje w archiwum.
@@ -102,7 +102,7 @@ Hand-back `clean-slate` (sekcja „Clean Slate” w `night-run`) → gdy spełni
    - `title`: `<typ>/<N>-<slug>-clean-slate`;
    - z `night-run.clean-slate` w Profilu: `provider` → `target.providerInstanceId`, `model` → `target.model`, `effort` → `target.options` jako `{id: "effort", value: <effort>}`; brak pola = wartość jak w sekcji 1;
    - `task` zawiera linię „Clean Slate: użyty” i notatkę zapisaną w kroku 1;
-5. zapisuje nowy `taskId` w `## Stan` w miejsce starego.
+5. zapisuje nowy `taskId` i nowy `childThreadId` w `## Stan` w miejsce starych (`ticket: #<N> taskId: <taskId> childThreadId: <childThreadId>`).
 
 Wznowienie bierze etap, ścieżkę worktree i notatkę z `## Stan`, nie z pamięci sesji:
 - etap `clean-slate: w toku` i worktree istnieje → dokończ usunięcie i przejdź do kroku 3;
