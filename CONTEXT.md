@@ -45,7 +45,7 @@ _Avoid_: channel, transport, delivery
 ### Configuration
 
 **Profile**:
-The full set of choices that determines which Instruction Modules a repo gets: its Language, Clients, the Stack in each Tier, Capabilities, Patterns and Decisions. Lives in the Workspace and is committed with it; the Kit ships no ready-made Profiles. A Profile that chooses nothing gets the core modules only.
+The full set of choices that determines which Instruction Modules a repo gets: its Language, Clients, the Stack in each Tier, Capabilities, Patterns and Decisions. Lives in the Workspace and is committed with it; the Kit ships no ready-made Profiles. A Profile that chooses nothing gets the core modules only. Model Targets sit in the same file but choose models, not Instruction Modules.
 _Avoid_: config, settings, preset
 
 **Tier**:
@@ -87,6 +87,22 @@ _Avoid_: locale, i18n, translation
 **Alias**:
 A superseded spelling of a Module ID or of a Capability name, still accepted so existing Profiles keep resolving. Every Alias resolves to exactly one canonical Module ID.
 _Avoid_: synonym, legacy name, shorthand
+
+**Model tier**:
+The model class an agent or a delegated task belongs to: `light`, `standard`, `heavy`, or `takeover` (Claude only). Each tier has at most one Target per Client; `takeover` exists only for Claude. Not a Tier, which is a layer of the product.
+_Avoid_: model level, model class
+
+**Target**:
+The `targets.<client>.<model tier>` entry in a Profile, holding `providerInstanceId`, `model` and `options`. Once #515 lands, the only place a model choice is recorded (ADR-0018); until then the Kit also reads the older `models:` and `t3.targets` blocks.
+_Avoid_: model config, models block, t3 targets
+
+**Model alias**:
+A Claude Code model name (`haiku`, `sonnet`, `opus`, `fable`) accepted by an Agent call. Not an Alias: it names a model, not an old spelling of a Module ID.
+_Avoid_: model shorthand, short name
+
+**Provider option**:
+A setting a model provider accepts, carried in a Target's `options`: `effort` (Claude), `variant` (OpenCode), `thought_level` (Antigravity), `reasoningEffort` (Codex). Not a Variant.
+_Avoid_: model setting, flag
 
 ### Distribution
 
