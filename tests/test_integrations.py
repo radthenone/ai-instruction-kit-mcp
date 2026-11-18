@@ -448,6 +448,36 @@ class TestReadProfileIntegrations(unittest.TestCase):
 KIT_ROOT = Path(__file__).resolve().parents[1]
 
 
+class TestOrcaTemplate(unittest.TestCase):
+    """Szablon orca.yaml w templates/ to źródło dla konsumentów: wheel nie pakuje pliku z Kit Root (#456)."""
+
+    def test_orca_template_is_kit_marked_and_matches_kit_root_copy(self) -> None:
+        """Szablon ma marker kita i jest identyczny z plikiem orca.yaml w Kit Root."""
+        import yaml
+
+        template = KIT_ROOT / "templates" / "orca.yaml"
+        self.assertTrue(template.is_file(), f"Brak szablonu {template}")
+        self.assertEqual(template.read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
+        content = template.read_text(encoding="utf-8")
+        self.assertIn(KIT_MARKER, content)
+        self.assertEqual(yaml.safe_load(content)["scripts"]["setup"], "node .ai/worktree.mjs sync .")
+
+    def test_render_takes_orca_from_templates_without_kit_root_file(self) -> None:
+        """Kit Root z koła ma `templates/`, a orca.yaml w nim nie istnieje."""
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            kit_root = Path(tmp_dir) / "kit"
+            shutil.copytree(KIT_ROOT / "templates", kit_root / "templates")
+            workspace = Path(tmp_dir) / "workspace"
+            workspace.mkdir()
+
+            created = render_integrations(workspace, kit_root, integrations=["orca"])
+
+            self.assertEqual(created, ["orca.yaml"])
+            self.assertEqual((workspace / "orca.yaml").read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
+
+
 class TestCodeRabbitIntegration(unittest.TestCase):
     """Testy kontraktu renderowania konfiguracji CodeRabbit (#457)."""
 

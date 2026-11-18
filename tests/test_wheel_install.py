@@ -88,6 +88,15 @@ class TestWheelInstall(unittest.TestCase):
 
             status = _run(str(kit_ai), "status", cwd=app, env=env)
             self.assertIn("aktualny", status)
+            # Integracja orca z koła: wpis w Profilu + reload renderuje orca.yaml z templates/ (#456).
+            self.assertFalse((app / "orca.yaml").exists())
+            profile = app / ".ai" / "project.profile.yaml"
+            text = profile.read_text(encoding="utf-8")
+            self.assertIn("integrations: []", text)
+            profile.write_text(text.replace("integrations: []", "integrations:\n  - orca"), encoding="utf-8")
+            _run(str(kit_ai), "reload", cwd=app, env=env)
+            self.assertTrue((app / "orca.yaml").is_file())
+            self.assertIn("node .ai/worktree.mjs sync .", (app / "orca.yaml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
