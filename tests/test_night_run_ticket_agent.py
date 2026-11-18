@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "shared" / "agents" / "night-run.md"
 TICKET_AGENT_TEMPLATE = ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
+T3_CARD_TEMPLATE = ROOT / "templates" / "shared" / "night-run" / "t3.md"
 
 COPIES = (
     ".claude/agents/night-run.md",
@@ -93,6 +94,36 @@ class NightRunTicketAgentTest(unittest.TestCase):
         self.assertIn("podwajasz", ticket)
         self.assertIn("`gh pr create`", ticket)
         self.assertIn("bez prefiksu `(night-run)`", ticket)
+
+    def test_repair_push_reviews_entire_section_with_problem_classes(self) -> None:
+        """Przed pushem poprawki agent przegląda całą zmienianą sekcję pod kątem listy klas (#512)."""
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        paragraph = ticket.split("**Wątki review bota (CodeRabbit):**", 1)[1].split("**Sufit napraw", 1)[0]
+        self.assertIn("przed pushem poprawki", paragraph.lower())
+        self.assertIn("przegląda całą zmienianą sekcję", paragraph)
+        classes = (
+            "idempotencja i wznowienie po przerwaniu",
+            "kolejność zapisu stanu",
+            "polecenia o zakresie globalnym (np. `git worktree prune`)",
+            "nadpisywanie plików ignorowanych",
+            "brak katalogu, rekordu lub pusty wynik",
+            "spójność z `git-end`",
+        )
+        for cls_name in classes:
+            with self.subTest(cls_name=cls_name):
+                self.assertIn(cls_name, paragraph)
+
+    def test_problem_class_list_matches_t3_card(self) -> None:
+        """Lista klas problemów w procedurze ticketu i w karcie T3 jest identyczna (#512)."""
+
+        def class_list(text: str) -> str:
+            start = text.index("idempotencja i wznowienie po przerwaniu")
+            end = text.index("spójność z `git-end`", start)
+            return text[start:end]
+
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        card = T3_CARD_TEMPLATE.read_text(encoding="utf-8")
+        self.assertEqual(class_list(ticket), class_list(card))
 
 
 if __name__ == "__main__":

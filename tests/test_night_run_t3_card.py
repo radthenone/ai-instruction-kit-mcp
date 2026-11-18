@@ -230,6 +230,23 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("limit czasu (maks. 10–15 min)", section)
         self.assertIn("git-end", section)
 
+    def test_repair_push_reviews_entire_section_with_problem_classes_in_card(self) -> None:
+        """#512: w sekcji 5 karty T3 przed pushem poprawki agent przegląda całą zmienianą sekcję pod kątem listy klas."""
+        section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("przed pushem poprawki", section.lower())
+        self.assertIn("przegląda całą zmienianą sekcję", section)
+        classes = (
+            "idempotencja i wznowienie po przerwaniu",
+            "kolejność zapisu stanu",
+            "polecenia o zakresie globalnym (np. `git worktree prune`)",
+            "nadpisywanie plików ignorowanych",
+            "brak katalogu, rekordu lub pusty wynik",
+            "spójność z `git-end`",
+        )
+        for cls_name in classes:
+            with self.subTest(cls_name=cls_name):
+                self.assertIn(cls_name, section)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)
