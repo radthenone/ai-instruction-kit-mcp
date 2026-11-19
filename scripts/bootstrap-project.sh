@@ -813,7 +813,8 @@ install_night_run_t3() {
   case "$rc" in
     0) ;;
     3) kit_rm .ai/night-run-t3.md; return 0 ;;
-    *) return 0 ;;  # 2: Profil nieczytelny lub niejednoznaczny; 1 i inne (wyjątek Pythona): karta bez zmian
+    2) return 0 ;;  # Profil nieczytelny lub niejednoznaczny: karta bez zmian (ostrzeżenie wypisał Python)
+    *) echo "  ! nie ustalono t3code (kod $rc) — karta T3 bez zmian" >&2; return 0 ;;
   esac
   cp "$KIT_ROOT/templates/shared/night-run/t3.md" "$TARGET/.ai/night-run-t3.md"
   echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"

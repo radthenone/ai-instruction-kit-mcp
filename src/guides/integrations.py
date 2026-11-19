@@ -426,10 +426,21 @@ def profile_has_integration(profile_path: Path, name: str) -> bool | None:
     if _profile_text_ambiguous(text):
         return None
     try:
+        import yaml
+    except ImportError:
+        yaml = None
+    errors = (ValueError, yaml.YAMLError) if yaml else (ValueError,)  # ValueError: np. data 2026-13-01
+    try:
+        # Pusty plik albo lista to nie mapa: render niczego wtedy nie sprząta, więc i my nie ruszamy stanu.
+        if yaml is not None and not isinstance(yaml.safe_load(text), dict):
+            return None
         names, _lang, warnings = _parse_profile_text(profile_path, text)
-    except ValueError:  # PyYAML: np. data spoza zakresu (2026-13-01); stanu nie ruszamy
+    except errors:
         return None
     if any(w.startswith(_YAML_ERROR_PREFIX) for w in warnings):
+        return None
+    # Bez PyYAML odczyt jest awaryjny (bez wykrywania błędów): ufamy tylko trafieniu, nie „brakowi”.
+    if yaml is None and name not in names:
         return None
     return name in names
 

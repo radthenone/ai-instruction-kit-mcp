@@ -389,6 +389,22 @@ class TestProfileHasIntegration(unittest.TestCase):
             profile = self._profile(Path(tmp_dir), "integrations: [t3code]\nreview: 2026-13-01\n")
             self.assertIsNone(profile_has_integration(profile, "t3code"))
 
+    def test_empty_or_non_mapping_profile_is_none(self) -> None:
+        for text in ("", "- t3code\n"):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp_dir:
+                profile = self._profile(Path(tmp_dir), text)
+                self.assertIsNone(profile_has_integration(profile, "t3code"))
+
+    def test_without_pyyaml_only_a_hit_is_trusted(self) -> None:
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [t3code]\n")
+            other = self._profile(Path(tmp_dir) / "x", "integrations: [orca]\n")
+            with mock.patch.dict("sys.modules", {"yaml": None}):
+                self.assertIs(profile_has_integration(profile, "t3code"), True)
+                self.assertIsNone(profile_has_integration(other, "t3code"))
+
     def test_unreadable_profile_is_none(self) -> None:
         from unittest import mock
 
