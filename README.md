@@ -521,9 +521,11 @@ Lista zewnętrznych narzędzi w Profilu. Pusta lista = brak integracji. Nierozpo
 
 - `orca` — render `orca.yaml`. Reload usuwa plik, gdy Profil go już nie wymienia (tylko pliki z markerem kita).
 - `coderabbit` — render `.coderabbit.yaml` (język z `language:`). Usuwanie jak przy `orca`.
-- `t3code` — bez pliku w repo. Włącza kartę transportu T3 Code dla `/night-run` (`.ai/night-run-t3.md`). Bez `t3code` reload usuwa kartę.
+- `t3code` — bez pliku w repo. Włącza kartę transportu T3 Code dla `/night-run` (`.ai/night-run-t3.md`). Bez `t3code` reload usuwa kartę (przy zainstalowanym PyYAML, zależności kita; patrz niżej).
 
 Profil z błędem składni YAML: reload ostrzega i nie zmienia plików integracji ani karty T3. Zdublowany klucz `integrations:` albo nieprawidłowa data (np. `2026-13-01`): karta T3 zostaje bez zmian.
+
+Bez PyYAML reload nie sprawdzi składni Profilu, więc karta T3 zostaje bez zmian: nie jest ani instalowana, ani usuwana. Pojawia się ostrzeżenie.
 
 ### Model tiers agentów (`models:` / `agents:`)
 

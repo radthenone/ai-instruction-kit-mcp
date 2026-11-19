@@ -395,15 +395,19 @@ class TestProfileHasIntegration(unittest.TestCase):
                 profile = self._profile(Path(tmp_dir), text)
                 self.assertIsNone(profile_has_integration(profile, "t3code"))
 
-    def test_without_pyyaml_only_a_hit_is_trusted(self) -> None:
+    def test_without_pyyaml_is_none_except_missing_profile(self) -> None:
         from unittest import mock
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            profile = self._profile(Path(tmp_dir), "integrations: [t3code]\n")
-            other = self._profile(Path(tmp_dir) / "x", "integrations: [orca]\n")
+            hit = self._profile(Path(tmp_dir), "integrations: [t3code]\n")
+            miss = self._profile(Path(tmp_dir) / "a", "integrations: [orca]\n")
+            broken = self._profile(Path(tmp_dir) / "b", "integrations: [t3code]\nbroken: [\n")
+            absent = Path(tmp_dir) / "c" / ".ai" / "project.profile.yaml"
             with mock.patch.dict("sys.modules", {"yaml": None}):
-                self.assertIs(profile_has_integration(profile, "t3code"), True)
-                self.assertIsNone(profile_has_integration(other, "t3code"))
+                for profile in (hit, miss, broken):
+                    with self.subTest(profile=str(profile)):
+                        self.assertIsNone(profile_has_integration(profile, "t3code"))
+                self.assertIs(profile_has_integration(absent, "t3code"), False)
 
     def test_unreadable_profile_is_none(self) -> None:
         from unittest import mock

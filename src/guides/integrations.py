@@ -405,8 +405,9 @@ def profile_has_integration(profile_path: Path, name: str) -> bool | None:
     Czy Profil wymienia integrację ``name``, czytając go tak samo jak render (#514).
 
     Warunek dla integracji bez pliku (karta T3). ``None`` znaczy: stanu nie ruszaj, bo Profil
-    jest nieczytelny, ma błąd składni YAML, zdublowany ``integrations:`` albo nieprawidłową datę.
-    Brak Profilu to ``False``. Nierozpoznane nazwy nie blokują odpowiedzi.
+    jest nieczytelny, ma błąd składni YAML, zdublowany ``integrations:``, nieprawidłową datę albo
+    gdy nie ma PyYAML (składni wtedy nie sprawdzimy). Brak Profilu to ``False``. Nierozpoznane
+    nazwy nie blokują odpowiedzi.
 
     Args:
         profile_path: Ścieżka do ``.ai/project.profile.yaml``.
@@ -428,19 +429,16 @@ def profile_has_integration(profile_path: Path, name: str) -> bool | None:
     try:
         import yaml
     except ImportError:
-        yaml = None
-    errors = (ValueError, yaml.YAMLError) if yaml else (ValueError,)  # ValueError: np. data 2026-13-01
+        # Bez PyYAML składni nie sprawdzimy (odczyt awaryjny jej nie wykrywa), więc stan karty zostaje.
+        return None
     try:
         # Pusty plik albo lista to nie mapa: render niczego wtedy nie sprząta, więc i my nie ruszamy stanu.
-        if yaml is not None and not isinstance(yaml.safe_load(text), dict):
+        if not isinstance(yaml.safe_load(text), dict):
             return None
         names, _lang, warnings = _parse_profile_text(profile_path, text)
-    except errors:
+    except (ValueError, yaml.YAMLError):  # ValueError: np. data 2026-13-01
         return None
     if any(w.startswith(_YAML_ERROR_PREFIX) for w in warnings):
-        return None
-    # Bez PyYAML odczyt jest awaryjny (bez wykrywania błędów): ufamy tylko trafieniu, nie „brakowi”.
-    if yaml is None and name not in names:
         return None
     return name in names
 
@@ -608,7 +606,7 @@ def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
         # Kody dla bash: 0 — wymienia, 3 — nie wymienia, 2 — stan bez zmian. Kod 1 (np. wyjątek Pythona) też znaczy „bez zmian”.
         answer = profile_has_integration(profile_path, has_name.strip().lower())
         if answer is None:
-            print(f"ostrzeżenie: Profil `{profile_path}` nie daje się odczytać jednoznacznie — `{has_name}` bez zmian", file=sys.stderr)
+            print(f"ostrzeżenie: nie ustalono `{has_name}` w Profilu `{profile_path}` (nieczytelny, niejednoznaczny albo brak PyYAML) — stan bez zmian", file=sys.stderr)
             return 2
         return 0 if answer else 3
     resolved_kit_root = (
