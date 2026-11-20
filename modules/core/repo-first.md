@@ -66,7 +66,8 @@ jedno porównanie commitów, nie czytanie treści modułów, nie polling w trakc
   odpalić `bootstrap-project.sh` ponownie (te same flagi co poprzednio, patrz
   `.ai/.kit-bootstrap.json`). **Nie** odpalaj bootstrapa sam bez zgody — nadpisuje
   `.claude/agents/`, `.cursor/agents/`, `.claude/skills/kit-ai/`, `mcp.json`, co może
-  skasować lokalne ręczne edycje tych plików.
+  skasować lokalne ręczne edycje tych plików. Stare płaskie `.claude/commands/<nazwa>.md`
+  z poprzednich wersji kita są usuwane po nazwie, także gdy użytkownik je ręcznie zmienił.
 
 Nie wołaj ponownie w tej samej sesji bez powodu — raz na start pracy wystarczy.
 
