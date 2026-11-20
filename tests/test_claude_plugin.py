@@ -104,6 +104,47 @@ class TestClaudePluginSkills(unittest.TestCase):
             self.assertIn("/tdd", text)
             self.assertNotIn("@KIT_", text)
 
+    def test_parse_frontmatter_folds_multiline_description(self) -> None:
+        module = _load_script("render_agent_commands")
+        parse_frontmatter = module.parse_frontmatter
+        render_claude = module.render_claude
+
+        # Wariant description: >- z dwiema wciętymi liniami
+        text_folded = (
+            "---\n"
+            "name: test-agent\n"
+            "description: >-\n"
+            "  Pierwsza linia opisu.\n"
+            "  Druga linia opisu.\n"
+            "---\n\n"
+            "Treść promptu.\n"
+        )
+        meta, body = parse_frontmatter(text_folded)
+        self.assertEqual(meta.get("name"), "test-agent")
+        self.assertEqual(meta.get("description"), "Pierwsza linia opisu. Druga linia opisu.")
+        rendered = render_claude(meta, body)
+        self.assertIn("description: Pierwsza linia opisu. Druga linia opisu.", rendered)
+        self.assertNotIn(">-", rendered)
+        self.assertEqual(meta.get("name"), "test-agent")
+
+        # Wariant description: |
+        text_literal = (
+            "---\n"
+            "name: test-literal\n"
+            "description: |\n"
+            "  Pierwsza linia dosłowna.\n"
+            "  Druga linia dosłowna.\n"
+            "---\n\n"
+            "Treść promptu.\n"
+        )
+        meta_lit, body_lit = parse_frontmatter(text_literal)
+        self.assertEqual(meta_lit.get("name"), "test-literal")
+        self.assertEqual(meta_lit.get("description"), "Pierwsza linia dosłowna. Druga linia dosłowna.")
+        rendered_lit = render_claude(meta_lit, body_lit)
+        self.assertIn("description: Pierwsza linia dosłowna. Druga linia dosłowna.", rendered_lit)
+        self.assertNotIn("|", rendered_lit.split("---")[1])
+        self.assertEqual(meta_lit.get("name"), "test-literal")
+
     def test_headless_skill_has_host_substituted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
