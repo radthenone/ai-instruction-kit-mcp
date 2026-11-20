@@ -28,11 +28,18 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     assert lines[0].strip() == "---", "brak frontmatter"
     end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
     meta: dict[str, str] = {}
+    key: str | None = None
     for line in lines[1:end]:
-        if ":" not in line:
+        s = line.strip()
+        if key and (line.startswith((" ", "\t")) or not s):
+            meta[key] = f"{meta[key]} {s}".strip() if s else meta[key]
             continue
-        key, _, val = line.partition(":")
-        meta[key.strip()] = val.strip()
+        key = None
+        if ":" in line:
+            name, _, val = line.partition(":")
+            name, val = name.strip(), val.strip()
+            key = name if name == "description" and val in (">", ">-", "|", "|-") else None
+            meta[name] = "" if key else val
     body = "".join(lines[end + 1 :])
     while body.startswith("\n"):
         body = body[1:]
