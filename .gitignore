@@ -6,8 +6,9 @@ dist/
 *.egg-info/
 
 # Downloaded agent skills & lockfiles (npx skills add …) — duplikat globalnych
-# skills z ~/.agents/skills/, nie należą do kita.
-.agents/skills/
+# skills z ~/.agents/skills/, nie należą do kita. Gwiazdka: whitelista kita niżej
+# (sekcja instruction-kit) wymaga, żeby git mógł wejść do katalogu.
+.agents/skills/*
 # Gwiazdka jest nośna: `.cursor/skills/` (bez niej) wyklucza sam katalog, git do
 # niego nie schodzi i negacja niżej przestaje działać. Nie upraszczać.
 .cursor/skills/*
@@ -52,6 +53,9 @@ skills-lock.json
 !.claude/skills/kit-retro/**
 !.claude/skills/skill-authoring/
 !.claude/skills/skill-authoring/**
+# Plugin kit-ai (#526): cały katalog pluginu to pliki kita, więc whitelista katalogu.
+!.claude/skills/kit-ai/
+!.claude/skills/kit-ai/**
 !.claude/settings.json
 # Prywatne nadpisania: uprawnienia, włączone serwery MCP. Per maszyna, nie per repo.
 .claude/settings.local.json
@@ -123,7 +127,56 @@ skills-lock.json
 # --- Skille spoza kita (npx skills add …) ------------------------------------
 # Instalowane globalnie w ~/.agents/skills/ i linkowane do projektu. Kopia w repo
 # to duplikat, który zaraz rozjedzie się z globalną wersją — trzymaj je globalnie.
-.agents/skills/
+# Wyjątek: agenty i skille kita dla Antigravity (.agents/skills/<nazwa>/). Katalog
+# wykluczamy gwiazdką, nie ukośnikiem: przy `.agents/skills/` git nie wejdzie do środka
+# i negacja niżej nie zadziała (tak samo jak `.cursor/skills/*`).
+.agents/skills/*
+!.agents/skills/cleanup/
+!.agents/skills/cleanup/**
+!.agents/skills/create-skill/
+!.agents/skills/create-skill/**
+!.agents/skills/create-task/
+!.agents/skills/create-task/**
+!.agents/skills/git-check/
+!.agents/skills/git-check/**
+!.agents/skills/git-commit/
+!.agents/skills/git-commit/**
+!.agents/skills/git-end/
+!.agents/skills/git-end/**
+!.agents/skills/git-start/
+!.agents/skills/git-start/**
+!.agents/skills/headless/
+!.agents/skills/headless/**
+!.agents/skills/issue-stats/
+!.agents/skills/issue-stats/**
+!.agents/skills/kit-project-begin/
+!.agents/skills/kit-project-begin/**
+!.agents/skills/kit-project-edit/
+!.agents/skills/kit-project-edit/**
+!.agents/skills/kit-retro/
+!.agents/skills/kit-retro/**
+!.agents/skills/night-run/
+!.agents/skills/night-run/**
+!.agents/skills/night-run-ticket/
+!.agents/skills/night-run-ticket/**
+!.agents/skills/pr-stats/
+!.agents/skills/pr-stats/**
+!.agents/skills/review-architecture/
+!.agents/skills/review-architecture/**
+!.agents/skills/review-bugbot/
+!.agents/skills/review-bugbot/**
+!.agents/skills/review-edge/
+!.agents/skills/review-edge/**
+!.agents/skills/review-security/
+!.agents/skills/review-security/**
+!.agents/skills/review-tests/
+!.agents/skills/review-tests/**
+!.agents/skills/skill-authoring/
+!.agents/skills/skill-authoring/**
+!.agents/skills/teacher-agent/
+!.agents/skills/teacher-agent/**
+!.agents/skills/teacher-architecture/
+!.agents/skills/teacher-architecture/**
 skills-lock.json
 # <<< instruction-kit <<<
 .codegraph/

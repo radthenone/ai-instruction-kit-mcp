@@ -554,7 +554,7 @@ sync_gitignore_section() {
   [[ -f "$template" ]] || return 0
 
   BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
-  SHARED_SKILLS="$SHARED_SKILLS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
+  SHARED_SKILLS="$SHARED_SKILLS" SHARED_AGENTS="$SHARED_AGENTS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
   MACHINE_FILES="$(printf '%s\n' "${MACHINE_FILES[@]#/}")" \
   TEMPLATE="$template" DEST="$target_file" "$PYTHON_BIN" - <<'PY'
 import os
@@ -566,26 +566,33 @@ dest = Path(os.environ["DEST"])
 body = Path(os.environ["TEMPLATE"]).read_text(encoding="utf-8").strip("\n")
 
 
-def skill_allow(dest_prefix: str, *source_dirs: str) -> str:
+def skill_allow(dest_prefix: str, *source_dirs: str, names: tuple[str, ...] = ()) -> str:
     """Wyjątki `!` dla skilli kita — po nazwie, żeby nie wciągnąć cudzych.
 
     Katalog skilli u konsumenta miesza dwa źródła: te z kita (pliki) i dowiązania do
     `.agents/skills/` z `npx skills add` (ignorowane). Wersjonujemy tylko pierwsze.
+    ``names`` dokłada nazwy spoza katalogów (agenty są plikami `*.md`).
     """
-    names: list[str] = []
+    collected: list[str] = list(names)
     for source in source_dirs:
         root = Path(source)
         if not root.is_dir():
             continue
-        names.extend(sorted(p.name for p in root.iterdir() if p.is_dir()))
+        collected.extend(sorted(p.name for p in root.iterdir() if p.is_dir()))
     lines: list[str] = []
-    for name in sorted(set(names)):
+    for name in sorted(set(collected)):
         lines.append(f"!{dest_prefix}/{name}/")
         lines.append(f"!{dest_prefix}/{name}/**")
     return "\n".join(lines) if lines else f"# (kit nie dostarcza skilli dla {dest_prefix})"
 
 
 shared = os.environ["SHARED_SKILLS"]
+# Agenty tego przebiegu (po filtrze Tierów) trafiają do .agents/skills/ jako skille Antigravity.
+agent_names = tuple(sorted(p.stem for p in Path(os.environ["SHARED_AGENTS"]).glob("*.md")))
+body = body.replace(
+    "@KIT_SKILLS_AGENTS@",
+    skill_allow(".agents/skills", shared, names=agent_names),
+)
 body = body.replace("@KIT_SKILLS_CLAUDE@", skill_allow(".claude/skills", shared))
 body = body.replace(
     "@KIT_SKILLS_CURSOR@",
