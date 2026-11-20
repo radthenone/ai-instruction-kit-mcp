@@ -36,7 +36,7 @@
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { constants, homedir } from "node:os"
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -644,9 +644,9 @@ const envMs = (name, fallbackMs) => {
   const ms = Number(process.env[name])
   return Number.isFinite(ms) && ms > 0 && ms <= 2 ** 31 - 1 ? ms : fallbackMs
 }
-function progressStepMs() { return envMs("HEADLESS_PROGRESS_STEP_MS", PROGRESS_STEP_MIN * 60_000) }
-function timeoutCeilingMs() { return envMs("HEADLESS_TIMEOUT_CEILING_MS", TIMEOUT_CEILING_MIN * 60_000) }
-function defaultTimeoutMs() { return envMs("HEADLESS_DEFAULT_TIMEOUT_MS", DEFAULT_TIMEOUT_MIN * 60_000) }
+const progressStepMs = () => envMs("HEADLESS_PROGRESS_STEP_MS", PROGRESS_STEP_MIN * 60_000)
+const timeoutCeilingMs = () => envMs("HEADLESS_TIMEOUT_CEILING_MS", TIMEOUT_CEILING_MIN * 60_000)
+const defaultTimeoutMs = () => envMs("HEADLESS_DEFAULT_TIMEOUT_MS", DEFAULT_TIMEOUT_MIN * 60_000)
 
 // Czas CPU (utime + stime, w tickach) procesu wykonawcy i jego potomków z /proc. Bez /proc
 // (macOS, Windows) — null: wtedy postęp liczą log i git. Rodzic liczymy z pola ppid, nie z grupy
@@ -856,8 +856,32 @@ export async function describeStall({ tail, status, idleMs, model, run = runChec
 // MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha, commit bez trailera albo odmowa wykonawcy).
 let call = null
 let activePath = null
+let activeTimer = null
+// Odświeżanie znacznika co minutę (#521): run dłuższy niż sufit (łańcuch wykonawców, jawny `--timeout`) zostaje aktywny.
+const ACTIVE_REFRESH_MS = 60_000
+
+// Odświeża mtime znacznika `active`; `isActiveRun` liczy wiek od ostatniego odświeżenia.
+export function touchActive(now = new Date()) {
+  if (!activePath) return
+  try {
+    utimesSync(activePath, now, now)
+  } catch {
+    // Katalog runu mógł zostać usunięty; odświeżanie best-effort.
+  }
+}
+
+// Zakłada znacznik `active` z PID wrappera i zegar odświeżania, który nie trzyma procesu przy życiu.
+export function markActive(path) {
+  activePath = path
+  writeFileSync(path, `${process.pid}\n`)
+  clearInterval(activeTimer)
+  activeTimer = setInterval(touchActive, ACTIVE_REFRESH_MS)
+  activeTimer.unref()
+}
 
 export function clearActive() {
+  clearInterval(activeTimer)
+  activeTimer = null
   if (!activePath) return
   try {
     rmSync(activePath, { force: true })
@@ -1056,8 +1080,7 @@ async function main() {
     runDir = `${runDir}-${process.pid}`
     mkdirSync(runDir)
   }
-  activePath = join(runDir, "active")
-  writeFileSync(activePath, `${process.pid}\n`)
+  markActive(join(runDir, "active"))
   pruneRuns(runsDir, basename(runDir), call.ctx)
   // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
   if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx, KEEP_RUNS)
@@ -1103,7 +1126,6 @@ async function main() {
     process.on(signal, async () => {
       if (current.stopping) return
       current.stopping = true
-      clearActive()
       const hadChild = !!current.child
       const killing = current.child ? killTree(current.child) : null
       const after = current.started ? ` po ${((Date.now() - current.started) / 1000).toFixed(1)} s od startu wykonawcy` : ""

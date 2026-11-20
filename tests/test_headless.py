@@ -107,6 +107,13 @@ def _alive(pid: int) -> bool:
     return not (status.is_file() and "\nState:\tZ" in status.read_text())
 
 
+def _dead_pid() -> int:
+    """PID procesu, który już się zakończył (zamiast zgadywanego numeru jak 999999)."""
+    proc = subprocess.Popen([NODE, "-e", ""])
+    proc.wait()
+    return proc.pid
+
+
 def _clock_ahead(*, hours: int, minutes: bool) -> str:
     """Godzina zegarowa (12h, am/pm) w czasie lokalnym, `hours` od teraz.
 
@@ -278,7 +285,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
         for name in old:
             (runs / name).mkdir(parents=True)
-        (runs / old[0] / "active").write_text("999999\n", encoding="utf-8")
+        (runs / old[0] / "active").write_text(f"{_dead_pid()}\n", encoding="utf-8")
         result = self.run_wrapper("--host", "claude", "opencode", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((runs / old[0]).exists(), "run z martwym PID nie został przycięty")
@@ -2295,7 +2302,7 @@ class HeadlessActiveRunsPruneTest(unittest.TestCase):
 
     def test_is_pid_alive(self) -> None:
         self.assertTrue(node_export("h.isPidAlive(process.pid)", cwd=self.tmp))
-        self.assertFalse(node_export("h.isPidAlive(999999)", cwd=self.tmp))
+        self.assertFalse(node_export(f"h.isPidAlive({_dead_pid()})", cwd=self.tmp))
         self.assertFalse(node_export("h.isPidAlive(0)", cwd=self.tmp))
         self.assertFalse(node_export("h.isPidAlive(-1)", cwd=self.tmp))
         self.assertFalse(node_export("h.isPidAlive(null)", cwd=self.tmp))
@@ -2309,7 +2316,7 @@ class HeadlessActiveRunsPruneTest(unittest.TestCase):
 
         run_dead = self.runs / "run-dead"
         run_dead.mkdir()
-        (run_dead / "active").write_text("999999\n", encoding="utf-8")
+        (run_dead / "active").write_text(f"{_dead_pid()}\n", encoding="utf-8")
         self.assertFalse(node_export(f"h.isActiveRun({json.dumps(str(run_dead))})", cwd=self.tmp))
 
         run_no_marker = self.runs / "run-no-marker"
@@ -2324,12 +2331,28 @@ class HeadlessActiveRunsPruneTest(unittest.TestCase):
         future_now = (time.time() + 130 * 60) * 1000
         self.assertFalse(node_export(f"h.isActiveRun({json.dumps(str(run_stale))}, {future_now})", cwd=self.tmp))
 
+    def test_touch_active_keeps_long_run_active_past_ceiling(self) -> None:
+        """Odświeżony znacznik runu dłuższego niż sufit nadal oznacza run aktywny (#521)."""
+        run_long = self.runs / "run-long"
+        run_long.mkdir()
+        run = json.dumps(str(run_long))
+        active = json.dumps(str(run_long / "active"))
+        stale = (time.time() - 180 * 60) * 1000
+        expression = (
+            f"(async () => {{ const fs = await import('node:fs'); h.markActive({active}); "
+            f"fs.utimesSync({active}, new Date({stale}), new Date({stale})); "
+            f"const before = h.isActiveRun({run}); h.touchActive(); "
+            f"const after = h.isActiveRun({run}); h.clearActive(); "
+            f"return [before, after, fs.existsSync({active})] }})()"
+        )
+        self.assertEqual(node_export(expression, cwd=self.tmp), [False, True, False])
+
     def test_prune_runs_skips_active_and_deletes_inactive(self) -> None:
         old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
         for name in old:
             (self.runs / name).mkdir()
         (self.runs / old[0] / "active").write_text(f"{os.getpid()}\n", encoding="utf-8")
-        (self.runs / old[1] / "active").write_text("999999\n", encoding="utf-8")
+        (self.runs / old[1] / "active").write_text(f"{_dead_pid()}\n", encoding="utf-8")
 
         node_export(f"(h.pruneRuns({json.dumps(str(self.runs))}, '', '', 4), true)", cwd=self.tmp)
 
