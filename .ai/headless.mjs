@@ -459,7 +459,7 @@ export function isPidAlive(pid) {
       const status = readFileSync(`/proc/${pid}/status`, "utf8")
       if (/\nState:\s+Z/i.test(status)) return false
     } catch {
-      return false
+      // Błąd odczytu /proc nie dowodzi zakończenia: kill(pid, 0) się powiódł (#521).
     }
   }
   return true

@@ -23,7 +23,7 @@ NODE = shutil.which("node") or "node"
 # Narzędzia, których w izolowanym PATH potrzebuje wrapper i fałszywy wykonawca
 # (`basename`/`cat`/`sleep`/`git` w FAKE, `git` w raporcie wrappera) — bez katalogów
 # systemowych, żeby test „brak wykonawcy" nie znalazł prawdziwego `claude` (#205).
-TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
+TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps", "rm")
 
 # Udaje CLI wykonawcy: zapisuje argv i stdin, zostawia „LSP” w tle i kończy się kodem
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
@@ -308,6 +308,7 @@ class HeadlessWrapperTest(unittest.TestCase):
         """Wrapper bez błędu kończy raport, gdy jego katalog zniknął w trakcie (#521)."""
         result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_REMOVE_RUN_DIR="1")
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.runs_dir().exists(), "katalog runu miał zniknąć w trakcie runu")
         self.assertIn("[headless] raport końcowy", result.stdout)
         row = self.last_row(result)
         self.assertEqual(row["klasa"], "OK")
