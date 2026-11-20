@@ -266,9 +266,10 @@ def check_kit_updates(kit_root: Path, workspace_root: Path) -> str:
         lines.append(
             "Zaktualizuj: `kit-ai reload` z klona kita albo narzędzie MCP `reload_workspace` "
             "(dry run najpierw) — język i klienci biorą się z Profilu. "
-            "**Nadpisze** `.claude/agents/`, `.claude/commands/`, `.claude/hooks/`, "
-            "`.codex/skills/`, `.github/prompts/`, `.github/hooks/`, `mcp.json` — jeśli je ręcznie "
-            "edytowałeś, zrób `git diff` najpierw."
+            "**Nadpisze** `.claude/agents/`, `.claude/skills/kit-ai/`, "
+            "`.claude/commands/` (stare pliki usuwane po nazwie, także zmienione), "
+            "`.claude/hooks/`, `.codex/skills/`, `.github/prompts/`, `.github/hooks/`, "
+            "`mcp.json` — jeśli je ręcznie edytowałeś, zrób `git diff` najpierw."
         )
     if manual:
         if overwritten:

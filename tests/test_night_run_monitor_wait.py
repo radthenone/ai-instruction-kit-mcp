@@ -17,7 +17,7 @@ TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-tick
 HEADLESS_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "headless.md"
 COPIES = (
     ".claude/agents/night-run.md",
-    ".claude/commands/night-run.md",
+    ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
     ".opencode/command/night-run.md",
@@ -88,7 +88,7 @@ class TestNightRunMonitorWait(unittest.TestCase):
     def test_all_rendered_copies_have_no_forbidden_sleep(self) -> None:
         ticket_copies = (
             ".claude/agents/night-run-ticket.md",
-            ".claude/commands/night-run-ticket.md",
+            ".claude/skills/kit-ai/skills/night-run-ticket/SKILL.md",
             ".codex/skills/night-run-ticket/SKILL.md",
             ".github/prompts/night-run-ticket.prompt.md",
             ".opencode/command/night-run-ticket.md",

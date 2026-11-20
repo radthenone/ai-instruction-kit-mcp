@@ -337,9 +337,9 @@ class TestPruneAndRemove(_BootstrapTestCase):
                 self.assertEqual((app / rel).read_text(encoding="utf-8"), text, rel)
             for rel in (
                 ".claude/agents/git-start.md",
-                ".claude/commands/git-start.md",
                 ".claude/hooks/git-guard.mjs",
                 ".claude/skills",
+                ".claude/skills/kit-ai",
                 ".opencode/command",
                 ".opencode/plugins",
                 "opencode.json",
