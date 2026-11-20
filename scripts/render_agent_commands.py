@@ -5,7 +5,7 @@ Renderuj templates/shared/agents/*.md do natywnego formatu slash-command klienta
 Użycie:
     render_agent_commands.py FORMAT SRC_DIR DEST_DIR
 
-FORMAT: vscode | kilo | opencode
+FORMAT: vscode | kilo | opencode (zarazem nazwa celu w command_prefixes, #525)
 """
 
 from __future__ import annotations
@@ -13,6 +13,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+
+from command_prefix import read_values, resolve
+
+MANIFEST = Path(__file__).resolve().parents[1] / "manifest.yaml"
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -76,12 +80,19 @@ def main(argv: list[str]) -> int:
     if renderer is None:
         print(f"Nieznany format: {fmt} (dozwolone: {', '.join(RENDERERS)})", file=sys.stderr)
         return 1
+    try:
+        sigil, namespace, name_prefix = read_values(MANIFEST, fmt)
+    except ValueError as exc:
+        print(f"render_agent_commands: {exc}", file=sys.stderr)
+        return 1
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     suffix = DEST_SUFFIX.get(fmt)
     for src in sorted(src_dir.glob("*.md")):
         dest_name = src.stem + suffix if suffix else src.name
-        text = src.read_text(encoding="utf-8")
+        text = resolve(
+            src.read_text(encoding="utf-8"), sigil=sigil, namespace=namespace, name_prefix=name_prefix
+        )
         meta, body = parse_frontmatter(text)
         out = renderer(meta, body)
         (dest_dir / dest_name).write_text(out, encoding="utf-8", newline="\n")
