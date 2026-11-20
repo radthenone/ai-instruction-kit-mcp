@@ -871,3 +871,19 @@ layouts:
     module: stack:frontend:react-native-split
   - when: {all: {web: [react, react@legacy], mobile: [none]}}
     module: stack:frontend:react-web
+
+# ─── Prefiks komend per klient (#525, ADR 0001) ──────────
+# sigil: znak wywołania (`/` albo `$`). namespace: przestrzeń w treści (@KIT_CMD_PREFIX@).
+# name_prefix: przestrzeń w frontmatter `name:` (@KIT_NAME_PREFIX@).
+# Expand: każdy cel ma dzisiejszą formę. Wartości docelowe wpisują tickety klientów.
+# Jeden wpis = jedna linia: scripts/command_prefix.py czyta te linie bez PyYAML.
+command_prefixes:
+  claude: {sigil: "/", namespace: "", name_prefix: ""}
+  codex: {sigil: "/", namespace: "", name_prefix: ""}
+  vscode: {sigil: "/", namespace: "", name_prefix: ""}
+  antigravity: {sigil: "/", namespace: "", name_prefix: ""}
+  opencode: {sigil: "/", namespace: "", name_prefix: ""}
+  kilo: {sigil: "/", namespace: "", name_prefix: ""}
+  cursor: {sigil: "/", namespace: "", name_prefix: ""}
+  kiro: {sigil: "/", namespace: "", name_prefix: ""}
+  shared: {sigil: "/", namespace: "", name_prefix: ""}

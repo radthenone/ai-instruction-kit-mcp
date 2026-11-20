@@ -233,6 +233,15 @@ class LayoutHint:
 
 
 @dataclass(frozen=True)
+class CommandPrefix:
+    """Forma wywołania komend jednego celu (#525): znak, przestrzeń w treści i w `name:`."""
+
+    sigil: str
+    namespace: str
+    name_prefix: str
+
+
+@dataclass(frozen=True)
 class Manifest:
     """Zmanifestowana kolekcja modułów, domyślnych bundle'i i mapowań."""
 
@@ -242,6 +251,25 @@ class Manifest:
     mappings: Mappings
     questions: dict[str, Question] = field(default_factory=dict)
     layouts: tuple[LayoutHint, ...] = ()
+    command_prefixes: dict[str, CommandPrefix] = field(default_factory=dict)
+
+    def command_prefix(self, target: str) -> CommandPrefix:
+        """
+        Zwróć prefiks komend celu z sekcji ``command_prefixes`` w manifest.yaml.
+
+        Args:
+            target: Nazwa celu (klient albo ``shared``).
+
+        Returns:
+            CommandPrefix: Trzy pola celu.
+
+        Raises:
+            ValueError: Gdy cel nie jest zadeklarowany w manifeście.
+        """
+        try:
+            return self.command_prefixes[target]
+        except KeyError:
+            raise ValueError(f"Brak command_prefixes dla celu: {target}") from None
 
 
 def find_kit_root(start: Path | None = None) -> Path:
@@ -338,7 +366,35 @@ def load_manifest(kit_root: Path | None = None) -> Manifest:
             )
             for entry in raw.get("layouts") or []
         ),
+        command_prefixes=_load_command_prefixes(raw.get("command_prefixes") or {}),
     )
+
+
+def _load_command_prefixes(raw: dict[str, Any]) -> dict[str, CommandPrefix]:
+    """
+    Wczytaj sekcję ``command_prefixes`` (#525) i sprawdź znak wywołania.
+
+    Args:
+        raw: Surowa sekcja ``command_prefixes`` z YAML.
+
+    Returns:
+        dict[str, CommandPrefix]: Prefiks per cel.
+
+    Raises:
+        ValueError: Gdy sigil nie jest ``/`` ani ``$``.
+    """
+    prefixes: dict[str, CommandPrefix] = {}
+    for target, meta in raw.items():
+        meta = meta or {}
+        sigil = str(meta.get("sigil", ""))
+        if sigil not in ("/", "$"):
+            raise ValueError(f"command_prefixes.{target}.sigil: dozwolone / albo $, jest {sigil!r}")
+        prefixes[str(target)] = CommandPrefix(
+            sigil=sigil,
+            namespace=str(meta.get("namespace") or ""),
+            name_prefix=str(meta.get("name_prefix") or ""),
+        )
+    return prefixes
 
 
 def _condition(raw: dict[str, Any] | None) -> Condition:

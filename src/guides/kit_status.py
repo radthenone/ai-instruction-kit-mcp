@@ -35,6 +35,7 @@ _OVERWRITTEN_GLOBS: tuple[str, ...] = (
     "scripts/bootstrap-project.sh",
     "scripts/bugbot_md.py",
     "scripts/render_agent_commands.py",
+    "scripts/command_prefix.py",
     "scripts/install_shared_skills.py",
     "scripts/claude_settings.py",
 )

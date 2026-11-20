@@ -159,6 +159,12 @@ if [[ -z "${KIT_PYTHON:-}" ]]; then
   fi
 fi
 
+# Kopia szablonu do celu z podstawieniem @KIT_CMD_PREFIX@ / @KIT_NAME_PREFIX@ (#525).
+# Wartości z manifest.yaml (command_prefixes); pliki bez placeholderów idą bajt w bajt jak cp.
+copy_prefixed() {
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/command_prefix.py" copy "$KIT_ROOT/manifest.yaml" "$@"
+}
+
 # Bootstrap wymaga Pythona 3 (f-stringi / pathlib / type hints w guides.clients).
 if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
   echo "Wymagany Python 3 (znaleziono: $($PYTHON_BIN --version 2>&1))" >&2
@@ -723,7 +729,7 @@ install_design_handoff() {
   if [[ " ${CLIENTS_LIST[*]} " == *" claude "* ]]; then
     if [[ " $PROFILE_TIERS " == *" client "* ]]; then
       mkdir -p "$TARGET/docs/agents"
-      cp "$KIT_ROOT/templates/shared/docs/design-handoff.md" "$TARGET/$DESIGN_HANDOFF"
+      copy_prefixed shared "$KIT_ROOT/templates/shared/docs/design-handoff.md" "$TARGET/$DESIGN_HANDOFF"
       echo "  + $DESIGN_HANDOFF (sesja designu: Claude Code)"
     else
       kit_rm "$DESIGN_HANDOFF"
@@ -749,7 +755,7 @@ headless_enabled() {
 
 install_worktree() {
   mkdir -p "$TARGET/.ai"
-  cp "$KIT_ROOT/templates/shared/worktree/worktree.mjs" "$TARGET/.ai/worktree.mjs"
+  copy_prefixed shared "$KIT_ROOT/templates/shared/worktree/worktree.mjs" "$TARGET/.ai/worktree.mjs"
   chmod +x "$TARGET/.ai/worktree.mjs" 2>/dev/null || true
   PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_worktree.py" \
     "$TARGET" "$TARGET/.ai/project.profile.yaml" || echo "  ! worktree.json nie wyrenderowany" >&2
@@ -766,7 +772,7 @@ install_headless() {
     kit_rm .ai/headless.mjs
     return 0
   fi
-  cp "$KIT_ROOT/templates/shared/headless/headless.mjs" "$TARGET/.ai/headless.mjs"
+  copy_prefixed shared "$KIT_ROOT/templates/shared/headless/headless.mjs" "$TARGET/.ai/headless.mjs"
   for c in "${CLIENTS_LIST[@]}"; do
     case "$c" in
       cursor) set -- .cursor/agents/headless.md ;;
@@ -794,7 +800,7 @@ install_night_run_watchdog() {
     kit_rm .ai/night-run-watchdog.sh
     return 0
   fi
-  cp "$KIT_ROOT/templates/shared/night-run/watchdog.sh" "$TARGET/.ai/night-run-watchdog.sh"
+  copy_prefixed shared "$KIT_ROOT/templates/shared/night-run/watchdog.sh" "$TARGET/.ai/night-run-watchdog.sh"
   chmod +x "$TARGET/.ai/night-run-watchdog.sh"
   echo "  + .ai/night-run-watchdog.sh (watchdog /night-run)"
 }
@@ -816,7 +822,7 @@ install_night_run_t3() {
     2) return 0 ;;  # Profil nieczytelny, niejednoznaczny lub bez PyYAML: karta bez zmian (ostrzeżenie wypisał Python)
     *) echo "  ! nie ustalono t3code (kod $rc) — karta T3 bez zmian" >&2; return 0 ;;
   esac
-  cp "$KIT_ROOT/templates/shared/night-run/t3.md" "$TARGET/.ai/night-run-t3.md"
+  copy_prefixed shared "$KIT_ROOT/templates/shared/night-run/t3.md" "$TARGET/.ai/night-run-t3.md"
   echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"
 }
 
@@ -864,7 +870,7 @@ apply_model_tiers() {
 }
 
 copy_shared_agents() {
-  local dest_dir="$1"
+  local dest_dir="$1" target="$2"
   if [[ "$SKIP_AGENTS" -ne 0 ]]; then
     return 0
   fi
@@ -873,7 +879,10 @@ copy_shared_agents() {
     exit 1
   fi
   mkdir -p "$dest_dir"
-  cp "$SHARED_AGENTS/"*.md "$dest_dir/"
+  local src
+  for src in "$SHARED_AGENTS/"*.md; do
+    copy_prefixed "$target" "$src" "$dest_dir/$(basename "$src")"
+  done
   echo "  + $dest_dir (shared agents)"
 }
 
@@ -1017,7 +1026,7 @@ install_cursor() {
   cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
   copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" ".cursor/BUGBOT.md"
 
-  copy_shared_agents "$TARGET/.cursor/agents"
+  copy_shared_agents "$TARGET/.cursor/agents" cursor
 
   if [[ -d "$KIT_ROOT/templates/cursor/skills" ]]; then
     mkdir -p "$TARGET/.cursor/skills"
@@ -1104,7 +1113,7 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
   fi
   echo "  + .claude/hooks/ + wpisy hookow kita w .claude/settings.json"
 
-  copy_shared_agents "$TARGET/.claude/agents"
+  copy_shared_agents "$TARGET/.claude/agents" claude
   apply_model_tiers claude "$TARGET/.claude/agents"
   copy_claude_commands "$TARGET/.claude/commands"
   copy_shared_skills claude "$TARGET/.claude/skills"
@@ -1190,7 +1199,7 @@ install_kiro() {
     cp "$KIT_ROOT/templates/kiro/steering/instruction-kit.md" \
       "$TARGET/.kiro/steering/instruction-kit.md"
   fi
-  copy_shared_agents "$TARGET/.kiro/agents"
+  copy_shared_agents "$TARGET/.kiro/agents" kiro
   copy_shared_skills kiro "$TARGET/.kiro/agents"
 }
 
