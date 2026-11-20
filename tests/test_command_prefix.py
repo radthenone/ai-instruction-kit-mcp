@@ -196,13 +196,17 @@ class TestBootstrapWiring(unittest.TestCase):
             root = Path(tmp)
             kit = root / "kit"
             _copy_kit(kit)
-            t3 = kit / "templates" / "shared" / "night-run" / "t3.md"
-            t3.write_text(t3.read_text(encoding="utf-8") + "\nTest: @KIT_CMD_PREFIX@git-start\n", encoding="utf-8")
+            # worktree.mjs idzie przez copy_prefixed zawsze; karta T3 wymaga t3code w Profilu.
+            worktree = kit / "templates" / "shared" / "worktree" / "worktree.mjs"
+            worktree.write_text(
+                worktree.read_text(encoding="utf-8") + "\n// Test: @KIT_CMD_PREFIX@git-start\n",
+                encoding="utf-8",
+            )
             workspace = _init_workspace(root / "ws")
             result = _run_bootstrap(kit, workspace, root / "config")
             self.assertEqual(result.returncode, 0, result.stderr)
-            out = (workspace / ".ai" / "night-run-t3.md").read_text(encoding="utf-8")
-            self.assertIn("Test: /git-start", out)
+            out = (workspace / ".ai" / "worktree.mjs").read_text(encoding="utf-8")
+            self.assertIn("// Test: /git-start", out)
             self.assertNotIn("@KIT_", out)
 
     def test_real_kit_install_leaves_no_placeholder(self) -> None:
