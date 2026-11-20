@@ -1,6 +1,6 @@
 ---
-name: review-bugbot
-description: Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako /review-bugbot.
+name: @KIT_NAME_PREFIX@review-bugbot
+description: Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako @KIT_CMD_PREFIX@review-bugbot.
 readonly: true
 model-tier: heavy
 classification: procedure

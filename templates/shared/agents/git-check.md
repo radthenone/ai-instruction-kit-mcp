@@ -1,6 +1,6 @@
 ---
-name: git-check
-description: Sync GitHub issue title/body to actual file diffs. Use when /git-check, issue stale vs branch work. Wywołuj jako /git-check.
+name: @KIT_NAME_PREFIX@git-check
+description: Sync GitHub issue title/body to actual file diffs. Use when @KIT_CMD_PREFIX@git-check, issue stale vs branch work. Wywołuj jako @KIT_CMD_PREFIX@git-check.
 model-tier: light
 classification: procedure
 ---
@@ -13,9 +13,9 @@ Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` 
 
 Język prozy (body issue, odpowiedzi): z MCP `get_language` / `--language` / profil (`pl` domyślnie). **Tytuły issue zawsze EN.**
 
-# /git-check — dopasuj issue do realnych zmian
+# @KIT_CMD_PREFIX@git-check — dopasuj issue do realnych zmian
 
-Jesteś asystentem **synchronizacji issue** z kodem. **Nie** implementujesz feature’a, **nie** commitujesz, **nie** robisz PR (to `/git-end`).
+Jesteś asystentem **synchronizacji issue** z kodem. **Nie** implementujesz feature’a, **nie** commitujesz, **nie** robisz PR (to `@KIT_CMD_PREFIX@git-end`).
 
 Wymagane: `gh` (zalogowany), `git`.
 
@@ -24,7 +24,7 @@ Wymagane: `gh` (zalogowany), `git`.
 Gdy user poda help — wypisz i zakończ (bez `gh issue edit`):
 
 ```markdown
-# /git-check — pomoc
+# @KIT_CMD_PREFIX@git-check — pomoc
 
 ## Co robi
 Porównuje diff brancha z opisem powiązanego issue i **aktualizuje** tytuł (EN) oraz body (język MCP), gdy rozjechały się z rzeczywistością.
@@ -32,10 +32,10 @@ Porównuje diff brancha z opisem powiązanego issue i **aktualizuje** tytuł (EN
 ## Wywołania
 | Komenda | Efekt |
 |---------|--------|
-| `/git-check` | Issue z nazwy brancha `typ/N-…` + diff vs baza → ewentualny `gh issue edit` |
-| `/git-check #42` | Wymuś issue #42 |
-| `/git-check --dry-run` | Pokaż propozycję bez edycji |
-| `/git-check --help` | Ta pomoc |
+| `@KIT_CMD_PREFIX@git-check` | Issue z nazwy brancha `typ/N-…` + diff vs baza → ewentualny `gh issue edit` |
+| `@KIT_CMD_PREFIX@git-check #42` | Wymuś issue #42 |
+| `@KIT_CMD_PREFIX@git-check --dry-run` | Pokaż propozycję bez edycji |
+| `@KIT_CMD_PREFIX@git-check --help` | Ta pomoc |
 
 ## Ręcznie
 ```bash
@@ -55,7 +55,7 @@ EOF
 | `--help` / `help` / `-h` | Tylko pomoc |
 | `#123` / `issue 123` | Docelowe issue |
 | `--dry-run` / `dry-run` | Tylko raport + propozycja, bez `gh issue edit` |
-| Puste `/git-check` | Issue z brancha `feat/42-…` |
+| Puste `@KIT_CMD_PREFIX@git-check` | Issue z brancha `feat/42-…` |
 
 ## Kroki
 
@@ -64,10 +64,10 @@ EOF
    - Z `#N` w argumencie, albo
    - Z nazwy brancha: `feat/42-slug` → `42`, albo
    - `gh issue list` / linked issues — **tylko** gdy jednoznaczne; inaczej dopytaj.
-   - Brak issue → STOP (nie twórz nowego; zasugeruj `/git-start`).
+   - Brak issue → STOP (nie twórz nowego; zasugeruj `@KIT_CMD_PREFIX@git-start`).
 3. **Baza** — `<base>` = `BASE` z bloku niżej.
 
-Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+Baza (ta sama reguła w `@KIT_CMD_PREFIX@git-start`, `@KIT_CMD_PREFIX@git-check`, `@KIT_CMD_PREFIX@git-end`, `@KIT_CMD_PREFIX@night-run`): linia `base: <gałąź>`
 w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
 w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
 Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
@@ -124,7 +124,7 @@ EOF
 
 Nie zmieniaj labeli / assignee / milestone chyba że user o to prosi.
 
-## /git-check OK
+## @KIT_CMD_PREFIX@git-check OK
 
 Raport po polsku lub EN (zgodnie z językiem MCP):
 
@@ -132,4 +132,4 @@ Raport po polsku lub EN (zgodnie z językiem MCP):
 - Czy edytowano: tak/nie (dry-run?)
 - Stary vs nowy tytuł (jeśli zmiana)
 - 1–3 bullet: co w diffie uzasadnia update
-- Następne: kod / `/git-commit` / `/review-*` / `/git-end`
+- Następne: kod / `@KIT_CMD_PREFIX@git-commit` / `@KIT_CMD_PREFIX@review-*` / `@KIT_CMD_PREFIX@git-end`

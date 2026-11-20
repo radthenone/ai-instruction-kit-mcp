@@ -1240,9 +1240,19 @@ class TestHeadlessAgent(_BootstrapTestCase):
             workspace = Path(tmp) / "app"
             workspace.mkdir()
             self._install(workspace, "claude,opencode,codex,cursor")
+            import sys
+            sys.path.insert(0, str(KIT_ROOT / "scripts"))
+            from command_prefix import read_values, resolve
+            sigil, namespace, name_prefix = read_values(KIT_ROOT / "manifest.yaml", "shared")
+            expected_headless = resolve(
+                (KIT_ROOT / "templates/shared/headless/headless.mjs").read_text(encoding="utf-8"),
+                sigil=sigil,
+                namespace=namespace,
+                name_prefix=name_prefix,
+            )
             self.assertEqual(
-                (workspace / ".ai/headless.mjs").read_bytes(),
-                (KIT_ROOT / "templates/shared/headless/headless.mjs").read_bytes(),
+                (workspace / ".ai/headless.mjs").read_text(encoding="utf-8"),
+                expected_headless,
             )
             for host, files in self.HOST_FILES.items():
                 for rel in files:

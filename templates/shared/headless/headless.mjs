@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Wrapper `/headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
+ * Wrapper `@KIT_CMD_PREFIX@headless` — uruchamia innego klienta kitu w trybie headless i sprząta po nim.
  *
  *   node .ai/headless.mjs --host <klient> <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] [treść…]
  *
@@ -160,7 +160,7 @@ const agyQuotaText = (bin) => {
 }
 
 // Tabela wykonawców: klient → binarki (pierwsza znaleziona w PATH) i argumenty.
-// Nowy wykonawca = nowy wiersz; tylko klienci z guardami kita (patrz README /headless).
+// Nowy wykonawca = nowy wiersz; tylko klienci z guardami kita (patrz README @KIT_CMD_PREFIX@headless).
 const EXECUTORS = {
   claude: {
     bins: ["claude"],

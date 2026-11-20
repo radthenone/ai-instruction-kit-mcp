@@ -1,6 +1,6 @@
 ---
-name: review-frontend
-description: Reviewer frontendu — Stack z Tierów web/mobile (MCP get_bundle). Use when reviewing kod klienta web/mobile, generowany klient API, typy TypeScript. Wywołuj jako /review-frontend.
+name: @KIT_NAME_PREFIX@review-frontend
+description: Reviewer frontendu — Stack z Tierów web/mobile (MCP get_bundle). Use when reviewing kod klienta web/mobile, generowany klient API, typy TypeScript. Wywołuj jako @KIT_CMD_PREFIX@review-frontend.
 readonly: true
 tier: client
 model-tier: heavy
@@ -15,13 +15,13 @@ Przestrzegaj `AGENTS.md` oraz reguł git/review (`.cursor/rules/` lub `templates
 
 - brak commit/push na `main` / `master` / `dev` — tylko merge przez PR;
 - kolejność: branch **przed** pracą → commit → review → **push** → **potem** PR → CI green → merge;
-- przed pushem: `/review-bugbot` (nie sugeruj pusha na chronione branche).
+- przed pushem: `@KIT_CMD_PREFIX@review-bugbot` (nie sugeruj pusha na chronione branche).
 
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer
 
-| | Bugbot (`/review-bugbot`) | Ten agent (stack) |
+| | Bugbot (`@KIT_CMD_PREFIX@review-bugbot`) | Ten agent (stack) |
 |--|---------------------------|-------------------|
 | Fokus | Blokujące bugi, sekrety, bezpieczeństwo | Konwencje FE z MCP bundle (platformy, state, codegen) |
 | Nie rób | — | **Nie dubluj** sekretów / oczywistych security holes |

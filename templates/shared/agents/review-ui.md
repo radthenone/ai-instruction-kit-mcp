@@ -1,6 +1,6 @@
 ---
-name: review-ui
-description: Reviewer UI/UX. Use when zmiana dotyka ekranów, formularzy, flow użytkownika lub komponentów wspólnych. Wywołuj jako /review-ui.
+name: @KIT_NAME_PREFIX@review-ui
+description: Reviewer UI/UX. Use when zmiana dotyka ekranów, formularzy, flow użytkownika lub komponentów wspólnych. Wywołuj jako @KIT_CMD_PREFIX@review-ui.
 readonly: true
 tier: client
 model-tier: heavy
@@ -11,7 +11,7 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 ## Reguły wspólne (obowiązkowe)
 
-Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `@KIT_CMD_PREFIX@review-bugbot`.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer

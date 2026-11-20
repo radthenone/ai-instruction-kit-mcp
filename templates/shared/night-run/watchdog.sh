@@ -91,7 +91,7 @@ cat_transcripts() {
 # Jak `NR` w `new_limit_line` (wc -l nie liczy ostatniej linii bez znaku nowej linii).
 transcript_line_count() { cat_transcripts | awk 'END { print NR }'; }
 
-# Nowa linia limitu w transkrypcie od ostatniego sprawdzenia (logów /headless nie czytamy —
+# Nowa linia limitu w transkrypcie od ostatniego sprawdzenia (logów @KIT_CMD_PREFIX@headless nie czytamy —
 # limit wykonawcy to osobne issue). Przesuwa `limit_offset` w bieżącej powłoce, więc wynik
 # idzie do `LIMIT_LINE_FOUND`, a nie przez `$(...)` (podpowłoka nie zapisałaby offsetu).
 new_limit_line() {
