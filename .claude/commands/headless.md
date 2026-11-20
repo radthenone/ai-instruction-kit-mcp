@@ -48,7 +48,7 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
   Przykład: `/headless gemini --model gemini-3.8-flash-high,claude-opus-4-6-thinking "..."`.
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
 - `--timeout` — minuty. Bez flagi termin 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana `HEAD`/`git status` (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout` to twardy limit bez przedłużania. Liczony osobno dla każdego modelu każdego wykonawcy w łańcuchu.
-- `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu, domyślnie 10.
+- `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu i w pliku zdarzeń, domyślnie 10.
 - `--ctx <katalog>` — katalog nocy (CTX z `/night-run`); bez flagi wrapper nic nie zapisuje. Z nią
   dopisuje wiersz wywołania (ostatnia linia wyjścia, JSON) do `<katalog>/headless-rows.jsonl`, a przy
   klasie innej niż OK także wycinek logu. Bufor czyta `--report --ctx <katalog>`. Ręczny `/headless` tej flagi nie potrzebuje.
@@ -75,24 +75,24 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
    `run_in_background` (wybudzenia w trakcie daje `Monitor` niżej).
    Wrapper po zakończeniu, błędzie albo timeoucie zabija całe drzewo procesów wykonawcy.
 
-   Pierwsza linia wyjścia to ścieżka logu (`[headless] log: <log>`). Nie śledź wyjścia na
+   Pierwsze dwie linie wyjścia to ścieżka logu (`[headless] log: <log>`) i pliku zdarzeń (`[headless] zdarzenia: <zdarzenia>`). Nie śledź wyjścia na
    bieżąco — stan w razie potrzeby czytasz jedną linią:
-   `grep '^\[headless\]' <log> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na log od pozycji `P+1` (`P` to numer ostatniej przetworzonej linii `[headless]`, na starcie `P=0`) i, w `/loop`, `ScheduleWakeup` na 30 min od razu; ścieżka z pierwszej linii `[headless] log: <log>`:
-   `tail -n +<P+1> -F <log> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'`.
+   `grep '^\[headless\]' <zdarzenia> | tail -1`. Po starcie wywołania w tle (w Claude) uzbrój `Monitor` na plik zdarzeń od pozycji `P+1` (`P` to numer ostatniej przetworzonej linii `[headless]`, na starcie `P=0`) i, w `/loop`, `ScheduleWakeup` na 30 min od razu; ścieżka z linii `[headless] zdarzenia: <zdarzenia>`:
+   `tail -n +<P+1> -F <zdarzenia> | grep --line-buffered -E '^\[headless\] (kod wyjścia:|możliwe zacięcie:|sygnał |.*przekazuję zadanie 1:1)'`.
    Wzorzec jest zakotwiczony na początku linii wrappera, bo wykonawca wypisuje do logu własny tekst. Budzi na cztery rodzaje
    linii: `[headless] kod wyjścia: <kod>` (koniec wywołania), `[headless] sygnał SIG…` (zabicie sygnałem),
    `… przekazuję zadanie 1:1` (przekazanie 1:1 po błędzie albo limicie) i `[headless] możliwe zacięcie: brak wyjścia od <n> min`
    (ostrzeżenie; samo zacięcie niczego nie zabija).
-   Powiadomienie to sygnał do sprawdzenia, nie dowód: potwierdź jedną linią `grep '^\[headless\] kod wyjścia:' <log> | tail -1`.
+   Powiadomienie to sygnał do sprawdzenia, nie dowód: potwierdź jedną linią `grep '^\[headless\] kod wyjścia:' <zdarzenia> | tail -1`.
    Gdy jej nie ma, sprawdź, czy zadanie w tle nadal żyje (stan zadania albo powiadomienie tła). Jeśli już nie żyje,
-   ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <log> | tail -1` (wrapper mógł skończyć się między sprawdzeniami).
-   Dopiero bez kodu wyjścia to sygnał albo błąd wrappera: przeczytaj ostatnią linię `[headless]` i nie uzbrajaj ponownie.
+   ponownie sprawdź `grep '^\[headless\] kod wyjścia:' <zdarzenia> | tail -1` (wrapper mógł skończyć się między sprawdzeniami).
+   Dopiero bez kodu wyjścia to sygnał albo błąd wrappera: przeczytaj ostatnią linię `[headless]` w pliku zdarzeń i nie uzbrajaj ponownie.
    Zapas czasowy: `ScheduleWakeup` jest przewidziany tylko dla trybu `/loop`. Poza `/loop` zapasu czasowego nie ma: `Monitor` wygasa po 30 min, a koniec wywołania przychodzi jako powiadomienie tła. Po każdym wybudzeniu (powiadomienie `Monitor` albo, w `/loop`, `ScheduleWakeup`) przeczytaj nowe linie `[headless]` z numerami:
-   `grep -n '^\[headless\]' <log> | awk -F: -v p=<P> '$1 > p'` (zdarzenia z przerwy w nasłuchu), zapamiętaj `P` jako numer
+   `grep -n '^\[headless\]' <zdarzenia> | awk -F: -v p=<P> '$1 > p'` (zdarzenia z przerwy w nasłuchu), zapamiętaj `P` jako numer
    ostatniej z nich (bez nowych linii `P` zostaje), dopiero potem zatrzymaj poprzedni `Monitor` (`TaskStop` po jego `task_id`; `tail -F` nie kończy się po pierwszym dopasowaniu) i uzbrój nowy `Monitor` od `P+1` (w `/loop` także `ScheduleWakeup`),
    aż do końca wywołania (`kod wyjścia` albo powiadomienie tła). Odczyt i `P` pochodzą z jednego polecenia, więc linia
    zapisana później ma numer większy niż `P` i nasłuch od `P+1` ją obejmie.
-   Klienty bez tych narzędzi czytają log jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu
+   Klienty bez tych narzędzi czytają plik zdarzeń jedną linią po powiadomieniu tła. Zabija dopiero termin bez postępu
    w ostatnim kroku (10 min: bajty wyjścia, zmiana `HEAD`/`git status`, a z `/proc` także CPU) albo sufit
    120 min, a wrapper przechodzi dalej 1:1. Pętla (to samo wywołanie narzędzia 5 razy z rzędu albo ten sam błąd 5 razy, każdy po wywołaniu narzędzia,
    bez zmian w repo) kończy wykonawcę wcześniej jako `HANG` z wpisem `## pętla` w raporcie. Zrzut błędów bez wywołań narzędzi nie jest pętlą.

@@ -196,6 +196,10 @@ _Avoid_: blocker, spec failure, blocking review
 Jeden zapis rozmowy agenta (plik JSONL wraz z jego subagentami) albo jeden przebieg headless lub nocny ticket, traktowany jako całość przy analizie.
 _Avoid_: Transkrypt, run, rozmowa
 
+**Plik zdarzeń**:
+Plik `headless.events.log` obok `headless.log` w katalogu przebiegu headless. Zawiera tylko linie wrappera (`[headless] …`), bez wyjścia wykonawcy. Czytają go Monitor i retro; starsze przebiegi bez tego pliku retro czyta z `headless.log`.
+_Avoid_: events file, log zdarzeń
+
 **Koszt**:
 Liczba tokenów zużytych przez jedną Sesję: wejście, cache i wyjście. Nie jest kwotą w pieniądzach.
 _Avoid_: usage, zużycie, cena

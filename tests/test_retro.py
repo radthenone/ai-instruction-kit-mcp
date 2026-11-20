@@ -733,6 +733,34 @@ class HeadlessRunTests(unittest.TestCase):
         )
         self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
 
+    def _events(self, text: str) -> None:
+        (self.run_dir / "headless.events.log").write_text(text, encoding="utf-8")
+
+    def test_exit_code_is_read_from_events_file_not_from_echoed_log(self) -> None:
+        # Echo cudzej linii `kod wyjścia: 1` w logu nie przesłania prawdziwego kodu 0 z pliku zdarzeń (#489).
+        self._events("[headless] ticket #365\n[headless] kod wyjścia: 0\n")
+        self._log("[headless] kod wyjścia: 0\n[headless] kod wyjścia: 1\n")
+        self.assertEqual(self._signals(), [])
+
+    def test_run_without_events_file_reads_exit_code_from_log(self) -> None:
+        # Run sprzed pliku zdarzeń: kod wyjścia dalej z headless.log.
+        self._log("[headless] kod wyjścia: 1\n")
+        self.assertEqual(self._signals(), [("headless_exit", "exit-nonzero")])
+
+    def test_clean_tree_is_read_from_report_in_log_while_exit_comes_from_events(self) -> None:
+        self._events("[headless] kod wyjścia: 0\n")
+        self._log(
+            "[headless] raport końcowy\n## git status --short\n(czysto)\n"
+            "## git log 472c5d3..HEAD --oneline\n(brak commitów)\n"
+        )
+        self.assertEqual(self._signals(), [("headless_no_change", "exit0-clean-tree")])
+
+    def test_empty_events_file_means_no_exit_code_without_fallback(self) -> None:
+        # Plik zdarzeń istnieje, ale jest pusty: brak kodu, bez fallbacku na echo w logu.
+        self._events("")
+        self._log("[headless] kod wyjścia: 0\n")
+        self.assertEqual(self._signals(), [("headless_exit", "exit-missing")])
+
     def test_runs_in_user_cache_are_found_under_checkout_name(self) -> None:
         """Runy w cache są znajdowane pod nazwą katalogu roboczego."""
         run = self.root / "cache" / "kit-ai" / "headless" / self.workspace.name / self.RUN
