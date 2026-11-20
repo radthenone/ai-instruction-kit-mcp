@@ -1,7 +1,7 @@
 ---
 name: night-run
 description: Autonomiczna praca na liście issue w nocy albo w dzień (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run.
-model-tier: heavy
+model-tier: standard
 classification: procedure
 ---
 

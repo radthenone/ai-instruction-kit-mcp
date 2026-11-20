@@ -140,10 +140,10 @@ class TestReviewSecurityContent(unittest.TestCase):
         self.path = AGENTS_DIR / "review-security.md"
         self.text = self.path.read_text(encoding="utf-8")
 
-    def test_frontmatter_is_readonly_standard_review(self) -> None:
+    def test_frontmatter_is_readonly_heavy_review(self) -> None:
         self.assertTrue(self.text.startswith("---\nname: review-security\n"))
         self.assertIn("readonly: true", self.text)
-        self.assertIn("model-tier: standard", self.text)
+        self.assertIn("model-tier: heavy", self.text)
 
     def test_uses_mcp_stack_and_coding_standards(self) -> None:
         self.assertIn("get_bundle", self.text)

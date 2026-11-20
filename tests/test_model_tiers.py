@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -14,6 +16,7 @@ from model_tiers import (  # noqa: E402
     TIERS,
     ProfileError,
     apply_models,
+    main,
     parse_profile,
     sync_agents,
     template_tiers,
@@ -31,6 +34,36 @@ class TestTemplates(unittest.TestCase):
         for name, tier in tiers.items():
             with self.subTest(agent=name):
                 self.assertIn(tier, TIERS)
+
+
+class TestDefaultModelTiers(unittest.TestCase):
+    """Domyślne model tiers z templates (#516): `review-*` heavy, `night-run` standard."""
+
+    def test_sync_on_empty_profile_writes_default_tiers(self) -> None:
+        """Sync na pustym Profilu daje heavy dla `review-*` i standard dla `night-run`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "project.profile.yaml"
+            profile.write_text("", encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = main(["model_tiers.py", "sync", str(profile), str(AGENTS_DIR)])
+            agents = parse_profile(profile.read_text(encoding="utf-8"))[1] or {}
+        self.assertEqual(code, 0)
+        heavy = set(agents.get("heavy", []))
+        self.assertEqual(
+            heavy,
+            {
+                "review-architecture",
+                "review-backend",
+                "review-bugbot",
+                "review-edge",
+                "review-frontend",
+                "review-security",
+                "review-tests",
+                "review-ui",
+            },
+        )
+        self.assertLessEqual({path.stem for path in AGENTS_DIR.glob("review-*.md")}, heavy)
+        self.assertIn("night-run", agents.get("standard", []))
 
 
 class TestParseProfile(unittest.TestCase):
