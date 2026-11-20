@@ -57,6 +57,7 @@ def read_values(manifest: Path, target: str) -> tuple[str, str, str]:
         ValueError: Gdy cel nie ma wpisu albo sigil jest zły.
     """
     in_section = False
+    found: tuple[str, str, str] | None = None
     for line in manifest.read_text(encoding="utf-8").splitlines():
         if line.startswith("command_prefixes:"):
             in_section = True
@@ -65,11 +66,14 @@ def read_values(manifest: Path, target: str) -> tuple[str, str, str]:
             break
         match = _ENTRY.match(line) if in_section else None
         if match and match.group(1) == target:
-            sigil, namespace, name_prefix = match.group(2), match.group(3), match.group(4)
-            if sigil not in ALLOWED_SIGILS:
-                raise ValueError(f"command_prefixes.{target}.sigil: dozwolone / albo $, jest {sigil!r}")
-            return sigil, namespace, name_prefix
-    raise ValueError(f"Brak command_prefixes dla celu: {target}")
+            # Ostatni wpis wygrywa, jak w PyYAML (load_manifest).
+            found = (match.group(2), match.group(3), match.group(4))
+    if found is None:
+        raise ValueError(f"Brak command_prefixes dla celu: {target}")
+    sigil, namespace, name_prefix = found
+    if sigil not in ALLOWED_SIGILS:
+        raise ValueError(f"command_prefixes.{target}.sigil: dozwolone / albo $, jest {sigil!r}")
+    return sigil, namespace, name_prefix
 
 
 def copy_template(manifest: Path, target: str, src: Path, dest: Path) -> None:

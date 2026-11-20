@@ -391,8 +391,8 @@ def _load_command_prefixes(raw: dict[str, Any]) -> dict[str, CommandPrefix]:
             raise ValueError(f"command_prefixes.{target}.sigil: dozwolone / albo $, jest {sigil!r}")
         prefixes[str(target)] = CommandPrefix(
             sigil=sigil,
-            namespace=str(meta.get("namespace", "")),
-            name_prefix=str(meta.get("name_prefix", "")),
+            namespace=str(meta.get("namespace") or ""),
+            name_prefix=str(meta.get("name_prefix") or ""),
         )
     return prefixes
 

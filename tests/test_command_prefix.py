@@ -92,6 +92,15 @@ class TestManifestCommandPrefixes(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_manifest(Path(tmp))
 
+    def test_null_namespace_becomes_empty_string(self) -> None:
+        raw = yaml.safe_load((KIT_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
+        raw["command_prefixes"]["claude"]["namespace"] = None
+        raw["command_prefixes"]["claude"]["name_prefix"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "manifest.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+            prefix = load_manifest(Path(tmp)).command_prefix("claude")
+        self.assertEqual((prefix.namespace, prefix.name_prefix), ("", ""))
+
 
 class TestPlaceholderResolution(unittest.TestCase):
     """Podstawienie w treści i we frontmatter ``name:``."""
@@ -130,6 +139,17 @@ class TestStdlibReaderAgreesWithManifest(unittest.TestCase):
             expected = manifest.command_prefix(target)
             got = module.read_values(KIT_ROOT / "manifest.yaml", target)
             self.assertEqual(got, (expected.sigil, expected.namespace, expected.name_prefix), target)
+
+    def test_duplicate_target_entry_last_wins_in_both_readers(self) -> None:
+        text = (KIT_ROOT / "manifest.yaml").read_text(encoding="utf-8")
+        text += '  claude: {sigil: "$", namespace: "kit-ai:", name_prefix: "kit-ai:"}\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.yaml"
+            manifest_path.write_text(text, encoding="utf-8")
+            stdlib = _load_script("command_prefix").read_values(manifest_path, "claude")
+            yaml_prefix = load_manifest(Path(tmp)).command_prefix("claude")
+        self.assertEqual(stdlib, (yaml_prefix.sigil, yaml_prefix.namespace, yaml_prefix.name_prefix))
+        self.assertEqual(stdlib, ("$", "kit-ai:", "kit-ai:"))
 
 
 class TestCopyTemplate(unittest.TestCase):
