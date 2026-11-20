@@ -11,7 +11,7 @@ mobile: none
 
 codegen: none
 codegraph_clients: [claude, codex, antigravity, opencode]
-integrations: [orca, coderabbit]
+integrations: [orca, coderabbit, t3code]
 
 server:
   guard: auto
