@@ -24,6 +24,9 @@
 # odpalono instalator.
 .claude/skills/*
 @KIT_SKILLS_CLAUDE@
+# Plugin kit-ai (#526): cały katalog pluginu to pliki kita, więc whitelista katalogu.
+!.claude/skills/kit-ai/
+!.claude/skills/kit-ai/**
 !.claude/settings.json
 # Prywatne nadpisania: uprawnienia, włączone serwery MCP. Per maszyna, nie per repo.
 .claude/settings.local.json
@@ -72,5 +75,9 @@
 # --- Skille spoza kita (npx skills add …) ------------------------------------
 # Instalowane globalnie w ~/.agents/skills/ i linkowane do projektu. Kopia w repo
 # to duplikat, który zaraz rozjedzie się z globalną wersją — trzymaj je globalnie.
-.agents/skills/
+# Wyjątek: agenty i skille kita dla Antigravity (.agents/skills/<nazwa>/). Katalog
+# wykluczamy gwiazdką, nie ukośnikiem: przy `.agents/skills/` git nie wejdzie do środka
+# i negacja niżej nie zadziała (tak samo jak `.cursor/skills/*`).
+.agents/skills/*
+@KIT_SKILLS_AGENTS@
 skills-lock.json
