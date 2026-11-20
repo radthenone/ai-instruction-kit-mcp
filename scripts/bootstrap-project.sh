@@ -783,7 +783,7 @@ install_headless() {
   for c in "${CLIENTS_LIST[@]}"; do
     case "$c" in
       cursor) set -- .cursor/agents/headless.md ;;
-      claude) set -- .claude/agents/headless.md .claude/commands/headless.md ;;
+      claude) set -- .claude/agents/headless.md .claude/skills/kit-ai/skills/headless/SKILL.md ;;
       codex) set -- .codex/skills/headless/SKILL.md ;;
       vscode) set -- .github/prompts/headless.prompt.md ;;
       kiro) set -- .kiro/agents/headless.md ;;
@@ -834,16 +834,17 @@ install_night_run_t3() {
 }
 
 # Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
-# (mapa 1:1 z copy_shared_agents / copy_claude_commands / install_codex_agents /
-# render_agent_commands). Tier zmieniony na `none` = agenci znikają przy reload.
+# (mapa 1:1 z copy_shared_agents / render_agent_commands / install_codex_agents).
+# Tier zmieniony na `none` = agenci znikają przy reload.
 prune_tier_agents() {
   local name
   for name in $SKIPPED_AGENTS; do
-    rm -f "$TARGET/.claude/agents/$name.md" "$TARGET/.claude/commands/$name.md" \
+    rm -f "$TARGET/.claude/agents/$name.md" \
       "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
       "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
       "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
-    rm -rf "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
+    rm -rf "$TARGET/.claude/skills/kit-ai/skills/$name" \
+      "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
   done
 }
 
@@ -1044,47 +1045,6 @@ install_cursor() {
   copy_shared_skills cursor "$TARGET/.cursor/skills"
 }
 
-copy_claude_commands() {
-  local dest_dir="$1"
-  if [[ "$SKIP_AGENTS" -ne 0 ]]; then
-    return 0
-  fi
-  if [[ ! -d "$SHARED_AGENTS" ]]; then
-    echo "Brak $SHARED_AGENTS — nie skopiowano komend" >&2
-    exit 1
-  fi
-  mkdir -p "$dest_dir"
-  # Claude Code custom slash commands: bez literalnego $ARGUMENTS w treści, tekst po
-  # `/nazwa ...` jest ignorowany (nie trafia do Claude). Wstrzykujemy go tu — tylko
-  # w kopii dla Claude, źródło w shared/agents zostaje nietknięte (Cursor ma inny mechanizm).
-  SHARED_AGENTS="$SHARED_AGENTS" DEST_DIR="$dest_dir" "$PYTHON_BIN" - <<'PY'
-import os
-from pathlib import Path
-
-src_dir = Path(os.environ["SHARED_AGENTS"])
-dest_dir = Path(os.environ["DEST_DIR"])
-
-for src in sorted(src_dir.glob("*.md")):
-    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
-    assert lines[0].strip() == "---", f"{src}: brak frontmatter"
-    end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
-    # `name:`/`readonly:` to pola formatu subagentów — command frontmatter ich nie zna.
-    fm_lines = [
-        l for l in lines[1:end]
-        if not l.startswith("name:") and not l.startswith("readonly:")
-    ]
-    body = lines[end + 1:]
-    while body and body[0].strip() == "":
-        body.pop(0)
-
-    out = "---\n" + "".join(fm_lines) + "argument-hint: [args]\n---\n\n"
-    out += "Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS\n\n"
-    out += "".join(body)
-    (dest_dir / src.name).write_text(out, encoding="utf-8", newline="\n")
-PY
-  echo "  + $dest_dir (Claude slash commands, \$ARGUMENTS wired)"
-}
-
 install_claude() {
   fill_mcp "$KIT_ROOT/templates/claude/mcp.json" "$TARGET/.mcp.json"
   echo "  + .mcp.json (Claude Code)"
@@ -1122,7 +1082,16 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
 
   copy_shared_agents "$TARGET/.claude/agents" claude
   apply_model_tiers claude "$TARGET/.claude/agents"
-  copy_claude_commands "$TARGET/.claude/commands"
+  if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+    # Komendy od #526 to plugin skills-dir: `.claude/skills/kit-ai/` + `/kit-ai:<nazwa>`.
+    # Stare płaskie `.claude/commands/*.md` z poprzednich wersji kita znikają przy reloadzie.
+    local name
+    for name in "$ALL_AGENTS"/*.md; do
+      kit_rm ".claude/commands/$(basename "$name")"
+    done
+    rmdir "$TARGET/.claude/commands" 2>/dev/null || true
+    render_agent_commands claude "$TARGET/.claude/skills/kit-ai"
+  fi
   copy_shared_skills claude "$TARGET/.claude/skills"
 }
 
