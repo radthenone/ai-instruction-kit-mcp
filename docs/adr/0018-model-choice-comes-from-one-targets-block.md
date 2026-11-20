@@ -34,6 +34,6 @@ A PyYAML parser was rejected. Bootstrap runs on the system Python, which may not
 
 A repo that still has `models:` or `t3.targets` gets a notice on reload. Its agents run on the session model, and its T3 delegations fall back to the provider's default model, until the Profile is migrated. This is a change in behaviour, not an error. This repository's own Profile is migrated in the same change, through `/kit-project-edit`.
 
-The standard tier moves from `sonnet` to `claude-haiku-5-5` with effort `max`. Light agents get effort `low`. The heavy agents, all `review-*` since #516, get effort `medium`; `night-run` moved to the standard tier in #516. All of them previously inherited the session's effort.
+The standard tier moves from `sonnet` to `claude-haiku-5-5` with effort `max`. Light agents get effort `low`. In the template defaults, the heavy agents, all `review-*` since #516, get effort `medium`, and `night-run` moved to the standard tier in #516. Existing Profiles with an `agents:` block keep their own assignments, so their `review-*` agents may still run on `standard` and their `night-run` on `heavy`. All of them previously inherited the session's effort.
 
 `effort:` in agent frontmatter is documented, but the environment variable `CLAUDE_CODE_EFFORT_LEVEL` overrides it. Users who set that variable get its level instead of the Profile's.
