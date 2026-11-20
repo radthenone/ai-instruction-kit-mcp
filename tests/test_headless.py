@@ -23,7 +23,7 @@ NODE = shutil.which("node") or "node"
 # Narzędzia, których w izolowanym PATH potrzebuje wrapper i fałszywy wykonawca
 # (`basename`/`cat`/`sleep`/`git` w FAKE, `git` w raporcie wrappera) — bez katalogów
 # systemowych, żeby test „brak wykonawcy" nie znalazł prawdziwego `claude` (#205).
-TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps")
+TOOL_SYMLINKS = ("node", "git", "basename", "cat", "sleep", "ps", "rm")
 
 # Udaje CLI wykonawcy: zapisuje argv i stdin, zostawia „LSP” w tle i kończy się kodem
 # z FAKE_CODE (albo czeka FAKE_SLEEP sekund — do testu timeoutu). FAKE_COMMIT / FAKE_STASH
@@ -47,6 +47,7 @@ case " $FAKE_FAIL_FOR " in *" $(basename "$0") "*) echo "Error: request failed";
 if [ "$(basename "$0")" = claude ]; then cat > "$HEADLESS_TEST_DIR/stdin"; fi
 sleep 300 >/dev/null 2>&1 &
 echo $! > "$HEADLESS_TEST_DIR/child"
+if [ -n "$FAKE_REMOVE_RUN_DIR" ]; then rm -rf "$XDG_CACHE_HOME/kit-ai/headless"/*; fi
 echo "wynik wykonawcy"
 if [ -n "$FAKE_PROGRESS" ]; then i=0; while [ "$i" -lt "$FAKE_PROGRESS" ]; do echo "krok $i"; sleep 0.1; i=$((i+1)); done; fi
 if [ -n "$FAKE_LOOP" ]; then i=0; while [ "$i" -lt "$FAKE_LOOP" ]; do echo "→ Bash: próba $i"; echo "Error: boom"; if [ -n "$FAKE_LOOP_EDIT" ]; then echo "$i" >> tracked.txt; fi; sleep "${FAKE_LOOP_PAUSE:-0}"; i=$((i+1)); done; fi
@@ -104,6 +105,13 @@ def _alive(pid: int) -> bool:
     # Zombie po zabiciu, zanim init go zbierze, też liczy się jako martwy.
     status = Path(f"/proc/{pid}/status")
     return not (status.is_file() and "\nState:\tZ" in status.read_text())
+
+
+def _dead_pid() -> int:
+    """PID procesu, który już się zakończył (zamiast zgadywanego numeru jak 999999)."""
+    proc = subprocess.Popen([NODE, "-e", ""])
+    proc.wait()
+    return proc.pid
 
 
 def _clock_ahead(*, hours: int, minutes: bool) -> str:
@@ -256,6 +264,54 @@ class HeadlessWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         left = sorted(entry.name for entry in legacy.iterdir() if entry.is_dir())
         self.assertEqual(left, old[-5:])
+
+    def test_prune_keeps_active_run_with_living_pid(self) -> None:
+        """Run z aktywnym oznaczeniem (żywy PID) przeżywa start pięciu nowszych (#521)."""
+        runs = self.runs_dir()
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (runs / name).mkdir(parents=True)
+        (runs / old[0] / "active").write_text(f"{os.getpid()}\n", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((runs / old[0]).is_dir(), "aktywny run z żywym PID został skasowany")
+        self.assertFalse((runs / old[1]).exists(), "nieaktywny stary run powinien być skasowany")
+        current_run = next(entry for entry in runs.iterdir() if entry.is_dir() and entry.name not in old)
+        self.assertFalse((current_run / "active").exists(), "bieżący run zostawił plik active po zakończeniu")
+
+    def test_prune_removes_run_with_dead_pid(self) -> None:
+        """Run z porzuconym oznaczeniem (martwy PID) zostaje przycięty (#521)."""
+        runs = self.runs_dir()
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (runs / name).mkdir(parents=True)
+        (runs / old[0] / "active").write_text(f"{_dead_pid()}\n", encoding="utf-8")
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((runs / old[0]).exists(), "run z martwym PID nie został przycięty")
+
+    def test_prune_removes_run_with_stale_active_marker_past_ceiling(self) -> None:
+        """Run z oznaczeniem starszym niż sufit czasu zostaje przycięty (#521)."""
+        runs = self.runs_dir()
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (runs / name).mkdir(parents=True)
+        active_file = runs / old[0] / "active"
+        active_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        stale_time = time.time() - (180 * 60)
+        os.utime(active_file, (stale_time, stale_time))
+        result = self.run_wrapper("--host", "claude", "opencode", "x")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((runs / old[0]).exists(), "run z przeterminowanym oznaczeniem nie został przycięty")
+
+    def test_wrapper_finishes_report_when_run_dir_deleted(self) -> None:
+        """Wrapper bez błędu kończy raport, gdy jego katalog zniknął w trakcie (#521)."""
+        result = self.run_wrapper("--host", "claude", "opencode", "x", FAKE_REMOVE_RUN_DIR="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.runs_dir().exists(), "katalog runu miał zniknąć w trakcie runu")
+        self.assertIn("[headless] raport końcowy", result.stdout)
+        row = self.last_row(result)
+        self.assertEqual(row["klasa"], "OK")
 
     def test_antigravity_runs_headless_print_with_prompt_argument(self) -> None:
         self.profile("claude,antigravity")
@@ -2232,6 +2288,80 @@ class HeadlessRunsRootTest(unittest.TestCase):
         with patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp), "XDG_CACHE_HOME": ".cache"}):
             root = Path(node_export("h.runsRoot()", cwd=self.main))
         self.assertEqual(root, self.tmp / ".cache" / "kit-ai" / "headless" / "ai-kit")
+
+
+@unittest.skipUnless(shutil.which("node"), "brak node")
+class HeadlessActiveRunsPruneTest(unittest.TestCase):
+    """Pomijanie aktywnych runów przy sprzątaniu (#521)."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.runs = self.tmp / "runs"
+        self.runs.mkdir()
+
+    def test_is_pid_alive(self) -> None:
+        self.assertTrue(node_export("h.isPidAlive(process.pid)", cwd=self.tmp))
+        self.assertFalse(node_export(f"h.isPidAlive({_dead_pid()})", cwd=self.tmp))
+        self.assertFalse(node_export("h.isPidAlive(0)", cwd=self.tmp))
+        self.assertFalse(node_export("h.isPidAlive(-1)", cwd=self.tmp))
+        self.assertFalse(node_export("h.isPidAlive(null)", cwd=self.tmp))
+        self.assertFalse(node_export("h.isPidAlive('abc')", cwd=self.tmp))
+
+    def test_is_active_run(self) -> None:
+        run_active = self.runs / "run-active"
+        run_active.mkdir()
+        (run_active / "active").write_text(f"{os.getpid()}\n", encoding="utf-8")
+        self.assertTrue(node_export(f"h.isActiveRun({json.dumps(str(run_active))})", cwd=self.tmp))
+
+        run_dead = self.runs / "run-dead"
+        run_dead.mkdir()
+        (run_dead / "active").write_text(f"{_dead_pid()}\n", encoding="utf-8")
+        self.assertFalse(node_export(f"h.isActiveRun({json.dumps(str(run_dead))})", cwd=self.tmp))
+
+        run_no_marker = self.runs / "run-no-marker"
+        run_no_marker.mkdir()
+        self.assertFalse(node_export(f"h.isActiveRun({json.dumps(str(run_no_marker))})", cwd=self.tmp))
+
+    def test_is_active_run_past_ceiling(self) -> None:
+        run_stale = self.runs / "run-stale"
+        run_stale.mkdir()
+        active_file = run_stale / "active"
+        active_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        future_now = (time.time() + 130 * 60) * 1000
+        self.assertFalse(node_export(f"h.isActiveRun({json.dumps(str(run_stale))}, {future_now})", cwd=self.tmp))
+
+    def test_touch_active_keeps_long_run_active_past_ceiling(self) -> None:
+        """Odświeżony znacznik runu dłuższego niż sufit nadal oznacza run aktywny (#521)."""
+        run_long = self.runs / "run-long"
+        run_long.mkdir()
+        run = json.dumps(str(run_long))
+        active = json.dumps(str(run_long / "active"))
+        stale = (time.time() - 180 * 60) * 1000
+        expression = (
+            f"(async () => {{ const fs = await import('node:fs'); h.markActive({active}); "
+            f"fs.utimesSync({active}, new Date({stale}), new Date({stale})); "
+            f"const before = h.isActiveRun({run}); h.touchActive(); "
+            f"const after = h.isActiveRun({run}); h.clearActive(); "
+            f"return [before, after, fs.existsSync({active})] }})()"
+        )
+        self.assertEqual(node_export(expression, cwd=self.tmp), [False, True, False])
+
+    def test_prune_runs_skips_active_and_deletes_inactive(self) -> None:
+        old = [f"2020-01-0{day}T00-00-00-000Z-opencode" for day in range(1, 8)]
+        for name in old:
+            (self.runs / name).mkdir()
+        (self.runs / old[0] / "active").write_text(f"{os.getpid()}\n", encoding="utf-8")
+        (self.runs / old[1] / "active").write_text(f"{_dead_pid()}\n", encoding="utf-8")
+
+        node_export(f"(h.pruneRuns({json.dumps(str(self.runs))}, '', '', 4), true)", cwd=self.tmp)
+
+        self.assertTrue((self.runs / old[0]).is_dir())
+        self.assertFalse((self.runs / old[1]).exists())
+        self.assertFalse((self.runs / old[2]).exists())
+        for name in old[3:]:
+            self.assertTrue((self.runs / name).is_dir())
 
 
 @unittest.skipUnless(shutil.which("node"), "brak node")
