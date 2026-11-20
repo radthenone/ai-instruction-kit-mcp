@@ -36,7 +36,7 @@
  */
 import { execFile, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { constants, homedir } from "node:os"
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -446,18 +446,51 @@ function failedRunsWithoutExcerpt(ctx) {
     .filter((name) => !existsSync(excerptFile(ctx, name))))
 }
 
+// Sprawdzenie, czy proces o danym PID żyje (Unix: kill -0, na Linux bez zombie; Windows: kill -0).
+export function isPidAlive(pid) {
+  if (!pid || typeof pid !== "number" || Number.isNaN(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+  } catch (err) {
+    return err.code === "EPERM"
+  }
+  if (process.platform === "linux") {
+    try {
+      const status = readFileSync(`/proc/${pid}/status`, "utf8")
+      if (/\nState:\s+Z/i.test(status)) return false
+    } catch {
+      // Błąd odczytu /proc nie dowodzi zakończenia: kill(pid, 0) się powiódł (#521).
+    }
+  }
+  return true
+}
+
+// Run aktywny (#521): plik `active` z żywym PID, nie starszy niż sufit czasu (`timeoutCeilingMs`).
+export function isActiveRun(runPath, now = Date.now()) {
+  const activeFile = join(runPath, "active")
+  try {
+    if (!existsSync(activeFile)) return false
+    const stat = statSync(activeFile)
+    if (now - stat.mtimeMs > timeoutCeilingMs()) return false
+    const pid = Number(readFileSync(activeFile, "utf8").trim())
+    return isPidAlive(pid)
+  } catch {
+    return false
+  }
+}
+
 // Nazwa runu zaczyna się od ISO-czasu, więc sort leksykograficzny = chronologiczny.
-// ponytail: >5 równoległych runów skasuje katalog żywego runu; lock per run, gdy to realne.
+// Aktywne runy z innych worktree (#521) zostają; porzucone (martwy PID lub wiek > sufit) przycinamy.
 // Bieżący run poza sortem: przy cofniętym zegarze też zostaje.
 // `kept`: ile starszych runów zostaje obok bieżącego (w katalogu bez bieżącego runu — pełne KEEP_RUNS).
-function pruneRuns(runsDir, current, ctx, kept = KEEP_RUNS - 1) {
+export function pruneRuns(runsDir, current, ctx, kept = KEEP_RUNS - 1) {
   const keep = failedRunsWithoutExcerpt(ctx)
   const runs = readdirSync(runsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== current)
     .map((entry) => entry.name)
     .sort()
   for (const name of runs.slice(0, Math.max(0, runs.length - kept))) {
-    if (keep.has(name)) continue
+    if (keep.has(name) || isActiveRun(join(runsDir, name))) continue
     try {
       rmSync(join(runsDir, name), { recursive: true, force: true })
     } catch {
@@ -822,6 +855,43 @@ export async function describeStall({ tail, status, idleMs, model, run = runChec
 // Klasy: OK, LIMIT (pauza), HANG (timeout albo sygnał), ERROR (kod ≠ 0 albo błąd wywołania),
 // MODEL (nieznany model agy), SUSPECT (exit 0 bez zmian), POLITYKA (wpis stasha, commit bez trailera albo odmowa wykonawcy).
 let call = null
+let activePath = null
+let activeTimer = null
+// Odświeżanie znacznika co minutę (#521): run dłuższy niż sufit (łańcuch wykonawców, jawny `--timeout`) zostaje aktywny.
+const ACTIVE_REFRESH_MS = 60_000
+
+// Odświeża mtime znacznika `active`; `isActiveRun` liczy wiek od ostatniego odświeżenia.
+export function touchActive(now = new Date()) {
+  if (!activePath) return
+  try {
+    utimesSync(activePath, now, now)
+  } catch {
+    // Katalog runu mógł zostać usunięty; odświeżanie best-effort.
+  }
+}
+
+// Zakłada znacznik `active` z PID wrappera i zegar odświeżania, który nie trzyma procesu przy życiu.
+export function markActive(path) {
+  activePath = path
+  writeFileSync(path, `${process.pid}\n`)
+  clearInterval(activeTimer)
+  activeTimer = setInterval(touchActive, ACTIVE_REFRESH_MS)
+  activeTimer.unref()
+}
+
+export function clearActive() {
+  clearInterval(activeTimer)
+  activeTimer = null
+  if (!activePath) return
+  try {
+    rmSync(activePath, { force: true })
+  } catch {
+    // Sprzątanie best-effort
+  }
+  activePath = null
+}
+
+process.on("exit", clearActive)
 const CHECK_HINT = {
   OK: "-",
   LIMIT: "wznowić po resecie z linii PAUSE",
@@ -903,6 +973,7 @@ function writeExcerpt(ctx, logPath) {
 // Wiersz jako ostatnia linia wyjścia; callback przed `exit` — stdout do potoku bywa asynchroniczny
 // (macOS, Windows).
 function exitWithRow(code, klasa = "ERROR", extra) {
+  clearActive()
   if (!call) process.exit(code)
   process.stdout.write(finishRow(code, klasa, extra), () => process.exit(code))
 }
@@ -1009,6 +1080,7 @@ async function main() {
     runDir = `${runDir}-${process.pid}`
     mkdirSync(runDir)
   }
+  markActive(join(runDir, "active"))
   pruneRuns(runsDir, basename(runDir), call.ctx)
   // Przejściowo (#463): stare runy w projekcie przycinamy jak dotąd, aż znikną.
   if (existsSync(resolve(".ai", "headless-runs"))) pruneRuns(resolve(".ai", "headless-runs"), "", call.ctx, KEEP_RUNS)
@@ -1024,14 +1096,22 @@ async function main() {
   // Wszystko, co wrapper i wykonawca piszą, trafia też do logu.
   const log = (text, stream = process.stdout) => {
     stream.write(text)
-    appendFileSync(logPath, text)
+    try {
+      appendFileSync(logPath, text)
+    } catch {
+      // Katalog runu mógł zostać usunięty; błąd zapisu nie przerywa pracy wrappera (#521).
+    }
   }
   // Linie wrappera trafiają też do pliku zdarzeń (Monitor, retro); echo wykonawcy zostaje tylko w logu (#489).
   // Wewnętrzne CR/LF w polach dynamicznych (np. nazwa modelu z wyjścia wykonawcy) kodujemy, żeby nie tworzyły osobnych zdarzeń.
   const event = (text) => {
     const line = text.replace(/\r/g, "\\r").replace(/\n(?!$)/g, "\\n")
     log(line)
-    appendFileSync(eventsPath, line)
+    try {
+      appendFileSync(eventsPath, line)
+    } catch {
+      // Katalog runu mógł zostać usunięty (#521).
+    }
   }
   process.stdout.write(`[headless] log: ${logPath}\n`)
   process.stdout.write(`[headless] zdarzenia: ${eventsPath}\n`)
