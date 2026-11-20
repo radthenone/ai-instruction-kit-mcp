@@ -154,12 +154,40 @@ class TestClaudePluginSkills(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             workspace.mkdir()
-            legacy = workspace / ".claude" / "commands" / "git-start.md"
-            legacy.parent.mkdir(parents=True)
-            legacy.write_text("stara komenda\n", encoding="utf-8")
+            cmd_dir = workspace / ".claude" / "commands"
+            cmd_dir.mkdir(parents=True)
+            git_start = cmd_dir / "git-start.md"
+            git_start.write_text("stara komenda\n", encoding="utf-8")
+            review_be = cmd_dir / "review-backend.md"
+            review_be.write_text("stara komenda\n", encoding="utf-8")
+            mine = cmd_dir / "mine.md"
+            mine.write_text("moja komenda\n", encoding="utf-8")
 
             _install(workspace)
-            self.assertFalse(legacy.exists())
+            self.assertFalse(git_start.exists())
+            self.assertFalse(review_be.exists())
+            self.assertTrue(mine.exists())
+            self.assertTrue(cmd_dir.is_dir())
+
+    def test_remove_cleans_legacy_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            _install(workspace)
+            cmd_dir = workspace / ".claude" / "commands"
+            cmd_dir.mkdir(parents=True, exist_ok=True)
+            git_start = cmd_dir / "git-start.md"
+            git_start.write_text("stara komenda\n", encoding="utf-8")
+            review_ui = cmd_dir / "review-ui.md"
+            review_ui.write_text("stara komenda\n", encoding="utf-8")
+            mine = cmd_dir / "mine.md"
+            mine.write_text("moja komenda\n", encoding="utf-8")
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode", remove=True)
+            self.assertFalse(git_start.exists())
+            self.assertFalse(review_ui.exists())
+            self.assertTrue(mine.exists())
+            self.assertTrue(cmd_dir.is_dir())
 
 
 class TestClaudePluginDiscovery(unittest.TestCase):
