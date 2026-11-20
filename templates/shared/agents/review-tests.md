@@ -2,7 +2,7 @@
 name: review-tests
 description: Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /review-tests.
 readonly: true
-model-tier: standard
+model-tier: heavy
 classification: procedure
 ---
 
