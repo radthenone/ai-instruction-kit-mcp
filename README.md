@@ -515,6 +515,18 @@ decisions:
 
 Bundle liczone są z Tierów: `get_bundle backend` zawiera Stack z Tieru `backend`, pusty profil daje sam core. Nierozpoznana wartość Tieru nie wywraca serwera — ląduje w „Nierozpoznanych decyzjach" w `get_index` (ADR-0004). Stare klucze `stacks:` / `patterns:` czytane są nadal.
 
+### Integracje (`integrations:`)
+
+Lista zewnętrznych narzędzi w Profilu. Pusta lista = brak integracji. Nierozpoznana nazwa daje ostrzeżenie i jest pomijana.
+
+- `orca` — render `orca.yaml`. Reload usuwa plik, gdy Profil go już nie wymienia (tylko pliki z markerem kita).
+- `coderabbit` — render `.coderabbit.yaml` (język z `language:`). Usuwanie jak przy `orca`.
+- `t3code` — bez pliku w repo. Włącza kartę transportu T3 Code dla `/night-run` (`.ai/night-run-t3.md`). Bez `t3code` reload usuwa kartę (przy zainstalowanym PyYAML, zależności kita; patrz niżej).
+
+Profil z błędem składni YAML: reload ostrzega i nie zmienia plików integracji ani karty T3. Zdublowany klucz `integrations:` albo nieprawidłowa data (np. `2026-13-01`): karta T3 zostaje bez zmian.
+
+Bez PyYAML reload nie sprawdzi składni Profilu, więc karta T3 zostaje bez zmian: nie jest ani instalowana, ani usuwana. Pojawia się ostrzeżenie. Dotyczy to `bootstrap-project.sh` uruchomionego wprost na systemowym Pythonie bez PyYAML; naprawa: `kit-ai reload` (własny interpreter kita) albo instalacja PyYAML.
+
 ### Model tiers agentów (`models:` / `agents:`)
 
 Każdy agent kita ma w template `model-tier:` (`light` / `standard` / `heavy`; osobny klucz

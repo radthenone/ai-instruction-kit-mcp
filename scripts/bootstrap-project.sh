@@ -799,13 +799,23 @@ install_night_run_watchdog() {
   echo "  + .ai/night-run-watchdog.sh (watchdog /night-run)"
 }
 
-# Karta transportu T3 Code dla /night-run (#474) — instalowana jako .ai/night-run-t3.md.
-# Bez agentów (--skip-agents): usuwana przy reloadzie.
+# Karta transportu T3 Code dla /night-run (#474) — instalowana jako .ai/night-run-t3.md
+# tylko gdy Profil ma `t3code` w `integrations:` (#514). Bez agentów (--skip-agents) albo bez
+# `t3code` karta jest usuwana przy reloadzie. Profil nieczytelny, niejednoznaczny lub bez PyYAML: stan karty bez zmian.
 install_night_run_t3() {
+  local rc=0
   if [[ "$SKIP_AGENTS" -ne 0 ]]; then
     kit_rm .ai/night-run-t3.md
     return 0
   fi
+  PYTHONPATH="$KIT_ROOT/src" "$PYTHON_BIN" "$KIT_ROOT/scripts/render_integrations.py" \
+    --has t3code "$TARGET" "$TARGET/.ai/project.profile.yaml" "$KIT_ROOT" || rc=$?
+  case "$rc" in
+    0) ;;
+    3) kit_rm .ai/night-run-t3.md; return 0 ;;
+    2) return 0 ;;  # Profil nieczytelny, niejednoznaczny lub bez PyYAML: karta bez zmian (ostrzeżenie wypisał Python)
+    *) echo "  ! nie ustalono t3code (kod $rc) — karta T3 bez zmian" >&2; return 0 ;;
+  esac
   cp "$KIT_ROOT/templates/shared/night-run/t3.md" "$TARGET/.ai/night-run-t3.md"
   echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"
 }

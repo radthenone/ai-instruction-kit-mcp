@@ -195,7 +195,8 @@ class TestRealRun(_BootstrapTestCase):
 
             self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
             self.assertTrue((workspace / ".ai" / ".kit-bootstrap.json").is_file())
-            self.assertTrue((workspace / ".ai" / "night-run-t3.md").is_file())
+            # Karta T3 tylko przy `t3code` w Profilu (#514); domyślny Profil jej nie ma.
+            self.assertFalse((workspace / ".ai" / "night-run-t3.md").exists())
             settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
             self.assertIn("PreToolUse", settings)
 

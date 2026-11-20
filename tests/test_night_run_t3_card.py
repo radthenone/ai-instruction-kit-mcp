@@ -357,15 +357,55 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("niepotwierdzony", self.card_text)
 
 
+def _write_profile(workspace: Path, integrations: str) -> None:
+    """Zapisz Profil z szablonu kita, z podaną wartością `integrations:`."""
+    template = (KIT_ROOT / "templates" / "project.profile.yaml").read_text(encoding="utf-8")
+    profile = workspace / ".ai" / "project.profile.yaml"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_text(template.replace("integrations: []", f"integrations: {integrations}"), encoding="utf-8")
+
+
 class TestNightRunT3CardInstall(unittest.TestCase):
     def setUp(self) -> None:
         if not resolve_bash():
             self.skipTest("brak bash")
 
+    def test_not_installed_without_t3code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
+            self.assertFalse((workspace / ".ai" / "night-run-t3.md").exists())
+
+    def test_kept_when_profile_is_broken(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            _write_profile(workspace, "[t3code]")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
+            target = workspace / ".ai" / "night-run-t3.md"
+            self.assertTrue(target.is_file())
+            (workspace / ".ai" / "project.profile.yaml").write_text("integrations: [t3code\n", encoding="utf-8")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
+            self.assertTrue(target.is_file(), "Profil z błędem składni nie może kasować karty")
+
+    def test_removed_when_t3code_leaves_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            _write_profile(workspace, "[t3code]")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
+            target = workspace / ".ai" / "night-run-t3.md"
+            self.assertTrue(target.is_file())
+            _write_profile(workspace, "[]")
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
+            self.assertFalse(target.exists(), f"Plik {target} nie został usunięty po zdjęciu t3code")
+
     def test_installed_and_removed_by_bootstrap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             workspace.mkdir()
+            _write_profile(workspace, "[t3code]")
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex")
             target = workspace / ".ai" / "night-run-t3.md"
             self.assertTrue(target.is_file(), f"Brak pliku {target} po instalacji")

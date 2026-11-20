@@ -17,6 +17,7 @@ from guides.integrations import (
     integration_target_file,
     integration_template,
     parse_integrations,
+    profile_has_integration,
     render_integrations,
 )
 
@@ -75,6 +76,11 @@ class TestIntegrationsParser(unittest.TestCase):
         self.assertEqual(integrations, ["orca"])
         self.assertEqual(warnings, [])
 
+    def test_t3code_known_without_warning(self) -> None:
+        integrations, warnings = parse_integrations(["t3code"])
+        self.assertEqual(integrations, ["t3code"])
+        self.assertEqual(warnings, [])
+
 
 class TestIntegrationsMapping(unittest.TestCase):
     """Testy mapowania integracji na pliki i szablony oraz języka CodeRabbit."""
@@ -82,6 +88,12 @@ class TestIntegrationsMapping(unittest.TestCase):
     def test_known_integrations_constant(self) -> None:
         self.assertIn("orca", KNOWN_INTEGRATIONS)
         self.assertIn("coderabbit", KNOWN_INTEGRATIONS)
+
+    def test_t3code_is_known_without_target_file(self) -> None:
+        self.assertIn("t3code", KNOWN_INTEGRATIONS)
+        self.assertNotIn("t3code", INTEGRATIONS_MAP)
+        self.assertIsNone(integration_target_file("t3code"))
+        self.assertIsNone(integration_template("t3code"))
 
     def test_target_files_mapping(self) -> None:
         self.assertEqual(integration_target_file("orca"), "orca.yaml")
@@ -124,6 +136,16 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertEqual(created, [])
             self.assertFalse((workspace / "orca.yaml").exists())
             self.assertFalse((workspace / ".coderabbit.yaml").exists())
+
+    def test_t3code_renders_no_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            kit_root = workspace / "kit"
+            kit_root.mkdir()
+
+            created = render_integrations(workspace, kit_root, integrations=["t3code"])
+            self.assertEqual(created, [])
+            self.assertFalse((workspace / ".ai").exists())
 
     def test_empty_profile_dict_renders_no_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -322,6 +344,80 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertTrue(target.is_file())
 
 
+class TestProfileHasIntegration(unittest.TestCase):
+    """Warunek integracji bez pliku (karta T3): odczyt Profilu jak w renderze."""
+
+    def _profile(self, workspace: Path, text: str) -> Path:
+        profile = workspace / ".ai" / "project.profile.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(text, encoding="utf-8")
+        return profile
+
+    def test_listed_integration_is_true(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations:\n  - t3code\n")
+            self.assertIs(profile_has_integration(profile, "t3code"), True)
+
+    def test_other_integrations_only_is_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [orca]\n")
+            self.assertIs(profile_has_integration(profile, "t3code"), False)
+
+    def test_missing_profile_is_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            missing = Path(tmp_dir) / ".ai" / "project.profile.yaml"
+            self.assertIs(profile_has_integration(missing, "t3code"), False)
+
+    def test_yaml_syntax_error_is_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [t3code\n")
+            self.assertIsNone(profile_has_integration(profile, "t3code"))
+
+    def test_unknown_name_does_not_block_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [t3code, literowka]\n")
+            self.assertIs(profile_has_integration(profile, "t3code"), True)
+
+
+    def test_duplicate_integrations_key_is_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [t3code]\nintegrations: []\n")
+            self.assertIsNone(profile_has_integration(profile, "t3code"))
+
+    def test_invalid_date_is_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [t3code]\nreview: 2026-13-01\n")
+            self.assertIsNone(profile_has_integration(profile, "t3code"))
+
+    def test_empty_or_non_mapping_profile_is_none(self) -> None:
+        for text in ("", "- t3code\n"):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp_dir:
+                profile = self._profile(Path(tmp_dir), text)
+                self.assertIsNone(profile_has_integration(profile, "t3code"))
+
+    def test_without_pyyaml_is_none_except_missing_profile(self) -> None:
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            hit = self._profile(Path(tmp_dir), "integrations: [t3code]\n")
+            miss = self._profile(Path(tmp_dir) / "a", "integrations: [orca]\n")
+            broken = self._profile(Path(tmp_dir) / "b", "integrations: [t3code]\nbroken: [\n")
+            absent = Path(tmp_dir) / "c" / ".ai" / "project.profile.yaml"
+            with mock.patch.dict("sys.modules", {"yaml": None}):
+                for profile in (hit, miss, broken):
+                    with self.subTest(profile=str(profile)):
+                        self.assertIsNone(profile_has_integration(profile, "t3code"))
+                self.assertIs(profile_has_integration(absent, "t3code"), False)
+
+    def test_unreadable_profile_is_none(self) -> None:
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile = self._profile(Path(tmp_dir), "integrations: [t3code]\n")
+            with mock.patch.object(Path, "stat", side_effect=PermissionError("odmowa dostępu")):
+                self.assertIsNone(profile_has_integration(profile, "t3code"))
+
+
 class TestIntegrationsCLI(unittest.TestCase):
     def test_cli_main_prints_unknown_integration_warnings(self) -> None:
         import io
@@ -366,6 +462,54 @@ class TestIntegrationsCLI(unittest.TestCase):
             exit_code = main(argv, kit_root=kit_root)
             self.assertEqual(exit_code, 0)
             self.assertTrue((workspace / "orca.yaml").is_file())
+
+    def test_cli_has_exit_codes(self) -> None:
+        """--has: 0 gdy Profil wymienia integrację, 3 gdy nie, 2 gdy nie daje się odczytać jednoznacznie; bez zapisu."""
+        import io
+        import sys
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            workspace = tmp / "ws"
+            workspace.mkdir()
+            kit_root = tmp / "kit"
+            kit_root.mkdir()
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+            cases = [
+                ("integrations: [t3code]\n", 0),
+                ("integrations: [orca]\n", 3),
+                ("integrations: [t3code\n", 2),
+            ]
+            for text, expected in cases:
+                with self.subTest(text=text):
+                    profile.write_text(text, encoding="utf-8")
+                    buf = io.StringIO()
+                    old_err = sys.stderr
+                    try:
+                        sys.stderr = buf
+                        argv = ["render_integrations.py", "--has", "t3code", str(workspace), str(profile), str(kit_root)]
+                        exit_code = main(argv, kit_root=kit_root)
+                    finally:
+                        sys.stderr = old_err
+                    self.assertEqual(exit_code, expected)
+            self.assertEqual([p.name for p in profile.parent.iterdir()], ["project.profile.yaml"])
+
+    def test_cli_has_without_pyyaml_says_how_to_fix(self) -> None:
+        """--has bez PyYAML: kod 2 i ostrzeżenie z naprawą (reload przez `kit-ai` albo instalacja PyYAML)."""
+        import io
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("integrations: [t3code]\n", encoding="utf-8")
+            buf = io.StringIO()
+            with mock.patch.dict("sys.modules", {"yaml": None}), mock.patch("sys.stderr", buf):
+                argv = ["render_integrations.py", "--has", "t3code", str(workspace), str(profile), str(workspace)]
+                exit_code = main(argv, kit_root=workspace)
+            self.assertEqual(exit_code, 2)
+            self.assertIn("brak PyYAML", buf.getvalue())
+            self.assertIn("kit-ai reload", buf.getvalue())
 
 
 class TestReadProfileIntegrations(unittest.TestCase):
