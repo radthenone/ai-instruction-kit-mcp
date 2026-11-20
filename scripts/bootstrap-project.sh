@@ -68,6 +68,8 @@ KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARED_AGENTS="$KIT_ROOT/templates/shared/agents"
 # Komplet agentów (SHARED_AGENTS jest niżej podmieniane na zestaw po filtrze Tierów).
 ALL_AGENTS="$SHARED_AGENTS"
+# Kopie z dawnych instalacji zostają u użytkowników.
+LEGACY_COMMAND_NAMES=(review-backend review-frontend review-ui subagent-backend subagent-frontend teacher-backend teacher-frontend)
 PROFILE_TIERS=""
 REMOVE=0
 SHARED_GUARDS="$KIT_ROOT/templates/shared/guards"
@@ -262,6 +264,17 @@ client_present() {
 # Usuwa TYLKO pliki, które bootstrap sam kładzie dla danego klienta — po nazwie, nigdy
 # całego katalogu. Własne agenty, komendy, hooki i skille użytkownika obok zostają.
 # Plik użytkownika o nazwie identycznej z plikiem kita też zniknie (README).
+prune_legacy_claude_commands() {
+  local name
+  for name in "$ALL_AGENTS"/*.md; do
+    kit_rm ".claude/commands/$(basename "$name")"
+  done
+  for name in "${LEGACY_COMMAND_NAMES[@]}"; do
+    kit_rm ".claude/commands/${name}.md"
+  done
+  rmdir "$TARGET/.claude/commands" 2>/dev/null || true
+}
+
 prune_client() {
   local id="$1" files rel name
   client_present "$id" || return 0
@@ -317,6 +330,9 @@ prune_client() {
       rmdir "$TARGET/.agents" 2>/dev/null || true
       ;;
   esac
+  if [[ "$id" == "claude" ]]; then
+    prune_legacy_claude_commands
+  fi
   if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
     "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
   fi
@@ -1085,11 +1101,7 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # Komendy od #526 to plugin skills-dir: `.claude/skills/kit-ai/` + `/kit-ai:<nazwa>`.
     # Stare płaskie `.claude/commands/*.md` z poprzednich wersji kita znikają przy reloadzie.
-    local name
-    for name in "$ALL_AGENTS"/*.md; do
-      kit_rm ".claude/commands/$(basename "$name")"
-    done
-    rmdir "$TARGET/.claude/commands" 2>/dev/null || true
+    prune_legacy_claude_commands
     render_agent_commands claude "$TARGET/.claude/skills/kit-ai"
   fi
   copy_shared_skills claude "$TARGET/.claude/skills"
