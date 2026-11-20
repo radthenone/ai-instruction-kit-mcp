@@ -78,7 +78,8 @@ class TestManifestCommandPrefixes(unittest.TestCase):
         manifest = load_manifest(KIT_ROOT)
         for target in TARGETS:
             prefix = manifest.command_prefix(target)
-            self.assertEqual((prefix.sigil, prefix.namespace, prefix.name_prefix), ("/", "", ""), target)
+            expected = ("/", "kit-ai:", "") if target == "claude" else ("/", "", "")
+            self.assertEqual((prefix.sigil, prefix.namespace, prefix.name_prefix), expected, target)
 
     def test_unknown_target_raises(self) -> None:
         with self.assertRaises(ValueError):

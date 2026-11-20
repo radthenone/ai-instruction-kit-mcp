@@ -180,7 +180,12 @@ CLIENT_DIRS: dict[str, str] = {
 # nazwa pliku (bez ``.md`` / ``.prompt``) albo katalogu skilla.
 COMMAND_SURFACES: dict[str, tuple[str, ...]] = {
     "cursor": (".cursor/agents/*.md", ".cursor/skills/*/SKILL.md"),
-    "claude": (".claude/agents/*.md", ".claude/commands/*.md", ".claude/skills/*/SKILL.md"),
+    "claude": (
+        ".claude/agents/*.md",
+        ".claude/commands/*.md",
+        ".claude/skills/*/SKILL.md",
+        ".claude/skills/kit-ai/skills/*/SKILL.md",
+    ),
     "codex": (".codex/skills/*/SKILL.md",),
     "vscode": (".github/prompts/*.prompt.md",),
     "kiro": (".kiro/agents/*.md",),

@@ -6,10 +6,12 @@ Użycie:
     render_agent_commands.py FORMAT SRC_DIR DEST_DIR
 
 FORMAT: vscode | kilo | opencode (zarazem nazwa celu w command_prefixes, #525)
+        | claude (plugin skills-dir ``kit-ai``, #526)
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -17,6 +19,8 @@ from pathlib import Path
 from command_prefix import read_values, resolve
 
 MANIFEST = Path(__file__).resolve().parents[1] / "manifest.yaml"
+ARGUMENTS_LINE = "Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS\n\n"
+PLUGIN = {"name": "kit-ai", "description": "Komendy instruction-kit jako /kit-ai:<nazwa>."}
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -59,10 +63,18 @@ def render_opencode(meta: dict[str, str], body: str) -> str:
     return front + body
 
 
+def render_claude(meta: dict[str, str], body: str) -> str:
+    # Skill pluginu skills-dir: .claude/skills/kit-ai/skills/<name>/SKILL.md,
+    # wywołanie /kit-ai:<name>. `readonly:` to pole subagentów, nie skilli.
+    kept = "".join(f"{key}: {value}\n" for key, value in meta.items() if key != "readonly")
+    return f"---\n{kept}---\n\n" + ARGUMENTS_LINE + body
+
+
 RENDERERS = {
     "vscode": render_vscode,
     "kilo": render_kilo,
     "opencode": render_opencode,
+    "claude": render_claude,
 }
 
 # GitHub Copilot rozpoznaje tylko *.prompt.md; reszta zostaje przy *.md.
@@ -88,14 +100,23 @@ def main(argv: list[str]) -> int:
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     suffix = DEST_SUFFIX.get(fmt)
+    if fmt == "claude":
+        (dest_dir / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+        (dest_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps(PLUGIN, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+        )
     for src in sorted(src_dir.glob("*.md")):
-        dest_name = src.stem + suffix if suffix else src.name
+        if fmt == "claude":
+            dest = dest_dir / "skills" / src.stem / "SKILL.md"
+        else:
+            dest = dest_dir / (src.stem + suffix if suffix else src.name)
         text = resolve(
             src.read_text(encoding="utf-8"), sigil=sigil, namespace=namespace, name_prefix=name_prefix
         )
         meta, body = parse_frontmatter(text)
         out = renderer(meta, body)
-        (dest_dir / dest_name).write_text(out, encoding="utf-8", newline="\n")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(out, encoding="utf-8", newline="\n")
     return 0
 
 

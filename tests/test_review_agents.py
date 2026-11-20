@@ -24,7 +24,7 @@ AGENTS_DIR = KIT_ROOT / "templates" / "shared" / "agents"
 # Ścieżki, pod którymi bootstrap kładzie agenta u klienta (README: „Klienci AI”).
 CLIENT_PATHS: dict[str, tuple[str, ...]] = {
     "cursor": (".cursor/agents/{name}.md",),
-    "claude": (".claude/agents/{name}.md", ".claude/commands/{name}.md"),
+    "claude": (".claude/agents/{name}.md", ".claude/skills/kit-ai/skills/{name}/SKILL.md"),
     "codex": (".codex/skills/{name}/SKILL.md",),
     "vscode": (".github/prompts/{name}.prompt.md",),
     "kiro": (".kiro/agents/{name}.md",),

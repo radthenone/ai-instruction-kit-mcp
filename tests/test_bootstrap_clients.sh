@@ -67,7 +67,7 @@ echo "OK  --clients codex (+ agenty jako skille)"
 "$BOOT" "$TMP/claude-kiro" --clients claude,kiro --from "$ROOT" >/dev/null
 test -f "$TMP/claude-kiro/.mcp.json"
 test -d "$TMP/claude-kiro/.claude/agents"
-test -f "$TMP/claude-kiro/.claude/commands/cleanup.md"
+test -f "$TMP/claude-kiro/.claude/skills/kit-ai/skills/cleanup/SKILL.md"
 test -d "$TMP/claude-kiro/.kiro/agents"
 test ! -e "$TMP/claude-kiro/.cursor/mcp.json"
 # Claude dostaje te same Guardy co Cursor plus bash-guard, linters-guard, rtk-check.
@@ -181,7 +181,7 @@ echo "OK  reload sprząta kitowy skill retro po zmianie nazwy, cudzy zostaje"
 
 # night-run (#71): model pod /goal wywołuje go sam, więc musi trafić do każdego klienta,
 # a frontmatter nie może mieć readonly ani disable-model-invocation.
-for p in .cursor/agents/night-run.md .claude/commands/night-run.md \
+for p in .cursor/agents/night-run.md .claude/skills/kit-ai/skills/night-run/SKILL.md \
          .codex/skills/night-run/SKILL.md .github/prompts/night-run.prompt.md \
          .kiro/agents/night-run.md .kilocode/workflows/night-run.md \
          .agents/skills/night-run/SKILL.md .opencode/command/night-run.md; do
@@ -189,7 +189,7 @@ for p in .cursor/agents/night-run.md .claude/commands/night-run.md \
 done
 # kit-project-begin / kit-project-edit (#124): konfiguracja projektu u każdego klienta.
 for name in kit-project-begin kit-project-edit; do
-  for p in .cursor/agents/$name.md .claude/agents/$name.md .claude/commands/$name.md \
+  for p in .cursor/agents/$name.md .claude/agents/$name.md .claude/skills/kit-ai/skills/$name/SKILL.md \
            .codex/skills/$name/SKILL.md .github/prompts/$name.prompt.md \
            .kiro/agents/$name.md .kilocode/workflows/$name.md \
            .agents/skills/$name/SKILL.md .opencode/command/$name.md; do
