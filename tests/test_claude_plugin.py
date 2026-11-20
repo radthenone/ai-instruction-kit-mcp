@@ -189,6 +189,25 @@ class TestClaudePluginSkills(unittest.TestCase):
             self.assertTrue(mine.exists())
             self.assertTrue(cmd_dir.is_dir())
 
+    def test_reload_prunes_orphan_plugin_skills(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            _install(workspace)
+
+            orphan_dir = workspace / SKILLS_DIR / "stary-agent"
+            orphan_dir.mkdir(parents=True)
+            (orphan_dir / "SKILL.md").write_text("orphan\n", encoding="utf-8")
+
+            custom_skill_dir = workspace / ".claude" / "skills" / "moj-skill"
+            custom_skill_dir.mkdir(parents=True)
+            (custom_skill_dir / "SKILL.md").write_text("custom\n", encoding="utf-8")
+
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+            self.assertFalse(orphan_dir.exists())
+            self.assertTrue(custom_skill_dir.is_dir())
+            self.assertTrue((custom_skill_dir / "SKILL.md").is_file())
+
 
 class TestClaudePluginDiscovery(unittest.TestCase):
     """Doctor i kit_status znają ścieżkę pluginu."""

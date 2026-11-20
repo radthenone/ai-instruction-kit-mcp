@@ -1144,6 +1144,16 @@ render_agent_commands() {
     echo "Brak $SHARED_AGENTS — nie wyrenderowano komend ($fmt)" >&2
     exit 1
   fi
+  if [[ "$fmt" == "claude" && -d "$dest_dir/skills" ]]; then
+    local orphan_dir orphan_name
+    for orphan_dir in "$dest_dir/skills"/*; do
+      [[ -d "$orphan_dir" ]] || continue
+      orphan_name="$(basename "$orphan_dir")"
+      if [[ ! -f "$ALL_AGENTS/$orphan_name.md" ]]; then
+        rm -rf "$orphan_dir"
+      fi
+    done
+  fi
   "$PYTHON_BIN" "$KIT_ROOT/scripts/render_agent_commands.py" "$fmt" "$SHARED_AGENTS" "$dest_dir"
   echo "  + $dest_dir ($fmt slash commands)"
 }
