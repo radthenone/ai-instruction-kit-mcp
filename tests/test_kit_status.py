@@ -108,9 +108,9 @@ class TestKitStatus(unittest.TestCase):
             out = check_kit_updates(kit_root, workspace)
             self.assertIn("ZMIENIŁ SIĘ", out)
             self.assertIn("templates/shared/agents/git-start.md", out)
-            # Komendy Claude są teraz pluginem, nie płaskim .claude/commands/.
+            # Komendy Claude są pluginem, a komunikat o nadpisaniu ostrzega też o usuwaniu z .claude/commands/.
             self.assertIn(".claude/skills/kit-ai/", out)
-            self.assertNotIn(".claude/commands/", out)
+            self.assertIn(".claude/commands/", out)
 
     def test_changed_untracked_file_no_rebootstrap_needed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
