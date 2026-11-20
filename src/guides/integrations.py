@@ -606,7 +606,12 @@ def main(argv: list[str] | None = None, kit_root: Path | None = None) -> int:
         # Kody dla bash: 0 — wymienia, 3 — nie wymienia, 2 — stan bez zmian. Kod 1 (np. wyjątek Pythona) też znaczy „bez zmian”.
         answer = profile_has_integration(profile_path, has_name.strip().lower())
         if answer is None:
-            print(f"ostrzeżenie: nie ustalono `{has_name}` w Profilu `{profile_path}` (nieczytelny, niejednoznaczny albo brak PyYAML) — stan bez zmian", file=sys.stderr)
+            try:
+                import yaml  # noqa: F401
+                reason = "nieczytelny albo niejednoznaczny"
+            except ImportError:
+                reason = "brak PyYAML: uruchom `kit-ai reload` albo zainstaluj PyYAML"
+            print(f"ostrzeżenie: nie ustalono `{has_name}` w Profilu `{profile_path}` ({reason}) — stan bez zmian", file=sys.stderr)
             return 2
         return 0 if answer else 3
     resolved_kit_root = (

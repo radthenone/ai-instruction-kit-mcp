@@ -525,7 +525,7 @@ Lista zewnętrznych narzędzi w Profilu. Pusta lista = brak integracji. Nierozpo
 
 Profil z błędem składni YAML: reload ostrzega i nie zmienia plików integracji ani karty T3. Zdublowany klucz `integrations:` albo nieprawidłowa data (np. `2026-13-01`): karta T3 zostaje bez zmian.
 
-Bez PyYAML reload nie sprawdzi składni Profilu, więc karta T3 zostaje bez zmian: nie jest ani instalowana, ani usuwana. Pojawia się ostrzeżenie.
+Bez PyYAML reload nie sprawdzi składni Profilu, więc karta T3 zostaje bez zmian: nie jest ani instalowana, ani usuwana. Pojawia się ostrzeżenie. Dotyczy to `bootstrap-project.sh` uruchomionego wprost na systemowym Pythonie bez PyYAML; naprawa: `kit-ai reload` (własny interpreter kita) albo instalacja PyYAML.
 
 ### Model tiers agentów (`models:` / `agents:`)
 

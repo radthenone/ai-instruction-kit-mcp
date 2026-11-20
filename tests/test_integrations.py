@@ -494,6 +494,23 @@ class TestIntegrationsCLI(unittest.TestCase):
                     self.assertEqual(exit_code, expected)
             self.assertEqual([p.name for p in profile.parent.iterdir()], ["project.profile.yaml"])
 
+    def test_cli_has_without_pyyaml_says_how_to_fix(self) -> None:
+        """--has bez PyYAML: kod 2 i ostrzeżenie z naprawą (reload przez `kit-ai` albo instalacja PyYAML)."""
+        import io
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("integrations: [t3code]\n", encoding="utf-8")
+            buf = io.StringIO()
+            with mock.patch.dict("sys.modules", {"yaml": None}), mock.patch("sys.stderr", buf):
+                argv = ["render_integrations.py", "--has", "t3code", str(workspace), str(profile), str(workspace)]
+                exit_code = main(argv, kit_root=workspace)
+            self.assertEqual(exit_code, 2)
+            self.assertIn("brak PyYAML", buf.getvalue())
+            self.assertIn("kit-ai reload", buf.getvalue())
+
 
 class TestReadProfileIntegrations(unittest.TestCase):
     """Testy wczytywania profilu w _read_profile_integrations."""
