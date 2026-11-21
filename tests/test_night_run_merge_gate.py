@@ -155,7 +155,7 @@ class TestNightRunMergeGate(unittest.TestCase):
         )
 
     def test_ceiling_escalation_is_conditional_and_coderabbit_rounds_are_e(self) -> None:
-        """Circuit breaker eskaluje bezwarunkowo, wyczerpany sufit warunkowo, 6 rund CodeRabbit z otwartymi wątkami → E (#542)."""
+        """Circuit breaker najpierw Clean Slate, potem needs-human warunkowo; wyczerpany sufit warunkowo; 6 rund CodeRabbit z otwartymi wątkami → E (#542)."""
         self.assertNotIn("gdy wyczerpano wspólny sufit 3 albo zadziałał circuit breaker", self.prompt)
         self.assertIn("Przy circuit breakerze najpierw hand-back `clean-slate`", self.prompt)
         self.assertIn("po 6. rundzie z otwartymi wątkami → needs-human (przypadek E)", self.prompt)
@@ -173,7 +173,7 @@ class TestNightRunMergeGate(unittest.TestCase):
         """Licznik `coderabbit-rundy` jest w schemacie `## Stan`; git-end zapisuje go przed pushem rundy (#542)."""
         text = " ".join(self.text.split())
         self.assertIn(
-            "`coderabbit-rundy: #<N> <R>` (licznik rund CodeRabbit ticketu #N; jedna linia, zastępowana przy każdym zapisie; zapisuje go git-end przed każdą rundą (także bez pusha), R+1; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, zachowaj tę linię)",
+            "`coderabbit-rundy: #<N> <R>` (licznik rund CodeRabbit ticketu #N; jedna linia, zastępowana przy każdym zapisie; zapisuje go git-end przed każdą rundą (także bez pusha), R+1; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, najpierw przeczytaj aktualny plik i zachowaj tę linię)",
             text,
         )
 
@@ -249,6 +249,9 @@ class TestNightRunMergeGate(unittest.TestCase):
         self.assertIn("Kontrola limitu, także po wznowieniu", rounds)
         self.assertIn("Jeśli `R >= 6` przed zwiększeniem licznika", rounds)
         self.assertIn("przy otwartych wątkach → `needs-human`, przy braku wątków → normalne zakończenie", rounds)
+        self.assertIn("nie zapisuj R+1", rounds)
+        self.assertIn("R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta", rounds)
+        self.assertIn("Bez `<CTX>` licznika nie zapisujesz", rounds)
 
     def test_circuit_breaker_runs_clean_slate_before_needs_human(self) -> None:
         """Circuit breaker najpierw Clean Slate; needs-human dopiero, gdy Clean Slate użyty albo warunek niespełniony (#542)."""
