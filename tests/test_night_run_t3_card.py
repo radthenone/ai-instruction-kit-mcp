@@ -33,7 +33,13 @@ if str(TESTS_DIR) not in sys.path:
 from _shell import resolve_bash
 from guides.bootstrap import run_bootstrap
 
+import sys
+
 KIT_ROOT = Path(__file__).resolve().parents[1]
+if str(KIT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(KIT_ROOT / "scripts"))
+from command_prefix import resolve
+
 CARD_TEMPLATE = KIT_ROOT / "templates" / "shared" / "night-run" / "t3.md"
 AGENT_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
 TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
@@ -41,11 +47,12 @@ TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-tick
 
 class TestNightRunT3CardContract(unittest.TestCase):
     def setUp(self) -> None:
-        self.agent_text = AGENT_TEMPLATE.read_text(encoding="utf-8")
+        self.agent_text = resolve(AGENT_TEMPLATE.read_text(encoding="utf-8"))
         if CARD_TEMPLATE.is_file():
-            self.card_text = CARD_TEMPLATE.read_text(encoding="utf-8")
+            self.card_text = resolve(CARD_TEMPLATE.read_text(encoding="utf-8"))
         else:
             self.card_text = ""
+        self.ticket_text = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
 
     def test_card_template_file_exists(self) -> None:
         self.assertTrue(CARD_TEMPLATE.is_file(), f"Brak pliku {CARD_TEMPLATE}")
@@ -172,7 +179,8 @@ class TestNightRunT3CardContract(unittest.TestCase):
 
     def test_branch_base_checked_before_rename(self) -> None:
         """PR #505: przed rename/ponownym użyciem brancha T3 sprawdzana jest baza; brak → needs-human."""
-        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        from command_prefix import resolve
+        ticket_text = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
         for text in (self.card_text, ticket_text):
             self.assertIn("git fetch origin", text)
             self.assertIn("git merge-base --is-ancestor origin/<BASE> HEAD", text)
@@ -217,7 +225,7 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("Aktywny branch issue", git_start)
         self.assertIn("bez `startedFrom`", git_start)
         self.assertIn("`/git-start` użyje aktywnego brancha", self.card_text)
-        ticket_text = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        ticket_text = self.ticket_text
         self.assertIn("przed `/git-start #<N>`", ticket_text)
 
     def test_pr_labels_and_clean_title_in_card(self) -> None:
@@ -428,7 +436,7 @@ class TestNightRunT3CardInstall(unittest.TestCase):
             target = workspace / ".ai" / "night-run-t3.md"
             self.assertTrue(target.is_file(), f"Brak pliku {target} po instalacji")
             if CARD_TEMPLATE.is_file():
-                self.assertEqual(target.read_bytes(), CARD_TEMPLATE.read_bytes())
+                self.assertEqual(target.read_text(encoding="utf-8"), resolve(CARD_TEMPLATE.read_text(encoding="utf-8")))
 
             # Usunięcie przy --skip-agents
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex", skip_agents=True)

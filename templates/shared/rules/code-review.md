@@ -1,17 +1,17 @@
 # Code review
 
-Przed `git push` na branch z featurem — **minimalny zestaw**, nie wszystkie `/review-*`:
+Przed `git push` na branch z featurem — **minimalny zestaw**, nie wszystkie `@KIT_CMD_PREFIX@review-*`:
 
 | Zmiana | Minimum przed pushem |
 |--------|----------------------|
-| Drobna (1–2 pliki, bez API/auth) | `/review-bugbot` |
-| Backend | `/review-bugbot` + `/review-backend` |
-| Frontend | `/review-bugbot` + `/review-frontend` |
-| API + UI | Bugbot + BE + FE **albo** para `/subagent-*` (nie oba naraz pełne) |
-| Auth / ACL / płatności | `/review-security` (+ Bugbot) |
-| Duży refactor / brzegi | + `/review-edge` (opcjonalnie) |
-| „Zrobione, działa” | + `/review-tests` (dowód komend, nie styl) |
-| Architektura / monorepo layout | + `/review-architecture` gdy dotyczy |
+| Drobna (1–2 pliki, bez API/auth) | `@KIT_CMD_PREFIX@review-bugbot` |
+| Backend | `@KIT_CMD_PREFIX@review-bugbot` + `@KIT_CMD_PREFIX@review-backend` |
+| Frontend | `@KIT_CMD_PREFIX@review-bugbot` + `@KIT_CMD_PREFIX@review-frontend` |
+| API + UI | Bugbot + BE + FE **albo** para `@KIT_CMD_PREFIX@subagent-*` (nie oba naraz pełne) |
+| Auth / ACL / płatności | `@KIT_CMD_PREFIX@review-security` (+ Bugbot) |
+| Duży refactor / brzegi | + `@KIT_CMD_PREFIX@review-edge` (opcjonalnie) |
+| „Zrobione, działa” | + `@KIT_CMD_PREFIX@review-tests` (dowód komend, nie styl) |
+| Architektura / monorepo layout | + `@KIT_CMD_PREFIX@review-architecture` gdy dotyczy |
 
 **Nie** odpalaj całego wachlarza „na wszelki wypadek”.
 
@@ -24,7 +24,7 @@ Kolejność:
 ### Bugbot vs stack
 
 - **Bugbot** — blocking, sekrety, bezpieczeństwo.
-- **`/review-backend|frontend|…`** — konwencje domeny z MCP; bez dublowania Bugbota.
+- **`@KIT_CMD_PREFIX@review-backend|frontend|…`** — konwencje domeny z MCP; bez dublowania Bugbota.
 
 ### Format findings (agenci stack)
 

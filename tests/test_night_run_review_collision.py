@@ -36,8 +36,12 @@ class TestNightRunReviewCollision(unittest.TestCase):
     """Weryfikacja kontraktu rozróżnienia /code-review i /review w night-run (#465)."""
 
     def setUp(self) -> None:
-        self.text = TEMPLATE_NIGHT_RUN.read_text(encoding="utf-8")
-        self.ticket = TEMPLATE_TICKET.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.text = resolve(TEMPLATE_NIGHT_RUN.read_text(encoding="utf-8"))
+        self.ticket = resolve(TEMPLATE_TICKET.read_text(encoding="utf-8"))
 
     @property
     def review_args_section(self) -> str:

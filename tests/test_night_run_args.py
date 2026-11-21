@@ -19,8 +19,11 @@ COPIES = (
 
 class TestNightRunArgs(unittest.TestCase):
     def setUp(self) -> None:
-        self.text = TEMPLATE.read_text(encoding="utf-8")
-        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
+        self.text = resolve(TEMPLATE.read_text(encoding="utf-8"))
+        self.ticket = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
         self.description = next(ln for ln in self.text.splitlines() if ln.startswith("description:"))
 
     def test_goal_not_required(self) -> None:

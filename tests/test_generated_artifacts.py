@@ -180,8 +180,12 @@ class TestDogfoodCopies(unittest.TestCase):
         )
 
     def test_guard_copies_match_shared_source(self) -> None:
-        """Hook u klienta == plik w `templates/shared/guards/`, bajt w bajt."""
+        """Hook u klienta == plik w `templates/shared/guards/` po podstawieniu prefiksu."""
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import read_values, resolve
         source_dir = KIT_ROOT / "templates" / "shared" / "guards"
+        manifest = KIT_ROOT / "manifest.yaml"
         stale: list[str] = []
         for rel_dir, name in GUARD_COPIES:
             source = source_dir / name
@@ -189,8 +193,13 @@ class TestDogfoodCopies(unittest.TestCase):
             in_repo = KIT_ROOT / rel_dir / name
             if not in_repo.is_file():
                 stale.append(f"{rel_dir}/{name} — brak kopii w repo")
-            elif in_repo.read_bytes() != source.read_bytes():
-                stale.append(f"{rel_dir}/{name} — kopia rozjechała się ze źródłem")
+            else:
+                client_raw = rel_dir.strip(".").split("/")[0]
+                client = "vscode" if client_raw == "github" else ("antigravity" if client_raw == "agents" else client_raw)
+                sigil, namespace, name_prefix = read_values(manifest, client)
+                expected_text = resolve(source.read_text(encoding="utf-8"), sigil=sigil, namespace=namespace, name_prefix=name_prefix)
+                if in_repo.read_text(encoding="utf-8") != expected_text:
+                    stale.append(f"{rel_dir}/{name} — kopia rozjechała się ze źródłem")
         self.assertEqual(
             stale,
             [],

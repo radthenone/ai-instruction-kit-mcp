@@ -137,8 +137,12 @@ class TestReviewSecurityContent(unittest.TestCase):
     """`review-security` musi pokrywać obszary z issue i nie edytować plików."""
 
     def setUp(self) -> None:
+        import sys
+        if str(KIT_ROOT / "scripts") not in sys.path:
+            sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
         self.path = AGENTS_DIR / "review-security.md"
-        self.text = self.path.read_text(encoding="utf-8")
+        self.text = resolve(self.path.read_text(encoding="utf-8"))
 
     def test_frontmatter_is_readonly_heavy_review(self) -> None:
         self.assertTrue(self.text.startswith("---\nname: review-security\n"))

@@ -221,3 +221,79 @@ class TestBootstrapWiring(unittest.TestCase):
                 if path.is_file() and ".git" not in path.parts and any(p in path.read_bytes() for p in PLACEHOLDERS)
             ]
             self.assertEqual(leftovers, [])
+
+
+class TestTemplatesSharedPlaceholders(unittest.TestCase):
+    """Kryteria akceptacji #529: placeholdery w templates/shared/**."""
+
+    EXACT_COMMANDS = (
+        "kit-project-begin", "kit-project-edit",
+        "review-architecture", "review-backend", "review-bugbot", "review-edge",
+        "review-frontend", "review-security", "review-tests", "review-ui",
+        "teacher-architecture", "teacher-backend", "teacher-frontend", "teacher-agent",
+        "subagent-backend", "subagent-frontend",
+        "night-run-ticket", "night-run",
+        "create-skill", "create-task",
+        "skill-authoring",
+        "git-check", "git-commit", "git-end", "git-pr", "git-start",
+        "issue-stats", "pr-stats", "kit-retro",
+        "cleanup", "headless",
+    )
+    WILDCARD_COMMANDS = (
+        r"git-\*", r"review-\*", r"subagent-\*", r"teacher-\*", r"kit-project-\*", r"night-run-\*"
+    )
+    EXTERNAL_SKILLS = ("/tdd", "/grill-me", "/code-review", "/retro", "/compact", "/triage")
+
+    def test_every_agent_and_skill_has_name_prefix_placeholder(self) -> None:
+        """Każdy agent i skill w templates/shared ma name: @KIT_NAME_PREFIX@<nazwa>."""
+        agents_dir = KIT_ROOT / "templates" / "shared" / "agents"
+        agents = sorted(agents_dir.glob("*.md"))
+        self.assertGreater(len(agents), 0)
+        for agent in agents:
+            with self.subTest(agent=agent.name):
+                text = agent.read_text(encoding="utf-8")
+                expected = f"name: @KIT_NAME_PREFIX@{agent.stem}"
+                self.assertIn(expected, text, f"{agent.name} powinien mieć {expected}")
+
+        for skill_rel in ("kit-retro", "skill-authoring"):
+            skill_md = KIT_ROOT / "templates" / "shared" / "skills" / skill_rel / "SKILL.md"
+            with self.subTest(skill=skill_rel):
+                text = skill_md.read_text(encoding="utf-8")
+                expected = f"name: @KIT_NAME_PREFIX@{skill_rel}"
+                self.assertIn(expected, text, f"{skill_rel} powinien mieć {expected}")
+
+    def test_no_bare_kit_commands_in_templates_shared(self) -> None:
+        """Grep nie znajduje gołych /<nazwa kita> w templates/shared poza placeholderem."""
+        import re
+        shared_root = KIT_ROOT / "templates" / "shared"
+        exact_alt = "|".join(re.escape(c) for c in self.EXACT_COMMANDS)
+        wildcard_alt = "|".join(self.WILDCARD_COMMANDS)
+        bare_pattern = re.compile(
+            rf"(?<!@KIT_CMD_PREFIX@)(?<![a-zA-Z0-9_.~/<>])/(?P<cmd>(?:{exact_alt})(?![-\w])(?!\.(?:md|mjs|sh|js|py|txt|json|yaml))|(?:{wildcard_alt})(?![-\w]))"
+        )
+        violations: list[str] = []
+        for path in sorted(shared_root.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(shared_root).as_posix()
+            if rel in ("labels.tsv", "worktree/post-checkout.sh", "worktree/worktree.mjs", "rules/brief-rules.md"):
+                continue
+            for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+                for match in bare_pattern.finditer(line):
+                    violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
+        self.assertEqual(violations, [], f"Znaleziono gołe komendy kita bez prefiksu: {violations}")
+
+    def test_external_skills_remain_unprefixed(self) -> None:
+        """Zewnętrzne skille (/tdd, /grill-me, /code-review itp.) pozostają bez prefiksu."""
+        shared_root = KIT_ROOT / "templates" / "shared"
+        for path in sorted(shared_root.rglob("*")):
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for ext in self.EXTERNAL_SKILLS:
+                prefixed = f"@KIT_CMD_PREFIX@{ext[1:]}"
+                self.assertNotIn(
+                    prefixed,
+                    text,
+                    f"Zewnętrzny skill {ext} nie powinien mieć prefiksu w {path.relative_to(shared_root)}",
+                )

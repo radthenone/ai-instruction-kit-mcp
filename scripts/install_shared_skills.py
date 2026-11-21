@@ -27,7 +27,10 @@ import shutil
 import sys
 from pathlib import Path
 
+from command_prefix import read_values, resolve
 from render_agent_commands import DEST_SUFFIX, RENDERERS
+
+MANIFEST = Path(__file__).resolve().parents[1] / "manifest.yaml"
 
 # Tag reparse junctionu (`mklink /J`). Python <3.12 nie ma `os.path.isjunction`,
 # więc rozpoznajemy go po tagu z `os.lstat` (nazwa jak w winnt.h).
@@ -132,18 +135,39 @@ def _remove_link(path: Path) -> None:
         path.unlink()
 
 
-def install_native(skill_dir: Path, dest_dir: Path) -> None:
+def install_native(skill_dir: Path, dest_dir: Path, client: str = "shared") -> None:
     dest = dest_dir / skill_dir.name
     if _is_link(dest):
         _remove_link(dest)
     elif dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(skill_dir, dest)
+    if MANIFEST.is_file():
+        try:
+            sigil, namespace, name_prefix = read_values(MANIFEST, client)
+        except ValueError:
+            sigil, namespace, name_prefix = "/", "", ""
+        for p in dest.rglob("*.md"):
+            if p.is_file():
+                raw = p.read_text(encoding="utf-8")
+                if "@KIT_" in raw:
+                    p.write_text(
+                        resolve(raw, sigil=sigil, namespace=namespace, name_prefix=name_prefix),
+                        encoding="utf-8",
+                        newline="\n",
+                    )
 
 
-def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None) -> None:
+def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None, client: str = "shared") -> None:
     src = skill_dir / "SKILL.md"
     text = src.read_text(encoding="utf-8")
+    if MANIFEST.is_file():
+        try:
+            sigil, namespace, name_prefix = read_values(MANIFEST, client)
+        except ValueError:
+            sigil, namespace, name_prefix = "/", "", ""
+        if "@KIT_" in text:
+            text = resolve(text, sigil=sigil, namespace=namespace, name_prefix=name_prefix)
     dropped = [name for name in BUNDLED_DIRS if (skill_dir / name).is_dir()]
     if dropped:
         print(
@@ -240,9 +264,9 @@ def main(argv: list[str]) -> int:
     dest_dir.mkdir(parents=True, exist_ok=True)
     for skill_dir in skills:
         if client in NATIVE_CLIENTS:
-            install_native(skill_dir, dest_dir)
+            install_native(skill_dir, dest_dir, client)
         else:
-            install_degraded(skill_dir, dest_dir, DEGRADED_CLIENTS[client])
+            install_degraded(skill_dir, dest_dir, DEGRADED_CLIENTS[client], client)
         remove_renamed(skill_dir.name, dest_dir, _renamed_suffix(client))
     return 0
 

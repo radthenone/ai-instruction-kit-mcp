@@ -175,7 +175,7 @@ class TestNightRunMergeGate(unittest.TestCase):
     def test_ticket_hands_coderabbit_counter_to_git_end(self) -> None:
         """Subagent ticketu przyjmuje licznik z parametrów, przekazuje go do /git-end i zwraca w hand-backu (#542)."""
         self.assertIn("linia `coderabbit-rundy: #<N> <R>` w parametrach zlecenia", self.prompt)
-        self.assertIn("w prompcie do `/git-end` przekazujesz numer ticketu, R, ścieżkę `<CTX>`", self.prompt)
+        self.assertIn("w prompcie do `@KIT_CMD_PREFIX@git-end` przekazujesz numer ticketu, R, ścieżkę `<CTX>`", self.prompt)
         self.assertIn("zwracasz w hand-backu jako `rundy CodeRabbit`", self.prompt)
 
     def test_zlecenie_ticketu_carries_coderabbit_counter(self) -> None:
@@ -221,7 +221,7 @@ class TestNightRunMergeGate(unittest.TestCase):
         git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
         self.assertIn("`coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy", git_end)
         self.assertIn("przetrwa wznowienie", git_end)
-        self.assertIn("prompt do `/git-end` niesie numer ticketu, R i `<CTX>`", git_end)
+        self.assertIn("prompt do `@KIT_CMD_PREFIX@git-end` niesie numer ticketu, R i `<CTX>`", git_end)
         self.assertIn("tylko w procedurze night-run", git_end)
 
     def test_coderabbit_counter_written_before_push(self) -> None:

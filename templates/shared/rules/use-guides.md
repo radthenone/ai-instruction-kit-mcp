@@ -8,14 +8,14 @@
 | Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
 | codegen | MCP `get_codegen` / `codegen:` w `.ai/project.profile.yaml` |
 | Docs bibliotek | Context7 (user MCP) |
-| Review stacku | **minimalny zestaw** — zob. `code-review` (nie wszystkie `/review-*`) |
-| Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` (cross API+UI) |
-| Nauka / niepewna koncepcja **przed** kodem | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` (readonly — uczą, nie piszą) |
-| Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
-| Branch / PR | `/git-start`, `/git-check`, `/git-commit`, `/git-end` + `git-branch-pr` |
+| Review stacku | **minimalny zestaw** — zob. `code-review` (nie wszystkie `@KIT_CMD_PREFIX@review-*`) |
+| Dwa okna | `@KIT_CMD_PREFIX@subagent-backend` ↔ `@KIT_CMD_PREFIX@subagent-frontend` (cross API+UI) |
+| Nauka / niepewna koncepcja **przed** kodem | `@KIT_CMD_PREFIX@teacher-backend`, `@KIT_CMD_PREFIX@teacher-frontend`, `@KIT_CMD_PREFIX@teacher-architecture` (readonly — uczą, nie piszą) |
+| Przed pushem | `@KIT_CMD_PREFIX@review-bugbot` + opc. stack + hooki `gate-*` |
+| Branch / PR | `@KIT_CMD_PREFIX@git-start`, `@KIT_CMD_PREFIX@git-check`, `@KIT_CMD_PREFIX@git-commit`, `@KIT_CMD_PREFIX@git-end` + `git-branch-pr` |
 | Język prozy | MCP `get_language` / `--language pl\|en` — odpowiedzi zawsze w tym języku niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi) |
-| Worktree / finisz | Managed Worktree (opc.) metodą kita na branchu z `/git-start` (lub Superpowers + `sync`) |
-| PR → CI green | Autopilot po `/git-end` |
+| Worktree / finisz | Managed Worktree (opc.) metodą kita na branchu z `@KIT_CMD_PREFIX@git-start` (lub Superpowers + `sync`) |
+| PR → CI green | Autopilot po `@KIT_CMD_PREFIX@git-end` |
 
 Moduły: Tiery z `.ai/project.profile.yaml` (backend/web/mobile) + overlay `.ai/project.md`.  
 
@@ -28,7 +28,7 @@ Profil w workspace to jedyne źródło wyborów (ADR-0007); po jego zmianie `kit
 | Sytuacja | Działanie |
 |----------|-----------|
 | Niejasny scope, wiele ścieżek, trade-offy | `/grill-me` **przed** kodem |
-| Oczywisty bugfix / 1–2 pliki | **Bez** grilla → `/git-start` |
+| Oczywisty bugfix / 1–2 pliki | **Bez** grilla → `@KIT_CMD_PREFIX@git-start` |
 | Logika biznesowa, edge case’y | opc. `/tdd` (jeden path: Matt *albo* Superpowers TDD) |
 
 ## Niska pewność (wszystkie agenty)
@@ -43,5 +43,5 @@ Auth, ACL, billing, migracje, concurrency, brak dowodu w repo → **zapytaj uży
 | Meta | worktree / finishing / debug | opcjonalna izolacja (Managed Worktree), domknięcie brancha |
 | PR loop | Autopilot | CI + komentarze aż merge-ready |
 
-Priorytet: użytkownik → overlay+MCP → `/git-*`+review → Matt → Superpowers → Autopilot.  
+Priorytet: użytkownik → overlay+MCP → `@KIT_CMD_PREFIX@git-*`+review → Matt → Superpowers → Autopilot.  
 TDD: jeden path (preferuj Matt `/tdd`).

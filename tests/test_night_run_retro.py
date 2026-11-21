@@ -33,7 +33,11 @@ def retro_step(text: str) -> str:
 
 class NightRunRetroStepTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.text = TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.text = resolve(TEMPLATE.read_text(encoding="utf-8"))
 
     def test_retro_step_precedes_report(self) -> None:
         self.assertIn(RETRO_HEADING, self.text)

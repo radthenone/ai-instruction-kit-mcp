@@ -4,7 +4,7 @@ Kanon treści instrukcji (niezależny od IDE):
 
 | Katalog | Rola |
 |---------|------|
-| `agents/*.md` | Slash/subagenci (`/git-*`, `/review-*`, `/subagent-*`) |
+| `agents/*.md` | Slash/subagenci (`@KIT_CMD_PREFIX@git-*`, `@KIT_CMD_PREFIX@review-*`, `@KIT_CMD_PREFIX@subagent-*`) |
 | `rules/*.md` | Reguły flow (git, review, warstwy MCP) — bez frontmatter Cursor |
 | `guards/*` | Polityka guardraili + adapter (hooki klienta) |
 | `skills/<nazwa>/SKILL.md` | Skille — wiedza, którą model ładuje sam z `description` |

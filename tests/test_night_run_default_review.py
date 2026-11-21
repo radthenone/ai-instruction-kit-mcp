@@ -45,8 +45,12 @@ class TestNightRunDefaultReview(unittest.TestCase):
     """Weryfikacja kontraktu domyślnego review night-run po typach plików (#466)."""
 
     def setUp(self) -> None:
-        self.text = TEMPLATE_NIGHT_RUN.read_text(encoding="utf-8")
-        self.ticket_text = TEMPLATE_NIGHT_RUN_TICKET.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.text = resolve(TEMPLATE_NIGHT_RUN.read_text(encoding="utf-8"))
+        self.ticket_text = resolve(TEMPLATE_NIGHT_RUN_TICKET.read_text(encoding="utf-8"))
 
     @property
     def step_two_section(self) -> str:

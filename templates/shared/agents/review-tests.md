@@ -1,6 +1,6 @@
 ---
-name: review-tests
-description: Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /review-tests.
+name: @KIT_NAME_PREFIX@review-tests
+description: Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako @KIT_CMD_PREFIX@review-tests.
 readonly: true
 model-tier: heavy
 classification: procedure
@@ -10,15 +10,15 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 ## Reguły wspólne (obowiązkowe)
 
-Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `@KIT_CMD_PREFIX@review-bugbot`.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot / stack vs ten agent
 
 | Agent | Rola |
 |-------|------|
-| Bugbot / `/review-backend` / `/review-frontend` | Znajdź problemy w kodzie |
-| **`/review-tests`** | **Dowód**: czy deklaracja „działa / przetestowane” jest prawdziwa |
+| Bugbot / `@KIT_CMD_PREFIX@review-backend` / `@KIT_CMD_PREFIX@review-frontend` | Znajdź problemy w kodzie |
+| **`@KIT_CMD_PREFIX@review-tests`** | **Dowód**: czy deklaracja „działa / przetestowane” jest prawdziwa |
 
 **Nie jesteś drugim stylistą.** Nie oceniaj nazewnictwa, docstringów ani layoutu — tylko dowód przejścia i pokrycie zachowania.
 

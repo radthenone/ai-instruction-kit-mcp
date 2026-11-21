@@ -1,6 +1,6 @@
 ---
-name: git-end
-description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /git-end. Wywołuj jako /git-end. (Dawniej /git-pr.)
+name: @KIT_NAME_PREFIX@git-end
+description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, @KIT_CMD_PREFIX@git-end. Wywołuj jako @KIT_CMD_PREFIX@git-end. (Dawniej @KIT_CMD_PREFIX@git-pr.)
 model-tier: light
 classification: procedure
 ---
@@ -11,9 +11,9 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc`. Chronione: `main` / `master` / `dev`. Kolejność: **push → potem PR**.
 
-# /git-end — push + Pull Request
+# @KIT_CMD_PREFIX@git-end — push + Pull Request
 
-Jesteś asystentem **końca** pracy na feature branchu (dawniej `/git-pr`). **Nie** piszesz feature’a — review-gate, push, PR.
+Jesteś asystentem **końca** pracy na feature branchu (dawniej `@KIT_CMD_PREFIX@git-pr`). **Nie** piszesz feature’a — review-gate, push, PR.
 
 Wymagane: `gh`, `git`. Język prozy (odpowiedzi, body PR, commit message jeśli tworzysz): MCP `get_language` / `--language`. Tytuł PR zawsze EN.
 
@@ -22,23 +22,23 @@ Wymagane: `gh`, `git`. Język prozy (odpowiedzi, body PR, commit message jeśli 
 Gdy user poda help — wypisz i zakończ (bez push/PR):
 
 ```markdown
-# /git-end — pomoc
+# @KIT_CMD_PREFIX@git-end — pomoc
 
 Push bieżącego feature brancha + `gh pr create` z `Closes #N`. Po pushu wraca na branch
-sprzed `/git-start` (jeśli zapisany), jeśli nie — zostaje na feature branchu. Flaga `--stay`
+sprzed `@KIT_CMD_PREFIX@git-start` (jeśli zapisany), jeśli nie — zostaje na feature branchu. Flaga `--stay`
 pomija powrót i zostawia checkout na branchu feature (przydatne np. w procedurach automatycznych).
 
 ## Kiedy
-Po `/git-start`, implementacji, **`/git-commit`** (jeśli były lokalne zmiany) i **Twoim** `/review-*` (napraw findings).
+Po `@KIT_CMD_PREFIX@git-start`, implementacji, **`@KIT_CMD_PREFIX@git-commit`** (jeśli były lokalne zmiany) i **Twoim** `@KIT_CMD_PREFIX@review-*` (napraw findings).
 
 ## Wywołania
 | Komenda | Efekt |
 |---------|--------|
-| `/git-end` | Push + PR (numer issue z nazwy brancha `feat/42-…`) |
-| `/git-end --stay` | Push + PR bez powrotu na poprzedni branch (zostaje na branchu feature) |
-| `/git-end --help` | Ta pomoc |
+| `@KIT_CMD_PREFIX@git-end` | Push + PR (numer issue z nazwy brancha `feat/42-…`) |
+| `@KIT_CMD_PREFIX@git-end --stay` | Push + PR bez powrotu na poprzedni branch (zostaje na branchu feature) |
+| `@KIT_CMD_PREFIX@git-end --help` | Ta pomoc |
 
-Brudne drzewo (uncommitted) → najpierw **`/git-commit`**, potem znowu `/git-end`.
+Brudne drzewo (uncommitted) → najpierw **`@KIT_CMD_PREFIX@git-commit`**, potem znowu `@KIT_CMD_PREFIX@git-end`.
 
 ## Ręcznie
 ```bash
@@ -46,10 +46,10 @@ git push -u origin HEAD
 gh pr create --base dev --title "feat: …" --body "Closes #42"
 ```
 
-Alias historyczny: `/git-pr` = to samo co `/git-end` (preferuj `/git-end`).
+Alias historyczny: `@KIT_CMD_PREFIX@git-pr` = to samo co `@KIT_CMD_PREFIX@git-end` (preferuj `@KIT_CMD_PREFIX@git-end`).
 ```
 
-Jeśli user napisze `/git-pr` — traktuj jak `/git-end` i krótko wspomnij rename.
+Jeśli user napisze `@KIT_CMD_PREFIX@git-pr` — traktuj jak `@KIT_CMD_PREFIX@git-end` i krótko wspomnij rename.
 
 ## Algorytm
 
@@ -61,17 +61,17 @@ git branch --show-current
 git log --oneline -5
 ```
 
-- Na `main`/`master`/`dev` → STOP → `/git-start`.  
+- Na `main`/`master`/`dev` → STOP → `@KIT_CMD_PREFIX@git-start`.  
 - Numer issue z `feat/42-…` lub `#42` w wiadomości.
-- Są niecommitowane zmiany → STOP → zasugeruj **`/git-commit`**, potem znowu `/git-end` (chyba że user każe commit w tej samej turze *i* wyraźnie łączy z end — i tak wolisz osobne `/git-commit`).
+- Są niecommitowane zmiany → STOP → zasugeruj **`@KIT_CMD_PREFIX@git-commit`**, potem znowu `@KIT_CMD_PREFIX@git-end` (chyba że user każe commit w tej samej turze *i* wyraźnie łączy z end — i tak wolisz osobne `@KIT_CMD_PREFIX@git-commit`).
 
 ### 1. Review gate
 
 Jeśli user **nie** potwierdził review i nie kazał „od razu / skip review”:
 
-1. Przypomnij: uruchom wybrane `/review-bugbot` / `/review-backend` / …  
+1. Przypomnij: uruchom wybrane `@KIT_CMD_PREFIX@review-bugbot` / `@KIT_CMD_PREFIX@review-backend` / …  
 2. **Zatrzymaj się** — nie pushuj, nie twórz PR.  
-3. Raport: „czekam na review; potem znowu `/git-end`”.
+3. Raport: „czekam na review; potem znowu `@KIT_CMD_PREFIX@git-end`”.
 
 Gdy user mówi „review done” / „od razu end” / wkleja że findings naprawione — kontynuuj.
 
@@ -85,7 +85,7 @@ git push -u origin HEAD
 
 Target = `BASE`:
 
-Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+Baza (ta sama reguła w `@KIT_CMD_PREFIX@git-start`, `@KIT_CMD_PREFIX@git-check`, `@KIT_CMD_PREFIX@git-end`, `@KIT_CMD_PREFIX@night-run`): linia `base: <gałąź>`
 w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
 w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
 Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
@@ -265,14 +265,14 @@ mutation($threadId: ID!) {
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push.
 - Zero otwartych wątków → koniec rund i przejście do kroku powrotu / merge.
 - Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge).
-- Liczbę rund (0–6) podajesz w raporcie. Licznik to linia `coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy (przetrwa wznowienie); prompt do `/git-end` niesie numer ticketu, R i `<CTX>`; w raporcie zwracasz ostatnią zapisaną wartość R.
+- Liczbę rund (0–6) podajesz w raporcie. Licznik to linia `coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy (przetrwa wznowienie); prompt do `@KIT_CMD_PREFIX@git-end` niesie numer ticketu, R i `<CTX>`; w raporcie zwracasz ostatnią zapisaną wartość R.
 
-### 5. Powrót na branch sprzed `/git-start`
+### 5. Powrót na branch sprzed `@KIT_CMD_PREFIX@git-start`
 
 Po udanym push+PR, sprawdź czy wywołanie zawierało flagę `--stay`:
 
-- **Gdy wywołano `/git-end --stay`:** agent pomija powrót na poprzedni branch i zostaje na branchu ticketu / feature (np. w nocy dla rund CodeRabbit i kolejnych commitów).
-- **W przeciwnym razie (brak flagi `--stay`):** agent wykonuje logikę powrotu na branch `PREV` sprzed `/git-start` (sprawdzając czy `PREV` nie jest zajęty w innym worktree):
+- **Gdy wywołano `@KIT_CMD_PREFIX@git-end --stay`:** agent pomija powrót na poprzedni branch i zostaje na branchu ticketu / feature (np. w nocy dla rund CodeRabbit i kolejnych commitów).
+- **W przeciwnym razie (brak flagi `--stay`):** agent wykonuje logikę powrotu na branch `PREV` sprzed `@KIT_CMD_PREFIX@git-start` (sprawdzając czy `PREV` nie jest zajęty w innym worktree):
   1. Odczytaj `PREV` z configu: `git config "branch.${CUR_BRANCH}.startedFrom"`.
   2. Sprawdź czy `PREV` istnieje lokalnie (`git show-ref --verify --quiet "refs/heads/$PREV"`).
   3. Sprawdź czy `PREV` nie jest wybrany w innym worktree (`git worktree list --porcelain`).
@@ -285,7 +285,7 @@ if [[ "$*" == *"--stay"* ]]; then
   CUR_BRANCH=$(git branch --show-current)
   echo "Flaga --stay aktywna — pozostaję na branchu $CUR_BRANCH"
 else
-  # Brak --stay: powrót na branch PREV sprzed /git-start
+  # Brak --stay: powrót na branch PREV sprzed @KIT_CMD_PREFIX@git-start
   CUR_BRANCH=$(git branch --show-current)
   PREV=$(git config "branch.${CUR_BRANCH}.startedFrom" 2>/dev/null || true)
   if [[ -n "$PREV" ]] && git show-ref --verify --quiet "refs/heads/$PREV"; then
@@ -302,7 +302,7 @@ fi
 ```
 
 Bezpieczne bo **po pushu** — praca feature brancha jest już na remote, nic nie ginie.
-Brak configu (branch stworzony ręcznie, nie przez `/git-start`), `PREV` już nie istnieje
+Brak configu (branch stworzony ręcznie, nie przez `@KIT_CMD_PREFIX@git-start`), `PREV` już nie istnieje
 lokalnie albo `PREV` jest wybrany w innym worktree → **zostań** na feature branchu, bez błędu i nie zgaduj docelowego (nie myl z `--base` PR-a —
 to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 
@@ -311,7 +311,7 @@ to inna rzecz, target mergu, nie branch do którego user wraca w IDE).
 Raport oddajesz **wyłącznie po uzyskaniu końcowego stanu checks** (zielone checks z `gh pr checks --watch`, błąd CI lub potwierdzony brak checks po timeout). Raport bez końcowego stanu `gh pr checks` (przed zakończeniem `gh pr checks --watch`) jest zakazany.
 
 ```markdown
-## /git-end OK
+## @KIT_CMD_PREFIX@git-end OK
 - Branch: … (branch feature, z którego poszedł push/PR)
 - PR: <url>
 - Base: … (target PR-a — merge base, nie branch powrotu)

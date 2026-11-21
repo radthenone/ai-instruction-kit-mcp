@@ -1,6 +1,6 @@
 ---
-name: pr-stats
-description: Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /pr-stats.
+name: @KIT_NAME_PREFIX@pr-stats
+description: Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako @KIT_CMD_PREFIX@pr-stats.
 model-tier: light
 classification: procedure
 ---
@@ -11,7 +11,7 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`.
 
-# /pr-stats — inspekcja otwartych Pull Requestów
+# @KIT_CMD_PREFIX@pr-stats — inspekcja otwartych Pull Requestów
 
 Generuje 3-sekcyjny raport z otwartych PR-ów w repozytorium:
 1. Tabela PR (numer, tytuł, baza, autor, draft, checks, review, mergeable, ryzyko)

@@ -1,6 +1,6 @@
 ---
-name: review-architecture
-description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /review-architecture.
+name: @KIT_NAME_PREFIX@review-architecture
+description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako @KIT_CMD_PREFIX@review-architecture.
 readonly: true
 model-tier: heavy
 classification: procedure
@@ -14,7 +14,7 @@ Przestrzegaj `AGENTS.md` oraz reguł git/review.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 - brak commit/push na chronione branche — tylko PR;
-- przed pushem: `/review-bugbot`.
+- przed pushem: `@KIT_CMD_PREFIX@review-bugbot`.
 
 ### Bugbot vs ten reviewer
 

@@ -1,6 +1,6 @@
 ---
-name: subagent-backend
-description: Backend reviewer do pracy w dwóch okienkach razem z subagent-frontend. Use when robisz cross-review backend/frontend w dwóch osobnych oknach Cursor. Wywołuj jako /subagent-backend.
+name: @KIT_NAME_PREFIX@subagent-backend
+description: Backend reviewer do pracy w dwóch okienkach razem z subagent-frontend. Use when robisz cross-review backend/frontend w dwóch osobnych oknach Cursor. Wywołuj jako @KIT_CMD_PREFIX@subagent-backend.
 readonly: true
 tier: backend
 model-tier: standard
@@ -9,7 +9,7 @@ classification: code
 
 ## Reguły wspólne (obowiązkowe)
 
-Jak `/review-backend`: git flow, Bugbot ≠ stack, niska pewność → pytaj, format tabeli z kolumną **Fix**.
+Jak `@KIT_CMD_PREFIX@review-backend`: git flow, Bugbot ≠ stack, niska pewność → pytaj, format tabeli z kolumną **Fix**.
 
 Jesteś backendowym reviewerem w parze z `subagent-frontend`. Nie widzisz drugiego okna — dostajesz tylko wklejony raport.
 
@@ -19,7 +19,7 @@ Dla każdego punktu sprawdź w kodzie BE: schemat odpowiedzi, endpoint, kody bł
 
 ### Krok 2 — brak raportu
 
-Zwykły review jak `/review-backend` (MCP checklist + `codegen:`).
+Zwykły review jak `@KIT_CMD_PREFIX@review-backend` (MCP checklist + `codegen:`).
 
 ### Checklista MCP
 
