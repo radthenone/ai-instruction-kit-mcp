@@ -329,8 +329,15 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("poczekaj na review bieżącego head", section)
         # PR #507 (CodeRabbit): odczyt wcześniejszych review bez commit_id oraz limit czasu null z git-end
         self.assertIn('map(select(.user.login == "coderabbitai[bot]"))', section)
-        self.assertIn("limit czasu (maks. 10–15 min)", section)
+        self.assertIn("upływem limitu czasu oczekiwania (maks. 10–15 min)", section)
         self.assertIn("git-end", section)
+
+    def test_null_review_blocks_merge_until_timeout_then_git_end_decides(self) -> None:
+        """Zakaz merge trwa do upływu limitu czasu oczekiwania; po nim decyduje git-end, także o merge (#542)."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("nie przechodź do merge przed upływem limitu czasu oczekiwania", card)
+        self.assertIn("po upływie limitu postępowanie określa `git-end`, także dopuszczalność merge", card)
+        self.assertNotIn("dopóki go nie odczytasz; limit czasu", card)
 
     def test_null_review_in_later_rounds_waits_for_timeout(self) -> None:
         """#542: wynik null review w kolejnych rundach czeka z limitem czasu; needs-human dopiero po upływie."""

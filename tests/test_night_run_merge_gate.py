@@ -134,10 +134,35 @@ class TestNightRunMergeGate(unittest.TestCase):
     def test_handback_after_ceiling_or_breaker_carries_card_data(self) -> None:
         self.assertRegex(
             self.prompt,
-            r"wspólny sufit 3 albo zadziałał circuit breaker[^.]*hand-back[^.]*dokładny błąd albo test"
+            r"zadziałał circuit breaker[^.]*hand-back[^.]*dokładny błąd albo test"
             r"[^.]*hipotezę przyczyny[^.]*zmiany i commity na branchu",
         )
         self.assertIn("hand-back z Q1/Q2", self.prompt)
+
+    def test_outdated_threads_counter_written_before_resolve(self) -> None:
+        """Przestarzałe wątki rozwiązujesz dopiero po zapisie licznika rundy, także gdy review ma tylko takie (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        self.assertIn("najpierw zapisz `coderabbit-rundy: #<N> <R+1>`", git_end)
+        self.assertIn("Ta kolejność obowiązuje też wtedy, gdy review ma wyłącznie nieaktualne wątki", git_end)
+        self.assertLess(
+            git_end.index("najpierw zapisz `coderabbit-rundy: #<N> <R+1>`"),
+            git_end.index("dopiero potem rozwiąż wątek mutacją `resolveReviewThread`"),
+        )
+
+    def test_ceiling_escalation_is_conditional_and_coderabbit_rounds_are_e(self) -> None:
+        """Circuit breaker eskaluje bezwarunkowo, wyczerpany sufit warunkowo, 6 rund CodeRabbit z otwartymi wątkami → E (#542)."""
+        self.assertNotIn("gdy wyczerpano wspólny sufit 3 albo zadziałał circuit breaker", self.prompt)
+        self.assertIn("Needs-human następuje też, gdy zadziałał circuit breaker", self.prompt)
+        self.assertIn("po 6. rundzie z otwartymi wątkami → needs-human (przypadek E)", self.prompt)
+
+    def test_new_ticket_resets_coderabbit_counter_in_night_run(self) -> None:
+        """Start nowego ticketu zeruje licznik CodeRabbit; wartość zostaje tylko przy wznowieniu i Clean Slate (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn(
+            "Na starcie nowego ticketu (nie przy wznowieniu ani fallbacku tego samego ticketu) w tym zapisie ustaw `coderabbit-rundy: #<N> 0`",
+            text,
+        )
+        self.assertIn("wartość zachowaj tylko przy wznowieniu i Clean Slate tego samego ticketu", text)
 
     def test_stan_schema_carries_coderabbit_counter(self) -> None:
         """Licznik `coderabbit-rundy` jest w schemacie `## Stan`; git-end zapisuje go przed pushem rundy (#542)."""
@@ -205,6 +230,7 @@ class TestNightRunMergeGate(unittest.TestCase):
         rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
         self.assertIn("Przed każdą rundą", rounds)
         self.assertIn("odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan`", rounds)
+        self.assertIn("R = wartość odczytana przed tą rundą", rounds)
         write = rounds.index("zapisz `coderabbit-rundy: #<N> <R+1>`")
         self.assertLess(write, rounds.index("jeden push"))
         self.assertLess(write, rounds.index("resolveReviewThread"))
