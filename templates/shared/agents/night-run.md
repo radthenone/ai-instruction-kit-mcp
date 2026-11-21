@@ -202,7 +202,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
   poprzednich nocy (zakończonych z krokiem `koniec` lub rzeczywiście przerwanych — nigdy aktywnej nocy z krokiem ≠ `koniec`). Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
   raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<nazwa tamtego katalogu>.md`
   (wrapper kasuje bufor dopiero po wypisaniu). Plik wpisz do NIGHT-RUN REPORT jako `zaległe wywołania`.
-- **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
+- **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`, `coderabbit-rundy: <N>` (licznik rund CodeRabbit ticketu; zapisuje go git-end przed pushem każdej rundy, N+1; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, zachowaj tę linię),
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
   per ticket`, pauzy limitu: otwarta `pauza limitu od <ts>; wznowienie <ts> (epoch N)` (zapisuje
   ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamyka ją watchdog po wznowieniu; ty tylko sprawdzasz). Nadpisujesz **Ty**

@@ -135,7 +135,7 @@ class NightRunTicketAgentTest(unittest.TestCase):
         self.assertIn("rundy CodeRabbit: <0–6 / n/d>", ticket)
         self.assertNotIn("rundy CodeRabbit: <0–3 / n/d>", ticket)
 
-    def test_sufit_paragraph_drops_stale_escalation_rules(self) -> None:
+    def test_ceiling_paragraph_drops_stale_escalation_rules(self) -> None:
         """Akapit „Sufit napraw” nie eskaluje wątków CodeRabbit po wyczerpaniu wspólnego sufitu (#542)."""
         ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
         paragraph = ticket.split("**Sufit napraw", 1)[1].split("**Clean Slate:**", 1)[0]

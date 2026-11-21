@@ -134,6 +134,7 @@ class TestCleanSlateT3Card(unittest.TestCase):
         self.assertIn("`target.model`", text)
         self.assertIn('`{id: "effort"', text)
         self.assertIn("warunek bezpieczeństwa z `night-run`", text)
+        self.assertIn("linię `coderabbit-rundy: <N>` z `## Stan`", text)
 
     def test_records_stage_before_removing_worktree(self) -> None:
         text = _flat(T3_CARD)
