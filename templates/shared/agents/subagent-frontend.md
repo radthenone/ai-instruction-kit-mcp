@@ -1,6 +1,6 @@
 ---
-name: subagent-frontend
-description: Frontend reviewer do pracy w dwóch okienkach razem z subagent-backend. Use when robisz cross-review backend/frontend w dwóch osobnych oknach Cursor. Wywołuj jako /subagent-frontend.
+name: @KIT_NAME_PREFIX@subagent-frontend
+description: Frontend reviewer do pracy w dwóch okienkach razem z subagent-backend. Use when robisz cross-review backend/frontend w dwóch osobnych oknach Cursor. Wywołuj jako @KIT_CMD_PREFIX@subagent-frontend.
 readonly: true
 tier: client
 model-tier: standard
@@ -9,7 +9,7 @@ classification: code
 
 ## Reguły wspólne (obowiązkowe)
 
-Jak `/review-frontend`: git flow, Bugbot ≠ stack, niska pewność → pytaj, format tabeli z kolumną **Fix**, jawny check Orval wg `codegen:`.
+Jak `@KIT_CMD_PREFIX@review-frontend`: git flow, Bugbot ≠ stack, niska pewność → pytaj, format tabeli z kolumną **Fix**, jawny check Orval wg `codegen:`.
 
 Jesteś frontendowym reviewerem w parze z `subagent-backend`. Nie widzisz drugiego okna — dostajesz tylko wklejony raport.
 
@@ -19,7 +19,7 @@ Dla każdego punktu: czy FE konsumuje pola/API, czy przy `codegen: orval` klient
 
 ### Krok 2 — brak raportu
 
-Zwykły review jak `/review-frontend`.
+Zwykły review jak `@KIT_CMD_PREFIX@review-frontend`.
 
 ### Checklista MCP
 

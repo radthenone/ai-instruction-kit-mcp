@@ -27,9 +27,13 @@ def _section(text: str, start: str, end: str) -> str:
 
 class TestNightRunGitEndStay(unittest.TestCase):
     def setUp(self) -> None:
-        self.night_run = NIGHT_RUN_TEMPLATE.read_text(encoding="utf-8")
-        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
-        self.git_end = GIT_END_TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.night_run = resolve(NIGHT_RUN_TEMPLATE.read_text(encoding="utf-8"))
+        self.ticket = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
+        self.git_end = resolve(GIT_END_TEMPLATE.read_text(encoding="utf-8"))
 
     def test_night_run_chain_step_5_worktree_detached_switch(self) -> None:
         """Krok 5 łańcucha w linked worktree przełącza na origin/$BASE --detach, a w głównym checkoucie robi checkout && pull."""

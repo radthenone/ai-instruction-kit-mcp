@@ -26,7 +26,7 @@ _ENTRY = re.compile(
 )
 
 
-def resolve(text: str, *, sigil: str, namespace: str, name_prefix: str) -> str:
+def resolve(text: str, *, sigil: str = "/", namespace: str = "", name_prefix: str = "") -> str:
     """
     Podstaw placeholdery prefiksu w tekście.
 

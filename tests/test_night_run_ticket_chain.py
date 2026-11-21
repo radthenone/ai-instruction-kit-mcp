@@ -35,8 +35,12 @@ TICKET_COPIES = (
 
 class TestNightRunTicketChainContract(unittest.TestCase):
     def setUp(self) -> None:
-        self.night_run = TEMPLATE.read_text(encoding="utf-8")
-        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.night_run = resolve(TEMPLATE.read_text(encoding="utf-8"))
+        self.ticket = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
 
     def test_skill_description_night_or_day(self) -> None:
         """Opis skilla mówi „w nocy albo w dzień” zamiast wyłącznie „nocna praca”."""

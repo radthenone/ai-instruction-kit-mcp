@@ -1,6 +1,6 @@
 ---
-name: review-backend
-description: Reviewer backendu — Stack z Tieru backend (MCP get_bundle). Use when reviewing kod backendu, endpointy, kontrakt API, ACL, zadania w tle, migracje. Wywołuj jako /review-backend.
+name: @KIT_NAME_PREFIX@review-backend
+description: Reviewer backendu — Stack z Tieru backend (MCP get_bundle). Use when reviewing kod backendu, endpointy, kontrakt API, ACL, zadania w tle, migracje. Wywołuj jako @KIT_CMD_PREFIX@review-backend.
 readonly: true
 tier: backend
 model-tier: heavy
@@ -15,13 +15,13 @@ Przestrzegaj `AGENTS.md` oraz reguł git/review (`.cursor/rules/` lub `templates
 
 - brak commit/push na `main` / `master` / `dev` — tylko merge przez PR;
 - kolejność: branch **przed** pracą → commit → review → **push** → **potem** PR → CI green → merge;
-- przed pushem: `/review-bugbot` (nie sugeruj pusha na chronione branche).
+- przed pushem: `@KIT_CMD_PREFIX@review-bugbot` (nie sugeruj pusha na chronione branche).
 
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer
 
-| | Bugbot (`/review-bugbot`) | Ten agent (stack) |
+| | Bugbot (`@KIT_CMD_PREFIX@review-bugbot`) | Ten agent (stack) |
 |--|---------------------------|-------------------|
 | Fokus | Blokujące bugi, sekrety, bezpieczeństwo, oczywiste dziury | Konwencje stacku/domeny z MCP bundle |
 | Nie rób | — | **Nie dubluj** sekretów / `eval` / hardcoded credentials — to Bugbot |

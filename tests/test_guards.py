@@ -498,7 +498,7 @@ class SensitiveFilesGuardTest(unittest.TestCase):
 class KitDoctorReminderTest(unittest.TestCase):
     """#269: SessionStart przypomina o otwartej partii doctora; bez pliku — cisza."""
 
-    MODE_C = '/kit-project-edit "napraw zgłoszenia doctora"'
+    MODE_C = '@KIT_CMD_PREFIX@kit-project-edit "napraw zgłoszenia doctora"'
 
     def test_reminds_when_doctor_state_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

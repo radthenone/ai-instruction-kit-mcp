@@ -1002,16 +1002,17 @@ install_bugbot_md_once() {
 # hooków wybranego klienta. Kontrakt tlumaczy invoke-hook.js, wiec pliki sa te same.
 install_guards() {
   local dest="$1"
+  local target_client="${2:-shared}"
   mkdir -p "$dest"
   # Guards v1 (gate-*) kasowane po nazwie — reinstalacja na Workspace sprzed v2
   # ma zostawic wylacznie nowy zestaw.
   rm -f "$dest/gate-destructive.sh" "$dest/gate-push.sh" "$dest/gate-file-writes.mjs"
-  cp "$SHARED_GUARDS/git-guard.mjs" "$dest/git-guard.mjs"
-  cp "$SHARED_GUARDS/sensitive-files-guard.mjs" "$dest/sensitive-files-guard.mjs"
-  cp "$SHARED_GUARDS/server-guard.mjs" "$dest/server-guard.mjs"
+  copy_prefixed "$target_client" "$SHARED_GUARDS/git-guard.mjs" "$dest/git-guard.mjs"
+  copy_prefixed "$target_client" "$SHARED_GUARDS/sensitive-files-guard.mjs" "$dest/sensitive-files-guard.mjs"
+  copy_prefixed "$target_client" "$SHARED_GUARDS/server-guard.mjs" "$dest/server-guard.mjs"
   # Wspólna detekcja hosta importowana przez server-guard i language-reminder (ADR-0011).
-  cp "$SHARED_GUARDS/host-profile.mjs" "$dest/host-profile.mjs"
-  cp "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
+  copy_prefixed "$target_client" "$SHARED_GUARDS/host-profile.mjs" "$dest/host-profile.mjs"
+  copy_prefixed "$target_client" "$SHARED_GUARDS/invoke-hook.js" "$dest/invoke-hook.js"
   # Lista deny kita + rozwinięte wrappery (Taskfile / package.json / turbo) + sekcja
   # `server:` z Profilu → server-guard.json obok guarda. Guard bez reloadu działa
   # na starej liście wrapperów. Render nigdy nie wywala bootstrapu (ADR-0004).
@@ -1025,7 +1026,7 @@ install_cursor() {
   echo "  + .cursor/mcp.json"
 
   cp "$KIT_ROOT/templates/cursor/hooks.json" "$TARGET/.cursor/hooks.json"
-  install_guards "$TARGET/.cursor/hooks"
+  install_guards "$TARGET/.cursor/hooks" cursor
   echo "  + .cursor/hooks.json (node invoke-hook → guardy .mjs)"
 
   cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
@@ -1057,15 +1058,21 @@ copy_claude_commands() {
   # Claude Code custom slash commands: bez literalnego $ARGUMENTS w treści, tekst po
   # `/nazwa ...` jest ignorowany (nie trafia do Claude). Wstrzykujemy go tu — tylko
   # w kopii dla Claude, źródło w shared/agents zostaje nietknięte (Cursor ma inny mechanizm).
-  SHARED_AGENTS="$SHARED_AGENTS" DEST_DIR="$dest_dir" "$PYTHON_BIN" - <<'PY'
+  SHARED_AGENTS="$SHARED_AGENTS" DEST_DIR="$dest_dir" MANIFEST="$KIT_ROOT/manifest.yaml" PYTHONPATH="$KIT_ROOT/scripts${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
+from command_prefix import read_values, resolve
 
 src_dir = Path(os.environ["SHARED_AGENTS"])
 dest_dir = Path(os.environ["DEST_DIR"])
+manifest = Path(os.environ["MANIFEST"])
+sigil, namespace, name_prefix = read_values(manifest, "claude")
 
 for src in sorted(src_dir.glob("*.md")):
-    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+    resolved = resolve(
+        src.read_text(encoding="utf-8"), sigil=sigil, namespace=namespace, name_prefix=name_prefix
+    )
+    lines = resolved.splitlines(keepends=True)
     assert lines[0].strip() == "---", f"{src}: brak frontmatter"
     end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
     # `name:`/`readonly:` to pola formatu subagentów — command frontmatter ich nie zna.
@@ -1089,18 +1096,18 @@ install_claude() {
   fill_mcp "$KIT_ROOT/templates/claude/mcp.json" "$TARGET/.mcp.json"
   echo "  + .mcp.json (Claude Code)"
 
-  install_guards "$TARGET/.claude/hooks"
+  install_guards "$TARGET/.claude/hooks" claude
   # Tylko Claude Code: Cursor nie ma narzedzia Bash w tym sensie (bash-guard),
   # nie zwraca kontekstu z afterFileEdit (linters-guard) ani nie ma SessionStart.
-  cp "$SHARED_GUARDS/bash-guard.mjs" "$TARGET/.claude/hooks/bash-guard.mjs"
-  cp "$SHARED_GUARDS/linters-guard.mjs" "$TARGET/.claude/hooks/linters-guard.mjs"
-  cp "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
+  copy_prefixed claude "$SHARED_GUARDS/bash-guard.mjs" "$TARGET/.claude/hooks/bash-guard.mjs"
+  copy_prefixed claude "$SHARED_GUARDS/linters-guard.mjs" "$TARGET/.claude/hooks/linters-guard.mjs"
+  copy_prefixed claude "$SHARED_GUARDS/rtk-check.mjs" "$TARGET/.claude/hooks/rtk-check.mjs"
   # Przypomnienie o otwartej partii doctora (#269) — SessionStart, też Codex i Copilot.
-  cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
+  copy_prefixed claude "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.claude/hooks/kit-doctor-reminder.mjs"
   # Skaner sesji po jej zakończeniu (#371): SessionEnd, tylko Claude Code.
-  cp "$SHARED_GUARDS/retro-session-end.mjs" "$TARGET/.claude/hooks/retro-session-end.mjs"
+  copy_prefixed claude "$SHARED_GUARDS/retro-session-end.mjs" "$TARGET/.claude/hooks/retro-session-end.mjs"
   # Blokada narzędzi zdalnej sesji dla subagentów (#403): przestrzeń istnieje tylko w Claude Code.
-  cp "$SHARED_GUARDS/subagent-remote-guard.mjs" "$TARGET/.claude/hooks/subagent-remote-guard.mjs"
+  copy_prefixed claude "$SHARED_GUARDS/subagent-remote-guard.mjs" "$TARGET/.claude/hooks/subagent-remote-guard.mjs"
   # Przypomnienie języka (#248, #356): hook UserPromptSubmit dla każdego języka (ADR 0010).
   cp "$KIT_ROOT/templates/claude/language-reminder.mjs" "$TARGET/.claude/hooks/language-reminder.mjs"
   SETTINGS_TEMPLATE="$(mktemp)"
@@ -1131,7 +1138,7 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
 # to katalog skilla z SKILL.md. Curated TOML-e z templates/codex/agents/ są
 # przestarzałe — źródłem prawdy pozostaje templates/shared/agents/.
 install_codex_agents() {
-  "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.codex/skills"
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.codex/skills" codex
   echo "  + .codex/skills/ (agenty jako natywne skille Codexa)"
 }
 
@@ -1141,8 +1148,8 @@ install_codex() {
   # Guardy kita (git-guard, sensitive-files-guard, server-guard) przed każdym
   # narzędziem Codexa — PreToolUse woła invoke-hook.js --to codex, deny działa
   # tak samo jak w Claude Code.
-  install_guards "$TARGET/.codex/hooks"
-  cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.codex/hooks/kit-doctor-reminder.mjs"
+  install_guards "$TARGET/.codex/hooks" codex
+  copy_prefixed codex "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.codex/hooks/kit-doctor-reminder.mjs"
   cp "$KIT_ROOT/templates/codex/hooks.json" "$TARGET/.codex/hooks.json"
   echo "  + .codex/hooks/ + .codex/hooks.json (guardy kita PreToolUse, przypomnienie doctora SessionStart)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
@@ -1180,8 +1187,8 @@ install_vscode() {
   # `.github/hooks/*.json`): PreToolUse woła invoke-hook.js --to copilot, deny działa
   # jak w Claude Code. bash-guard/linters-guard/rtk-check zostają wyłącznie dla Claude
   # Code — Copilot ma jedno narzędzie powłoki, więc nie ma czego rozdzielać.
-  install_guards "$TARGET/.github/hooks"
-  cp "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.github/hooks/kit-doctor-reminder.mjs"
+  install_guards "$TARGET/.github/hooks" vscode
+  copy_prefixed vscode "$SHARED_GUARDS/kit-doctor-reminder.mjs" "$TARGET/.github/hooks/kit-doctor-reminder.mjs"
   cp "$KIT_ROOT/templates/vscode/github/hooks/kit-guards.json" \
     "$TARGET/.github/hooks/kit-guards.json"
   echo "  + .github/hooks/ + .github/hooks/kit-guards.json (guardy kita PreToolUse, przypomnienie doctora SessionStart)"
@@ -1225,13 +1232,13 @@ install_antigravity() {
   # Guardy kita przed każdym narzędziem Antigravity: workspace'owy `.agents/hooks.json`
   # (nazwany hook `kit-guards`, PreToolUse) woła invoke-hook.js --to antigravity.
   # Plik dzielimy z użytkownikiem — scalamy wyłącznie klucz kita (`kit-guards`).
-  install_guards "$TARGET/.agents/hooks"
+  install_guards "$TARGET/.agents/hooks" antigravity
   "$PYTHON_BIN" "$KIT_ROOT/scripts/antigravity_hooks.py" install \
     "$TARGET/.agents/hooks.json" "$KIT_ROOT/templates/antigravity/hooks.json"
   echo "  + .agents/hooks/ + .agents/hooks.json (guardy kita, PreToolUse)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # agy (Antigravity CLI) nie zna workflow — tylko skille .agents/skills/<nazwa>/SKILL.md.
-    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills"
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills" antigravity
     echo "  + .agents/skills/ (agenty jako skille Antigravity)"
     # Workflow ze starszych wersji kita — po nazwie, cudze zostają.
     for name in "$ALL_AGENTS"/*.md; do
@@ -1312,7 +1319,7 @@ install_opencode() {
   echo "  + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
   # Guardy kita (git-guard, sensitive-files-guard) przed każdym narzędziem — plugin woła
   # adapter `invoke-hook.js --to opencode`, deny działa także przy `allow` w permission.
-  install_guards "$TARGET/.opencode/hooks"
+  install_guards "$TARGET/.opencode/hooks" opencode
   cp "$KIT_ROOT/templates/opencode/plugins/kit-guards.js" "$TARGET/.opencode/plugins/kit-guards.js"
   echo "  + .opencode/plugins/kit-guards.js + .opencode/hooks/ (guardy kita)"
 }
