@@ -1138,7 +1138,7 @@ print(json.dumps(t))' "$KIT_ROOT/templates/claude/settings.json" "$KIT_ROOT/temp
 # to katalog skilla z SKILL.md. Curated TOML-e z templates/codex/agents/ są
 # przestarzałe — źródłem prawdy pozostaje templates/shared/agents/.
 install_codex_agents() {
-  "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.codex/skills"
+  "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.codex/skills" codex
   echo "  + .codex/skills/ (agenty jako natywne skille Codexa)"
 }
 
@@ -1238,7 +1238,7 @@ install_antigravity() {
   echo "  + .agents/hooks/ + .agents/hooks.json (guardy kita, PreToolUse)"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     # agy (Antigravity CLI) nie zna workflow — tylko skille .agents/skills/<nazwa>/SKILL.md.
-    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills"
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_agent_skills.py" "$SHARED_AGENTS" "$TARGET/.agents/skills" antigravity
     echo "  + .agents/skills/ (agenty jako skille Antigravity)"
     # Workflow ze starszych wersji kita — po nazwie, cudze zostają.
     for name in "$ALL_AGENTS"/*.md; do

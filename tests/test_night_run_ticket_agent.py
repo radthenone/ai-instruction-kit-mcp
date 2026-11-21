@@ -27,7 +27,10 @@ COPIES = (
 class NightRunTicketAgentTest(unittest.TestCase):
     def test_night_run_ticket_agent_template_exists_with_procedure_classification(self) -> None:
         self.assertTrue(TICKET_AGENT_TEMPLATE.is_file(), "templates/shared/agents/night-run-ticket.md musi istnieć")
-        text = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from command_prefix import resolve
+        text = resolve(TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8"))
         self.assertIn("name: night-run-ticket", text)
         self.assertIn("classification: procedure", text)
 
@@ -47,8 +50,9 @@ class NightRunTicketAgentTest(unittest.TestCase):
 
     def test_separation_of_ticket_prompt_and_order_fields(self) -> None:
         """Kroki ticketu mieszkają w night-run-ticket.md, a night-run.md zawiera tylko pola zlecenia (#473)."""
-        night_run = TEMPLATE.read_text(encoding="utf-8")
-        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        from command_prefix import resolve
+        night_run = resolve(TEMPLATE.read_text(encoding="utf-8"))
+        ticket = resolve(TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8"))
 
         markers = (
             "`/git-start #<N>`",

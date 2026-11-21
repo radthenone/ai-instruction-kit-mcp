@@ -280,7 +280,7 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
                 continue
             for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                 for match in bare_pattern.finditer(line):
-                    violations.append(f"{rel}:{lineno}: /{match.group("cmd")} w: {line.strip()[:60]}")
+                    violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
         self.assertEqual(violations, [], f"Znaleziono gołe komendy kita bez prefiksu: {violations}")
 
     def test_external_skills_remain_unprefixed(self) -> None:

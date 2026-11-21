@@ -1333,8 +1333,9 @@ def run_doctor(
         if templates.is_dir():
             for path in sorted(templates.glob("*.md")):
                 rel = path.relative_to(workspace).as_posix()
+                template_text = _read(path).replace("@KIT_CMD_PREFIX@", "/")
                 findings.extend(
-                    _command_findings(rel, _read(path), available, clients_label)
+                    _command_findings(rel, template_text, available, clients_label)
                 )
 
     findings.extend(_package_infos(workspace, overlay_text, overlay_paths))

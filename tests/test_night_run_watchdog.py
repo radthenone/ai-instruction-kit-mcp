@@ -25,8 +25,12 @@ CLAUDE_ONLY = "tylko Claude Code"
 
 class TestNightRunWatchdog(unittest.TestCase):
     def setUp(self) -> None:
-        self.text = TEMPLATE.read_text(encoding="utf-8")
-        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.text = resolve(TEMPLATE.read_text(encoding="utf-8"))
+        self.ticket = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
 
     def _section(self, start: str, end: str) -> str:
         return self.text.split(start, 1)[1].split(end, 1)[0]
@@ -108,13 +112,22 @@ class TestNightRunWatchdog(unittest.TestCase):
         self.assertIn(CLAUDE_ONLY, measurement_heading)
 
     def test_reload_refreshed_client_copies(self) -> None:
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import read_values, resolve
+
         def body(text: str) -> str:
             lines = text.split("\n---\n", 1)[1].strip().splitlines()
             return "\n".join(ln for ln in lines if not ln.startswith("<!-- "))
 
-        expected = body(self.text)
+        raw_template = TEMPLATE.read_text(encoding="utf-8")
+        manifest = KIT_ROOT / "manifest.yaml"
         for rel in COPIES:
             with self.subTest(copy=rel):
+                client_raw = rel.strip(".").split("/")[0]
+                client = "vscode" if client_raw == "github" else client_raw
+                sigil, ns, pfx = read_values(manifest, client)
+                expected = body(resolve(raw_template, sigil=sigil, namespace=ns, name_prefix=pfx))
                 copy = (KIT_ROOT / rel).read_text(encoding="utf-8")
                 self.assertIn(expected, body(copy))
 

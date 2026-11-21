@@ -33,8 +33,12 @@ def _bundles_text(host: str) -> str:
 
 class TestNightRunTemplate(unittest.TestCase):
     def setUp(self) -> None:
-        self.text = TEMPLATE.read_text(encoding="utf-8")
-        self.ticket = TICKET_TEMPLATE.read_text(encoding="utf-8")
+        import sys
+        sys.path.insert(0, str(KIT_ROOT / "scripts"))
+        from command_prefix import resolve
+
+        self.text = resolve(TEMPLATE.read_text(encoding="utf-8"))
+        self.ticket = resolve(TICKET_TEMPLATE.read_text(encoding="utf-8"))
 
     def test_no_tmp_paths(self) -> None:
         self.assertNotIn("/tmp/", self.text)

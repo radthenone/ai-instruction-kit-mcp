@@ -135,7 +135,7 @@ def _remove_link(path: Path) -> None:
         path.unlink()
 
 
-def install_native(skill_dir: Path, dest_dir: Path, client: str) -> None:
+def install_native(skill_dir: Path, dest_dir: Path, client: str = "shared") -> None:
     dest = dest_dir / skill_dir.name
     if _is_link(dest):
         _remove_link(dest)
@@ -158,7 +158,7 @@ def install_native(skill_dir: Path, dest_dir: Path, client: str) -> None:
                     )
 
 
-def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None, client: str) -> None:
+def install_degraded(skill_dir: Path, dest_dir: Path, fmt: str | None, client: str = "shared") -> None:
     src = skill_dir / "SKILL.md"
     text = src.read_text(encoding="utf-8")
     if MANIFEST.is_file():
