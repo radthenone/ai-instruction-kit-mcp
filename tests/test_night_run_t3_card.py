@@ -354,6 +354,16 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("w kolejnych rundach czekasz z tym samym limitem czasu co w rundzie 1", section)
         self.assertIn("dopiero po upływie limitu czasu, nie od razu", section)
 
+    def test_null_review_decision_follows_git_end_by_round(self) -> None:
+        """#542: limit mierzy orkiestrator, po nim decyzja wg git-end; runda 1 odnotowuje brak review, R ≥ 1 (w tym R = 6) → needs-human (#542)."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("Limit mierzy orkiestrator od wejścia w czekanie", card)
+        self.assertIn("Po upływie limitu nie czekasz dalej i podejmujesz decyzję od razu", card)
+        self.assertIn("runda 1 (R = 0): bez otwartych wątków bota odnotuj brak review bota w raporcie i przejdź dalej", card)
+        self.assertIn("kolejne rundy (R ≥ 1, w tym R = 6)", card)
+        self.assertIn("`needs-human` (bez merge, także bez otwartych wątków) dopiero po upływie limitu czasu, nie od razu", card)
+        self.assertIn("Bez zdarzenia po upływie limitu decyzja zapada przy najbliższym wybudzeniu (sekcja 4)", card)
+
     def test_repair_push_reviews_entire_section_with_problem_classes_in_card(self) -> None:
         """#512: w sekcji 5 karty T3 przed pushem poprawki agent przegląda całą zmienianą sekcję pod kątem listy klas."""
         section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]

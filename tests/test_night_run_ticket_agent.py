@@ -137,6 +137,7 @@ class NightRunTicketAgentTest(unittest.TestCase):
         self.assertIn("osobny licznik do 6 rund", ticket)
         self.assertIn("rundy CodeRabbit nie wchodzą do wspólnego sufitu 3", ticket)
         self.assertIn("po 6. rundzie CodeRabbit", ticket)
+        self.assertIn("R = 6 bez review bieżącego head po limicie", ticket)
         self.assertIn("Liczba rund (0–6) w raporcie", ticket)
         self.assertIn("rundy CodeRabbit: <0–6 / n/d>", ticket)
         self.assertNotIn("rundy CodeRabbit: <0–3 / n/d>", ticket)
@@ -149,6 +150,7 @@ class NightRunTicketAgentTest(unittest.TestCase):
         self.assertNotIn("Po wyczerpaniu sufitu zero otwartych wątków", paragraph)
         self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora", paragraph)
         self.assertIn("blokuje merge, także przy zielonym CI i zero otwartych wątków CodeRabbit", paragraph)
+        self.assertIn("R = 6 bez review bieżącego head po limicie → needs-human (przypadek E, priorytet w `@KIT_CMD_PREFIX@git-end`)", paragraph)
         self.assertIn("Wątki CodeRabbit nie są eskalowane po wyczerpaniu wspólnego sufitu", paragraph)
 
 

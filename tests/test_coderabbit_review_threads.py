@@ -98,7 +98,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("reviews.nodes.commit.oid == headRefOid", self.git_end)
         self.assertRegex(normalized, r"(?:limit czasu|timeout).*brak review bota")
         self.assertRegex(normalized, r"(?:limitu czasu|timeout).*nadal pobierz.*otwarte wątki")
-        self.assertRegex(normalized, r"Gdy (?:brak|nie ma) otwartych wątków:\s*0 rund")
+        self.assertRegex(normalized, r"Brak review po limicie.*runda 1.*odnotuj „brak review bota”")
 
     def test_night_run_merge_gate_gated_on_coderabbit_integration(self) -> None:
         """Bramka wątków bota przed merge w night-run zależy od obecności coderabbit w integrations:."""

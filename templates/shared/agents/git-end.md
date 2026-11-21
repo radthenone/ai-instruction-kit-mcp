@@ -182,7 +182,7 @@ Jeśli brak `coderabbit` w `integrations:` — krok wątków bota jest pominięt
 
 **Pobranie wątków (GraphQL):**
 Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit dla bieżącego head commita PR (po zielonych checks, a przy `Host: local` bez checks po przejściu bramek szybkich).
-Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Po upływie limitu czasu (brak review bota): nadal pobierz otwarte wątki bota z GraphQL (poniżej) i obsłuż je jak w rundach. Gdy brak otwartych wątków: 0 rund z adnotacją „brak review bota” w raporcie (w rundzie 1) albo `needs-human` (w kolejnych rundach).
+Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Po upływie limitu czasu (brak review bota dla bieżącego head): nadal pobierz otwarte wątki bota z GraphQL (poniżej) i obsłuż je jak w rundach. Dalej stosuj regułę „Brak review po limicie” w „Rundy wątków” (poniżej).
 
 Pobierz wątki review przez GraphQL (`reviewThreads`) z paginacją (`gh api graphql --paginate` oraz `pageInfo { hasNextPage endCursor }`):
 
@@ -261,13 +261,15 @@ mutation($threadId: ID!) {
 
 **Rundy wątków (maks. 6 rund):**
 - Definicja rundy: runda = każdy cykl review CodeRabbit z otwartymi wątkami, także bez pusha. Runda startuje tylko wtedy, gdy bot ma otwarte wątki.
-- Kontrola limitu, także po wznowieniu: przed każdą rundą sprawdź `R >= 6` (R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta). Jeśli `R >= 6` przed zwiększeniem licznika, nie zapisuj R+1: przy otwartych wątkach → `needs-human`, przy braku wątków → normalne zakończenie.
+- Kontrola limitu, także po wznowieniu: przed każdą rundą sprawdź `R >= 6` (R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta). Jeśli `R >= 6` przed zwiększeniem licznika, nie zapisuj R+1 i zastosuj „Priorytet przy R = 6” (poniżej).
 - Przed każdą rundą, także gdy w jednym wywołaniu jest ich więcej, odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan` CTX (R = wartość odczytana przed tą rundą; brak linii dla #<N> → R z prompta), zapisz `coderabbit-rundy: #<N> <R+1>` (zastąp istniejącą linię dla #<N>, jedna linia w `## Stan`) i dopiero potem push i zmianę wątków. To jedyny zapis licznika w tym cyklu: krok wątków przestarzałych go nie powtarza. Przerwanie po zapisie zawyża licznik o jeden, nigdy go nie zaniża. Zapis tylko w procedurze night-run, gdy prompt niesie ścieżkę `<CTX>`. Bez `<CTX>` licznika nie zapisujesz: kontrolę limitu prowadź z R z prompta i rund wykonanych w tym wywołaniu, a wartość zwróć w raporcie.
 - W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
   - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do limitu 3 prób CI.
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push.
 - Zero otwartych wątków → koniec rund i przejście do kroku powrotu / merge.
-- Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge).
+- Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge; jedynym wyjątkiem jest jawne `merge-mimo-wątków` z tekstu celu).
+- Brak review po limicie (bieżący head, po pobraniu wątków): runda 1 (R = 0 przed cyklem) → odnotuj „brak review bota” w raporcie i przejdź dalej; kolejne rundy (R ≥ 1, w tym R = 6) → `needs-human`, brak merge (fail-closed, także bez otwartych wątków).
+- Priorytet przy R = 6 (limit wyczerpany), pierwsza pasująca reguła wygrywa: 1) brak review bieżącego head po upływie limitu → `needs-human`, także bez otwartych wątków; 2) review jest, są otwarte wątki → `needs-human` (przypadek E); 3) review jest, brak otwartych wątków → normalne zakończenie.
 - Liczbę rund (0–6) podajesz w raporcie. Licznik to linia `coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy (przetrwa wznowienie); prompt do `@KIT_CMD_PREFIX@git-end` niesie numer ticketu, R i `<CTX>`; w raporcie zwracasz ostatnią zapisaną wartość R.
 
 ### 5. Powrót na branch sprzed `@KIT_CMD_PREFIX@git-start`
@@ -321,7 +323,7 @@ Raport oddajesz **wyłącznie po uzyskaniu końcowego stanu checks** (zielone ch
 - Closes: #N
 - Checks: … (końcowy stan z `gh pr checks`: pass / fail / brak checks po timeout)
 - Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
-- Rundy CodeRabbit: … (0–6 albo „pominięto — brak coderabbit w integrations”)
+- Rundy CodeRabbit: … (0–6; w rundzie 1 bez review bota dopisz „brak review bota”; albo „pominięto — brak coderabbit w integrations”)
 - IDE teraz na: … (branch powrotu jeśli był zapisany, inaczej nadal branch feature)
 - Dalej: Autopilot → merge gdy green
 ```

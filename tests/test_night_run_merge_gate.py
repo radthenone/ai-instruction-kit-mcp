@@ -248,10 +248,57 @@ class TestNightRunMergeGate(unittest.TestCase):
         rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
         self.assertIn("Kontrola limitu, także po wznowieniu", rounds)
         self.assertIn("Jeśli `R >= 6` przed zwiększeniem licznika", rounds)
-        self.assertIn("przy otwartych wątkach → `needs-human`, przy braku wątków → normalne zakończenie", rounds)
+        self.assertIn("zastosuj „Priorytet przy R = 6” (poniżej)", rounds)
         self.assertIn("nie zapisuj R+1", rounds)
         self.assertIn("R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta", rounds)
         self.assertIn("Bez `<CTX>` licznika nie zapisujesz", rounds)
+
+    def test_missing_review_after_limit_is_fail_closed_from_round_one_on(self) -> None:
+        """Brak review bieżącego head po limicie: runda 1 odnotowana, kolejne rundy i R = 6 → needs-human (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
+        self.assertNotIn("albo `needs-human` (w kolejnych rundach)", git_end)
+        self.assertIn("runda 1 (R = 0 przed cyklem) → odnotuj „brak review bota” w raporcie i przejdź dalej", rounds)
+        self.assertIn(
+            "kolejne rundy (R ≥ 1, w tym R = 6) → `needs-human`, brak merge (fail-closed, także bez otwartych wątków)",
+            rounds,
+        )
+
+    def test_round_six_priority_is_explicit_in_git_end(self) -> None:
+        """Priorytet przy R = 6: brak review, potem otwarte wątki (E), dopiero potem normalne zakończenie (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
+        self.assertIn("Priorytet przy R = 6 (limit wyczerpany), pierwsza pasująca reguła wygrywa", rounds)
+        first = rounds.index("1) brak review bieżącego head po upływie limitu → `needs-human`, także bez otwartych wątków")
+        second = rounds.index("2) review jest, są otwarte wątki → `needs-human` (przypadek E)")
+        third = rounds.index("3) review jest, brak otwartych wątków → normalne zakończenie")
+        self.assertLess(first, second)
+        self.assertLess(second, third)
+
+    def test_merge_mimo_spec_exception_stays_on_spec_rows(self) -> None:
+        """Wyjątek merge-mimo-spec dotyczy wyłącznie wierszy Spec; potwierdzona uwaga review blokuje merge zawsze (#542)."""
+        self.assertIn("Wyjątek `merge-mimo-spec` dotyczy wyłącznie wierszy Spec", self.prompt)
+        self.assertIn(
+            "nie dotyczy uwag review orkiestratora (bugbot, edge, pozostałe @KIT_CMD_PREFIX@review-*) ani wątków CodeRabbit",
+            self.prompt,
+        )
+        self.assertIn("potwierdzona, nierozwiązana uwaga review blokuje merge zawsze, także z `merge-mimo-spec`", self.prompt)
+
+    def test_merge_gate_fails_closed_without_review_from_round_one_on(self) -> None:
+        """Bramka merge: runda 1 odnotowuje brak review, R ≥ 1 po limicie blokuje merge; merge-mimo-wątków tylko dla wątków (#542)."""
+        self.assertIn("runda 1 (R = 0): odnotowany brak review bota nie blokuje, gdy zero otwartych wątków", self.prompt)
+        self.assertIn(
+            "R ≥ 1 (R z ostatniego raportu `@KIT_CMD_PREFIX@git-end`): brak review bieżącego head po limicie = needs-human, brak merge",
+            self.prompt,
+        )
+        self.assertIn("Wyjątek `merge-mimo-wątków` dotyczy wyłącznie otwartych wątków, nie braku review", self.prompt)
+
+    def test_case_e_and_needs_human_triggers_cover_review_and_round_six(self) -> None:
+        """Przypadek E i wyzwalacze needs-human niosą uwagę review po sufitcie i R = 6 bez review (#542)."""
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3", self.case_rules)
+        self.assertIn("R = 6 bez review bieżącego head po limicie", self.case_rules)
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3 (E)", self.text)
+        self.assertIn("R = 6 bez review bieżącego head po limicie (E)", self.text)
 
     def test_circuit_breaker_runs_clean_slate_before_needs_human(self) -> None:
         """Circuit breaker najpierw Clean Slate; needs-human dopiero, gdy Clean Slate użyty albo warunek niespełniony (#542)."""

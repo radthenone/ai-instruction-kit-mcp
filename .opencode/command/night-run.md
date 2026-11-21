@@ -351,7 +351,7 @@ szybkich, krok 6 w `night-run-ticket`), nigdy push.
 
 ### Wyzwalacze
 
-**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po 6. rundzie (E); kryterium akceptacji niejasne albo sprzeczne
+**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3 (E); otwarte wątki CodeRabbit po 6. rundzie (E); R = 6 bez review bieżącego head po limicie (E); kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
 po 3 próbach naprawy (wspólny sufit 3 rund naprawczych dla CI i reviewów orkiestratora, bez CodeRabbit) albo circuit breaker (identyczny błąd, flip-flop,
 eksplozja diffa — krok 6 w `night-run-ticket`; po 2. rundzie albo po circuit breakerze najpierw Clean Slate (sufit 3, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony); rundy CodeRabbit nie uruchamiają Clean Slate); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
@@ -401,7 +401,7 @@ tickety B i C są w zasięgu.
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3 w `night-run-ticket`. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu albo otwarte wątki CodeRabbit po 6. rundzie): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
+- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu; potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3; otwarte wątki CodeRabbit po 6. rundzie; R = 6 bez review bieżącego head po limicie): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
 
 Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
