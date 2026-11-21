@@ -76,6 +76,14 @@ class TestCleanSlateProcedure(unittest.TestCase):
         self.assertIn("hand-back `clean-slate`", text)
         self.assertIn("Clean Slate: użyty", text)
 
+    def test_clean_slate_applies_only_to_ceiling_of_three_not_coderabbit(self) -> None:
+        """Clean Slate dotyczy tylko sufitu 3; rundy CodeRabbit go nie uruchamiają (#542)."""
+        ticket = _flat(TICKET)
+        night_run = _flat(NIGHT_RUN)
+        self.assertIn("po 2. nieudanej rundzie naprawczej w suficie 3", ticket)
+        self.assertIn("rundy CodeRabbit nie uruchamiają Clean Slate", ticket)
+        self.assertIn("rundy CodeRabbit nie uruchamiają Clean Slate", night_run)
+
     def test_ticket_keeps_clean_slate_branch_name(self) -> None:
         text = _flat(TICKET)
         self.assertIn(
@@ -109,6 +117,12 @@ class TestCleanSlateProcedure(unittest.TestCase):
         self.assertIn("błąd fetch albo komendy", text)
         self.assertIn("własny sufit 3 rund", text)
 
+    def test_clean_slate_hands_over_coderabbit_round_counter(self) -> None:
+        """Nowy subagent po Clean Slate dostaje `coderabbit-rundy` z `## Stan`; limit 6 obejmuje cały ticket (#542)."""
+        text = _flat(NIGHT_RUN)
+        self.assertIn("linię `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
+        self.assertIn("limit 6 obejmuje cały ticket", text)
+
 
 class TestCleanSlateT3Card(unittest.TestCase):
     def test_maps_to_fresh_delegate_task(self) -> None:
@@ -120,6 +134,7 @@ class TestCleanSlateT3Card(unittest.TestCase):
         self.assertIn("`target.model`", text)
         self.assertIn('`{id: "effort"', text)
         self.assertIn("warunek bezpieczeństwa z `night-run`", text)
+        self.assertIn("linię `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
 
     def test_records_stage_before_removing_worktree(self) -> None:
         text = _flat(T3_CARD)

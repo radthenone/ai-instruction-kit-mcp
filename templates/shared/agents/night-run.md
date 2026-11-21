@@ -202,7 +202,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
   poprzednich nocy (zakończonych z krokiem `koniec` lub rzeczywiście przerwanych — nigdy aktywnej nocy z krokiem ≠ `koniec`). Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
   raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<nazwa tamtego katalogu>.md`
   (wrapper kasuje bufor dopiero po wypisaniu). Plik wpisz do NIGHT-RUN REPORT jako `zaległe wywołania`.
-- **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
+- **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`, `coderabbit-rundy: #<N> <R>` (licznik rund CodeRabbit ticketu #N; jedna linia, zastępowana przy każdym zapisie; zapisuje go git-end przed każdą rundą (także bez pusha), R+1; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, najpierw przeczytaj aktualny plik i zachowaj tę linię),
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
   per ticket`, pauzy limitu: otwarta `pauza limitu od <ts>; wznowienie <ts> (epoch N)` (zapisuje
   ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamyka ją watchdog po wznowieniu; ty tylko sprawdzasz). Nadpisujesz **Ty**
@@ -256,7 +256,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 
 1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): z parametrami zlecenia z sekcji „Zlecenie ticketu” (kroki 1–8 w `night-run-ticket`), z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Łańcuch prowadzi sesja ticketu. Orkiestrator zleca tylko ticket i trzyma jedną linię stanu (`#N: <stan> <PR> <koszt>`). Przed startem ticketu upewnij się, że żaden inny CTX tego dnia nie ma go w `## Stan` jako trwającego (reguła z kroku 4; w razie kolizji pomijasz: `skipped: w innej nocy <katalog>`). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
-   tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
+   tura czyta cały kontekst. Na starcie nowego ticketu (nie przy wznowieniu ani fallbacku tego samego ticketu) w tym zapisie ustaw `coderabbit-rundy: #<N> 0`; wartość zachowaj tylko przy wznowieniu i Clean Slate tego samego ticketu. Wraca z hand-backiem i niewypchniętym branchem; wtedy
    poprawiasz `## Stan`, jeśli hand-back zmienia krok. W parametrach zlecenia kroki 2–3 w `night-run-ticket` dostają `Wykonawca` z wpisanymi `implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>` albo `@KIT_CMD_PREFIX@headless <EXEC> [FLAGI] "<TREŚĆ>"` lub `brak`, oraz dwiema
    rozstrzygniętymi wartościami: `LIMIT` (`przejmij` / `czekaj`; z tekstu celu `limit:`, brak → `przejmij`)
    i `PRZEJĘCIE` (alias + źródło): (a) tekst celu `przejęcie: <alias>` (tylko ta noc), (b) Profil
@@ -313,6 +313,7 @@ Wykonawca: implementacja: <wykonawca> <model>, <model>; <wykonawca> <model> | @K
 LIMIT: <przejmij | czekaj>
 PRZEJĘCIE: <alias> (<źródło>)
 Nadpisania: merge-mimo-spec, merge-mimo-wątków | brak
+Licznik CodeRabbit: coderabbit-rundy: #<N> <R> | brak (z `## Stan`; brak = 0)
 Polecenia z celu dla ticketu: <tekst | brak>
 Język wyjścia: <language>
 ```
@@ -353,10 +354,10 @@ szybkich, krok 6 w `night-run-ticket`), nigdy push.
 
 ### Wyzwalacze
 
-**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po wyczerpaniu sufitu rund (E); kryterium akceptacji niejasne albo sprzeczne
+**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3 (E); otwarte wątki CodeRabbit po 6. rundzie (E); R = 6 bez review bieżącego head po limicie (E); kryterium akceptacji niejasne albo sprzeczne
 z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 3 próbach naprawy (wspólny sufit 3 rund naprawczych CI i CodeRabbit) albo circuit breaker (identyczny błąd, flip-flop,
-eksplozja diffa — krok 6 w `night-run-ticket`; po 2. rundzie albo po circuit breakerze najpierw Clean Slate, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
+po 3 próbach naprawy (wspólny sufit 3 rund naprawczych dla CI i reviewów orkiestratora, bez CodeRabbit) albo circuit breaker (identyczny błąd, flip-flop,
+eksplozja diffa — krok 6 w `night-run-ticket`; po 2. rundzie albo po circuit breakerze najpierw Clean Slate (sufit 3, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony); rundy CodeRabbit nie uruchamiają Clean Slate); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
 błąd builda przy aktualizacji samego lockfile → etykieta
 `needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
 zostaje otwarty.
@@ -380,7 +381,7 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
    (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.
    Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty” i notatkę: „Poprzednie podejście zawiodło
    z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu). Nowy subagent ma
-   własny sufit 3 rund; drugiego Clean Slate nie ma, więc wyczerpany sufit → needs-human.
+   własny sufit 3 rund (rundy CodeRabbit mają osobny limit 6 rund i nie uruchamiają Clean Slate); drugiego Clean Slate nie ma, więc wyczerpany sufit przy czerwonym CI albo potwierdzonej, nierozwiązanej uwadze review orkiestratora → needs-human. Zlecenie nowego subagenta niesie też linię `coderabbit-rundy: #<N> <R>` z `## Stan` (liczba rund CodeRabbit wykonanych przed Clean Slate); nowy subagent liczy dalsze rundy od tej wartości, a limit 6 obejmuje cały ticket.
 
 ### Zasięg — zanim cokolwiek zrobisz
 
@@ -403,7 +404,7 @@ tickety B i C są w zasięgu.
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `@KIT_CMD_PREFIX@headless` dla tego ticketu od kroku 2–3 w `night-run-ticket`. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu albo otwarte wątki bota CodeRabbit po wyczerpaniu sufitu rund): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
+- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu; potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3; otwarte wątki CodeRabbit po 6. rundzie; R = 6 bez review bieżącego head po limicie): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
 
 Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):
@@ -470,7 +471,7 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 - hand-back „pauza wykonawcy do <ISO>” → jak w przypadku D (pauza w `## Stan`, odnów watchdoga);
   po wznowieniu ponowny `@KIT_CMD_PREFIX@headless` dla tego ticketu (krok 2–3 w `night-run-ticket`), pauza nie liczy się do wznowień ticketu;
 - failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
-  subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
+  subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”, z linią `coderabbit-rundy: #<N> <R>` z `## Stan` w parametrach
   (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
 - działa, ale bez zmian w gicie i PR dłużej niż próg anomalii watchdoga (§7) (`git log -1 --format=%ct` na branchu +
   ostatni check) → `TaskStop`, potem wznowienie jak wyżej;

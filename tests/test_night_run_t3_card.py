@@ -23,7 +23,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sys
 from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
 from _shell import resolve_bash
 from guides.bootstrap import run_bootstrap
@@ -332,8 +337,32 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("poczekaj na review bieżącego head", section)
         # PR #507 (CodeRabbit): odczyt wcześniejszych review bez commit_id oraz limit czasu null z git-end
         self.assertIn('map(select(.user.login == "coderabbitai[bot]"))', section)
-        self.assertIn("limit czasu (maks. 10–15 min)", section)
+        self.assertIn("upływem limitu czasu oczekiwania (maks. 10–15 min)", section)
         self.assertIn("git-end", section)
+
+    def test_null_review_blocks_merge_until_timeout_then_git_end_decides(self) -> None:
+        """Zakaz merge trwa do upływu limitu czasu oczekiwania; po nim decyduje git-end, także o merge (#542)."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("nie przechodź do merge bez odczytu review przed upływem limitu czasu oczekiwania", card)
+        self.assertNotIn("ani bez odczytu review", card)
+        self.assertIn("po upływie limitu postępowanie określa `git-end`, także dopuszczalność merge", card)
+        self.assertNotIn("dopóki go nie odczytasz; limit czasu", card)
+
+    def test_null_review_in_later_rounds_waits_for_timeout(self) -> None:
+        """#542: wynik null review w kolejnych rundach czeka z limitem czasu; needs-human dopiero po upływie."""
+        section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("w kolejnych rundach czekasz z tym samym limitem czasu co w rundzie 1", section)
+        self.assertIn("dopiero po upływie limitu czasu, nie od razu", section)
+
+    def test_null_review_decision_follows_git_end_by_round(self) -> None:
+        """#542: limit mierzy orkiestrator, po nim decyzja wg git-end; runda 1 odnotowuje brak review, R ≥ 1 (w tym R = 6) → needs-human (#542)."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("Limit mierzy orkiestrator od wejścia w czekanie", card)
+        self.assertIn("Po upływie limitu nie czekasz dalej i podejmujesz decyzję od razu", card)
+        self.assertIn("runda 1 (R = 0): bez otwartych wątków bota odnotuj brak review bota w raporcie i przejdź dalej", card)
+        self.assertIn("kolejne rundy (R ≥ 1, w tym R = 6)", card)
+        self.assertIn("`needs-human` (bez merge, także bez otwartych wątków) dopiero po upływie limitu czasu, nie od razu", card)
+        self.assertIn("Bez zdarzenia po upływie limitu decyzja zapada przy najbliższym wybudzeniu (sekcja 4)", card)
 
     def test_repair_push_reviews_entire_section_with_problem_classes_in_card(self) -> None:
         """#512: w sekcji 5 karty T3 przed pushem poprawki agent przegląda całą zmienianą sekcję pod kątem listy klas."""

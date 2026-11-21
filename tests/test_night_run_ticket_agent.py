@@ -131,6 +131,28 @@ class NightRunTicketAgentTest(unittest.TestCase):
         card = T3_CARD_TEMPLATE.read_text(encoding="utf-8")
         self.assertEqual(class_list(ticket), class_list(card))
 
+    def test_coderabbit_has_own_limit_of_six_rounds(self) -> None:
+        """CodeRabbit ma osobny licznik do 6 rund; licznik 0-6 w hand-backu (#542)."""
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("osobny licznik do 6 rund", ticket)
+        self.assertIn("rundy CodeRabbit nie wchodzą do wspólnego sufitu 3", ticket)
+        self.assertIn("po 6. rundzie CodeRabbit", ticket)
+        self.assertIn("R = 6 bez review bieżącego head po limicie", ticket)
+        self.assertIn("Liczba rund (0–6) w raporcie", ticket)
+        self.assertIn("rundy CodeRabbit: <0–6 / n/d>", ticket)
+        self.assertNotIn("rundy CodeRabbit: <0–3 / n/d>", ticket)
+
+    def test_ceiling_paragraph_drops_stale_escalation_rules(self) -> None:
+        """Akapit „Sufit napraw” nie eskaluje wątków CodeRabbit po wyczerpaniu wspólnego sufitu (#542)."""
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        paragraph = ticket.split("**Sufit napraw", 1)[1].split("**Clean Slate:**", 1)[0]
+        self.assertNotIn("Wyczerpany sufit, gdy wątki CodeRabbit nadal są otwarte", paragraph)
+        self.assertNotIn("Po wyczerpaniu sufitu zero otwartych wątków", paragraph)
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora", paragraph)
+        self.assertIn("blokuje merge, także przy zielonym CI i zero otwartych wątków CodeRabbit", paragraph)
+        self.assertIn("R = 6 bez review bieżącego head po limicie → needs-human (przypadek E, priorytet w `@KIT_CMD_PREFIX@git-end`)", paragraph)
+        self.assertIn("Wątki CodeRabbit nie są eskalowane po wyczerpaniu wspólnego sufitu", paragraph)
+
 
 if __name__ == "__main__":
     unittest.main()

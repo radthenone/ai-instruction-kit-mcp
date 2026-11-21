@@ -103,8 +103,17 @@ class TestNightRunMergeGate(unittest.TestCase):
 
     def test_repair_rounds_share_ceiling_of_three(self) -> None:
         self.assertIn("sufit 3 rund naprawczych", self.prompt)
-        self.assertIn("łącznie dla CI i CodeRabbit", self.prompt)
+        self.assertIn("prób CI i reviewów wysyłanych przez orkiestrator", self.prompt)
+        self.assertNotIn("łącznie dla CI i CodeRabbit", self.prompt)
         self.assertNotIn("limitu 3 prób CI", self.prompt)
+        self.assertIn("CodeRabbit ma osobny licznik do 6 rund", self.prompt)
+        self.assertIn("rundy CodeRabbit nie wchodzą do sufitu 3", self.prompt)
+
+    def test_coderabbit_ceiling_six_rounds_triggers_case_e(self) -> None:
+        """Otwarte wątki CodeRabbit po 6 rundach wyzwalają przypadek E needs-human (#542)."""
+        self.assertIn("otwarte wątki CodeRabbit po 6. rundzie", self.case_rules)
+        self.assertNotIn("wspólny sufit 3 rund naprawczych CI i CodeRabbit", self.text)
+        self.assertIn("wspólny sufit 3 rund naprawczych dla CI i reviewów orkiestratora", self.text)
 
     def test_circuit_breaker_conditions_stop_repair_loop(self) -> None:
         problems = _section(self.text, "## Gdy ticket napotka problem", "## Tick watchdoga")
@@ -125,10 +134,64 @@ class TestNightRunMergeGate(unittest.TestCase):
     def test_handback_after_ceiling_or_breaker_carries_card_data(self) -> None:
         self.assertRegex(
             self.prompt,
-            r"limit rund albo zadziałał circuit breaker[^.]*hand-back[^.]*dokładny błąd albo test"
+            r"hand-back needs-human albo halt zawiera dane karty: dokładny błąd albo test"
             r"[^.]*hipotezę przyczyny[^.]*zmiany i commity na branchu",
         )
         self.assertIn("hand-back z Q1/Q2", self.prompt)
+
+    def test_outdated_threads_counter_written_before_resolve(self) -> None:
+        """Przestarzałe wątki rozwiązujesz dopiero po zapisie licznika rundy, także gdy review ma tylko takie (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        self.assertIn("dopiero po kroku z „Rundy wątków”", git_end)
+        self.assertIn("w tym kroku licznika nie zapisujesz", git_end)
+        self.assertIn("Ta kolejność obowiązuje też wtedy, gdy review ma wyłącznie nieaktualne wątki", git_end)
+        self.assertLess(
+            git_end.index("Zanim zmienisz którykolwiek wątek"),
+            git_end.index("Filtruj wyłącznie otwarte wątki"),
+        )
+        self.assertLess(
+            git_end.index("Filtruj wyłącznie otwarte wątki"),
+            git_end.index("Wątki przestarzałe (`isOutdated == true`)"),
+        )
+
+    def test_ceiling_escalation_is_conditional_and_coderabbit_rounds_are_e(self) -> None:
+        """Circuit breaker najpierw Clean Slate, potem needs-human warunkowo; wyczerpany sufit warunkowo; 6 rund CodeRabbit z otwartymi wątkami → E (#542)."""
+        self.assertNotIn("gdy wyczerpano wspólny sufit 3 albo zadziałał circuit breaker", self.prompt)
+        self.assertIn("Przy circuit breakerze najpierw hand-back `clean-slate`", self.prompt)
+        self.assertIn("po 6. rundzie z otwartymi wątkami → needs-human (przypadek E)", self.prompt)
+
+    def test_new_ticket_resets_coderabbit_counter_in_night_run(self) -> None:
+        """Start nowego ticketu zeruje licznik CodeRabbit; wartość zostaje tylko przy wznowieniu i Clean Slate (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn(
+            "Na starcie nowego ticketu (nie przy wznowieniu ani fallbacku tego samego ticketu) w tym zapisie ustaw `coderabbit-rundy: #<N> 0`",
+            text,
+        )
+        self.assertIn("wartość zachowaj tylko przy wznowieniu i Clean Slate tego samego ticketu", text)
+
+    def test_stan_schema_carries_coderabbit_counter(self) -> None:
+        """Licznik `coderabbit-rundy` jest w schemacie `## Stan`; git-end zapisuje go przed pushem rundy (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn(
+            "`coderabbit-rundy: #<N> <R>` (licznik rund CodeRabbit ticketu #N; jedna linia, zastępowana przy każdym zapisie; zapisuje go git-end przed każdą rundą (także bez pusha), R+1; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, najpierw przeczytaj aktualny plik i zachowaj tę linię)",
+            text,
+        )
+
+    def test_ticket_hands_coderabbit_counter_to_git_end(self) -> None:
+        """Subagent ticketu przyjmuje licznik z parametrów, przekazuje go do /git-end i zwraca w hand-backu (#542)."""
+        self.assertIn("linia `coderabbit-rundy: #<N> <R>` w parametrach zlecenia", self.prompt)
+        self.assertIn("w prompcie do `@KIT_CMD_PREFIX@git-end` przekazujesz numer ticketu, R, ścieżkę `<CTX>`", self.prompt)
+        self.assertIn("zwracasz w hand-backu jako `rundy CodeRabbit`", self.prompt)
+
+    def test_zlecenie_ticketu_carries_coderabbit_counter(self) -> None:
+        """Zlecenie ticketu niesie licznik CodeRabbit, więc wznowienie go nie gubi (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn("Licznik CodeRabbit: coderabbit-rundy: #<N> <R> | brak", text)
+
+    def test_fallback_carries_coderabbit_counter(self) -> None:
+        """Fallback po porażce subagenta niesie licznik CodeRabbit z `## Stan` (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn("z linią `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
 
     def test_escalation_card_sections(self) -> None:
         card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")
@@ -141,10 +204,112 @@ class TestNightRunMergeGate(unittest.TestCase):
         self.assertIn("od razu bierze kolejne niezależne issue", card)
         self.assertIn("blokuje tylko relacja `blocked_by`", card)
 
-    def test_escalation_after_ceiling_requires_open_threads(self) -> None:
-        self.assertIn("gdy wątki CodeRabbit nadal są otwarte", self.prompt)
-        self.assertIn("zero otwartych wątków przy zielonym CI kończy rundy bez eskalacji", self.prompt)
+    def test_escalation_after_ceiling_separates_shared_and_coderabbit_limits(self) -> None:
+        """Wyczerpany wspólny sufit eskaluje CI i potwierdzone uwagi review; wątki CodeRabbit mają osobny limit (#542)."""
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora", self.prompt)
+        self.assertIn("przypadek E", self.prompt)
+        self.assertIn("Wątki CodeRabbit nie są eskalowane po wyczerpaniu wspólnego sufitu", self.prompt)
         self.assertIn("czerwone CI po wyczerpaniu sufitu → needs-human, nawet bez otwartych wątków", self.prompt)
+        self.assertNotIn("gdy wątki CodeRabbit nadal są otwarte", self.prompt)
+        self.assertNotIn("zero otwartych wątków przy zielonym CI kończy rundy bez eskalacji", self.prompt)
+
+    def test_round_definition_is_unified_in_ticket_and_git_end(self) -> None:
+        """Runda CodeRabbit to każdy cykl review z otwartymi wątkami, także bez pusha, w obu szablonach (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        phrase = "runda = każdy cykl review CodeRabbit z otwartymi wątkami, także bez pusha"
+        self.assertIn(phrase, self.prompt)
+        self.assertIn(phrase, git_end)
+        self.assertNotIn("runda = push z naprawą", self.prompt)
+
+    def test_coderabbit_counter_lives_in_stan_and_survives_resume(self) -> None:
+        """Licznik rund CodeRabbit jest w `## Stan` CTX i przechodzi do /git-end (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        self.assertIn("`coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy", git_end)
+        self.assertIn("przetrwa wznowienie", git_end)
+        self.assertIn("prompt do `@KIT_CMD_PREFIX@git-end` niesie numer ticketu, R i `<CTX>`", git_end)
+        self.assertIn("tylko w procedurze night-run", git_end)
+
+    def test_coderabbit_counter_written_before_push(self) -> None:
+        """Licznik `coderabbit-rundy` zapisuje się przed pushem rundy, żeby przerwana runda go nie zgubiła (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
+        self.assertIn("Przed każdą rundą", rounds)
+        self.assertIn("odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan`", rounds)
+        self.assertIn("R = wartość odczytana przed tą rundą", rounds)
+        self.assertIn("zastąp istniejącą linię dla #<N>", rounds)
+        self.assertIn("jedyny zapis licznika w tym cyklu", rounds)
+        write = rounds.index("zapisz `coderabbit-rundy: #<N> <R+1>`")
+        self.assertLess(write, rounds.index("jeden push"))
+        self.assertLess(write, rounds.index("resolveReviewThread"))
+
+    def test_round_limit_checked_before_each_round_after_resume(self) -> None:
+        """Przed każdą rundą, także po wznowieniu, kontrola limitu: R >= 6 nie zwiększa licznika (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
+        self.assertIn("Kontrola limitu, także po wznowieniu", rounds)
+        self.assertIn("Jeśli `R >= 6` przed zwiększeniem licznika", rounds)
+        self.assertIn("zastosuj „Priorytet przy R = 6” (poniżej)", rounds)
+        self.assertIn("nie zapisuj R+1", rounds)
+        self.assertIn("R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta", rounds)
+        self.assertIn("Bez `<CTX>` licznika nie zapisujesz", rounds)
+
+    def test_missing_review_after_limit_is_fail_closed_from_round_one_on(self) -> None:
+        """Brak review bieżącego head po limicie: runda 1 odnotowana, kolejne rundy i R = 6 → needs-human (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
+        self.assertNotIn("albo `needs-human` (w kolejnych rundach)", git_end)
+        self.assertIn("runda 1 (R = 0 przed cyklem) → odnotuj „brak review bota” w raporcie i przejdź dalej", rounds)
+        self.assertIn(
+            "kolejne rundy (R ≥ 1, w tym R = 6) → `needs-human`, brak merge (fail-closed, także bez otwartych wątków)",
+            rounds,
+        )
+
+    def test_round_six_priority_is_explicit_in_git_end(self) -> None:
+        """Priorytet przy R = 6: brak review, potem otwarte wątki (E), dopiero potem normalne zakończenie (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
+        self.assertIn("Priorytet przy R = 6 (limit wyczerpany), pierwsza pasująca reguła wygrywa", rounds)
+        first = rounds.index("1) brak review bieżącego head po upływie limitu → `needs-human`, także bez otwartych wątków")
+        second = rounds.index("2) review jest, są otwarte wątki → `needs-human` (przypadek E)")
+        third = rounds.index("3) review jest, brak otwartych wątków → normalne zakończenie")
+        self.assertLess(first, second)
+        self.assertLess(second, third)
+
+    def test_merge_mimo_spec_exception_stays_on_spec_rows(self) -> None:
+        """Wyjątek merge-mimo-spec dotyczy wyłącznie wierszy Spec; potwierdzona uwaga review blokuje merge zawsze (#542)."""
+        self.assertIn("Wyjątek `merge-mimo-spec` dotyczy wyłącznie wierszy Spec", self.prompt)
+        self.assertIn(
+            "nie dotyczy uwag review orkiestratora (bugbot, edge, pozostałe @KIT_CMD_PREFIX@review-*) ani wątków CodeRabbit",
+            self.prompt,
+        )
+        self.assertIn("potwierdzona, nierozwiązana uwaga review blokuje merge zawsze, także z `merge-mimo-spec`", self.prompt)
+
+    def test_merge_gate_fails_closed_without_review_from_round_one_on(self) -> None:
+        """Bramka merge: runda 1 odnotowuje brak review, R ≥ 1 po limicie blokuje merge; merge-mimo-wątków tylko dla wątków (#542)."""
+        self.assertIn("runda 1 (R = 0): odnotowany brak review bota nie blokuje, gdy zero otwartych wątków", self.prompt)
+        self.assertIn(
+            "R ≥ 1 (R z ostatniego raportu `@KIT_CMD_PREFIX@git-end`): brak review bieżącego head po limicie = needs-human, brak merge",
+            self.prompt,
+        )
+        self.assertIn("Wyjątek `merge-mimo-wątków` dotyczy wyłącznie otwartych wątków, nie braku review", self.prompt)
+
+    def test_case_e_and_needs_human_triggers_cover_review_and_round_six(self) -> None:
+        """Przypadek E i wyzwalacze needs-human niosą uwagę review po sufitcie i R = 6 bez review (#542)."""
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3", self.case_rules)
+        self.assertIn("R = 6 bez review bieżącego head po limicie", self.case_rules)
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3 (E)", self.text)
+        self.assertIn("R = 6 bez review bieżącego head po limicie (E)", self.text)
+
+    def test_circuit_breaker_runs_clean_slate_before_needs_human(self) -> None:
+        """Circuit breaker najpierw Clean Slate; needs-human dopiero, gdy Clean Slate użyty albo warunek niespełniony (#542)."""
+        self.assertIn("Przy circuit breakerze najpierw hand-back `clean-slate`", self.prompt)
+        self.assertIn("dopiero potem needs-human", self.prompt)
+        self.assertIn(
+            "needs-human od razu tylko wtedy, gdy Clean Slate już użyty albo jego warunek bezpieczeństwa niespełniony",
+            self.prompt,
+        )
+        self.assertNotIn("Needs-human następuje też, gdy zadziałał circuit breaker", self.prompt)
+        self.assertIn("Po wyczerpaniu wspólnego sufitu 3 (Clean Slate już użyty albo niedostępny)", self.prompt)
 
     def test_scope_counts_only_explicit_blocked_by(self) -> None:
         scope = _section(self.text, "### Zasięg — zanim cokolwiek zrobisz", "### Przypadki")
