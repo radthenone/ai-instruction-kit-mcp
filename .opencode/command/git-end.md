@@ -258,13 +258,13 @@ mutation($threadId: ID!) {
 
 **Rundy wątków (maks. 6 rund):**
 - Definicja rundy: runda = każdy cykl review CodeRabbit z otwartymi wątkami, także bez pusha. Runda startuje tylko wtedy, gdy bot ma otwarte wątki.
-- Przed startem rundy, czyli przed pushem i zmianą wątków, zapisz `coderabbit-rundy: <N+1>` w `## Stan` CTX nocy (N = wartość z prompta). Przerwanie po zapisie zawyża licznik o jeden, nigdy go nie zaniża, więc limit 6 pozostaje bezpieczny.
+- Przed każdą rundą, także gdy w jednym wywołaniu jest ich więcej, odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan` CTX (brak linii dla #<N> → R z prompta), zapisz `coderabbit-rundy: #<N> <R+1>` i dopiero potem push i zmianę wątków. Przerwanie po zapisie zawyża licznik o jeden, nigdy go nie zaniża. Zapis tylko w procedurze night-run, gdy prompt niesie ścieżkę `<CTX>`; bez niej pomijasz zapis licznika.
 - W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
   - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do limitu 3 prób CI.
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push.
 - Zero otwartych wątków → koniec rund i przejście do kroku powrotu / merge.
 - Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge).
-- Liczbę rund (0–6) podajesz w raporcie. Licznik to pole `coderabbit-rundy: <N>` w `## Stan` CTX nocy (przetrwa wznowienie). Prompt do `/git-end` dla tego ticketu niesie N; w raporcie zwracasz N+1 po zakończonej rundzie.
+- Liczbę rund (0–6) podajesz w raporcie. Licznik to linia `coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy (przetrwa wznowienie); prompt do `/git-end` niesie numer ticketu, R i `<CTX>`; w raporcie zwracasz ostatnią zapisaną wartość R.
 
 ### 5. Powrót na branch sprzed `/git-start`
 

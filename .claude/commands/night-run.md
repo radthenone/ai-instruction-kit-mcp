@@ -200,7 +200,7 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
   poprzednich nocy (zakończonych z krokiem `koniec` lub rzeczywiście przerwanych — nigdy aktywnej nocy z krokiem ≠ `koniec`). Katalog z `headless-rows.jsonl` to bufor bez podsumowania, czyli noc przerwana przed
   raportem: `node .ai/headless.mjs --report --ctx <tamten katalog> > <CTX_DIR>/zalegle-<nazwa tamtego katalogu>.md`
   (wrapper kasuje bufor dopiero po wypisaniu). Plik wpisz do NIGHT-RUN REPORT jako `zaległe wywołania`.
-- **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`, `coderabbit-rundy: <N>` (licznik rund CodeRabbit ticketu; zapisuje go git-end przed pushem każdej rundy, N+1; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, zachowaj tę linię),
+- **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`, `coderabbit-rundy: #<N> <R>` (licznik rund CodeRabbit ticketu #N; zapisuje go git-end przed pushem każdej rundy, R+1; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, zachowaj tę linię),
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
   per ticket`, pauzy limitu: otwarta `pauza limitu od <ts>; wznowienie <ts> (epoch N)` (zapisuje
   ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamyka ją watchdog po wznowieniu; ty tylko sprawdzasz). Nadpisujesz **Ty**
@@ -311,6 +311,7 @@ Wykonawca: implementacja: <wykonawca> <model>, <model>; <wykonawca> <model> | /h
 LIMIT: <przejmij | czekaj>
 PRZEJĘCIE: <alias> (<źródło>)
 Nadpisania: merge-mimo-spec, merge-mimo-wątków | brak
+Licznik CodeRabbit: coderabbit-rundy: #<N> <R> | brak (z `## Stan`; brak = 0)
 Polecenia z celu dla ticketu: <tekst | brak>
 Język wyjścia: <language>
 ```
@@ -378,7 +379,7 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
    (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.
    Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty” i notatkę: „Poprzednie podejście zawiodło
    z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu). Nowy subagent ma
-   własny sufit 3 rund (rundy CodeRabbit mają osobny limit 6 rund i nie uruchamiają Clean Slate); drugiego Clean Slate nie ma, więc wyczerpany sufit przy czerwonym CI albo potwierdzonej, nierozwiązanej uwadze review orkiestratora → needs-human. Zlecenie nowego subagenta niesie też linię `coderabbit-rundy: <N>` z `## Stan` (liczba rund CodeRabbit wykonanych przed Clean Slate); nowy subagent liczy dalsze rundy od tej wartości, a limit 6 obejmuje cały ticket.
+   własny sufit 3 rund (rundy CodeRabbit mają osobny limit 6 rund i nie uruchamiają Clean Slate); drugiego Clean Slate nie ma, więc wyczerpany sufit przy czerwonym CI albo potwierdzonej, nierozwiązanej uwadze review orkiestratora → needs-human. Zlecenie nowego subagenta niesie też linię `coderabbit-rundy: #<N> <R>` z `## Stan` (liczba rund CodeRabbit wykonanych przed Clean Slate); nowy subagent liczy dalsze rundy od tej wartości, a limit 6 obejmuje cały ticket.
 
 ### Zasięg — zanim cokolwiek zrobisz
 
@@ -468,7 +469,7 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
 - hand-back „pauza wykonawcy do <ISO>” → jak w przypadku D (pauza w `## Stan`, odnów watchdoga);
   po wznowieniu ponowny `/headless` dla tego ticketu (krok 2–3 w `night-run-ticket`), pauza nie liczy się do wznowień ticketu;
 - failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
-  subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
+  subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”, z linią `coderabbit-rundy: #<N> <R>` z `## Stan` w parametrach
   (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
 - działa, ale bez zmian w gicie i PR dłużej niż próg anomalii watchdoga (§7) (`git log -1 --format=%ct` na branchu +
   ostatni check) → `TaskStop`, potem wznowienie jak wyżej;

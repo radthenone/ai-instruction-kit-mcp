@@ -143,15 +143,25 @@ class TestNightRunMergeGate(unittest.TestCase):
         """Licznik `coderabbit-rundy` jest w schemacie `## Stan`; git-end zapisuje go przed pushem rundy (#542)."""
         text = " ".join(self.text.split())
         self.assertIn(
-            "`coderabbit-rundy: <N>` (licznik rund CodeRabbit ticketu; zapisuje go git-end przed pushem każdej rundy, N+1; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, zachowaj tę linię)",
+            "`coderabbit-rundy: #<N> <R>` (licznik rund CodeRabbit ticketu #N; zapisuje go git-end przed pushem każdej rundy, R+1; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, zachowaj tę linię)",
             text,
         )
 
     def test_ticket_hands_coderabbit_counter_to_git_end(self) -> None:
         """Subagent ticketu przyjmuje licznik z parametrów, przekazuje go do /git-end i zwraca w hand-backu (#542)."""
-        self.assertIn("linia `coderabbit-rundy: <N>` w parametrach zlecenia", self.prompt)
-        self.assertIn("przekazujesz ją w prompcie do `/git-end`", self.prompt)
+        self.assertIn("linia `coderabbit-rundy: #<N> <R>` w parametrach zlecenia", self.prompt)
+        self.assertIn("w prompcie do `/git-end` przekazujesz numer ticketu, R, ścieżkę `<CTX>`", self.prompt)
         self.assertIn("zwracasz w hand-backu jako `rundy CodeRabbit`", self.prompt)
+
+    def test_zlecenie_ticketu_carries_coderabbit_counter(self) -> None:
+        """Zlecenie ticketu niesie licznik CodeRabbit, więc wznowienie go nie gubi (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn("Licznik CodeRabbit: coderabbit-rundy: #<N> <R> | brak", text)
+
+    def test_fallback_carries_coderabbit_counter(self) -> None:
+        """Fallback po porażce subagenta niesie licznik CodeRabbit z `## Stan` (#542)."""
+        text = " ".join(self.text.split())
+        self.assertIn("z linią `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
 
     def test_escalation_card_sections(self) -> None:
         card = _section(self.text, "### Karta eskalacji", "## Tick watchdoga")
@@ -184,16 +194,18 @@ class TestNightRunMergeGate(unittest.TestCase):
     def test_coderabbit_counter_lives_in_stan_and_survives_resume(self) -> None:
         """Licznik rund CodeRabbit jest w `## Stan` CTX i przechodzi do /git-end (#542)."""
         git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
-        self.assertIn("`coderabbit-rundy: <N>` w `## Stan` CTX nocy", git_end)
+        self.assertIn("`coderabbit-rundy: #<N> <R>` w `## Stan` CTX nocy", git_end)
         self.assertIn("przetrwa wznowienie", git_end)
-        self.assertIn("Prompt do `/git-end` dla tego ticketu niesie N", git_end)
-        self.assertIn("zapisz `coderabbit-rundy: <N+1>` w `## Stan` CTX nocy", git_end)
+        self.assertIn("prompt do `/git-end` niesie numer ticketu, R i `<CTX>`", git_end)
+        self.assertIn("tylko w procedurze night-run", git_end)
 
     def test_coderabbit_counter_written_before_push(self) -> None:
         """Licznik `coderabbit-rundy` zapisuje się przed pushem rundy, żeby przerwana runda go nie zgubiła (#542)."""
         git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
         rounds = git_end[git_end.index("**Rundy wątków (maks. 6 rund):**") : git_end.index("### 5. Powrót na branch")]
-        write = rounds.index("zapisz `coderabbit-rundy: <N+1>` w `## Stan`")
+        self.assertIn("Przed każdą rundą", rounds)
+        self.assertIn("odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan`", rounds)
+        write = rounds.index("zapisz `coderabbit-rundy: #<N> <R+1>`")
         self.assertLess(write, rounds.index("jeden push"))
         self.assertLess(write, rounds.index("resolveReviewThread"))
 

@@ -120,7 +120,7 @@ class TestCleanSlateProcedure(unittest.TestCase):
     def test_clean_slate_hands_over_coderabbit_round_counter(self) -> None:
         """Nowy subagent po Clean Slate dostaje `coderabbit-rundy` z `## Stan`; limit 6 obejmuje cały ticket (#542)."""
         text = _flat(NIGHT_RUN)
-        self.assertIn("linię `coderabbit-rundy: <N>` z `## Stan`", text)
+        self.assertIn("linię `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
         self.assertIn("limit 6 obejmuje cały ticket", text)
 
 
@@ -134,7 +134,7 @@ class TestCleanSlateT3Card(unittest.TestCase):
         self.assertIn("`target.model`", text)
         self.assertIn('`{id: "effort"', text)
         self.assertIn("warunek bezpieczeństwa z `night-run`", text)
-        self.assertIn("linię `coderabbit-rundy: <N>` z `## Stan`", text)
+        self.assertIn("linię `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
 
     def test_records_stage_before_removing_worktree(self) -> None:
         text = _flat(T3_CARD)
