@@ -125,6 +125,16 @@ class NightRunTicketAgentTest(unittest.TestCase):
         card = T3_CARD_TEMPLATE.read_text(encoding="utf-8")
         self.assertEqual(class_list(ticket), class_list(card))
 
+    def test_coderabbit_has_own_limit_of_six_rounds(self) -> None:
+        """CodeRabbit ma osobny licznik do 6 rund; licznik 0-6 w hand-backu (#542)."""
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("osobny licznik do 6 rund", ticket)
+        self.assertIn("rundy CodeRabbit nie wchodzą do wspólnego sufitu 3", ticket)
+        self.assertIn("po 6. rundzie CodeRabbit", ticket)
+        self.assertIn("Liczba rund (0–6) w raporcie", ticket)
+        self.assertIn("rundy CodeRabbit: <0–6 / n/d>", ticket)
+        self.assertNotIn("rundy CodeRabbit: <0–3 / n/d>", ticket)
+
 
 if __name__ == "__main__":
     unittest.main()

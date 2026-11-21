@@ -23,7 +23,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sys
 from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
 from _shell import resolve_bash
 from guides.bootstrap import run_bootstrap
@@ -326,6 +331,12 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn('map(select(.user.login == "coderabbitai[bot]"))', section)
         self.assertIn("limit czasu (maks. 10–15 min)", section)
         self.assertIn("git-end", section)
+
+    def test_null_review_in_later_rounds_waits_for_timeout(self) -> None:
+        """#542: wynik null review w kolejnych rundach czeka z limitem czasu; needs-human dopiero po upływie."""
+        section = self.card_text.split("## 5.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("w kolejnych rundach czekasz z tym samym limitem czasu co w rundzie 1", section)
+        self.assertIn("dopiero po upływie limitu czasu, nie od razu", section)
 
     def test_repair_push_reviews_entire_section_with_problem_classes_in_card(self) -> None:
         """#512: w sekcji 5 karty T3 przed pushem poprawki agent przegląda całą zmienianą sekcję pod kątem listy klas."""

@@ -7,9 +7,14 @@ notatki dla nowego subagenta oraz mapowanie na świeży ``delegate_task`` w karc
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
 from guides.night_ctx import clean_slate_config, render_night_ctx
 
@@ -75,6 +80,14 @@ class TestCleanSlateProcedure(unittest.TestCase):
         self.assertIn("po 2. nieudanej rundzie naprawczej", text)
         self.assertIn("hand-back `clean-slate`", text)
         self.assertIn("Clean Slate: użyty", text)
+
+    def test_clean_slate_applies_only_to_ceiling_of_three_not_coderabbit(self) -> None:
+        """Clean Slate dotyczy tylko sufitu 3; rundy CodeRabbit go nie uruchamiają (#542)."""
+        ticket = _flat(TICKET)
+        night_run = _flat(NIGHT_RUN)
+        self.assertIn("po 2. nieudanej rundzie naprawczej w suficie 3", ticket)
+        self.assertIn("rundy CodeRabbit nie uruchamiają Clean Slate", ticket)
+        self.assertIn("rundy CodeRabbit nie uruchamiają Clean Slate", night_run)
 
     def test_ticket_keeps_clean_slate_branch_name(self) -> None:
         text = _flat(TICKET)

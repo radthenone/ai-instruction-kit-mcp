@@ -255,14 +255,14 @@ mutation($threadId: ID!) {
 }'
 ```
 
-**Rundy wątków (maks. 3 rundy):**
+**Rundy wątków (maks. 6 rund):**
 - Runda startuje tylko wtedy, gdy bot ma otwarte wątki.
 - W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
   - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do limitu 3 prób CI.
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push.
 - Zero otwartych wątków → koniec rund i przejście do kroku powrotu / merge.
-- Otwarte wątki po 3. rundzie → `needs-human` (zatrzymanie, brak merge).
-- Liczbę rund (0–3) podajesz w raporcie.
+- Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge).
+- Liczbę rund (0–6) podajesz w raporcie.
 
 ### 5. Powrót na branch sprzed `/git-start`
 
@@ -315,7 +315,7 @@ Raport oddajesz **wyłącznie po uzyskaniu końcowego stanu checks** (zielone ch
 - Closes: #N
 - Checks: … (końcowy stan z `gh pr checks`: pass / fail / brak checks po timeout)
 - Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
-- Rundy CodeRabbit: … (0–3 albo „pominięto — brak coderabbit w integrations”)
+- Rundy CodeRabbit: … (0–6 albo „pominięto — brak coderabbit w integrations”)
 - IDE teraz na: … (branch powrotu jeśli był zapisany, inaczej nadal branch feature)
 - Dalej: Autopilot → merge gdy green
 ```

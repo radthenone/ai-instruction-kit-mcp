@@ -56,12 +56,12 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertRegex(normalized, r"uzasadnieni.*(?:tańszym modelem|headless)")
 
     def test_git_end_thread_rounds_and_limit(self) -> None:
-        """Runda obsługuje wszystkie wątki naraz (1 commit, 1 push), limit 3 rund, liczba rund w raporcie."""
+        """Runda obsługuje wszystkie wątki naraz (1 commit, 1 push), limit 6 rund, liczba rund w raporcie."""
         normalized = " ".join(self.git_end.split())
         self.assertIn("wszystkie otwarte wątki naraz", normalized)
         self.assertIn("jeden commit", normalized)
         self.assertIn("jeden push", normalized)
-        self.assertRegex(normalized, r"3\.\s*rundzie.*needs-human")
+        self.assertRegex(normalized, r"6\.\s*rundzie.*needs-human")
         self.assertIn("Rundy CodeRabbit:", self.git_end)
 
     def test_night_run_ticket_agent_mentions_bot_threads(self) -> None:
@@ -78,7 +78,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("wszystkie otwarte wątki naraz", prompt)
         self.assertIn("jeden commit", prompt)
         self.assertIn("jeden push", prompt)
-        self.assertRegex(prompt, r"3\.\s*rundzie.*needs-human")
+        self.assertRegex(prompt, r"6\.\s*rundzie.*needs-human")
         self.assertLess(prompt.index("reviewThreads"), prompt.index("gh pr merge"))
         gate_phrase = "Bramka merge uwzględnia wątki bota"
         self.assertIn(gate_phrase, prompt)

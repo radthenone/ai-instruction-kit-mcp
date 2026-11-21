@@ -103,8 +103,17 @@ class TestNightRunMergeGate(unittest.TestCase):
 
     def test_repair_rounds_share_ceiling_of_three(self) -> None:
         self.assertIn("sufit 3 rund naprawczych", self.prompt)
-        self.assertIn("łącznie dla CI i CodeRabbit", self.prompt)
+        self.assertIn("prób CI i reviewów wysyłanych przez orkiestrator", self.prompt)
+        self.assertNotIn("łącznie dla CI i CodeRabbit", self.prompt)
         self.assertNotIn("limitu 3 prób CI", self.prompt)
+        self.assertIn("CodeRabbit ma osobny licznik do 6 rund", self.prompt)
+        self.assertIn("rundy CodeRabbit nie wchodzą do sufitu 3", self.prompt)
+
+    def test_coderabbit_ceiling_six_rounds_triggers_case_e(self) -> None:
+        """Otwarte wątki CodeRabbit po 6 rundach wyzwalają przypadek E needs-human (#542)."""
+        self.assertIn("otwarte wątki CodeRabbit po 6. rundzie", self.case_rules)
+        self.assertNotIn("wspólny sufit 3 rund naprawczych CI i CodeRabbit", self.text)
+        self.assertIn("wspólny sufit 3 rund naprawczych dla CI i reviewów orkiestratora", self.text)
 
     def test_circuit_breaker_conditions_stop_repair_loop(self) -> None:
         problems = _section(self.text, "## Gdy ticket napotka problem", "## Tick watchdoga")
