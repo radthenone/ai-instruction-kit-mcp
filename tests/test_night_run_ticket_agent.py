@@ -135,6 +135,16 @@ class NightRunTicketAgentTest(unittest.TestCase):
         self.assertIn("rundy CodeRabbit: <0–6 / n/d>", ticket)
         self.assertNotIn("rundy CodeRabbit: <0–3 / n/d>", ticket)
 
+    def test_sufit_paragraph_drops_stale_escalation_rules(self) -> None:
+        """Akapit „Sufit napraw” nie eskaluje wątków CodeRabbit po wyczerpaniu wspólnego sufitu (#542)."""
+        ticket = TICKET_AGENT_TEMPLATE.read_text(encoding="utf-8")
+        paragraph = ticket.split("**Sufit napraw", 1)[1].split("**Clean Slate:**", 1)[0]
+        self.assertNotIn("Wyczerpany sufit, gdy wątki CodeRabbit nadal są otwarte", paragraph)
+        self.assertNotIn("Po wyczerpaniu sufitu zero otwartych wątków", paragraph)
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora", paragraph)
+        self.assertIn("blokuje merge, także przy zielonym CI i zero otwartych wątków CodeRabbit", paragraph)
+        self.assertIn("Wątki CodeRabbit nie są eskalowane po wyczerpaniu wspólnego sufitu", paragraph)
+
 
 if __name__ == "__main__":
     unittest.main()

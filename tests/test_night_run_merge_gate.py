@@ -150,10 +150,30 @@ class TestNightRunMergeGate(unittest.TestCase):
         self.assertIn("od razu bierze kolejne niezależne issue", card)
         self.assertIn("blokuje tylko relacja `blocked_by`", card)
 
-    def test_escalation_after_ceiling_requires_open_threads(self) -> None:
-        self.assertIn("gdy wątki CodeRabbit nadal są otwarte", self.prompt)
-        self.assertIn("zero otwartych wątków przy zielonym CI kończy rundy bez eskalacji", self.prompt)
+    def test_escalation_after_ceiling_separates_shared_and_coderabbit_limits(self) -> None:
+        """Wyczerpany wspólny sufit eskaluje CI i potwierdzone uwagi review; wątki CodeRabbit mają osobny limit (#542)."""
+        self.assertIn("potwierdzona, nierozwiązana uwaga review orkiestratora", self.prompt)
+        self.assertIn("przypadek E", self.prompt)
+        self.assertIn("Wątki CodeRabbit nie są eskalowane po wyczerpaniu wspólnego sufitu", self.prompt)
         self.assertIn("czerwone CI po wyczerpaniu sufitu → needs-human, nawet bez otwartych wątków", self.prompt)
+        self.assertNotIn("gdy wątki CodeRabbit nadal są otwarte", self.prompt)
+        self.assertNotIn("zero otwartych wątków przy zielonym CI kończy rundy bez eskalacji", self.prompt)
+
+    def test_round_definition_is_unified_in_ticket_and_git_end(self) -> None:
+        """Runda CodeRabbit to każdy cykl review z otwartymi wątkami, także bez pusha, w obu szablonach (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        phrase = "runda = każdy cykl review CodeRabbit z otwartymi wątkami, także bez pusha"
+        self.assertIn(phrase, self.prompt)
+        self.assertIn(phrase, git_end)
+        self.assertNotIn("runda = push z naprawą", self.prompt)
+
+    def test_coderabbit_counter_lives_in_stan_and_survives_resume(self) -> None:
+        """Licznik rund CodeRabbit jest w `## Stan` CTX i przechodzi do /git-end (#542)."""
+        git_end = " ".join((KIT_ROOT / "templates" / "shared" / "agents" / "git-end.md").read_text(encoding="utf-8").split())
+        self.assertIn("`coderabbit-rundy: <N>` w `## Stan` CTX nocy", git_end)
+        self.assertIn("przetrwa wznowienie", git_end)
+        self.assertIn("Prompt do `/git-end` dla tego ticketu niesie bieżącą wartość", git_end)
+        self.assertIn("Zapis do `## Stan` robi orkiestrator", git_end)
 
     def test_scope_counts_only_explicit_blocked_by(self) -> None:
         scope = _section(self.text, "### Zasięg — zanim cokolwiek zrobisz", "### Przypadki")

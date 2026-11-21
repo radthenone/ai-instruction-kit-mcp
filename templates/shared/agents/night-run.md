@@ -380,7 +380,7 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
    (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.
    Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty” i notatkę: „Poprzednie podejście zawiodło
    z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu). Nowy subagent ma
-   własny sufit 3 rund (rundy CodeRabbit mają osobny limit 6 rund i nie uruchamiają Clean Slate); drugiego Clean Slate nie ma, więc wyczerpany sufit → needs-human.
+   własny sufit 3 rund (rundy CodeRabbit mają osobny limit 6 rund i nie uruchamiają Clean Slate); drugiego Clean Slate nie ma, więc wyczerpany sufit przy czerwonym CI albo potwierdzonej, nierozwiązanej uwadze review orkiestratora → needs-human. Zlecenie nowego subagenta niesie też linię `coderabbit-rundy: <N>` z `## Stan` (liczba rund CodeRabbit wykonanych przed Clean Slate); nowy subagent liczy dalsze rundy od tej wartości, a limit 6 obejmuje cały ticket.
 
 ### Zasięg — zanim cokolwiek zrobisz
 

@@ -257,13 +257,13 @@ mutation($threadId: ID!) {
 ```
 
 **Rundy wątków (maks. 6 rund):**
-- Runda startuje tylko wtedy, gdy bot ma otwarte wątki.
+- Definicja rundy: runda = każdy cykl review CodeRabbit z otwartymi wątkami, także bez pusha. Runda startuje tylko wtedy, gdy bot ma otwarte wątki.
 - W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
   - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do limitu 3 prób CI.
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push.
 - Zero otwartych wątków → koniec rund i przejście do kroku powrotu / merge.
 - Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge).
-- Liczbę rund (0–6) podajesz w raporcie.
+- Liczbę rund (0–6) podajesz w raporcie. Licznik to pole `coderabbit-rundy: <N>` w `## Stan` CTX nocy (przetrwa wznowienie). Prompt do `/git-end` dla tego ticketu niesie bieżącą wartość; w raporcie zwracasz wartość po zakończonej rundzie. Zapis do `## Stan` robi orkiestrator, nie `git-end`.
 
 ### 5. Powrót na branch sprzed `/git-start`
 
