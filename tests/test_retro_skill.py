@@ -41,7 +41,8 @@ BARE_RETRO_TRIGGER = "„retro[“”]"
 
 class RetroSkillSourceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.text = SKILL_FILE.read_text(encoding="utf-8")
+        from command_prefix import resolve
+        self.text = resolve(SKILL_FILE.read_text(encoding="utf-8"))
         self.meta, self.body = parse_frontmatter(self.text)
 
     def test_directory_holds_only_skill_md(self) -> None:
@@ -148,7 +149,8 @@ class CreateTaskRetroMarkerTests(unittest.TestCase):
     """`/create-task` przenosi marker z propozycji do body issue — bez tego dedup z ADR-0015 nie działa (#410)."""
 
     def setUp(self) -> None:
-        self.text = (KIT_ROOT / "templates" / "shared" / "agents" / "create-task.md").read_text(encoding="utf-8")
+        from command_prefix import resolve
+        self.text = resolve((KIT_ROOT / "templates" / "shared" / "agents" / "create-task.md").read_text(encoding="utf-8"))
         self.card = self.text[self.text.index("## FAZA 3") : self.text.index("## FAZA 4")]
 
     def test_card_shows_the_marker_at_the_end_of_context(self) -> None:

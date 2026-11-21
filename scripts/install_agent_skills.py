@@ -24,7 +24,8 @@ def main(argv: list[str]) -> int:
         print(__doc__, file=sys.stderr)
         return 1
     src_dir, dest_dir = Path(argv[1]), Path(argv[2])
-    target = argv[3] if len(argv) == 4 else ("codex" if ".codex" in dest_dir.parts else ("antigravity" if ".agents" in dest_dir.parts else ("antigravity" if "agents" in dest_dir.parts else "codex")))
+    resolved_parts = dest_dir.resolve().parts
+    target = argv[3] if len(argv) == 4 else ("codex" if ".codex" in resolved_parts else ("antigravity" if ".agents" in resolved_parts else ("antigravity" if "agents" in resolved_parts else "codex")))
     if not src_dir.is_dir():
         print(f"Brak katalogu {src_dir}", file=sys.stderr)
         return 1
