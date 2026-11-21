@@ -275,7 +275,7 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
         for path in sorted(shared_root.rglob("*")):
             if not path.is_file():
                 continue
-            rel = str(path.relative_to(shared_root))
+            rel = path.relative_to(shared_root).as_posix()
             if rel in ("labels.tsv", "worktree/post-checkout.sh", "worktree/worktree.mjs", "rules/brief-rules.md"):
                 continue
             for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):

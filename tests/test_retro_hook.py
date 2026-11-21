@@ -55,7 +55,7 @@ class ClaudeWiringTests(unittest.TestCase):
         script = BOOTSTRAP.read_text(encoding="utf-8")
         self.assertRegex(
             script,
-            r'cp "\$SHARED_GUARDS/retro-session-end\.mjs" "\$TARGET/\.claude/hooks/retro-session-end\.mjs"',
+            r'(?:cp|copy_prefixed\s+claude)\s+"\$SHARED_GUARDS/retro-session-end\.mjs"\s+"\$TARGET/\.claude/hooks/retro-session-end\.mjs"',
         )
 
 
