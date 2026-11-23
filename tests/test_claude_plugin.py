@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -157,6 +158,20 @@ class TestClaudePluginSkills(unittest.TestCase):
         parsed = yaml.safe_load(front)
         self.assertEqual(parsed["description"], description)
         self.assertIs(parsed["disable-model-invocation"], True)
+
+    def test_kit_ai_refs_point_to_plugin_commands(self) -> None:
+        # /kit-ai:<nazwa> wskazuje tylko komendę pluginu (templates/shared/agents).
+        # Skille spoza pluginu (np. kit-retro) mają gołą nazwę, więc nie niosą tego prefiksu.
+        names = {path.stem for path in (KIT_ROOT / "templates/shared/agents").glob("*.md")}
+        pattern = re.compile(r"/kit-ai:([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9*<-])")
+        paths = [
+            *(KIT_ROOT / SKILLS_DIR).glob("*/SKILL.md"),
+            *(KIT_ROOT / ".claude/skills").glob("*/SKILL.md"),
+            *(KIT_ROOT / ".claude/agents").glob("*.md"),
+        ]
+        for path in paths:
+            for ref in pattern.findall(path.read_text(encoding="utf-8")):
+                self.assertIn(ref, names, msg=f"{path.parent.name}/{path.name}: /kit-ai:{ref} bez odpowiednika")
 
     def test_headless_skill_has_host_substituted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

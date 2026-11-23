@@ -272,6 +272,7 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
         bare_pattern = re.compile(
             rf"(?<!@KIT_CMD_PREFIX@)(?<![a-zA-Z0-9_.~/<>])/(?P<cmd>(?:{exact_alt})(?![-\w])(?!\.(?:md|mjs|sh|js|py|txt|json|yaml))|(?:{wildcard_alt})(?![-\w]))"
         )
+        shared_skills = {p.name for p in (shared_root / "skills").iterdir() if p.is_dir()}
         violations: list[str] = []
         for path in sorted(shared_root.rglob("*")):
             if not path.is_file():
@@ -281,6 +282,9 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
                 continue
             for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                 for match in bare_pattern.finditer(line):
+                    # Skille spoza pluginu (templates/shared/skills) mają gołą nazwę także dla Claude.
+                    if match.group("cmd") in shared_skills:
+                        continue
                     violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
         self.assertEqual(violations, [], f"Znaleziono gołe komendy kita bez prefiksu: {violations}")
 
