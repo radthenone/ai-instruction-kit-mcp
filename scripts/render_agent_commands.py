@@ -73,7 +73,14 @@ def render_opencode(meta: dict[str, str], body: str) -> str:
 def render_claude(meta: dict[str, str], body: str) -> str:
     # Skill pluginu skills-dir: .claude/skills/kit-ai/skills/<name>/SKILL.md,
     # wywołanie /kit-ai:<name>. `readonly:` to pole subagentów, nie skilli.
-    kept = "".join(f"{key}: {value}\n" for key, value in meta.items() if key != "readonly")
+    lines = []
+    for key, value in meta.items():
+        if key == "readonly":
+            continue
+        # description bywa złożony (`: `, ` #`); JSON to poprawny skalar YAML.
+        shown = json.dumps(value, ensure_ascii=False) if key == "description" else value
+        lines.append(f"{key}: {shown}\n")
+    kept = "".join(lines)
     return f"---\n{kept}---\n\n" + ARGUMENTS_LINE + body
 
 

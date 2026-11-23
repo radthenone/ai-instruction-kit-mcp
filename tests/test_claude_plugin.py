@@ -15,6 +15,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from guides.bootstrap import run_bootstrap
 from guides.doctor import _command_names
 
@@ -123,7 +125,7 @@ class TestClaudePluginSkills(unittest.TestCase):
         self.assertEqual(meta.get("name"), "test-agent")
         self.assertEqual(meta.get("description"), "Pierwsza linia opisu. Druga linia opisu.")
         rendered = render_claude(meta, body)
-        self.assertIn("description: Pierwsza linia opisu. Druga linia opisu.", rendered)
+        self.assertIn('description: "Pierwsza linia opisu. Druga linia opisu."', rendered)
         self.assertNotIn(">-", rendered)
         self.assertEqual(meta.get("name"), "test-agent")
 
@@ -141,9 +143,20 @@ class TestClaudePluginSkills(unittest.TestCase):
         self.assertEqual(meta_lit.get("name"), "test-literal")
         self.assertEqual(meta_lit.get("description"), "Pierwsza linia dosłowna. Druga linia dosłowna.")
         rendered_lit = render_claude(meta_lit, body_lit)
-        self.assertIn("description: Pierwsza linia dosłowna. Druga linia dosłowna.", rendered_lit)
+        self.assertIn('description: "Pierwsza linia dosłowna. Druga linia dosłowna."', rendered_lit)
         self.assertNotIn("|", rendered_lit.split("---")[1])
         self.assertEqual(meta_lit.get("name"), "test-literal")
+
+    def test_render_claude_description_survives_yaml_parse(self) -> None:
+        # Regresja: niecytowany `: ` i ` #N` ucinały opis w frontmatterze SKILL.md.
+        module = _load_script("render_agent_commands")
+        description = "Użyj gdy: potrzebujesz pomocy (Closes #N). Wywołuj jako /git-end."
+        meta = {"name": "demo", "description": description, "disable-model-invocation": "true"}
+        rendered = module.render_claude(meta, "Treść promptu.\n")
+        front = rendered.split("---\n")[1]
+        parsed = yaml.safe_load(front)
+        self.assertEqual(parsed["description"], description)
+        self.assertIs(parsed["disable-model-invocation"], True)
 
     def test_headless_skill_has_host_substituted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
