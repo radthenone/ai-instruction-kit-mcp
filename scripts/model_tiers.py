@@ -1,33 +1,42 @@
 #!/usr/bin/env python3
 """
-Model tiers agentów kita: `model-tier:` w template, `models:` i `agents:` w Profilu.
+Modele agentów kita: `model-tier:` w template, `targets:` i `agents:` w Profilu (ADR-0018).
 
 Użycie:
     model_tiers.py sync PROFILE AGENTS_DIR
     model_tiers.py apply CLIENT PROFILE DEST_DIR
 
 `sync` waliduje Profil i dopasowuje blok `agents:` do agentów kita (przepisuje tylko
-ten blok, raport na stdout). `apply` dopisuje `model:` do frontmattera plików
-`DEST_DIR/<agent>.md`, gdy Profil mapuje tier agenta na model klienta.
+ten blok, raport na stdout). `apply` dla klienta `claude` dopisuje `model:` i `effort:`
+do frontmattera plików `DEST_DIR/<agent>.md`, gdy `targets.claude.<tier>` je podaje.
+Pozostali klienci nie dostają plików z modelem (OpenCode po #527).
 
-Bez PyYAML — bootstrap leci na systemowym Pythonie, a oba bloki to płaskie mapy.
+Bez PyYAML — bootstrap leci na systemowym Pythonie, a bloki mają wcięcia i proste wartości.
 """
 
 from __future__ import annotations
 
+import copy
 import re
 import sys
 from pathlib import Path
 
 TIERS = ("light", "standard", "heavy")
 _ALLOWED = ", ".join(TIERS)
-# Model przejęcia przy limicie wykonawcy (#257): obok tierów, tylko aliasy Claude Code.
-TAKEOVER_KEY = "takeover"
+# Blok `targets:` (ADR-0018): klienci i tiery; `takeover` istnieje u każdego klienta.
+TARGET_CLIENTS = ("claude", "codex", "antigravity", "opencode")
+TARGET_TIERS = TIERS + ("takeover",)
+TARGET_FIELDS = ("providerInstanceId", "model", "options")
+# Aliasy Claude Code dla przejęcia poza T3 (narzędzie Agent przyjmuje tylko alias).
 TAKEOVER_ALIASES = ("haiku", "sonnet", "opus", "fable")
+# Stare klucze modeli: nie są czytane, a ich obecność to błąd z instrukcją migracji.
+RETIRED_KEYS = ("models", "t3")
+
+_OPTION = re.compile(r"\{\s*id:\s*([^,{}]+?)\s*,\s*value:\s*([^,{}]+?)\s*\}")
 
 
 class ProfileError(ValueError):
-    """Profil ma niepoprawne `models:` albo `agents:`."""
+    """Profil ma niepoprawne `targets:`, `agents:` albo stare klucze modeli."""
 
 
 def template_tiers(agents_dir: Path) -> dict[str, str]:
@@ -59,7 +68,7 @@ def _entries(lines: list[str]) -> list[tuple[int, str, str]]:
     """(wcięcie, klucz, wartość) z linii bloku; komentarze wycięte."""
     found = []
     for line in lines:
-        line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\n"))
+        line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\r\n"))
         if not line.strip():
             continue
         key, _, value = line.strip().partition(":")
@@ -67,62 +76,111 @@ def _entries(lines: list[str]) -> list[tuple[int, str, str]]:
     return found
 
 
-def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[str]] | None]:
+def _targets_tree(lines: list[str]) -> dict:
+    """Zagnieżdżone słowniki z wcięć; pusta wartość = podsłownik, pozostałe = tekst."""
+    root: dict = {}
+    stack: list[tuple[int, dict]] = [(-1, root)]
+    for line in lines:
+        line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\r\n"))
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        key, sep, value = line.strip().partition(":")
+        if not sep or not key.strip():
+            raise ProfileError(f"Profil: `targets:` ma linię bez klucza: `{line.strip()}`.")
+        while stack[-1][0] >= indent:
+            stack.pop()
+        node = stack[-1][1]
+        if value.strip():
+            node[key.strip()] = value.strip().strip("'\"")
+        else:
+            child: dict = {}
+            node[key.strip()] = child
+            stack.append((indent, child))
+    return root
+
+
+def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
+    """`options: [{ id: effort, value: low }]` → lista `{id, value}`; inne formy odrzucane."""
+    form = f"Profil: `{where}.options` zapisz inline, np. `options: [{{ id: effort, value: low }}]`."
+    if not isinstance(raw, str) or not (raw.startswith("[") and raw.endswith("]")):
+        raise ProfileError(form)
+    body = raw[1:-1]
+    if _OPTION.sub("", body).replace(",", "").strip():
+        raise ProfileError(f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}`.")
+    return [{"id": m.group(1), "value": m.group(2).strip("'\"")} for m in _OPTION.finditer(body)]
+
+
+def _target_entry(client: str, tier: str, fields: dict) -> dict:
+    """Jeden wpis `targets.<klient>.<tier>` → `{providerInstanceId, model, options}`."""
+    where = f"targets.{client}.{tier}"
+    for field in fields:
+        if field not in TARGET_FIELDS:
+            raise ProfileError(f"Profil: nieznane pole `{where}.{field}`. Dozwolone: {', '.join(TARGET_FIELDS)}.")
+    provider = fields.get("providerInstanceId")
+    if provider is None:
+        raise ProfileError(f"Profil: `{where}` bez `providerInstanceId`.")
+    if not isinstance(provider, str):
+        raise ProfileError(f"Profil: `{where}.providerInstanceId` bez wartości — wpisz nazwę instancji providera.")
+    if "model" in fields and not isinstance(fields["model"], str):
+        raise ProfileError(f"Profil: `{where}.model` bez modelu — wpisz nazwę albo usuń linię.")
+    return {
+        "providerInstanceId": provider,
+        "model": fields.get("model"),
+        "options": _parse_options(where, fields.get("options", "[]")),
+    }
+
+
+def _parse_targets(lines: list[str]) -> dict[str, dict[str, dict]]:
+    """Blok `targets:` → `targets[klient][tier]`; brak `takeover` = kopia `standard` tego klienta."""
+    tree = _targets_tree(lines)
+    targets: dict[str, dict[str, dict]] = {}
+    for client, tiers in tree.items():
+        if client not in TARGET_CLIENTS:
+            raise ProfileError(f"Profil: nieznany klient `targets.{client}`. Dozwolone: {', '.join(TARGET_CLIENTS)}.")
+        if not isinstance(tiers, dict):
+            raise ProfileError(f"Profil: `targets.{client}` ma wartość zamiast tierów ({', '.join(TARGET_TIERS)}).")
+        found: dict[str, dict] = {}
+        for tier, fields in tiers.items():
+            if tier not in TARGET_TIERS:
+                raise ProfileError(f"Profil: nieznany tier `targets.{client}.{tier}`. Dozwolone: {', '.join(TARGET_TIERS)}.")
+            if not isinstance(fields, dict):
+                raise ProfileError(
+                    f"Profil: `targets.{client}.{tier}` ma wartość zamiast pól (`providerInstanceId`, `model`, `options`)."
+                )
+            found[tier] = _target_entry(client, tier, fields)
+        if "takeover" not in found and "standard" in found:
+            found["takeover"] = copy.deepcopy(found["standard"])
+        targets[client] = found
+    return targets
+
+
+def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list[str]] | None]:
     """
-    `models:` i `agents:` z Profilu, zwalidowane.
+    `targets:` i `agents:` z Profilu, zwalidowane.
 
     Returns:
-        tuple: ``(models[client][tier albo takeover] = model, agents[tier] = [nazwy] albo None bez bloku)``.
+        tuple: ``(targets[klient][tier] = {providerInstanceId, model, options}, agents[tier] = [nazwy] albo None bez bloku)``.
 
     Raises:
-        ProfileError: Nieznany tier, pusty model, `takeover` poza `claude` albo spoza aliasów,
-            agent w dwóch tierach.
+        ProfileError: Stare klucze `models:` / `t3:`, zapis inline, nieznany klient, tier, pole
+            albo agent w dwóch tierach.
     """
-    inline = re.search(r"^(models|agents):[ \t]*[^\s#]", text, re.MULTILINE)
-    if inline:
+    retired = re.search(rf"^({'|'.join(RETIRED_KEYS)}):", text, re.MULTILINE)
+    if retired:
         raise ProfileError(
-            f"Profil: `{inline.group(1)}:` zapisz blokiem z wcięciami (jak w README), nie w jednej linii."
+            f"Profil: `{retired.group(1)}:` nie jest już czytany — przenieś wpisy do bloku `targets:` "
+            "(README „Model tiers”), np. przez `/kit-project-edit`."
         )
+    for key in ("targets", "agents"):
+        if re.search(rf"^{key}:[ \t]*[^\s#]", text, re.MULTILINE):
+            raise ProfileError(f"Profil: `{key}:` zapisz blokiem z wcięciami (jak w README), nie w jednej linii.")
     lines = text.splitlines(keepends=True)
-    models: dict[str, dict[str, str]] = {}
-    span = _block_range(lines, "models")
-    if span:
-        entries = _entries(lines[span[0] + 1 : span[1]])
-        client_indent = entries[0][0] if entries else 0
-        client, client_name = None, ""
-        for indent, key, value in entries:
-            if indent == client_indent:
-                if value:
-                    raise ProfileError(
-                        f"Profil: `models.{key}` bez klienta. Wzór:\nmodels:\n  claude:\n    light: haiku"
-                    )
-                client, client_name = models.setdefault(key, {}), key
-                continue
-            if client is None or indent < client_indent:
-                raise ProfileError(f"Profil: `models.{key}` ma złe wcięcie.")
-            if not value:
-                raise ProfileError(f"Profil: `models.{client_name}.{key}` bez modelu — wpisz nazwę albo usuń linię.")
-            if key == TAKEOVER_KEY:
-                if client_name != "claude":
-                    raise ProfileError(
-                        f"Profil: `models.{client_name}.{TAKEOVER_KEY}` działa tylko dla klienta `claude`."
-                    )
-                if value not in TAKEOVER_ALIASES:
-                    raise ProfileError(
-                        f"Profil: `models.{client_name}.{TAKEOVER_KEY}` ma nieznany alias `{value}`. "
-                        f"Dozwolone: {', '.join(TAKEOVER_ALIASES)}."
-                    )
-                client[key] = value
-                continue
-            if key not in TIERS:
-                raise ProfileError(
-                    f"Profil: nieznany tier `models.{client_name}.{key}`. Dozwolone: {_ALLOWED}."
-                )
-            client[key] = value
-
+    span = _block_range(lines, "targets")
+    targets = _parse_targets(lines[span[0] + 1 : span[1]]) if span else {}
     span = _block_range(lines, "agents")
     if span is None:
-        return models, None
+        return targets, None
     agents: dict[str, list[str]] = {}
     seen: dict[str, str] = {}
     for _, tier, value in _entries(lines[span[0] + 1 : span[1]]):
@@ -145,7 +203,7 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, str]], dict[str, list[
                 )
             seen[name] = tier
         agents[tier] = names
-    return models, agents
+    return targets, agents
 
 
 def sync_agents(text: str, template: dict[str, str]) -> tuple[str, list[str]]:
@@ -184,13 +242,75 @@ def sync_agents(text: str, template: dict[str, str]) -> tuple[str, list[str]]:
     return text + (eol if text.strip() else "") + "".join(block), report
 
 
+def resolve_target(entry: dict, targets: dict[str, dict[str, dict]]) -> dict:
+    """
+    Wpis `target` (Clean Slate, council) → obiekt `{providerInstanceId, model, options}`.
+
+    Args:
+        entry: Ref ``{"target": "<klient>.<tier>"}`` z opcjonalnym ``model`` / ``options``
+            albo pełny wpis z ``providerInstanceId``.
+        targets: Wynik `parse_profile` (klucz `targets`).
+
+    Returns:
+        dict: Kopia obiektu target z nadpisaniem ``model`` / ``options`` z wpisu.
+
+    Raises:
+        ProfileError: Nieznany ref albo wpis bez ``target`` i bez ``providerInstanceId``.
+    """
+    if "target" in entry:
+        ref = entry["target"]
+        client, _, tier = ref.partition(".")
+        base = targets.get(client, {}).get(tier)
+        if base is None:
+            raise ProfileError(f"Profil: nieznany ref `target: {ref}` — brak `targets.{client}.{tier}`.")
+        resolved = copy.deepcopy(base)
+        if "model" in entry:
+            resolved["model"] = entry["model"]
+        if "options" in entry:
+            resolved["options"] = copy.deepcopy(entry["options"])
+        return resolved
+    if "providerInstanceId" in entry:
+        return {
+            "providerInstanceId": entry["providerInstanceId"],
+            "model": entry.get("model"),
+            "options": copy.deepcopy(entry.get("options", [])),
+        }
+    raise ProfileError("Profil: wpis bez `target` i bez `providerInstanceId`.")
+
+
+def takeover_alias(model: str) -> str | None:
+    """
+    Alias Claude Code dla przejęcia poza T3 (ADR-0018).
+
+    Args:
+        model: Id modelu z ``targets.claude.takeover.model`` albo sam alias.
+
+    Returns:
+        str | None: ``haiku`` / ``sonnet`` / ``opus`` / ``fable``; None = nieznane id, czyli model sesji.
+    """
+    if model in TAKEOVER_ALIASES:
+        return model
+    match = re.fullmatch(r"claude-(haiku|sonnet|opus|fable)-.+", model)
+    return match.group(1) if match else None
+
+
 def apply_models(client: str, profile_text: str, dest_dir: Path) -> None:
-    """Dopisz `model:` agentom, których tier klient mapuje w `models:`."""
-    models, agents = parse_profile(profile_text)
-    mapping = models.get(client, {})
+    """Dopisz `model:` i `effort:` agentom Claude, których tier ma wpis w `targets:` (ADR-0018)."""
+    if client != "claude":
+        return  # OpenCode po #527 (`.opencode/commands/kit-ai/`); Codex i Antigravity bez plików.
+    targets, agents = parse_profile(profile_text)
+    mapping = targets.get("claude", {})
     for tier, names in (agents or {}).items():
-        model = mapping.get(tier)
-        if not model:
+        entry = mapping.get(tier)
+        if not entry:
+            continue
+        extra = []
+        if entry["model"]:
+            extra.append(f"model: {entry['model']}\n")
+        effort = next((opt["value"] for opt in entry["options"] if opt["id"] == "effort"), None)
+        if effort:
+            extra.append(f"effort: {effort}\n")
+        if not extra:
             continue
         for name in names:
             path = dest_dir / f"{name}.md"
@@ -198,7 +318,7 @@ def apply_models(client: str, profile_text: str, dest_dir: Path) -> None:
                 continue
             lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
             end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
-            lines.insert(end, f"model: {model}\n")
+            lines[end:end] = extra
             path.write_text("".join(lines), encoding="utf-8", newline="\n")
 
 
