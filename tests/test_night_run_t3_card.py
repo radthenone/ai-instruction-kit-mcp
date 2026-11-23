@@ -287,14 +287,22 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("target", section)
         for key in ("providerInstanceId", "model", "options"):
             self.assertIn(key, section)
-        for executor, provider in (("claude", "claudeAgent"), ("antigravity", "antigravity"), ("opencode", "opencode")):
+        for executor, provider in (
+            ("claude", "claudeAgent"),
+            ("codex", "codex"),
+            ("antigravity", "antigravity"),
+            ("opencode", "opencode"),
+        ):
             self.assertIn(f"| `{executor}` | `{provider}` |", section)
         self.assertIn("thought_level", section)
+        self.assertIn("reasoningEffort", section)
         self.assertIn("effort", section)
         self.assertIn("review", section)
         example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
         self.assertNotIn("options", example)
-        self.assertIn("t3.targets.<wykonawca>.<tier>", section)
+        self.assertIn("targets.<wykonawca>.<tier>", section)
+        self.assertNotIn("t3.targets", self.card_text)
+        self.assertIn("targets.<wykonawca>.takeover", self.card_text)
         self.assertIn(".ai/project.profile.yaml", section)
 
     def test_disabled_default_provider_instance_is_needs_human(self) -> None:
