@@ -527,19 +527,32 @@ Profil z błędem składni YAML: reload ostrzega i nie zmienia plików integracj
 
 Bez PyYAML reload nie sprawdzi składni Profilu, więc karta T3 zostaje bez zmian: nie jest ani instalowana, ani usuwana. Pojawia się ostrzeżenie. Dotyczy to `bootstrap-project.sh` uruchomionego wprost na systemowym Pythonie bez PyYAML; naprawa: `kit-ai reload` (własny interpreter kita) albo instalacja PyYAML.
 
-### Model tiers agentów (`models:` / `agents:`)
+### Model tiers agentów (`targets:` / `agents:`)
 
 Każdy agent kita ma w template `model-tier:` (`light` / `standard` / `heavy`; osobny klucz
-od `tier:` Stacku). Profil mapuje tier na model per klient:
+od `tier:` Stacku). Blok `targets:` to jedyne miejsce wyboru modelu, z którego czytają kit i karta
+T3 Code (ADR-0018). Wpis jest per klient i tier: `providerInstanceId`, `model`, `options`:
 
 ```yaml
-models:                  # ręcznie; reload tego bloku nie rusza
+targets:                 # ręcznie; reload tego bloku nie rusza
   claude:
-    light: haiku
-    standard: sonnet
-    heavy: opus
-  opencode:
-    light: anthropic/claude-haiku-5-5
+    light:
+      providerInstanceId: claudeAgent
+      model: claude-haiku-5-5
+      options: [{ id: effort, value: low }]
+    standard:
+      providerInstanceId: claudeAgent
+      model: claude-sonnet-5-5
+      options: [{ id: effort, value: medium }]
+    heavy:
+      providerInstanceId: claudeAgent
+      model: claude-opus-5-5
+      options: [{ id: effort, value: high }]
+  codex:
+    standard:
+      providerInstanceId: codex
+      model: <id modelu z listy providera>
+      options: [{ id: reasoningEffort, value: medium }]
 
 agents:                  # synchronizuje reload
   light: git-start,git-commit,git-end,git-check,cleanup
@@ -547,23 +560,29 @@ agents:                  # synchronizuje reload
   heavy: night-run,review-edge
 ```
 
-- Brak klienta albo tieru w `models:` = brak pola `model` (agent dziedziczy model sesji).
-  Bez `models:` pliki agentów są takie jak przed tą funkcją.
+- Brak wpisu klienta albo tieru w `targets:` = brak pól `model` i `effort` (agent dziedziczy model sesji).
+  Bez bloku `targets:` pliki agentów są takie jak przed tą funkcją.
+- Claude: `model:` i `effort:` (z opcji `effort`) trafiają do frontmattera `.claude/agents/<agent>.md`.
+  OpenCode dostanie `model:` po #527 (nowa ścieżka `.opencode/commands/kit-ai/`); do tego czasu pliki bez `model:`.
+  Codex i Antigravity nie mają plików — ich wpisy czyta tylko T3 Code.
+- Stare klucze `models:` i `t3.targets` przerywają reload z komunikatem o migracji. Przenieś wpisy do
+  `targets:` przez `/kit-project-edit`.
 - `agents:` przy reloadzie: blok powstaje, gdy go nie ma; brakujący agenci kita trafiają
   do tieru z template; agenta już przypisanego reload nie przenosi (Profil wygrywa);
   nazwy spoza kita znikają. Każde dopisanie (`+ agents.<tier>: <agent>`) i usunięcie (`-`)
   jest w wyjściu reloadu. Reload przepisuje tylko blok `agents:` — komentarze w nim giną.
-- Nieznany tier (w `models:` albo `agents:`), tier bez modelu, agent w dwóch tierach i zapis
-  w jednej linii (`models: {…}`) przerywają reload z opisem błędu. Oba bloki pisz z wcięciami,
-  jak wyżej; `agents:` obejmuje wszystkich agentów kita, także Tierów Stacku spoza Profilu.
-- `models.claude.takeover` (obok tierów, nie tier agenta): model przejęcia ticketu nocnego, gdy
-  wykonawca `/headless` zwróci limit (kod 75, #257). Tylko alias Claude Code: `haiku`, `sonnet`,
-  `opus`, `fable`; inny zapis przerywa reload. Brak klucza = model sesji.
+- Nieznany klient albo tier w `targets:`, pole spoza `providerInstanceId` / `model` / `options`, wpis bez
+  `providerInstanceId`, pusty `model`, zapis w jednej linii (`targets: {…}`) albo agent w dwóch tierach
+  przerywają reload z opisem błędu. Bloki pisz z wcięciami, jak wyżej; `agents:` obejmuje wszystkich agentów
+  kita, także Tierów Stacku spoza Profilu.
+- `targets.<klient>.takeover` (obok tierów agentów): model przejęcia ticketu nocnego, gdy wykonawca zwróci
+  limit (kod 75, #257). Pełny wpis jak tier; brak wpisu = kopia `standard` tego klienta. Claude Code przyjmuje
+  alias (`haiku`, `sonnet`, `opus`, `fable`) wyprowadzany z id modelu; nieznane id = model sesji.
 
 | Klient | Wspiera `model` | Plik | Format nazwy modelu | Przykład |
 |--------|-----------------|------|---------------------|----------|
-| Claude Code | tak | `.claude/agents/<agent>.md` | alias (`haiku`/`sonnet`/`opus`) albo pełne id | `models.claude.light: haiku` |
-| opencode | tak | `.opencode/command/<agent>.md` | `provider/model` | `models.opencode.light: anthropic/claude-haiku-5-5` |
+| Claude Code | tak | `.claude/agents/<agent>.md` | id modelu albo alias (`haiku`/`sonnet`/`opus`) | `targets.claude.light.model: claude-haiku-5-5` |
+| opencode | nie (po #527) | `.opencode/commands/kit-ai/<agent>.md` | `provider/model` | `targets.opencode.light.model: anthropic/claude-haiku-5-5` |
 | Cursor, Codex, VS Code, Kiro, Kilo, Antigravity | nie — pole pomijane | — | — | — |
 
 Komendy `/nazwa` Claude (`.claude/commands/`) zostają bez `model:` — działają w sesji głównej.
@@ -1362,7 +1381,7 @@ wrapper przekazuje tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`openco
 w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Klasa `MODEL` (zły model agy) nie przechodzi dalej,
 bo to błąd konfiguracji. Limit u ostatniego → kod `75` i zadanie przejmuje host (agent `/headless`, krok 2).
 Inny błąd albo `HANG` u ostatniego → kod wyjścia wykonawcy (`124` przy zabiciu), wiersz `HANG`/`ERROR`; night-run
-przejmuje ticket subagentem przejęcia (`models.claude.takeover`), a porażka przejęcia kończy się needs-human. Z Claude:
+przejmuje ticket subagentem przejęcia (`targets.claude.takeover`), a porażka przejęcia kończy się needs-human. Z Claude:
 `/headless opencode "…"` → `gemini` → Claude sam; `/headless gemini "…"` → `opencode` → Claude sam.
 Limit rozpoznaje tekst w ogonie wyjścia; agy po błędzie dodatkowo `agy -p "/quota"` — grupa
 `Gemini Models` na 0% = limit, reset z najwcześniejszego wyczerpanego wiersza.
