@@ -849,9 +849,10 @@ install_night_run_t3() {
   echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"
 }
 
-# Usuwa katalog skilla kita, gdy zawiera samo SKILL.md. Cudzy plik obok zostaje z komunikatem.
+# Usuwa katalog skilla kita, gdy zawiera samo SKILL.md. Drugi argument 1 = agent wyłączony Tierem:
+# przy dodatkowych plikach usuwa tylko SKILL.md (komenda znika z pluginu), zasoby zostają z komunikatem.
 prune_kit_skill_dir() {
-  local dir="$1"
+  local dir="$1" drop_skill_md="${2:-0}"
   [[ -d "$dir" ]] || return 0
   # Dowiązanie to cudzy skill; find go nie przejdzie, a rm -rf skasowałby sam link.
   if [[ -L "$dir" ]]; then
@@ -861,6 +862,9 @@ prune_kit_skill_dir() {
   if [[ -z "$(find "$dir" -mindepth 1 ! -name SKILL.md)" ]]; then
     rm -rf "$dir"
     echo "  - $dir (usunięto)"
+  elif [[ "$drop_skill_md" == 1 && -f "$dir/SKILL.md" ]]; then
+    rm -f "$dir/SKILL.md"
+    echo "  - $dir/SKILL.md (usunięto, zasoby zostają)"
   else
     echo "  ! $dir zostaje: ma pliki spoza SKILL.md"
   fi
@@ -876,7 +880,7 @@ prune_tier_agents() {
       "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
       "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
       "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
-    prune_kit_skill_dir "$TARGET/.claude/skills/kit-ai/skills/$name"
+    prune_kit_skill_dir "$TARGET/.claude/skills/kit-ai/skills/$name" 1
     rm -rf "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
   done
 }
