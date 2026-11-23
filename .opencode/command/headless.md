@@ -20,12 +20,12 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 /headless <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
-Przykłady (host → wywołanie):
+Przykłady (host → wywołanie; prefiks dopisuje klient):
 
 ```text
-claude:       /headless opencode "..."   albo   /headless gemini "..."
-opencode:     /headless gemini "..."
-antigravity:  /headless opencode "..."
+claude:       headless opencode "..."   albo   headless gemini "..."
+opencode:     headless gemini "..."
+antigravity:  headless opencode "..."
 ```
 
 Limit dostawcy, brak postępu albo pętla (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje
