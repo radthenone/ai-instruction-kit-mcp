@@ -66,6 +66,10 @@ class NightRunTakeoverTest(unittest.TestCase):
         self.assertIn("jedna pełna ścieżka", self.ticket)
         self.assertNotIn("maks. 2 próby, potem needs-human", self.night)
 
+    def test_ticket_points_opencode_model_to_targets(self) -> None:
+        self.assertNotIn("models.opencode", self.ticket)
+        self.assertIn("`targets.opencode`", self.ticket)
+
     def test_exhausted_chain_without_limit_goes_to_takeover(self) -> None:
         self.assertIn("Wyczerpany łańcuch bez limitu", self.ticket)
         self.assertIn("klasa `HANG` albo `ERROR`", self.ticket)

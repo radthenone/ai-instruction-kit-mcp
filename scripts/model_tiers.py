@@ -79,24 +79,30 @@ def _entries(lines: list[str]) -> list[tuple[int, str, str]]:
 def _targets_tree(lines: list[str]) -> dict:
     """Zagnieżdżone słowniki z wcięć; pusta wartość = podsłownik, pozostałe = tekst."""
     root: dict = {}
-    stack: list[tuple[int, dict]] = [(-1, root)]
+    stack: list[tuple[int, dict, str]] = [(-1, root, "targets")]
     for line in lines:
         line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\r\n"))
         if not line.strip():
             continue
-        indent = len(line) - len(line.lstrip())
+        leading = line[: len(line) - len(line.lstrip())]
+        if "\t" in leading:
+            raise ProfileError("Profil: `targets:` nie przyjmuje tabulatorów we wcięciach — użyj spacji.")
+        indent = len(leading)
         key, sep, value = line.strip().partition(":")
-        if not sep or not key.strip():
+        key = key.strip()
+        if not sep or not key:
             raise ProfileError(f"Profil: `targets:` ma linię bez klucza: `{line.strip()}`.")
         while stack[-1][0] >= indent:
             stack.pop()
-        node = stack[-1][1]
+        _, node, path = stack[-1]
+        if key in node:
+            raise ProfileError(f"Profil: klucz `{path}.{key}` jest zdublowany — zostaw jeden wpis.")
         if value.strip():
-            node[key.strip()] = value.strip().strip("'\"")
+            node[key] = value.strip().strip("'\"")
         else:
             child: dict = {}
-            node[key.strip()] = child
-            stack.append((indent, child))
+            node[key] = child
+            stack.append((indent, child, f"{path}.{key}"))
     return root
 
 
@@ -108,7 +114,12 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
     body = raw[1:-1]
     if _OPTION.sub("", body).replace(",", "").strip():
         raise ProfileError(f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}`.")
-    return [{"id": m.group(1), "value": m.group(2).strip("'\"")} for m in _OPTION.finditer(body)]
+    options = [{"id": m.group(1).strip("'\""), "value": m.group(2).strip("'\"")} for m in _OPTION.finditer(body)]
+    ids = [opt["id"] for opt in options]
+    duplicate = next((opt_id for opt_id in ids if ids.count(opt_id) > 1), None)
+    if duplicate:
+        raise ProfileError(f"Profil: opcja `{duplicate}` w `{where}.options` jest zdublowana — zostaw jedną.")
+    return options
 
 
 def _target_entry(client: str, tier: str, fields: dict) -> dict:
@@ -120,13 +131,14 @@ def _target_entry(client: str, tier: str, fields: dict) -> dict:
     provider = fields.get("providerInstanceId")
     if provider is None:
         raise ProfileError(f"Profil: `{where}` bez `providerInstanceId`.")
-    if not isinstance(provider, str):
+    if not isinstance(provider, str) or not provider:
         raise ProfileError(f"Profil: `{where}.providerInstanceId` bez wartości — wpisz nazwę instancji providera.")
-    if "model" in fields and not isinstance(fields["model"], str):
+    model = fields.get("model")
+    if "model" in fields and (not isinstance(model, str) or not model):
         raise ProfileError(f"Profil: `{where}.model` bez modelu — wpisz nazwę albo usuń linię.")
     return {
         "providerInstanceId": provider,
-        "model": fields.get("model"),
+        "model": model,
         "options": _parse_options(where, fields.get("options", "[]")),
     }
 
@@ -175,6 +187,8 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
     for key in ("targets", "agents"):
         if re.search(rf"^{key}:[ \t]*[^\s#]", text, re.MULTILINE):
             raise ProfileError(f"Profil: `{key}:` zapisz blokiem z wcięciami (jak w README), nie w jednej linii.")
+        if len(re.findall(rf"^{key}:", text, re.MULTILINE)) > 1:
+            raise ProfileError(f"Profil: blok `{key}:` jest zdublowany na najwyższym poziomie — zostaw jeden.")
     lines = text.splitlines(keepends=True)
     span = _block_range(lines, "targets")
     targets = _parse_targets(lines[span[0] + 1 : span[1]]) if span else {}
@@ -202,6 +216,8 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
                     f"i `agents.{tier}`). Zostaw go w jednym."
                 )
             seen[name] = tier
+        if tier in agents:
+            raise ProfileError(f"Profil: tier `agents.{tier}` jest zdublowany — zostaw jeden wpis.")
         agents[tier] = names
     return targets, agents
 
@@ -246,6 +262,8 @@ def resolve_target(entry: dict, targets: dict[str, dict[str, dict]]) -> dict:
     """
     Wpis `target` (Clean Slate, council) → obiekt `{providerInstanceId, model, options}`.
 
+    Bez wywołań w kodzie produkcyjnym do czasu #546 (Clean Slate) i #545 (council).
+
     Args:
         entry: Ref ``{"target": "<klient>.<tier>"}`` z opcjonalnym ``model`` / ``options``
             albo pełny wpis z ``providerInstanceId``.
@@ -278,16 +296,18 @@ def resolve_target(entry: dict, targets: dict[str, dict[str, dict]]) -> dict:
     raise ProfileError("Profil: wpis bez `target` i bez `providerInstanceId`.")
 
 
-def takeover_alias(model: str) -> str | None:
+def takeover_alias(model: str | None) -> str | None:
     """
     Alias Claude Code dla przejęcia poza T3 (ADR-0018).
 
     Args:
-        model: Id modelu z ``targets.claude.takeover.model`` albo sam alias.
+        model: Id modelu z ``targets.claude.takeover.model`` albo sam alias; None = brak modelu.
 
     Returns:
-        str | None: ``haiku`` / ``sonnet`` / ``opus`` / ``fable``; None = nieznane id, czyli model sesji.
+        str | None: ``haiku`` / ``sonnet`` / ``opus`` / ``fable``; None = brak albo nieznane id, czyli model sesji.
     """
+    if not model:
+        return None
     if model in TAKEOVER_ALIASES:
         return model
     match = re.fullmatch(r"claude-(haiku|sonnet|opus|fable)-.+", model)

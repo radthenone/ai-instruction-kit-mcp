@@ -35,7 +35,7 @@ integrations: []
 
 # Modele agentów i zadań T3 — README „Model tiers”. Jedyne miejsce wyboru modelu (ADR-0018).
 # Bez tego bloku agenci jadą na modelu sesji. Blok `agents:` dopisuje reload.
-# Stare `models:` i `t3.targets` są błędem reloadu — przenieś je przez `/kit-project-edit`.
+# Stare `models:` i `t3.targets` są błędem reloadu — przenieś je przez `@KIT_CMD_PREFIX@kit-project-edit`.
 # targets:
 #   claude:
 #     light:

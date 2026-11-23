@@ -182,6 +182,79 @@ class TestParseTargets(unittest.TestCase):
             },
         )
 
+    def test_quoted_option_id_and_value_are_read(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n'
+            '      options: [{ id: "effort", value: "low" }]\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
+
+    def test_duplicate_client_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "  codex:\n    light:\n      providerInstanceId: codex\n"
+            "  claude:\n    heavy:\n      providerInstanceId: claudeAgent\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("zdublowany", str(ctx.exception))
+        self.assertIn("targets.claude", str(ctx.exception))
+
+    def test_duplicate_tier_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "    light:\n      providerInstanceId: claudeAgent\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light", str(ctx.exception))
+
+    def test_duplicate_field_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      model: claude-haiku-5-5\n      model: claude-sonnet-5-5\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light.model", str(ctx.exception))
+
+    def test_duplicate_option_id_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [{ id: effort, value: low }, { id: effort, value: high }]\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("effort", str(ctx.exception))
+
+    def test_empty_quoted_provider_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude:\n    light:\n      providerInstanceId: ''\n")
+        self.assertIn("providerInstanceId", str(ctx.exception))
+
+    def test_empty_quoted_model_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: ""\n'
+            )
+        self.assertIn("bez modelu", str(ctx.exception))
+
+    def test_tab_indentation_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n\tclaude:\n\t\tlight:\n\t\t\tproviderInstanceId: claudeAgent\n")
+        self.assertIn("tabulator", str(ctx.exception))
+
+    def test_two_top_level_targets_blocks_are_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "name: x\n"
+            "targets:\n  codex:\n    light:\n      providerInstanceId: codex\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets:", str(ctx.exception))
+        self.assertIn("zdublowany", str(ctx.exception))
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 
@@ -295,6 +368,17 @@ class TestParseAgents(unittest.TestCase):
             parse_profile("agents:\n  light:\n    - cleanup\n")
         self.assertIn("po przecinku", str(ctx.exception))
 
+    def test_two_top_level_agents_blocks_are_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("agents:\n  light: git-start\nx: 1\nagents:\n  light: cleanup\n")
+        self.assertIn("agents:", str(ctx.exception))
+        self.assertIn("zdublowany", str(ctx.exception))
+
+    def test_duplicate_agents_tier_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("agents:\n  light: git-start\n  light: cleanup\n")
+        self.assertIn("agents.light", str(ctx.exception))
+
     def test_comment_at_column_zero_inside_block_is_skipped(self) -> None:
         _, agents = parse_profile("agents:\n# moje\n  light: cleanup\nx: 1\n")
         self.assertEqual(agents, {"light": ["cleanup"]})
@@ -357,6 +441,9 @@ class TestTakeoverAlias(unittest.TestCase):
 
     def test_alias_passes_through(self) -> None:
         self.assertEqual(takeover_alias("haiku"), "haiku")
+
+    def test_missing_model_means_session_model(self) -> None:
+        self.assertIsNone(takeover_alias(None))
 
     def test_unknown_model_id_means_session_model(self) -> None:
         for model in ("gpt-5.5", "ollama/llama3:8b", "claude-unknown-family"):
