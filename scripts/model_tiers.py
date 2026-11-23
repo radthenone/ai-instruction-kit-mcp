@@ -33,6 +33,9 @@ TAKEOVER_ALIASES = ("haiku", "sonnet", "opus", "fable")
 RETIRED_KEYS = ("models", "t3")
 
 _OPTION = re.compile(r"\{\s*id:\s*([^,{}]+?)\s*,\s*value:\s*([^,{}]+?)\s*\}")
+_OPTION_NC = r"\{\s*id:\s*[^,{}]+?\s*,\s*value:\s*[^,{}]+?\s*\}"
+# Lista opcji: wpisy oddzielone przecinkiem, dopuszczony końcowy przecinek (składnia YAML).
+_OPTIONS_BODY = re.compile(rf"\s*(?:{_OPTION_NC}(?:\s*,\s*{_OPTION_NC})*\s*,?)?\s*")
 
 
 class ProfileError(ValueError):
@@ -80,6 +83,7 @@ def _targets_tree(lines: list[str]) -> dict:
     """Zagnieżdżone słowniki z wcięć; pusta wartość = podsłownik, pozostałe = tekst."""
     root: dict = {}
     stack: list[tuple[int, dict, str]] = [(-1, root, "targets")]
+    scalar: tuple[int, str] | None = None  # wcięcie i ścieżka ostatniego pola skalarnego
     for line in lines:
         line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\r\n"))
         if not line.strip():
@@ -92,6 +96,9 @@ def _targets_tree(lines: list[str]) -> dict:
         key = key.strip()
         if not sep or not key:
             raise ProfileError(f"Profil: `targets:` ma linię bez klucza: `{line.strip()}`.")
+        if scalar and indent > scalar[0]:
+            raise ProfileError(f"Profil: `{scalar[1]}` ma wartość skalarną i nie może mieć zagnieżdżenia.")
+        scalar = None
         while stack[-1][0] >= indent:
             stack.pop()
         _, node, path = stack[-1]
@@ -99,6 +106,7 @@ def _targets_tree(lines: list[str]) -> dict:
             raise ProfileError(f"Profil: klucz `{path}.{key}` jest zdublowany — zostaw jeden wpis.")
         if value.strip():
             node[key] = value.strip().strip("'\"")
+            scalar = (indent, f"{path}.{key}")
         else:
             child: dict = {}
             node[key] = child
@@ -112,8 +120,10 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
     if not isinstance(raw, str) or not (raw.startswith("[") and raw.endswith("]")):
         raise ProfileError(form)
     body = raw[1:-1]
-    if _OPTION.sub("", body).replace(",", "").strip():
-        raise ProfileError(f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}`.")
+    if not _OPTIONS_BODY.fullmatch(body):
+        raise ProfileError(
+            f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}` (wpisy rozdziel przecinkiem)."
+        )
     options = [{"id": m.group(1).strip("'\""), "value": m.group(2).strip("'\"")} for m in _OPTION.finditer(body)]
     ids = [opt["id"] for opt in options]
     duplicate = next((opt_id for opt_id in ids if ids.count(opt_id) > 1), None)

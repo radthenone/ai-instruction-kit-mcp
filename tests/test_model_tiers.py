@@ -255,6 +255,31 @@ class TestParseTargets(unittest.TestCase):
         self.assertIn("targets:", str(ctx.exception))
         self.assertIn("zdublowany", str(ctx.exception))
 
+    def test_nested_block_under_scalar_field_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "          model: claude-haiku-5-5\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light.providerInstanceId", str(ctx.exception))
+
+    def test_options_without_comma_between_items_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [{ id: effort, value: low } { id: variant, value: high }]\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("options", str(ctx.exception))
+
+    def test_options_trailing_comma_is_accepted(self) -> None:
+        targets, _ = parse_profile(
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [{ id: effort, value: low },]\n"
+        )
+        self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 

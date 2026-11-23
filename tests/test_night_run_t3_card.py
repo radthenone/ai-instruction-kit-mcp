@@ -305,6 +305,13 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("targets.<wykonawca>.takeover", self.card_text)
         self.assertIn(".ai/project.profile.yaml", section)
 
+    def test_profile_target_and_options_rules_do_not_conflict(self) -> None:
+        """CodeRabbit: options z profilu i z parametru nocy opisane jedną zasadą, bez sprzeczności."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertNotIn("options tylko gdy parametr nocy je podaje", section)
+        self.assertIn("options: z wpisu profilu albo z parametru nocy", section)
+        self.assertIn("pole podane jawnie w parametrze nocy nadpisuje wpis", section)
+
     def test_disabled_default_provider_instance_is_needs_human(self) -> None:
         """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""
         section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
