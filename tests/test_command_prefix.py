@@ -288,6 +288,20 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
                     violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
         self.assertEqual(violations, [], f"Znaleziono gołe komendy kita bez prefiksu: {violations}")
 
+    def test_shared_skill_names_have_no_placeholder(self) -> None:
+        """Skille spoza pluginu (templates/shared/skills) nie dostają @KIT_CMD_PREFIX@ w szablonach."""
+        import re
+        shared_root = KIT_ROOT / "templates" / "shared"
+        names = [p.name for p in (shared_root / "skills").iterdir() if p.is_dir()]
+        alternatives = "|".join(re.escape(name) for name in names)
+        pattern = re.compile(rf"@KIT_CMD_PREFIX@(?:{alternatives})(?![-\w])")
+        violations = [
+            path.relative_to(shared_root).as_posix()
+            for path in sorted(shared_root.rglob("*"))
+            if path.is_file() and pattern.search(path.read_text(encoding="utf-8", errors="ignore"))
+        ]
+        self.assertEqual(violations, [], f"Placeholder prefiksu przy skillu spoza pluginu: {violations}")
+
     def test_external_skills_remain_unprefixed(self) -> None:
         """Zewnętrzne skille (/tdd, /grill-me, /code-review itp.) pozostają bez prefiksu."""
         shared_root = KIT_ROOT / "templates" / "shared"
