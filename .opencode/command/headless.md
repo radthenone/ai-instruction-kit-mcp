@@ -20,7 +20,7 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 /headless <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
-Przykłady (host → wywołanie; prefiks dopisuje klient):
+Przykłady (host → wywołanie, bez prefiksu komendy; dopisz prefiks swojego klienta, np. `/kit-ai:` w Claude, `/` w opencode):
 
 ```text
 claude:       headless opencode "..."   albo   headless gemini "..."
