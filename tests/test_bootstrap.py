@@ -564,7 +564,7 @@ class TestTierAgents(_BootstrapTestCase):
             self.assertIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
             self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
             for rel in (".claude/skills/kit-ai/skills/review-backend/SKILL.md", ".codex/skills/review-backend",
-                        ".opencode/command/review-backend.md"):
+                        ".opencode/commands/kit-ai/review-backend.md"):
                 self.assertFalse((workspace / rel).exists(), rel)
 
     def test_installed_descriptions_name_no_stack(self) -> None:
@@ -1016,7 +1016,7 @@ class TestModelTiers(_BootstrapTestCase):
             self._install(workspace)
             profile = (workspace / ".ai" / "project.profile.yaml").read_text(encoding="utf-8")
             self.assertIn("\nagents:\n  light: ", profile)
-            for rel in (".claude/agents/git-start.md", ".opencode/command/git-start.md"):
+            for rel in (".claude/agents/git-start.md", ".opencode/commands/kit-ai/git-start.md"):
                 text = (workspace / rel).read_text(encoding="utf-8")
                 self.assertNotIn("model:", text.split("---")[1], rel)
                 self.assertNotIn("model-tier", text, rel)
@@ -1032,7 +1032,7 @@ class TestModelTiers(_BootstrapTestCase):
             read = lambda rel: (workspace / rel).read_text(encoding="utf-8")  # noqa: E731
             self.assertIn("\nmodel: haiku\n---", read(".claude/agents/git-start.md"))
             self.assertIn(
-                "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/command/git-start.md")
+                "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/commands/kit-ai/git-start.md")
             )
             self.assertNotIn("model:", read(".claude/skills/kit-ai/skills/git-start/SKILL.md").split("---")[1])
             self.assertNotIn("model:", read(".claude/agents/night-run.md").split("---")[1])
@@ -1227,7 +1227,7 @@ class TestHeadlessAgent(_BootstrapTestCase):
 
     HOST_FILES = {
         "claude": (".claude/agents/headless.md", ".claude/skills/kit-ai/skills/headless/SKILL.md"),
-        "opencode": (".opencode/command/headless.md",),
+        "opencode": (".opencode/commands/kit-ai/headless.md",),
         "codex": (".codex/skills/headless/SKILL.md",),
         "cursor": (".cursor/agents/headless.md",),
     }

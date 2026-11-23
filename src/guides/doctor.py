@@ -191,7 +191,7 @@ COMMAND_SURFACES: dict[str, tuple[str, ...]] = {
     "kiro": (".kiro/agents/*.md",),
     "kilo": (".kilocode/workflows/*.md",),
     "antigravity": (".agents/skills/*/SKILL.md",),
-    "opencode": (".opencode/command/*.md",),
+    "opencode": (".opencode/commands/kit-ai/*.md", ".opencode/command/*.md"),
 }
 
 # Znane rozszerzenia plików (F3, #266): goła nazwa z kropką bez nich to zwykle

@@ -1,5 +1,5 @@
 ---
-description: "Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /review-tests."
+description: "Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /kit-ai/review-tests."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -8,15 +8,15 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 ## Reguły wspólne (obowiązkowe)
 
-Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/kit-ai/review-bugbot`.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot / stack vs ten agent
 
 | Agent | Rola |
 |-------|------|
-| Bugbot / `/review-backend` / `/review-frontend` | Znajdź problemy w kodzie |
-| **`/review-tests`** | **Dowód**: czy deklaracja „działa / przetestowane” jest prawdziwa |
+| Bugbot / `/kit-ai/review-backend` / `/kit-ai/review-frontend` | Znajdź problemy w kodzie |
+| **`/kit-ai/review-tests`** | **Dowód**: czy deklaracja „działa / przetestowane” jest prawdziwa |
 
 **Nie jesteś drugim stylistą.** Nie oceniaj nazewnictwa, docstringów ani layoutu — tylko dowód przejścia i pokrycie zachowania.
 

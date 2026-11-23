@@ -79,7 +79,7 @@ CLIENT_KIT_MARKERS: dict[str, str] = {
     "kiro": ".kiro/agents/git-start.md",
     "kilo": ".kilocode/workflows/git-start.md",
     "antigravity": ".agents/hooks/invoke-hook.js",
-    "opencode": ".opencode/command/git-start.md",
+    "opencode": ".opencode/commands/kit-ai/git-start.md",
 }
 
 

@@ -129,7 +129,7 @@ klientów. Cztery czytają skille natywnie, cztery nie mają takiego formatu:
 | vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
 | kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
 | kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
-| opencode | `.opencode/command/` | degradacja: komenda `/nazwa` |
+| opencode | `.opencode/commands/kit-ai/` | degradacja: komenda `/kit-ai/nazwa` |
 
 Degradacja ma dwa skutki, z którymi trzeba pisać: skill przestaje odpalać się sam
 (ktoś musi wpisać `/nazwa`) i **gubi wszystko poza `SKILL.md`** — komenda to jeden

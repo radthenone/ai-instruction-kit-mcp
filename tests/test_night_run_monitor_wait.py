@@ -20,7 +20,7 @@ COPIES = (
     ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
-    ".opencode/command/night-run.md",
+    ".opencode/commands/kit-ai/night-run.md",
 )
 
 ALLOWED_UNTIL_LOOP = re.compile(r"until\s+[^;]+;\s*do\s+sleep\s+\d+;\s*done")
@@ -91,7 +91,7 @@ class TestNightRunMonitorWait(unittest.TestCase):
             ".claude/skills/kit-ai/skills/night-run-ticket/SKILL.md",
             ".codex/skills/night-run-ticket/SKILL.md",
             ".github/prompts/night-run-ticket.prompt.md",
-            ".opencode/command/night-run-ticket.md",
+            ".opencode/commands/kit-ai/night-run-ticket.md",
         )
         for rel in COPIES:
             with self.subTest(copy=rel):

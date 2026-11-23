@@ -16,7 +16,7 @@ COPIES = (
     ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
-    ".opencode/command/night-run.md",
+    ".opencode/commands/kit-ai/night-run.md",
 )
 VPS_RULES = ("brak CI = brak merge", "krok odrzucony przez guard = tylko CI")
 

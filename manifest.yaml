@@ -882,7 +882,7 @@ command_prefixes:
   codex: {sigil: "/", namespace: "", name_prefix: ""}
   vscode: {sigil: "/", namespace: "", name_prefix: ""}
   antigravity: {sigil: "/", namespace: "", name_prefix: ""}
-  opencode: {sigil: "/", namespace: "", name_prefix: ""}
+  opencode: {sigil: "/", namespace: "kit-ai/", name_prefix: ""}
   kilo: {sigil: "/", namespace: "", name_prefix: ""}
   cursor: {sigil: "/", namespace: "", name_prefix: ""}
   kiro: {sigil: "/", namespace: "", name_prefix: ""}

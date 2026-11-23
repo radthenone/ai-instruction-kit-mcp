@@ -48,7 +48,7 @@ DOGFOOD_AGENT_PATHS = (
     ".claude/skills/kit-ai/skills/{name}/SKILL.md",
     ".codex/skills/{name}/SKILL.md",
     ".github/prompts/{name}.prompt.md",
-    ".opencode/command/{name}.md",
+    ".opencode/commands/kit-ai/{name}.md",
 )
 
 # Skille ze wspólnego źródła sprawdzamy tylko w `.claude/skills/`. Pozostałe dwa
