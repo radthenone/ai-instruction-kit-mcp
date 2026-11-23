@@ -853,6 +853,11 @@ install_night_run_t3() {
 prune_kit_skill_dir() {
   local dir="$1"
   [[ -d "$dir" ]] || return 0
+  # Dowiązanie to cudzy skill; find go nie przejdzie, a rm -rf skasowałby sam link.
+  if [[ -L "$dir" ]]; then
+    echo "  ! $dir zostaje: dowiązanie"
+    return 0
+  fi
   if [[ -z "$(find "$dir" -mindepth 1 ! -name SKILL.md)" ]]; then
     rm -rf "$dir"
     echo "  - $dir (usunięto)"
