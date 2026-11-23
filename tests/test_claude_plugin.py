@@ -8,6 +8,7 @@ bez prefiksu, bo nie mają placeholdera prefiksu.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import re
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import yaml
 
+from _shell import is_ci, resolve_bash
 from guides.bootstrap import run_bootstrap
 from guides.doctor import _command_names
 
@@ -58,9 +60,24 @@ def _install(workspace: Path, *, skip_agents: bool = False) -> None:
     )
 
 
+def _requires_bash(test):
+    """Test puszcza bootstrap, który wymaga bash. Bez bash: pomiń lokalnie, w CI błąd."""
+
+    @functools.wraps(test)
+    def wrapper(self):
+        if resolve_bash() is None:
+            if is_ci():
+                self.fail("brak bash w CI — test instalacji nie może być pominięty")
+            raise unittest.SkipTest("brak bash — pomijam test instalacji")
+        return test(self)
+
+    return wrapper
+
+
 class TestClaudePluginSkills(unittest.TestCase):
     """Plugin ``kit-ai``: manifest, skille komend i migracja starych komend."""
 
+    @_requires_bash
     def test_every_shared_command_is_a_plugin_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -173,6 +190,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             for ref in pattern.findall(path.read_text(encoding="utf-8")):
                 self.assertIn(ref, names, msg=f"{path.parent.name}/{path.name}: /kit-ai:{ref} bez odpowiednika")
 
+    @_requires_bash
     def test_headless_skill_has_host_substituted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -182,6 +200,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             self.assertIn("--host claude ", text)
             self.assertNotIn("@KIT_HOST@", text)
 
+    @_requires_bash
     def test_tier_change_removes_plugin_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -202,6 +221,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             self.assertFalse((workspace / SKILLS_DIR / "review-frontend").exists())
             self.assertTrue((workspace / SKILLS_DIR / "git-start" / "SKILL.md").is_file())
 
+    @_requires_bash
     def test_skip_agents_generates_no_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -209,6 +229,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             _install(workspace, skip_agents=True)
             self.assertFalse((workspace / PLUGIN_DIR).exists())
 
+    @_requires_bash
     def test_remove_deletes_plugin_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -219,6 +240,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode", remove=True)
             self.assertFalse((workspace / PLUGIN_DIR).exists())
 
+    @_requires_bash
     def test_reload_removes_legacy_commands_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -238,6 +260,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             self.assertTrue(mine.exists())
             self.assertTrue(cmd_dir.is_dir())
 
+    @_requires_bash
     def test_remove_cleans_legacy_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
@@ -258,6 +281,7 @@ class TestClaudePluginSkills(unittest.TestCase):
             self.assertTrue(mine.exists())
             self.assertTrue(cmd_dir.is_dir())
 
+    @_requires_bash
     def test_reload_prunes_orphan_plugin_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
