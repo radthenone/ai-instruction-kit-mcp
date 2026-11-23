@@ -47,8 +47,8 @@ Kit nie wie, które taski Twojego repo są lekkie. Dopisz to w overlay, np.:
 - Ciężkie (tylko CI): `task test:e2e`, `task build`, `docker compose up`.
 ```
 
-Podział edytujesz przez `/kit-project-edit` (jedna zmiana na wywołanie),
-np. `/kit-project-edit "w VPS lekkie to…"`. Overlay ma pierwszeństwo przed bundlem.
+Podział edytujesz przez `@KIT_CMD_PREFIX@kit-project-edit` (jedna zmiana na wywołanie),
+np. `@KIT_CMD_PREFIX@kit-project-edit "w VPS lekkie to…"`. Overlay ma pierwszeństwo przed bundlem.
 
 ## Twardy guard: server-guard
 
@@ -72,7 +72,7 @@ Windows: `setx KIT_HOST_PROFILE local`), a nie `server.guard: off` w commitowany
 Profilu. Nową wersję guarda wdrażasz w projekcie przez aktualizację klona kita →
 `kit-ai reload` → commit podmienionych plików hooków.
 
-## Night-run na VPS (dotyczy /night-run)
+## Night-run na VPS (dotyczy @KIT_CMD_PREFIX@night-run)
 
 - Nagłówek CTX składa `kit-ai night-ctx` (BASE, `Host:` z `kit-ai host`, bramki szybkie,
   język, linia-znacznik generatora). Nie ustalasz `Host` z bundle'a; watchdog kończy noc,

@@ -39,7 +39,7 @@ from guides.doctor import run_doctor
 from guides.host_profile import get_host_profile
 from guides.kit_status import STAMP_REL_PATH, _git, check_kit_updates, direct_url_info
 from guides.labels import LabelsError, ensure_labels
-from guides.manifest import find_kit_root
+from guides.manifest import find_kit_root, load_manifest
 from guides.night_ctx import render_night_ctx
 from guides.resolver import PROFILE_REL_PATH, normalize_language
 from guides.retro import (
@@ -218,6 +218,11 @@ def write_profile(workspace: Path, kit_root: Path, *, language: str, clients: st
     """
     lines = []
     template = (kit_root / "templates" / "project.profile.yaml").read_text(encoding="utf-8")
+    manifest_path = kit_root / "manifest.yaml"
+    if manifest_path.is_file():
+        template = load_manifest(kit_root).resolve_text(template, "shared")
+    else:
+        template = template.replace("@KIT_CMD_PREFIX@", "/").replace("@KIT_NAME_PREFIX@", "")
     for line in template.splitlines():
         if line.startswith("name: "):
             line = f"name: {workspace.name}"

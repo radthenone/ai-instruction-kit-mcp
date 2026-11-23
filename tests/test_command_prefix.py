@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -290,7 +291,6 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
 
     def test_shared_skill_names_have_no_placeholder(self) -> None:
         """Skille spoza pluginu (templates/shared/skills) nie dostają @KIT_CMD_PREFIX@ w szablonach."""
-        import re
         shared_root = KIT_ROOT / "templates" / "shared"
         names = [p.name for p in (shared_root / "skills").iterdir() if p.is_dir()]
         alternatives = "|".join(re.escape(name) for name in names)
@@ -316,3 +316,118 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
                     text,
                     f"Zewnętrzny skill {ext} nie powinien mieć prefiksu w {path.relative_to(shared_root)}",
                 )
+
+
+class TestTargetFilesPlaceholders(unittest.TestCase):
+    """Kryteria akceptacji #530: placeholdery w instructions/, modules/ i szablonach klientów."""
+
+    EXACT_COMMANDS = TestTemplatesSharedPlaceholders.EXACT_COMMANDS
+    WILDCARD_COMMANDS = TestTemplatesSharedPlaceholders.WILDCARD_COMMANDS
+    EXTERNAL_SKILLS = TestTemplatesSharedPlaceholders.EXTERNAL_SKILLS
+
+    @classmethod
+    def _pattern(cls) -> re.Pattern[str]:
+        exact_alt = "|".join(re.escape(c) for c in cls.EXACT_COMMANDS)
+        wildcard_alt = "|".join(cls.WILDCARD_COMMANDS)
+        return re.compile(
+            rf"(?<!@KIT_CMD_PREFIX@)(?<![a-zA-Z0-9_.~/<>])/(?P<cmd>(?:{exact_alt})(?![-\w])(?!\.(?:md|mjs|sh|js|py|txt|json|yaml))|(?:{wildcard_alt})(?![-\w]))"
+        )
+
+    def test_no_bare_kit_commands_in_instructions(self) -> None:
+        """Każde /<nazwa kita> w instructions/ ma placeholder."""
+        instructions_dir = KIT_ROOT / "instructions"
+        files = sorted(instructions_dir.glob("*.md"))
+        self.assertGreater(len(files), 0)
+        pattern = self._pattern()
+        violations: list[str] = []
+        for path in files:
+            rel = path.relative_to(KIT_ROOT).as_posix()
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for match in pattern.finditer(line):
+                    violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
+        self.assertEqual(violations, [])
+
+    def test_no_bare_kit_commands_in_modules(self) -> None:
+        """Każde /<nazwa kita> w modules/ ma placeholder."""
+        modules_dir = KIT_ROOT / "modules"
+        files = sorted(modules_dir.rglob("*.md"))
+        self.assertGreater(len(files), 0)
+        pattern = self._pattern()
+        violations: list[str] = []
+        for path in files:
+            rel = path.relative_to(KIT_ROOT).as_posix()
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for match in pattern.finditer(line):
+                    violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
+        self.assertEqual(violations, [])
+
+    def test_no_bare_kit_commands_in_client_templates(self) -> None:
+        """Każde /<nazwa kita> w szablonach klientów, project.md i profile ma placeholder."""
+        template_files = [
+            KIT_ROOT / "templates" / "cursor" / "BUGBOT.md",
+            *(KIT_ROOT / "templates" / "cursor" / "rules").glob("*.mdc"),
+            KIT_ROOT / "templates" / "kiro" / "steering" / "instruction-kit.md",
+            KIT_ROOT / "templates" / "vscode" / "github" / "copilot-instructions.md",
+            KIT_ROOT / "templates" / "project.md",
+            KIT_ROOT / "templates" / "project.profile.yaml",
+        ]
+        pattern = self._pattern()
+        violations: list[str] = []
+        for path in template_files:
+            rel = path.relative_to(KIT_ROOT).as_posix()
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for match in pattern.finditer(line):
+                    violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
+        self.assertEqual(violations, [])
+
+    def test_external_skills_remain_unprefixed_in_all_target_paths(self) -> None:
+        """Zewnętrzne skille (/tdd, /grill-me itp.) w tych ścieżkach pozostają bez prefiksu."""
+        all_targets = [
+            *(KIT_ROOT / "instructions").glob("*.md"),
+            *(KIT_ROOT / "modules").rglob("*.md"),
+            KIT_ROOT / "templates" / "cursor" / "BUGBOT.md",
+            *(KIT_ROOT / "templates" / "cursor" / "rules").glob("*.mdc"),
+            KIT_ROOT / "templates" / "kiro" / "steering" / "instruction-kit.md",
+            KIT_ROOT / "templates" / "vscode" / "github" / "copilot-instructions.md",
+            KIT_ROOT / "templates" / "project.md",
+            KIT_ROOT / "templates" / "project.profile.yaml",
+        ]
+        for path in all_targets:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            rel = path.relative_to(KIT_ROOT).as_posix()
+            for ext in self.EXTERNAL_SKILLS:
+                prefixed = f"@KIT_CMD_PREFIX@{ext[1:]}"
+                self.assertNotIn(
+                    prefixed,
+                    text,
+                    f"Zewnętrzny skill {ext} nie powinien mieć prefiksu w {rel}",
+                )
+
+    def test_bundle_and_module_have_no_placeholder(self) -> None:
+        """get_bundle i get_module w serwerze MCP nie zawierają placeholderów @KIT_CMD_PREFIX@."""
+        from guides import server
+
+        saved_root = server._kit_root
+        server._kit_root = KIT_ROOT
+        try:
+            full_bundle = server.get_bundle("full")
+            self.assertNotIn("@KIT_CMD_PREFIX@", full_bundle)
+            self.assertNotIn("@KIT_NAME_PREFIX@", full_bundle)
+
+            module_text = server.get_module("core:code-review")
+            self.assertNotIn("@KIT_CMD_PREFIX@", module_text)
+            self.assertNotIn("@KIT_NAME_PREFIX@", module_text)
+        finally:
+            server._kit_root = saved_root
+
+    def test_write_profile_has_no_placeholder(self) -> None:
+        """write_profile tworzy .ai/project.profile.yaml bez placeholdera @KIT_CMD_PREFIX@."""
+        from guides.cli import write_profile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            profile_path = write_profile(ws, KIT_ROOT, language="pl", clients="cursor")
+            text = profile_path.read_text(encoding="utf-8")
+            self.assertNotIn("@KIT_CMD_PREFIX@", text)
+            self.assertNotIn("@KIT_NAME_PREFIX@", text)
+            self.assertIn("/night-run", text)

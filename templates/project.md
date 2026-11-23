@@ -22,7 +22,7 @@ branchem, inaczej default branch. Wymuszenie: dopisz w osobnej linii np. `base: 
 
 Katalog kodu każdego Tieru — moduły Stacków odwołują się do tych kluczy zamiast zakładać
 `backend/` czy `frontend/`. Stack każdego Tieru: `.ai/project.profile.yaml`. Uzupełnia
-`/kit-project-begin` (MCP `list_questions`); Tier `none` — usuń linię.
+`@KIT_CMD_PREFIX@kit-project-begin` (MCP `list_questions`); Tier `none` — usuń linię.
 
 - backend: `backend/`
 - web: `frontend/web/`
@@ -61,5 +61,5 @@ Opisz tu **tylko** rozjazdy tego repo względem docelowych modułów MCP
 ## Odstępstwa od modułów
 
 Świadome wyjątki tego repo od treści modułów kita — overlay ma pierwszeństwo przed bundlem.
-Dopisuje `/kit-project-edit` (tryb odstępstwa), jedna linia na wyjątek:
+Dopisuje `@KIT_CMD_PREFIX@kit-project-edit` (tryb odstępstwa), jedna linia na wyjątek:
 `- <Module ID> — zamiast <X z modułu> robimy <Y>, bo <powód>.` Domyślnie: brak.

@@ -1,4 +1,4 @@
-# `/review-ui` — UX/a11y na ekranach i formularzach
+# `@KIT_CMD_PREFIX@review-ui` — UX/a11y na ekranach i formularzach
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-ui.md`.
 > Format wspólny i ściąga kogo wołać: [review-bugbot](review-bugbot.md).
@@ -18,6 +18,6 @@ Niepewny flow produktu albo copy prawny → pyta.
 Zwraca standardową tabelę `Severity | Location | Finding | Fix` — patrz format
 w [review-bugbot](review-bugbot.md).
 
-**Do przemyślenia:** czy `/review-ui` i [review-frontend](review-frontend.md)
+**Do przemyślenia:** czy `@KIT_CMD_PREFIX@review-ui` i [review-frontend](review-frontend.md)
 nie powinny się scalić — nakładają się na komponentach. Argument przeciw: UI
 patrzy na UX i a11y, frontend na konwencje stacku i Orval. Na razie zostawiam.

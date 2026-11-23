@@ -1,4 +1,4 @@
-# `/subagent-backend` — cross-review w dwóch oknach (strona backend)
+# `@KIT_CMD_PREFIX@subagent-backend` — cross-review w dwóch oknach (strona backend)
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/subagent-backend.md`.
 > Druga strona: [subagent-frontend](subagent-frontend.md).
@@ -12,7 +12,7 @@ komunikacji to **raport, który przeklejam ja**.
 ```
 okno BE                              okno FE
 ────────                             ────────
-/subagent-backend                    /subagent-frontend
+@KIT_CMD_PREFIX@subagent-backend                    @KIT_CMD_PREFIX@subagent-frontend
   → tabela findingów                   → tabela findingów
   → "Raport do przekazania              → "Raport do przekazania
      dla subagent-frontend"                dla subagent-backend"
@@ -22,7 +22,7 @@ okno BE                              okno FE
 
 Zwraca **zawsze dwie sekcje**:
 
-1. tabela `Severity | Location | Finding | Fix` — jak zwykły `/review-*`
+1. tabela `Severity | Location | Finding | Fix` — jak zwykły `@KIT_CMD_PREFIX@review-*`
 2. `## Raport do przekazania dla subagent-frontend` — zwięzłe punkty dla drugiej
    strony
 

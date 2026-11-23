@@ -1,4 +1,4 @@
-# `/review-edge` — pedant od przypadków brzegowych
+# `@KIT_CMD_PREFIX@review-edge` — pedant od przypadków brzegowych
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-edge.md`.
 > Format wspólny i ściąga kogo wołać: [review-bugbot](review-bugbot.md).
@@ -19,9 +19,9 @@ Do **większych** zmian. Przy zmianie na dwa pliki to narzut.
 Zwraca standardową tabelę `Severity | Location | Finding | Fix` — patrz format
 w [review-bugbot](review-bugbot.md).
 
-**Pułapka:** `/review-edge` na dwie linijki. Pedant bez materiału zaczyna
+**Pułapka:** `@KIT_CMD_PREFIX@review-edge` na dwie linijki. Pedant bez materiału zaczyna
 wymyślać.
 
-**Do przemyślenia:** `/review-edge` nie ma dostępu do testów — mówi „uruchom
+**Do przemyślenia:** `@KIT_CMD_PREFIX@review-edge` nie ma dostępu do testów — mówi „uruchom
 to", ale nie uruchamia. To robota [review-tests](review-tests.md). Może warto
 je odpalać parą.

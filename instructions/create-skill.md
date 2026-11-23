@@ -1,11 +1,11 @@
-# `/create-skill` — od pomysłu na skill przez rozstrzygnięcie do zaakceptowanego issue
+# `@KIT_CMD_PREFIX@create-skill` — od pomysłu na skill przez rozstrzygnięcie do zaakceptowanego issue
 
 > **Czym jest ten dokument.** Opisem skilla, który **już istnieje**:
 > `templates/shared/agents/create-skill.md` (plus wrapper komendy
 > `.claude/commands/create-skill.md`). Dokument tłumaczy, po co ta komenda
 > powstała, jak przebiega rozmowa i gdzie najłatwiej się nią skaleczyć.
 >
-> `/create-skill` jest rodzeństwem `/create-task`. Różnica jest jedna, ale
+> `@KIT_CMD_PREFIX@create-skill` jest rodzeństwem `@KIT_CMD_PREFIX@create-task`. Różnica jest jedna, ale
 > nietrywialna: zanim cokolwiek oceni, musi **rozstrzygnąć, czy to w ogóle
 > jest skill** — bo w praktyce co drugi „pomysł na skill" jest agentem.
 >
@@ -29,10 +29,10 @@ w decyzji, że to w ogóle ma być skill, i w `description`, po którym model ma
 zdecydować, czy go wczytać. `gh issue create` załatwia formatowanie; nie
 załatwia żadnej z tych dwóch rzeczy.
 
-`/create-skill` robi trzy rzeczy, których ręcznie nie robisz nigdy:
+`@KIT_CMD_PREFIX@create-skill` robi trzy rzeczy, których ręcznie nie robisz nigdy:
 
 1. **rozstrzyga skill kontra agent** i ma prawo powiedzieć „to agent, idź do
-   `/create-task`";
+   `@KIT_CMD_PREFIX@create-task`";
 2. **ocenia pomysł na tle prawdziwego repo** — czy taki skill już jest, czy
    nazwa nie koliduje z agentem, czy jest gdzie go wpiąć;
 3. **wymusza kryterium odpalenia i nieodpalenia**, czyli jedyny sposób
@@ -41,9 +41,9 @@ załatwia żadnej z tych dwóch rzeczy.
 ### Czym to NIE jest
 
 - **Nie pisze `SKILL.md`.** Wyjściem jest issue. Pisanie zaczyna się od
-  `/git-start <N>`, a rzemiosłem (frontmatter, sufit długości, `references/`,
+  `@KIT_CMD_PREFIX@git-start <N>`, a rzemiosłem (frontmatter, sufit długości, `references/`,
   degradacja u klientów bez natywnych skilli) zajmuje się skill
-  `skill-authoring`. `/create-skill` **odsyła** do niego i świadomie nie
+  `skill-authoring`. `@KIT_CMD_PREFIX@create-skill` **odsyła** do niego i świadomie nie
   powtarza jego treści.
 - **Nie zakłada brancha i nie commituje.**
 - **Nie jest przeglądem istniejących skilli.** Czyta je, żeby ocenić jeden
@@ -92,7 +92,7 @@ wyjątek od tej reguły opisuje FAZA 4 (`gh label create`, po osobnej zgodzie).
 wypisuje pomoc i milknie.
 
 ```markdown
-# /create-skill — pomoc
+# @KIT_CMD_PREFIX@create-skill — pomoc
 
 ## Co robi
 Rozstrzyga czy pomysl to skill czy agent, ocenia go na tle repo, dopytuje
@@ -100,26 +100,26 @@ o braki, sklada karte (nazwa, description, zasoby, klienci, kryterium)
 i tworzy issue dopiero po Twojej akceptacji. Nie pisze SKILL.md.
 
 ## Wywolanie
-/create-skill                      Pyta o pomysl od zera
-/create-skill "konwencje migracji" Zaczyna od tego zdania
-/create-skill --dry-run            Konczy na karcie, nie tworzy niczego
-/create-skill --no-assign          Nie przypisuje @me (backlog)
-/create-skill --parent #88         Tworzy jako sub-issue pod #88
-/create-skill --quick              Pomija FAZE 1, zaklada ze to skill i ma sens
+@KIT_CMD_PREFIX@create-skill                      Pyta o pomysl od zera
+@KIT_CMD_PREFIX@create-skill "konwencje migracji" Zaczyna od tego zdania
+@KIT_CMD_PREFIX@create-skill --dry-run            Konczy na karcie, nie tworzy niczego
+@KIT_CMD_PREFIX@create-skill --no-assign          Nie przypisuje @me (backlog)
+@KIT_CMD_PREFIX@create-skill --parent #88         Tworzy jako sub-issue pod #88
+@KIT_CMD_PREFIX@create-skill --quick              Pomija FAZE 1, zaklada ze to skill i ma sens
 
 ## Wyjscie
 Numer issue + link. Przy --dry-run lub anulowaniu: sama karta.
-Potem: /git-start <N>
+Potem: @KIT_CMD_PREFIX@git-start <N>
 ```
 
 | Wywołanie | Kiedy tego używasz |
 | --- | --- |
-| `/create-skill` | Masz przeczucie, że coś powinno być skillem |
-| `/create-skill "…"` | Masz jedno zdanie i chcesz wiedzieć, czy to skill |
-| `/create-skill --dry-run` | Chcesz zobaczyć kartę, nic nie tworząc |
-| `/create-skill --no-assign` | Zapisujesz na kiedyś |
-| `/create-skill --parent #88` | Skill jest częścią większej zmiany w kicie |
-| `/create-skill --quick` | Wiesz, że to skill i że ma sens — chcesz tylko zapis |
+| `@KIT_CMD_PREFIX@create-skill` | Masz przeczucie, że coś powinno być skillem |
+| `@KIT_CMD_PREFIX@create-skill "…"` | Masz jedno zdanie i chcesz wiedzieć, czy to skill |
+| `@KIT_CMD_PREFIX@create-skill --dry-run` | Chcesz zobaczyć kartę, nic nie tworząc |
+| `@KIT_CMD_PREFIX@create-skill --no-assign` | Zapisujesz na kiedyś |
+| `@KIT_CMD_PREFIX@create-skill --parent #88` | Skill jest częścią większej zmiany w kicie |
+| `@KIT_CMD_PREFIX@create-skill --quick` | Wiesz, że to skill i że ma sens — chcesz tylko zapis |
 
 **Flag `--label`, `--title`, `--body` nie ma i nie należy ich dodawać.** Tytuł
 i etykietę weryfikujesz w FAZIE 4; podanie ich z góry omijałoby tę weryfikację,
@@ -147,7 +147,7 @@ sam. To cała różnica między „ocenia pomysł" a „udaje, że ocenia".
 Bez limitu faza zjada kontekst i kończy się tym, że agent zna repo, ale nie ma
 już miejsca na rozmowę.
 
-Odczyt agentów jest tu ważniejszy niż w `/create-task` i ma konkretny powód:
+Odczyt agentów jest tu ważniejszy niż w `@KIT_CMD_PREFIX@create-task` i ma konkretny powód:
 w kicie skille i agenci trafiają u części klientów do **tego samego katalogu**.
 Skill o nazwie, którą nosi już agent, nie jest niezręcznością — jest kolizją
 przy instalacji.
@@ -166,7 +166,7 @@ zdaniu, przed uzasadnieniem.
 | --- | --- | --- |
 | **Ma sens** | To skill, nie ma go, da się wpiąć | FAZA 2 |
 | **Ma sens, ale** | To skill, ale coś trzeba przestawić | FAZA 2, uwagi w karcie |
-| **To nie skill, to agent** | Wiedza ma sens tylko wywołana ręcznie | Odesłanie do `/create-task`, koniec |
+| **To nie skill, to agent** | Wiedza ma sens tylko wywołana ręcznie | Odesłanie do `@KIT_CMD_PREFIX@create-task`, koniec |
 | **Już istnieje** | Zrobione albo zgłoszone | Link, pytanie czy mimo to |
 | **Nie w tej formie** | Cel dobry, ujęcie złe | Propozycja innego ujęcia |
 | **Nie w tym projekcie** | To nie należy do kita | Uzasadnienie, koniec |
@@ -318,7 +318,7 @@ Rzemioslo: skill skill-authoring.
 | **Otwarte pytanie** | Mówi wykonawcy, gdzie ma przystanąć zamiast zgadywać |
 | **Kontekst** | Skąd się to wzięło + konkret z repo (ścieżka, numer issue) |
 
-**Kryterium nieodpalenia jest tu ważniejsze niż w `/create-task`.** Skill, który
+**Kryterium nieodpalenia jest tu ważniejsze niż w `@KIT_CMD_PREFIX@create-task`.** Skill, który
 wchodzi wszędzie, jest tak samo zepsuty jak ten, który nie wchodzi nigdy — a bez
 zdania „po tym skill ma zostać w spokoju" nikt tego drugiego przypadku nie
 sprawdzi.
@@ -362,7 +362,7 @@ Numer issue agent bierze **wyłącznie z outputu `create`**, nigdy z
 Jeśli druga komenda padnie, mówi, że **issue już istnieje**, podaje numer i
 czego nie dopiął. Nie zaczyna od zera.
 
-Kończy raportem: numer, link, `/git-start <N>`.
+Kończy raportem: numer, link, `@KIT_CMD_PREFIX@git-start <N>`.
 
 ### `a` — anuluj
 
@@ -435,7 +435,7 @@ Jeśli po Twojej zmianie pomysł jest już agentem, a nie skillem, agent mówi t
 
 To wywraca werdykt. Skill nie wykonuje krokow — z tym dodatkiem opisujesz
 przebieg z decyzja czlowieka na starcie, czyli agenta. Przenosimy calosc
-do /create-task czy zostawiamy skill i wycinamy ten punkt?
+do @KIT_CMD_PREFIX@create-task czy zostawiamy skill i wycinamy ten punkt?
 ```
 
 Bez tej reguły pętla akceptacji staje się drogą do przemycenia agenta
@@ -452,8 +452,8 @@ FAZY 1?"
 ## Etykiety
 
 Agent wybiera **jedną** istniejącą etykietę — tę, która odpowiada typowi
-Conventional z `.cursor/rules/git-branch-pr.mdc`, żeby `/git-start` →
-`/git-commit` → `/git-end` się nie rozjechało.
+Conventional z `.cursor/rules/git-branch-pr.mdc`, żeby `@KIT_CMD_PREFIX@git-start` →
+`@KIT_CMD_PREFIX@git-commit` → `@KIT_CMD_PREFIX@git-end` się nie rozjechało.
 
 ```text
 type: feature      nowy skill
@@ -468,7 +468,7 @@ To jedyny powód, dla którego ta komenda w ogóle wybiera etykietę.
 ## Przykład — cała rozmowa, z werdyktem „to agent"
 
 ```text
-> /create-skill "chcialbym skill, ktory robi porzadek przed commitem"
+> @KIT_CMD_PREFIX@create-skill "chcialbym skill, ktory robi porzadek przed commitem"
 
 Czytam repo... (5 odczytow: skille, agenci, AGENTS.md, issue, etykiety)
 
@@ -479,10 +479,10 @@ Werdykt: to nie skill, to agent.
   nie ma jak wykonac kroku "najpierw".
 - Test: czy ta tresc ma sens, gdy nikt jej nie wywola? Nie — porzadek
   przed commitem zaczyna sie od Twojej decyzji, ze konczysz prace.
-- W templates/shared/agents/ jest juz /cleanup, ktory robi polowe tego.
-  Reszte robi /git-commit.
+- W templates/shared/agents/ jest juz @KIT_CMD_PREFIX@cleanup, ktory robi polowe tego.
+  Reszte robi @KIT_CMD_PREFIX@git-commit.
 
-To zadanie na /create-task albo poprawka /cleanup. Konczę tutaj.
+To zadanie na @KIT_CMD_PREFIX@create-task albo poprawka @KIT_CMD_PREFIX@cleanup. Konczę tutaj.
 
 > to inaczej: skill o konwencjach nazywania migracji
 
@@ -524,7 +524,7 @@ Description przywrocony.
 #131 utworzone.
 https://github.com/radthenone/ai-instruction-kit-mcp/issues/131
 
-Gdy siadziesz: /git-start 131
+Gdy siadziesz: @KIT_CMD_PREFIX@git-start 131
 ```
 
 ---
@@ -534,12 +534,12 @@ Gdy siadziesz: /git-start 131
 ```text
 pomysl "chce miec skill na X"
   │
-  ├─ /create-skill ──► werdykt ──┬─ to agent ──► /create-task
+  ├─ @KIT_CMD_PREFIX@create-skill ──► werdykt ──┬─ to agent ──► @KIT_CMD_PREFIX@create-task
   │                              ├─ odrzucone ──► koniec
   │                              │
   │                              └─ issue #131
   │                                   │
-  │                                   └─ /git-start 131
+  │                                   └─ @KIT_CMD_PREFIX@git-start 131
   │                                        │
   │                                        └─ skill skill-authoring
   │                                           (frontmatter, sufit dlugosci,
@@ -549,7 +549,7 @@ pomysl "chce miec skill na X"
                         (wracasz z konkretem albo bez pomyslu)
 ```
 
-Granica jest ostra: **`/create-skill` kończy się na issue albo na jego braku.**
+Granica jest ostra: **`@KIT_CMD_PREFIX@create-skill` kończy się na issue albo na jego braku.**
 Ani jednej linijki `SKILL.md`.
 
 ---
@@ -602,7 +602,7 @@ Ani jednej linijki `SKILL.md`.
 
 ## Czego ten skill nie zrobi
 
-- **Nie napisze `SKILL.md`.** Od tego jest `/git-start` i `skill-authoring`.
+- **Nie napisze `SKILL.md`.** Od tego jest `@KIT_CMD_PREFIX@git-start` i `skill-authoring`.
 - **Nie sprawdzi, czy skill faktycznie się odpala.** Kryterium z karty to
   zdanie do ręcznego przetestowania po napisaniu, nie test automatyczny.
 - **Nie oszacuje, ile skilli to za dużo.** Widzi jeden pomysł, nie budżet

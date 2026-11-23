@@ -1,4 +1,4 @@
-# `/review-backend` — Django/DRF (albo overlay stacka)
+# `@KIT_CMD_PREFIX@review-backend` — Django/DRF (albo overlay stacka)
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-backend.md`.
 > Format wspólny i ściąga kogo wołać: [review-bugbot](review-bugbot.md).

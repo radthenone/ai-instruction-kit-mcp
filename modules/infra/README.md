@@ -49,4 +49,4 @@ Zmiana brokera = edycja profilu. Kod tasków bez zmian.
 host to VPS (`KIT_HOST_PROFILE=vps` albo heurystyka: Linux, małe zasoby, brak swapu,
 wirtualizacja/brak desktopu; CI i WSL zawsze `local`). Trafia do każdego bundle'a.
 Projekt dopisuje tylko podział lekkie/ciężkie taski w `.ai/project.md` (przez
-`/kit-project-edit`). Bez hooka blokującego.
+`@KIT_CMD_PREFIX@kit-project-edit`). Bez hooka blokującego.

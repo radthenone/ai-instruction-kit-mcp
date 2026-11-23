@@ -582,7 +582,8 @@ def get_module(module_id: str) -> str:
         return f"Nieznany moduł `{module_id}`."
     if not info.path.is_file():
         return f"Plik modułu nie istnieje: {info.path}"
-    return info.path.read_text(encoding="utf-8")
+    content = info.path.read_text(encoding="utf-8")
+    return manifest.resolve_text(content, "shared")
 
 
 @mcp.tool()

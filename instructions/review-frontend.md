@@ -1,4 +1,4 @@
-# `/review-frontend` — Expo Router / React / RN
+# `@KIT_CMD_PREFIX@review-frontend` — Expo Router / React / RN
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-frontend.md`.
 > Format wspólny i ściąga kogo wołać: [review-bugbot](review-bugbot.md).
@@ -23,6 +23,6 @@ w [review-bugbot](review-bugbot.md).
 Jeśli zmiana przechodzi przez kontrakt API do backendu, patrz
 [subagent-frontend](subagent-frontend.md) (dwuokienkowy cross-review).
 
-**Do przemyślenia:** czy [review-ui](review-ui.md) i `/review-frontend` nie
+**Do przemyślenia:** czy [review-ui](review-ui.md) i `@KIT_CMD_PREFIX@review-frontend` nie
 powinny się scalić — nakładają się na komponentach. Argument przeciw: UI patrzy
 na UX i a11y, frontend na konwencje stacku i Orval. Na razie zostawiam.

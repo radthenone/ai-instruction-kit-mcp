@@ -3,7 +3,7 @@
 ## Cel
 
 Minimalny, powtarzalny zestaw zasad bezpieczeństwa dla monorepo FE/BE.
-Przy auth, płatnościach, ACL → zawsze `/review-security` przed pushem
+Przy auth, płatnościach, ACL → zawsze `@KIT_CMD_PREFIX@review-security` przed pushem
 (`core:code-review`).
 
 ## Sekrety i konfiguracja
@@ -66,7 +66,7 @@ Szczegóły env: `arch:configuration`. Overlay projektu może wskazać konkretny
 - [ ] Brak nowych sekretów w repo
 - [ ] Permissions + izolacja queryset przetestowane
 - [ ] Webhook / vendor mockowany w unitach; podpis opisany
-- [ ] `/review-security` uruchomiony
+- [ ] `@KIT_CMD_PREFIX@review-security` uruchomiony
 
 ## Antywzorce
 
@@ -79,5 +79,5 @@ Szczegóły env: `arch:configuration`. Overlay projektu może wskazać konkretny
 
 - `capability:auth`, `capability:payments`, `capability:files`
 - `arch:configuration`, `arch:observability`, `arch:api-errors`
-- `core:code-review` — `/review-security`
+- `core:code-review` — `@KIT_CMD_PREFIX@review-security`
 - OWASP API / ASVS — źródło zewnętrzne (Context7 / docs)

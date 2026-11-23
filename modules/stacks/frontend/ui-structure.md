@@ -68,7 +68,7 @@ tylko dodatkowa referencja.
 
 ### Spec trafia do repo zwykłym PR-em
 
-Gałąź bazowa jest chroniona, więc spec nie idzie commitem prosto na nią: `/git-start` →
-commit `docs(design): layout spec for #<N>` → `/git-end` → merge. Po merge'u spec leży na
+Gałąź bazowa jest chroniona, więc spec nie idzie commitem prosto na nią: `@KIT_CMD_PREFIX@git-start` →
+commit `docs(design): layout spec for #<N>` → `@KIT_CMD_PREFIX@git-end` → merge. Po merge'u spec leży na
 bazie i widzi go każdy wykonawca. Branch issue już istnieje i jest wypchnięty → spec może być
 jego pierwszym commitem.

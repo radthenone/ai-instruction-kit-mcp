@@ -13,7 +13,7 @@ Najpierw repo + MCP kita, potem diagnoza, potem plan, na końcu kod.
 
 | Warstwa | Narzędzie | Rola |
 |---------|-----------|------|
-| Fundament | MCP `project-guides`, `/review-*`, overlay | prawda o stacku i review |
+| Fundament | MCP `project-guides`, `@KIT_CMD_PREFIX@review-*`, overlay | prawda o stacku i review |
 | Proces | mattpocock (`/grill-me`, `/tdd`) | bramki przed/w trakcie feature |
 | Meta | superpowers | brainstorm, debug, finishing |
 
@@ -162,7 +162,7 @@ Dobierz kontrolę do zakresu zmiany. Dla drobnej poprawki lokalnej wystarczy cel
 
 Przed `git push` na branch z featurem:
 
-1. Uruchom `/review-bugbot` (lub `/review-security` przy auth/płatnościach); opcjonalnie `/review-backend` / `/review-frontend`.
+1. Uruchom `@KIT_CMD_PREFIX@review-bugbot` (lub `@KIT_CMD_PREFIX@review-security` przy auth/płatnościach); opcjonalnie `@KIT_CMD_PREFIX@review-backend` / `@KIT_CMD_PREFIX@review-frontend`.
 2. Guardy: `git-guard.mjs` (deny force/push na main/master/dev, `reset --hard`, `clean -f`) — nigdy nie pytają, tylko allow/deny.
 2. Napraw findings o severity high/medium, jeśli są uzasadnione.
 3. Push — Bugbot na PR może pominąć review, jeśli diff był już lokalnie przejrzany (ten sam patch).

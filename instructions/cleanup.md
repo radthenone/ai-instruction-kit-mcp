@@ -1,4 +1,4 @@
-# `/cleanup` — sieć bezpieczeństwa na śmieci po weryfikacji
+# `@KIT_CMD_PREFIX@cleanup` — sieć bezpieczeństwa na śmieci po weryfikacji
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/cleanup.md`.
 
@@ -8,16 +8,16 @@ z uzasadnieniem, pyta, usuwa zaakceptowane.
 
 | Wywołanie | Co się dzieje |
 |---|---|
-| `/cleanup` | skan + propozycja + pytanie o potwierdzenie |
-| `/cleanup --dry-run` | tylko lista, bez usuwania i bez pytania |
-| `/cleanup --yes` | usuń bez dodatkowego pytania (już potwierdziłem w tej wiadomości) |
+| `@KIT_CMD_PREFIX@cleanup` | skan + propozycja + pytanie o potwierdzenie |
+| `@KIT_CMD_PREFIX@cleanup --dry-run` | tylko lista, bez usuwania i bez pytania |
+| `@KIT_CMD_PREFIX@cleanup --yes` | usuń bez dodatkowego pytania (już potwierdziłem w tej wiadomości) |
 
 **Kiedy:** po debugowaniu, **przed** [git-commit](git-commit.md).
 
 ## Dlaczego to nie jest to samo, co auto-sprzątanie
 
 `AGENTS.md` mówi, że agent kasuje **swoje własne** scratch pliki z **bieżącej**
-sesji sam, bez pytania. `/cleanup` jest siecią na to, co i tak zostało — po
+sesji sam, bez pytania. `@KIT_CMD_PREFIX@cleanup` jest siecią na to, co i tak zostało — po
 poprzedniej sesji, po innym agencie, po mnie. **Dlatego tu zawsze jest lista
 i pytanie:** nie wiadomo, kto i po co dany plik stworzył.
 
@@ -46,5 +46,5 @@ może być produkcyjny.
 
 Usuwa pojedynczo (`rm` / `git rm`), **nigdy `rm -rf` katalogu**.
 
-**Pułapka:** `/cleanup` patrzy głównie na **untracked**. Śmieci, które przypadkiem
+**Pułapka:** `@KIT_CMD_PREFIX@cleanup` patrzy głównie na **untracked**. Śmieci, które przypadkiem
 zacommitowałem, przejdą przez sito.

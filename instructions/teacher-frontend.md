@@ -1,4 +1,4 @@
-# `/teacher-frontend` — React / RN / Expo Router
+# `@KIT_CMD_PREFIX@teacher-frontend` — React / RN / Expo Router
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/teacher-frontend.md`.
 > Wspólna mechanika nauczycieli i format odpowiedzi: [teacher-agent](teacher-agent.md).

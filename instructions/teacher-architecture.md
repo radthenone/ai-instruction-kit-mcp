@@ -1,4 +1,4 @@
-# `/teacher-architecture` — granice, kontrakt, odwracalność
+# `@KIT_CMD_PREFIX@teacher-architecture` — granice, kontrakt, odwracalność
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/teacher-architecture.md`.
 > Wspólna mechanika nauczycieli i format odpowiedzi: [teacher-agent](teacher-agent.md).

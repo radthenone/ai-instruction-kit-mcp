@@ -1,6 +1,6 @@
 # Kanon inżynierski — skąd biorą się „dobre nawyki”
 
-Moduł dla agentów uczących (`/teacher-*`). `core:external-knowledge` mówi **w jakiej kolejności** sięgać po źródła. Ten moduł mówi **po które konkretnie** i **jak ocenić, czy dane źródło jest coś warte**.
+Moduł dla agentów uczących (`@KIT_CMD_PREFIX@teacher-*`). `core:external-knowledge` mówi **w jakiej kolejności** sięgać po źródła. Ten moduł mówi **po które konkretnie** i **jak ocenić, czy dane źródło jest coś warte**.
 
 Zasada nadrzędna: rekomendacja bez uzasadnienia mechanizmem to opinia. „Bo tak jest czyściej” nie jest argumentem — user ma wyjść z rozmowy umiejąc sam ocenić następny taki wybór.
 

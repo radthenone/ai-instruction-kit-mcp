@@ -34,7 +34,7 @@ Instruction-kit dostarcza **Waszą** architekturę (moduły + MCP `project-guide
 
 | Warstwa | Narzędzie | Montaż | Odpowiada za |
 |---------|-----------|--------|----------------|
-| Fundament | ten kit (`project-guides`, `/review-*`) | `.cursor/mcp.json`, agents z bootstrap | stack, overlay, review przed push |
+| Fundament | ten kit (`project-guides`, `@KIT_CMD_PREFIX@review-*`) | `.cursor/mcp.json`, agents z bootstrap | stack, overlay, review przed push |
 | Proces | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` (+ Cursor) | `/grill-me`, `/tdd`, PRD |
 | Meta | superpowers, caveman, … | user / plugin Cursor | brainstorm, debug, finishing |
 
@@ -54,8 +54,8 @@ npx skills@latest add mattpocock/skills
 1. Stack / Taskfile / ścieżki → **zawsze** MCP kita, nigdy Matt/Superpowers.  
 2. Scope feature → Matt `/grill-me`.  
 3. TDD → **jeden** path: Matt `/tdd` *albo* superpowers TDD (domyślnie Matt na nowe feature’e).  
-4. Review diffu stacku → `/review-backend` / `/review-frontend` (kit).  
-5. Bugbot → `/review-bugbot`.  
+4. Review diffu stacku → `@KIT_CMD_PREFIX@review-backend` / `@KIT_CMD_PREFIX@review-frontend` (kit).  
+5. Bugbot → `@KIT_CMD_PREFIX@review-bugbot`.  
 
 Pełny opis priorytetów: szablon `templates/AGENTS.md` (kopiowany do `AGENTS.md` w projekcie).
 
