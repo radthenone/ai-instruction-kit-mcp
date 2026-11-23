@@ -1151,7 +1151,13 @@ render_agent_commands() {
       [[ -d "$orphan_dir" ]] || continue
       orphan_name="$(basename "$orphan_dir")"
       if [[ ! -f "$ALL_AGENTS/$orphan_name.md" ]]; then
-        rm -rf "$orphan_dir"
+        # Sierota = katalog z samym SKILL.md. Cudzy zasób obok zostaje, nic nie znika po cichu.
+        if [[ -z "$(find "$orphan_dir" -mindepth 1 ! -name SKILL.md)" ]]; then
+          rm -rf "$orphan_dir"
+          echo "  - $orphan_dir (sierota kita)"
+        else
+          echo "  ! $orphan_dir zostaje: ma pliki spoza SKILL.md"
+        fi
       fi
     done
   fi
