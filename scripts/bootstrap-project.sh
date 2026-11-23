@@ -852,6 +852,18 @@ install_night_run_t3() {
 # Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
 # (mapa 1:1 z copy_shared_agents / render_agent_commands / install_codex_agents).
 # Tier zmieniony na `none` = agenci znikają przy reload.
+# Usuwa katalog skilla kita, gdy zawiera samo SKILL.md. Cudzy plik obok zostaje z komunikatem.
+prune_kit_skill_dir() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  if [[ -z "$(find "$dir" -mindepth 1 ! -name SKILL.md)" ]]; then
+    rm -rf "$dir"
+    echo "  - $dir (usunięto)"
+  else
+    echo "  ! $dir zostaje: ma pliki spoza SKILL.md"
+  fi
+}
+
 prune_tier_agents() {
   local name
   for name in $SKIPPED_AGENTS; do
@@ -859,8 +871,8 @@ prune_tier_agents() {
       "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
       "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
       "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
-    rm -rf "$TARGET/.claude/skills/kit-ai/skills/$name" \
-      "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
+    prune_kit_skill_dir "$TARGET/.claude/skills/kit-ai/skills/$name"
+    rm -rf "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
   done
 }
 
@@ -1151,13 +1163,7 @@ render_agent_commands() {
       [[ -d "$orphan_dir" ]] || continue
       orphan_name="$(basename "$orphan_dir")"
       if [[ ! -f "$ALL_AGENTS/$orphan_name.md" ]]; then
-        # Sierota = katalog z samym SKILL.md. Cudzy zasób obok zostaje, nic nie znika po cichu.
-        if [[ -z "$(find "$orphan_dir" -mindepth 1 ! -name SKILL.md)" ]]; then
-          rm -rf "$orphan_dir"
-          echo "  - $orphan_dir (sierota kita)"
-        else
-          echo "  ! $orphan_dir zostaje: ma pliki spoza SKILL.md"
-        fi
+        prune_kit_skill_dir "$orphan_dir"
       fi
     done
   fi
