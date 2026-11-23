@@ -1,6 +1,6 @@
 ---
 name: git-commit
-description: Stage and create Conventional Commit(s) from local diffs. Use when /git-commit, dirty tree before /git-end. Wywołuj jako /git-commit.
+description: "Stage and create Conventional Commit(s) from local diffs. Use when /kit-ai:git-commit, dirty tree before /kit-ai:git-end. Wywołuj jako /kit-ai:git-commit."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -15,9 +15,9 @@ Język **treści** commita (subject/body): MCP `get_language` / `--language` (do
 **Typ** Conventional zawsze EN: `feat` / `fix` / `docs` / `chore` / `test` / `refactor` / `ci` / `build`.  
 Tytuły issue/PR/branch: zawsze EN (tu nie tworzysz PR).
 
-# /git-commit — commit(y) z lokalnych zmian
+# /kit-ai:git-commit — commit(y) z lokalnych zmian
 
-Jesteś asystentem **commitów**. **Nie** pushujesz, **nie** tworzysz PR (to `/git-end`). **Nie** edytujesz issue (to `/git-check`).
+Jesteś asystentem **commitów**. **Nie** pushujesz, **nie** tworzysz PR (to `/kit-ai:git-end`). **Nie** edytujesz issue (to `/kit-ai:git-check`).
 
 Wymagane: `git`. Odpowiedzi w języku MCP.
 
@@ -26,7 +26,7 @@ Wymagane: `git`. Odpowiedzi w języku MCP.
 Gdy user poda help — wypisz i zakończ (bez `git commit`):
 
 ```markdown
-# /git-commit — pomoc
+# /kit-ai:git-commit — pomoc
 
 ## Co robi
 Z lokalnego diffa (staged + unstaged + untracked, bez sekretów) tworzy **Conventional Commit(s)**. Odpalają się lokalne hooki (`pre-commit`), o ile nie użyjesz `--no-verify` (tylko na wyraźną prośbę).
@@ -34,14 +34,14 @@ Z lokalnego diffa (staged + unstaged + untracked, bez sekretów) tworzy **Conven
 ## Wywołania
 | Komenda | Efekt |
 |---------|--------|
-| `/git-commit` | Auto: jeden commit albo kilka logicznych (patrz niżej) |
-| `/git-commit --one` | Wymuś **jeden** commit na wszystko |
-| `/git-commit --split` | Preferuj **kilka** commitów po obszarach |
-| `/git-commit --dry-run` | Pokaż plan (pliki + message), bez `git add`/`commit` |
-| `/git-commit --help` | Ta pomoc |
+| `/kit-ai:git-commit` | Auto: jeden commit albo kilka logicznych (patrz niżej) |
+| `/kit-ai:git-commit --one` | Wymuś **jeden** commit na wszystko |
+| `/kit-ai:git-commit --split` | Preferuj **kilka** commitów po obszarach |
+| `/kit-ai:git-commit --dry-run` | Pokaż plan (pliki + message), bez `git add`/`commit` |
+| `/kit-ai:git-commit --help` | Ta pomoc |
 
 ## Po commitach
-`/review-bugbot` (jeśli jeszcze nie) → **`/git-end`** (push + PR).
+`/kit-ai:review-bugbot` (jeśli jeszcze nie) → **`/kit-ai:git-end`** (push + PR).
 ```
 
 ## Wejście
@@ -52,7 +52,7 @@ Z lokalnego diffa (staged + unstaged + untracked, bez sekretów) tworzy **Conven
 | `--dry-run` | Plan bez zapisu |
 | `--one` | Jeden zbiorowy commit |
 | `--split` | Podział na kilka |
-| Puste `/git-commit` | Tryb auto |
+| Puste `/kit-ai:git-commit` | Tryb auto |
 
 ## Algorytm
 
@@ -66,7 +66,7 @@ git diff --cached --stat
 git ls-files --others --exclude-standard
 ```
 
-- Na `main`/`master`/`dev` z zamiarem commita feature → STOP, zasugeruj `/git-start`.
+- Na `main`/`master`/`dev` z zamiarem commita feature → STOP, zasugeruj `/kit-ai:git-start`.
 - Brak zmian → „nie ma czego commitować” i zakończ.
 - Nie commituj sekretów (`.env`, credentials, klucze) — pomiń / ostrzeż.
 
@@ -88,7 +88,7 @@ Format:
 <typ>: <krótki subject>
 ```
 
-Opcjonalnie body (dlaczego), język MCP. Subject zwięzły; bez trailera `Closes #N` w commitach (to body PR w `/git-end`), chyba że user wyraźnie każe.
+Opcjonalnie body (dlaczego), język MCP. Subject zwięzły; bez trailera `Closes #N` w commitach (to body PR w `/kit-ai:git-end`), chyba że user wyraźnie każe.
 
 ### 3. Wykonanie (bez `--dry-run`)
 
@@ -111,11 +111,11 @@ EOF
 ### 4. Raport
 
 ```markdown
-## /git-commit OK
+## /kit-ai:git-commit OK
 - Branch: …
 - Commity: (hash + subject) × N
 - Dry-run: tak/nie
-- Dalej: [/git-check?] → /review-* → **/git-end**
+- Dalej: [/kit-ai:git-check?] → /kit-ai:review-* → **/kit-ai:git-end**
 ```
 
 ## Zakazy
@@ -123,4 +123,4 @@ EOF
 - Push, PR, merge, force na chronione.
 - Commit sekretów.
 - Squash historii już na remote bez prośby.
-- Mylenie z `/git-end` (push+PR) lub `/git-check` (issue).
+- Mylenie z `/kit-ai:git-end` (push+PR) lub `/kit-ai:git-check` (issue).

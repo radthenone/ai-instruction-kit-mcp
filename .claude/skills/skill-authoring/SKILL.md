@@ -4,7 +4,7 @@ description: >-
   Jak napisać skill do instruction-kit: frontmatter, opis który faktycznie
   odpala, sufit długości, zasoby obok SKILL.md i degradacja u klientów bez
   natywnych skilli. Użyj tego zawsze, gdy piszesz albo poprawiasz SKILL.md,
-  realizujesz issue założone przez /create-skill, zastanawiasz się czy coś ma
+  realizujesz issue założone przez /kit-ai:create-skill, zastanawiasz się czy coś ma
   być skillem czy agentem, albo gdy skill nie odpala się mimo że powinien.
 ---
 

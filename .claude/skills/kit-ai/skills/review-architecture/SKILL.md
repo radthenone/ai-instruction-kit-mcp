@@ -1,6 +1,6 @@
 ---
 name: review-architecture
-description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /review-architecture.
+description: "Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /kit-ai:review-architecture."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -13,7 +13,7 @@ Przestrzegaj `AGENTS.md` oraz reguł git/review.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 - brak commit/push na chronione branche — tylko PR;
-- przed pushem: `/review-bugbot`.
+- przed pushem: `/kit-ai:review-bugbot`.
 
 ### Bugbot vs ten reviewer
 

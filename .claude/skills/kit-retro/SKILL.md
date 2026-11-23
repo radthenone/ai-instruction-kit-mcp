@@ -3,9 +3,9 @@ name: kit-retro
 description: >-
   Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, zapisy JSONL w
   ~/.cache/kit-ai/retro/<repo>/) na kategorie kit / projekt / agent / zewnętrzne z oceną.
-  Z flagą `/kit-retro --kit` (w repo kita) klasyfikuje propozycje z agregacji `kit-ai retro report`
+  Z flagą `/kit-ai:kit-retro --kit` (w repo kita) klasyfikuje propozycje z agregacji `kit-ai retro report`
   z wielu repo.
-  Użyj zawsze, gdy użytkownik pisze `/kit-retro`, „przejrzyj sesję”, „co poszło źle w sesji”,
+  Użyj zawsze, gdy użytkownik pisze `/kit-ai:kit-retro`, „przejrzyj sesję”, „co poszło źle w sesji”,
   „sklasyfikuj znaleziska”, „sygnały z guardów”, „co wyszło z nocy”, albo gdy po sesji lub
   przebiegu headless czeka wynik skanu do oceny. Nie dla ogólnej retrospektywy sesji —
   do tego jest `/retro` z mattpocock-skills. Nie edytuje plików.
@@ -17,7 +17,7 @@ Czytasz wynik skanu sesji, przypisujesz każde znalezisko do jednej z czterech k
 podajesz ocenę w rozmowie. Wynik to propozycje dla człowieka, a nie poprawki, więc niczego
 nie zapisujesz. Terminy (Sesja, Sygnał, Znalezisko, Fingerprint, Propozycja) są z `CONTEXT.md`.
 
-Degradacja: u klientów bez natywnych skilli ten plik działa jako komenda `/kit-retro`. Wykonaj te
+Degradacja: u klientów bez natywnych skilli ten plik działa jako komenda `/kit-ai:kit-retro`. Wykonaj te
 same kroki; zasobów do wczytania nie ma.
 
 ## Wejście
@@ -93,7 +93,7 @@ Gdy wynik skanu nie ma Znalezisk, podajesz tylko `Retro: 0 znalezisk.`
 
 ## Tryb `--kit`
 
-`/kit-retro --kit` uruchamiasz w repo kita. Zamiast jednego skanu czytasz agregację z wielu repo:
+`/kit-ai:kit-retro --kit` uruchamiasz w repo kita. Zamiast jednego skanu czytasz agregację z wielu repo:
 
 1. Uruchom `kit-ai retro report` w repo kita. Komenda czyta zapisy z cache każdego repo, grupuje
    znaleziska po `fingerprint`, stosuje progi (co najmniej 3 sesje albo 2 repo) i pomija te,
@@ -103,23 +103,23 @@ Gdy wynik skanu nie ma Znalezisk, podajesz tylko `Retro: 0 znalezisk.`
    i `kit` (commit kita z chwili skanu). Przy sprzeczności czytasz zapis sesji jak w punkcie 3
    z Wejścia. Starszy `kit` przy `replay=deny` oznacza, że problem mógł już zniknąć: „do
    potwierdzenia”.
-3. Propozycje robisz tylko dla `kit` i `agent`, z trasą `/create-task` w repo kita. Marker
+3. Propozycje robisz tylko dla `kit` i `agent`, z trasą `/kit-ai:create-task` w repo kita. Marker
    z raportu idzie do karty, żeby kolejny raport tę propozycję pominął. `projekt` nie dostaje
-   propozycji, bo `/kit-project-edit` nie zakłada issue i marker nie miałby gdzie trafić.
-   Zamiast tego jedna linijka na repo: „<N> znalezisk projektowych, uruchom `/kit-retro` w repo <repo>”.
+   propozycji, bo `/kit-ai:kit-project-edit` nie zakłada issue i marker nie miałby gdzie trafić.
+   Zamiast tego jedna linijka na repo: „<N> znalezisk projektowych, uruchom `/kit-ai:kit-retro` w repo <repo>”.
    `zewnętrzne` → bez karty i bez linijki.
 4. Wynik: jedna tabela z kolumnami Kategoria, Fingerprint, Sesje, Repo, Trasa karty, Ocena,
    Pewność, pod nią linijki odesłania dla `projekt`.
 
-Propozycje to tylko propozycje: karty tworzy człowiek przez `/create-task` po akceptacji.
-Zmianę w projekcie robi `/kit-project-edit` po lokalnym `/kit-retro` w tym repo.
+Propozycje to tylko propozycje: karty tworzy człowiek przez `/kit-ai:create-task` po akceptacji.
+Zmianę w projekcie robi `/kit-ai:kit-project-edit` po lokalnym `/kit-ai:kit-retro` w tym repo.
 
 ## Zasady
 
 - Nie edytuje plików: ani kodu, ani konfiguracji, ani wyniku skanu. Nie czyścisz katalogu cache.
 - Skill nie zakłada issue i nie pisze w GitHubie. Każda poprawka to Propozycja, którą człowiek
-  akceptuje przed jakimkolwiek zapisem (karty robi `/create-task` albo `/kit-project-edit`;
-  w trybie `--kit` tylko `/create-task`).
+  akceptuje przed jakimkolwiek zapisem (karty robi `/kit-ai:create-task` albo `/kit-ai:kit-project-edit`;
+  w trybie `--kit` tylko `/kit-ai:create-task`).
   Jedynym kontaktem z GitHubem jest odczyt issue (w każdym stanie) przez `kit-ai retro report`
   w trybie `--kit`.
 - Dane zamaskowane zostają zamaskowane. Nie odtwarzaj sekretów, adresów e-mail ani ścieżek

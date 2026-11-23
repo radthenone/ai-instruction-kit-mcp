@@ -1,6 +1,6 @@
 ---
 name: review-edge
-description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /review-edge.
+description: "Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /kit-ai:review-edge."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -9,12 +9,12 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 ## Reguły wspólne (obowiązkowe)
 
-Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/kit-ai:review-bugbot`.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności).
 
 ### Bugbot vs ten reviewer
 
-Bugbot = security/blocking. Ty = edge case’y, regresje, walidacja. **Nie** powtarzaj findings stylistycznych z `/review-backend`/`/review-frontend` — tylko brzegi i regresje.
+Bugbot = security/blocking. Ty = edge case’y, regresje, walidacja. **Nie** powtarzaj findings stylistycznych z `/kit-ai:review-backend`/`/kit-ai:review-frontend` — tylko brzegi i regresje.
 
 ### Niska pewność
 

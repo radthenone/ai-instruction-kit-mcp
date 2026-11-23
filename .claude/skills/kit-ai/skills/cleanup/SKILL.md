@@ -1,22 +1,22 @@
 ---
 name: cleanup
-description: Znajdź i usuń zbędne pliki tymczasowe/testowe stworzone podczas weryfikacji (scratch scripts, ad-hoc testy, tmp dumps), które zostały w repo po zakończeniu pracy. Use when zakończono debugowanie/weryfikację i podejrzewasz śmieci w working tree, przed `/git-commit`. Wywołuj jako /cleanup.
+description: "Znajdź i usuń zbędne pliki tymczasowe/testowe stworzone podczas weryfikacji (scratch scripts, ad-hoc testy, tmp dumps), które zostały w repo po zakończeniu pracy. Use when zakończono debugowanie/weryfikację i podejrzewasz śmieci w working tree, przed `/kit-ai:git-commit`. Wywołuj jako /kit-ai:cleanup."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 
 ## Reguły wspólne
 
-Przestrzegaj `AGENTS.md` — sekcja „Auto-sprzątanie": własne scratch pliki z **bieżącej** sesji agent usuwa sam, bez pytania, zaraz po użyciu. `/cleanup` to sieć bezpieczeństwa na to, co i tak zostało — dlatego **tu** zawsze pokazujesz listę i pytasz o potwierdzenie (nie wiesz z pewnością, kto i po co stworzył dany plik).
+Przestrzegaj `AGENTS.md` — sekcja „Auto-sprzątanie": własne scratch pliki z **bieżącej** sesji agent usuwa sam, bez pytania, zaraz po użyciu. `/kit-ai:cleanup` to sieć bezpieczeństwa na to, co i tak zostało — dlatego **tu** zawsze pokazujesz listę i pytasz o potwierdzenie (nie wiesz z pewnością, kto i po co stworzył dany plik).
 
-# /cleanup — sprzątanie zaległości
+# /kit-ai:cleanup — sprzątanie zaległości
 
 Szukasz plików, które ktoś (Ty w poprzedniej sesji, inny agent, user) stworzył **tylko po to, by coś sprawdzić** — jednorazowe skrypty, ad-hoc testy, dumpy — i które nie są częścią właściwej zmiany, a zostały w repo.
 
 ## `--help` / `help` / `-h`
 
 ```markdown
-# /cleanup — pomoc
+# /kit-ai:cleanup — pomoc
 
 ## Co robi
 Skanuje `git status` (untracked + staged) i szuka plików pasujących do wzorców "scratch/tymczasowe", pokazuje listę z uzasadnieniem, pyta o potwierdzenie, usuwa zaakceptowane.
@@ -24,10 +24,10 @@ Skanuje `git status` (untracked + staged) i szuka plików pasujących do wzorcó
 ## Wywołania
 | Komenda | Efekt |
 |---------|--------|
-| `/cleanup` | Skan + propozycja + pytanie o potwierdzenie |
-| `/cleanup --dry-run` | Tylko lista, bez usuwania i bez pytania |
-| `/cleanup --yes` | Usuń bez dodatkowego pytania (user już potwierdził w tej samej wiadomości) |
-| `/cleanup --help` | Ta pomoc |
+| `/kit-ai:cleanup` | Skan + propozycja + pytanie o potwierdzenie |
+| `/kit-ai:cleanup --dry-run` | Tylko lista, bez usuwania i bez pytania |
+| `/kit-ai:cleanup --yes` | Usuń bez dodatkowego pytania (user już potwierdził w tej samej wiadomości) |
+| `/kit-ai:cleanup --help` | Ta pomoc |
 ```
 
 ## Algorytm
@@ -56,7 +56,7 @@ Plik jest kandydatem, gdy spełnia **conajmniej dwa** z:
 ### 3. Pokaż plan
 
 ```markdown
-## /cleanup — propozycja
+## /kit-ai:cleanup — propozycja
 
 | Plik | Powód |
 |------|-------|
@@ -74,7 +74,7 @@ Brak kandydatów → "Nic do posprzątania — working tree czysty z podejrzanyc
 ### 5. Raport
 
 ```markdown
-## /cleanup OK
+## /kit-ai:cleanup OK
 - Usunięto: N plików (lista)
 - Pominięto (user odrzucił): lista
 - Working tree: czysty / zostały tracked zmiany do commita
