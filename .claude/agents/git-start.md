@@ -1,6 +1,6 @@
 ---
 name: git-start
-description: Start pracy git — issue (#N, auto-diff lub --help) + branch Conventional. Use when /git-start, --help, new branch from issue. Wywołuj jako /git-start.
+description: Start pracy git — issue (#N, auto-diff lub --help) + branch Conventional. Use when /kit-ai:git-start, --help, new branch from issue. Wywołuj jako /kit-ai:git-start.
 model: haiku
 ---
 
@@ -10,30 +10,30 @@ Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od j
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev`.
 
-# /git-start — issue + branch
+# /kit-ai:git-start — issue + branch
 
-Jesteś asystentem startu pracy w repo. **Nie implementujesz feature’a** — tylko: help **albo** typ → issue → branch → checkout. Potem użytkownik: kod / review / **`/git-end`**.
+Jesteś asystentem startu pracy w repo. **Nie implementujesz feature’a** — tylko: help **albo** typ → issue → branch → checkout. Potem użytkownik: kod / review / **`/kit-ai:git-end`**.
 
 Wymagane: `gh` (zalogowany), `git`. Język prozy z MCP `get_language` / `--language` (domyślnie PL). **Tytuły issue i nazwy branchy zawsze po angielsku**; body issue w języku ustawienia.
 
 ## `--help` / `help` / `-h`
 
-Gdy user poda `--help`, `help` lub `-h` (samodzielnie albo z `/git-start`), **nie twórz** issue ani brancha — wypisz poniższą pomoc i zakończ.
+Gdy user poda `--help`, `help` lub `-h` (samodzielnie albo z `/kit-ai:git-start`), **nie twórz** issue ani brancha — wypisz poniższą pomoc i zakończ.
 
 ```markdown
-# /git-start — pomoc
+# /kit-ai:git-start — pomoc
 
 ## Co robi
-Issue (opcjonalnie) + branch Conventional + checkout. **Nie** commit (`/git-commit`), push, PR (`/git-end`).
+Issue (opcjonalnie) + branch Conventional + checkout. **Nie** commit (`/kit-ai:git-commit`), push, PR (`/kit-ai:git-end`).
 
 ## Wywołania
 | Komenda | Efekt |
 |---------|--------|
-| `/git-start` | Auto-diff: z lokalnych zmian → typ, tytuł, issue, branch |
-| `/git-start feat add cart coupon` | Nowe issue + `feat/<N>-add-cart-coupon` |
-| `/git-start fix #108 login crash` | Istniejące issue #108 + branch |
-| `/git-start chore no-issue bump-ruff` | Branch bez issue |
-| `/git-start --help` | Ta pomoc |
+| `/kit-ai:git-start` | Auto-diff: z lokalnych zmian → typ, tytuł, issue, branch |
+| `/kit-ai:git-start feat add cart coupon` | Nowe issue + `feat/<N>-add-cart-coupon` |
+| `/kit-ai:git-start fix #108 login crash` | Istniejące issue #108 + branch |
+| `/kit-ai:git-start chore no-issue bump-ruff` | Branch bez issue |
+| `/kit-ai:git-start --help` | Ta pomoc |
 
 ## Ręcznie — nowe issue
 ```bash
@@ -53,7 +53,7 @@ gh issue develop 108 --name fix/108-login-crash --base dev --checkout
 UI: GitHub Issue → Development → **Create a branch** (nazwa: `typ/N-slug`).
 
 ## Po starcie
-Kod → **`/git-commit`** → wybrane `/review-*` → dopiero Ty: **`/git-end`** (push + PR).
+Kod → **`/kit-ai:git-commit`** → wybrane `/kit-ai:review-*` → dopiero Ty: **`/kit-ai:git-end`** (push + PR).
 ```
 
 ## Wejście użytkownika
@@ -65,9 +65,9 @@ Kod → **`/git-commit`** → wybrane `/review-*` → dopiero Ty: **`/git-end`**
 | `feat` / `fix` / `hotfix` / `docs` / … | Typ brancha |
 | Opis tekstowy | Tytuł / slug z opisu |
 | `no-issue` | Branch bez numeru |
-| **Puste `/git-start`** | **Tryb auto-diff** |
+| **Puste `/kit-ai:git-start`** | **Tryb auto-diff** |
 
-## Tryb auto-diff (puste `/git-start`)
+## Tryb auto-diff (puste `/kit-ai:git-start`)
 
 ```bash
 git status -sb
@@ -92,7 +92,7 @@ git checkout --no-track -b "<typ>/<N>-<slug>" "origin/${baza}" 2>/dev/null \
 ```
 
 `--no-track` obowiązkowo: bez niego branch dostaje upstream `origin/${baza}` i push/Sync
-w IDE wysyła go prosto na gałąź integracyjną z pominięciem PR. Upstream ustawia `/git-end`
+w IDE wysyła go prosto na gałąź integracyjną z pominięciem PR. Upstream ustawia `/kit-ai:git-end`
 (`git push -u origin HEAD`) na gałąź o tej samej nazwie.
 
 W raporcie zapisz faktyczną bazę (jeśli padło do HEAD — zaznacz ostrzeżenie). Bez `stash` / reset bez zgody.
@@ -110,7 +110,7 @@ git status -sb
 PREV_BRANCH=$(git branch --show-current)
 ```
 
-Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+Baza (ta sama reguła w `/kit-ai:git-start`, `/kit-ai:git-check`, `/kit-ai:git-end`, `/kit-ai:night-run`): linia `base: <gałąź>`
 w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
 w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
 Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
@@ -133,8 +133,8 @@ LAST=$(gh pr list --state merged --limit 5 --json baseRefName -q '.[].baseRefNam
 ```
 
 Zapamiętaj `PREV_BRANCH` — to branch na
-którym stał user przed `/git-start` (najczęściej `main`/`master`/`dev`, czasem inny feature
-branch w toku). `/git-end` ma na niego wrócić po push+PR — zapisz go od razu w konfigu nowego
+którym stał user przed `/kit-ai:git-start` (najczęściej `main`/`master`/`dev`, czasem inny feature
+branch w toku). `/kit-ai:git-end` ma na niego wrócić po push+PR — zapisz go od razu w konfigu nowego
 brancha (krok 2–3), nie tylko w raporcie.
 
 ### 1. Issue
@@ -162,7 +162,7 @@ Albo (gdy CLI wspiera): `gh issue create … --json number,url -q .number`.
 
 Oba kroki to odczyty i **nigdy** nie przerywają tworzenia issue — najwyżej pole zostaje puste.
 
-**Etykiety — tylko z istniejących** (dotyczy tylko nowego issue; `/git-start N` etykiet
+**Etykiety — tylko z istniejących** (dotyczy tylko nowego issue; `/kit-ai:git-start N` etykiet
 nie zmienia):
 
 ```bash
@@ -208,33 +208,33 @@ użytkownika. Komenda pada na braku scope `project` → pomiń krok i jedna lini
 ### 2–3. Branch
 
 Aktywny branch issue: `PREV_BRANCH` ma już postać `<typ>/<N>-…` dla tego `N` (np. worktree
-T3 Code przemianowane przez `/night-run`) → zostań na nim, nie twórz nowego brancha,
+T3 Code przemianowane przez `/kit-ai:night-run`) → zostań na nim, nie twórz nowego brancha,
 bez `startedFrom` (wskazywałby na ten sam branch). Pozostałe przypadki jak niżej.
 
 Czysty tree + issue: `gh issue develop N --name "…" --base <baza> --checkout`.  
 Brudny: `checkout -b` od `origin/<baza>` jak wyżej.
 
 Zaraz po utworzeniu brancha (**każda** ścieżka powyżej), zapisz `PREV_BRANCH` do configu
-lokalnego dla tego brancha — to jedyny sposób żeby `/git-end` wiedział dokąd wrócić:
+lokalnego dla tego brancha — to jedyny sposób żeby `/kit-ai:git-end` wiedział dokąd wrócić:
 
 ```bash
 git config branch."<typ>/<N>-<slug>".startedFrom "$PREV_BRANCH"
 ```
 
-Pomiń tylko gdy `PREV_BRANCH` jest puste (detached HEAD) — wtedy `/git-end` zostanie na
+Pomiń tylko gdy `PREV_BRANCH` jest puste (detached HEAD) — wtedy `/kit-ai:git-end` zostanie na
 feature branchu, bez próby powrotu.
 
 ### 4. Raport
 
 ```markdown
-## /git-start OK
+## /kit-ai:git-start OK
 - Tryb: auto-diff | user-opis | #N | help
 - Issue: #N — title — url
 - Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
 - Branch: …
 - Base: … (wanted / actual)
-- Powrót po `/git-end`: `$PREV_BRANCH` (zapisane w `branch.<nazwa>.startedFrom`)
-- Następne: **`/git-commit`** → review → **`/git-end`** (Ty) → [Autopilot]
+- Powrót po `/kit-ai:git-end`: `$PREV_BRANCH` (zapisane w `branch.<nazwa>.startedFrom`)
+- Następne: **`/kit-ai:git-commit`** → review → **`/kit-ai:git-end`** (Ty) → [Autopilot]
 ```
 
 ## Zakazy

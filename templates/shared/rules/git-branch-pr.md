@@ -43,7 +43,7 @@ Nie dubluj: **jeden** TDD path (Matt *albo* Superpowers TDD). Git nazewnictwa za
 | `@KIT_CMD_PREFIX@git-start` | `#N` / opis / **puste = auto-diff** / **`--help`** → issue + branch |
 | `@KIT_CMD_PREFIX@git-check` | Dopasuj tytuł/body issue do realnego diffa; **`--dry-run`** / **`--help`** |
 | `@KIT_CMD_PREFIX@git-commit` | Conventional Commit(s) z lokalnego diffa; **`--one`** / **`--split`** / **`--dry-run`** |
-| `@KIT_CMD_PREFIX@git-end` | Push + PR (`Closes #N`); **`--help`**; alias `@KIT_CMD_PREFIX@git-pr` |
+| `@KIT_CMD_PREFIX@git-end` | Push + PR (`Closes #N`); **`--help`**; alias `git-pr` |
 
 Tytuły issue/PR/branch: **zawsze EN**. Body / commity / docstringi: język MCP (`get_language`, `--language pl|en`).
 

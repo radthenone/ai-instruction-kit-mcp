@@ -26,7 +26,7 @@ TEMPLATE_NIGHT_RUN_TICKET = ROOT / "templates" / "shared" / "agents" / "night-ru
 
 NIGHT_RUN_COPIES = (
     ".claude/agents/night-run.md",
-    ".claude/commands/night-run.md",
+    ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
     ".opencode/command/night-run.md",
@@ -34,7 +34,7 @@ NIGHT_RUN_COPIES = (
 
 NIGHT_RUN_TICKET_COPIES = (
     ".claude/agents/night-run-ticket.md",
-    ".claude/commands/night-run-ticket.md",
+    ".claude/skills/kit-ai/skills/night-run-ticket/SKILL.md",
     ".codex/skills/night-run-ticket/SKILL.md",
     ".github/prompts/night-run-ticket.prompt.md",
     ".opencode/command/night-run-ticket.md",
@@ -140,7 +140,7 @@ class TestNightRunDefaultReview(unittest.TestCase):
         """Wszystkie śledzone kopie szablonu night-run u klientów zachowują kontrakt #466."""
         for rel in NIGHT_RUN_COPIES:
             with self.subTest(copy=rel):
-                copy = (ROOT / rel).read_text(encoding="utf-8")
+                copy = (ROOT / rel).read_text(encoding="utf-8").replace("/kit-ai:", "/")
                 args_sec = copy.split("## Argumenty", 1)[1].split("## Start nocy", 1)[0]
                 review_args = args_sec.split("- **Skille review z argumentów**", 1)[1]
                 chain_sec = copy.split("## Łańcuch na ticket", 1)[1].split("## Zlecenie ticketu", 1)[0]
@@ -178,7 +178,7 @@ class TestNightRunDefaultReview(unittest.TestCase):
         """Wszystkie śledzone kopie szablonu night-run-ticket u klientów zawierają routing poprawek (#466)."""
         for rel in NIGHT_RUN_TICKET_COPIES:
             with self.subTest(copy=rel):
-                copy = (ROOT / rel).read_text(encoding="utf-8")
+                copy = (ROOT / rel).read_text(encoding="utf-8").replace("/kit-ai:", "/")
                 step_six = copy.split("6. Poprawki z review", 1)[1].split("7. `gh pr merge", 1)[0]
                 self.assertIn("Potwierdzone findingi poprawia wykonawca implementacji z kroków 2–3", step_six)
                 self.assertIn("ścieżki 2–4: ten sam wykonawca i model, poprawka razem z testem", step_six)

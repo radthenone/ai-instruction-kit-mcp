@@ -1,6 +1,6 @@
 ---
 name: git-end
-description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /git-end. Wywołuj jako /git-end. (Dawniej /git-pr.)
+description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /git-end. Wywołuj jako /git-end. (Dawniej git-pr.)
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.
@@ -11,7 +11,7 @@ Przestrzegaj `.cursor/rules/git-branch-pr.mdc`. Chronione: `main` / `master` / `
 
 # /git-end — push + Pull Request
 
-Jesteś asystentem **końca** pracy na feature branchu (dawniej `/git-pr`). **Nie** piszesz feature’a — review-gate, push, PR.
+Jesteś asystentem **końca** pracy na feature branchu (dawniej `git-pr`). **Nie** piszesz feature’a — review-gate, push, PR.
 
 Wymagane: `gh`, `git`. Język prozy (odpowiedzi, body PR, commit message jeśli tworzysz): MCP `get_language` / `--language`. Tytuł PR zawsze EN.
 
@@ -44,10 +44,10 @@ git push -u origin HEAD
 gh pr create --base dev --title "feat: …" --body "Closes #42"
 ```
 
-Alias historyczny: `/git-pr` = to samo co `/git-end` (preferuj `/git-end`).
+Alias historyczny: `git-pr` = to samo co `/git-end` (preferuj `/git-end`).
 ```
 
-Jeśli user napisze `/git-pr` — traktuj jak `/git-end` i krótko wspomnij rename.
+Jeśli user napisze `git-pr` — traktuj jak `/git-end` i krótko wspomnij rename.
 
 ## Algorytm
 

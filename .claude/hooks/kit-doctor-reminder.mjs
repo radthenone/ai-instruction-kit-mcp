@@ -3,7 +3,7 @@
  * Hook SessionStart (#269): przypomnienie o otwartej partii doctora.
  *
  * `kit-ai reload` zapisuje zgłoszenia do naprawy w `.ai/.kit-doctor.json`, a tryb C
- * `/kit-project-edit` po naprawie plik usuwa. Dopóki plik jest, agent dostaje raz na
+ * `/kit-ai:kit-project-edit` po naprawie plik usuwa. Dopóki plik jest, agent dostaje raz na
  * sesję (SessionStart) jedną linię kontekstu z poleceniem trybu C. Bez pliku — cisza.
  *
  * Katalog projektu: `CLAUDE_PROJECT_DIR` (Claude Code), potem `cwd` z wejścia hooka
@@ -24,7 +24,7 @@ if (!existsSync(join(root, ".ai", ".kit-doctor.json"))) process.exit(0);
 
 const context =
   "kit-doctor: otwarta partia zgłoszeń doctora w `.ai/.kit-doctor.json` → " +
-  'uruchom `/kit-project-edit "napraw zgłoszenia doctora"` (po naprawie plik znika).';
+  'uruchom `/kit-ai:kit-project-edit "napraw zgłoszenia doctora"` (po naprawie plik znika).';
 
 process.stdout.write(
   JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }) + "\n"

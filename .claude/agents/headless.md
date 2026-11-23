@@ -1,10 +1,10 @@
 ---
 name: headless
-description: Zleć zadanie innemu klientowi kitu w trybie headless (np. tańszemu modelowi w OpenCode) i dostań krótki raport. Use when /headless <wykonawca> "<treść>", delegowanie implementacji do innego CLI, praca pod /goal z tańszym wykonawcą. Wywołuj jako /headless.
+description: Zleć zadanie innemu klientowi kitu w trybie headless (np. tańszemu modelowi w OpenCode) i dostań krótki raport. Use when /kit-ai:headless <wykonawca> "<treść>", delegowanie implementacji do innego CLI, praca pod /goal z tańszym wykonawcą. Wywołuj jako /kit-ai:headless.
 model: haiku
 ---
 
-# /headless — zadanie dla innego klienta
+# /kit-ai:headless — zadanie dla innego klienta
 
 Uruchamiasz innego klienta kitu bez interfejsu, czekasz na wynik i streszczasz go. Sam nie
 implementujesz zadania, nie interpretujesz go i nie commitujesz. Wykonawca pracuje test-first
@@ -17,15 +17,15 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 ## Składnia
 
 ```text
-/headless <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] "<treść>"
+/kit-ai:headless <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
-Przykłady (host → wywołanie):
+Przykłady (host → wywołanie, bez prefiksu komendy; dopisz prefiks swojego klienta, np. `/kit-ai:` w Claude, `/` w opencode):
 
 ```text
-claude:       /headless opencode "..."   albo   /headless gemini "..."
-opencode:     /headless gemini "..."
-antigravity:  /headless opencode "..."
+claude:       headless opencode "..."   albo   headless gemini "..."
+opencode:     headless gemini "..."
+antigravity:  headless opencode "..."
 ```
 
 Limit dostawcy, brak postępu albo pętla (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje
@@ -44,13 +44,13 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
   Lista modeli (`--model a,b` albo `{"model": ["a", "b"]}`): kolejne modele tego samego wykonawcy idą przed
   zmianą wykonawcy, gdy poprzedni dostał limit albo `HANG`. Pusta grupa limitu agy (odczyt limitów CLI agy:
   `Gemini Models` albo `Claude and GPT models` na 0%) pomija model z wpisem `pominięto model …` w raporcie.
-  Przykład: `/headless gemini --model gemini-3.8-flash-high,claude-opus-4-6-thinking "..."`.
+  Przykład: `/kit-ai:headless gemini --model gemini-3.8-flash-high,claude-opus-4-6-thinking "..."`.
 - Linked worktree: zakładasz i usuwasz przez `node .ai/worktree.mjs add|remove` (reguła git-branch-pr; przenosi pliki z `.gitignore` i zależności). Gdy worktree powstało poza skryptem (`git worktree add`), uruchom `node .ai/worktree.mjs sync [<ścieżka>]`. Jeśli w worktree nadal brakuje projektowego configu, wrapper bierze `opencode.json` z głównego checkoutu jako `OPENCODE_CONFIG` i czyta z niego `model`. Raport końcowy mówi wprost `CONFIG=main-checkout <ścieżka>` albo `CONFIG=missing — executor default model`.
 - `--timeout` — minuty. Bez flagi termin 60 min, przedłużany o 10 min, gdy w ostatnim kroku było wyjście, zmiana `HEAD`/`git status` (na Windows bez CPU), do sufitu 120 min. Jawny `--timeout` to twardy limit bez przedłużania. Liczony osobno dla każdego modelu każdego wykonawcy w łańcuchu.
 - `--heartbeat` — co ile minut linia stanu `[headless] ♥` w logu i w pliku zdarzeń, domyślnie 10.
-- `--ctx <katalog>` — katalog nocy (CTX z `/night-run`); bez flagi wrapper nic nie zapisuje. Z nią
+- `--ctx <katalog>` — katalog nocy (CTX z `/kit-ai:night-run`); bez flagi wrapper nic nie zapisuje. Z nią
   dopisuje wiersz wywołania (ostatnia linia wyjścia, JSON) do `<katalog>/headless-rows.jsonl`, a przy
-  klasie innej niż OK także wycinek logu. Bufor czyta `--report --ctx <katalog>`. Ręczny `/headless` tej flagi nie potrzebuje.
+  klasie innej niż OK także wycinek logu. Bufor czyta `--report --ctx <katalog>`. Ręczny `/kit-ai:headless` tej flagi nie potrzebuje.
 - Inne flagi = błąd. Walidację robi wrapper — nie zgaduj i nie poprawiaj argumentów.
 
 ## Kroki
@@ -105,7 +105,7 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
    - skill w głównym wątku → wykonaj treść sam;
    - subagent `headless` → nie wykonuj; hand-back `przejęcie: limit <wykonawca>, reset <ISO|brak>`
      z treścią i raportem — przejmuje główny wątek;
-   - pod `/night-run` → reguła `LIMIT` z `/night-run` (`przejmij` / `czekaj`).
+   - pod `/kit-ai:night-run` → reguła `LIMIT` z `/kit-ai:night-run` (`przejmij` / `czekaj`).
 3. Po zakończeniu (także kod ≠ 0 albo `124` = timeout) przeczytaj z wyjścia raport
    końcowy wrappera (`[headless] raport końcowy`): `git status --short`, commity wykonawcy
    od startu, nowe wpisy stasha i ostatnie linie wykonawcy. Ostrzeżenie o stashu (`UWAGA`)
@@ -117,7 +117,7 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
 4. Raport dla użytkownika:
 
    ```markdown
-   ## /headless <wykonawca> — <OK | błąd <kod> | timeout | przejęte przez hosta>
+   ## /kit-ai:headless <wykonawca> — <OK | błąd <kod> | timeout | przejęte przez hosta>
    - Łańcuch: <np. `opencode → antigravity` z linii `[headless] … przekazuję zadanie` albo pomiń>
    - Zmiany: <pliki z git status, jedno zdanie co>
    - Commity wykonawcy: <z raportu końcowego albo „brak”>
@@ -125,7 +125,7 @@ Zastępca bierze swój domyślny model albo listę z `.agents/agy.json` (`--mode
    - Testy: <z raportu wykonawcy: komenda i wynik albo „nie uruchomione”>
    - Problemy: <z raportu wykonawcy i z kodu wyjścia albo „brak”>
    - Log: <ścieżka logu>
-   - Dalej: review commitów i diffa, potem `/git-commit` dla reszty i `/git-end`
+   - Dalej: review commitów i diffa, potem `/kit-ai:git-commit` dla reszty i `/kit-ai:git-end`
    ```
 
 ## Zakazy

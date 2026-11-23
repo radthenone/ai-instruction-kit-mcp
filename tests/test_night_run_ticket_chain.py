@@ -19,14 +19,14 @@ TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run.md"
 TICKET_TEMPLATE = KIT_ROOT / "templates" / "shared" / "agents" / "night-run-ticket.md"
 COPIES = (
     ".claude/agents/night-run.md",
-    ".claude/commands/night-run.md",
+    ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
     ".opencode/command/night-run.md",
 )
 TICKET_COPIES = (
     ".claude/agents/night-run-ticket.md",
-    ".claude/commands/night-run-ticket.md",
+    ".claude/skills/kit-ai/skills/night-run-ticket/SKILL.md",
     ".codex/skills/night-run-ticket/SKILL.md",
     ".github/prompts/night-run-ticket.prompt.md",
     ".opencode/command/night-run-ticket.md",

@@ -21,12 +21,12 @@ Język odpowiedzi i raportu: z MCP `get_language` (Profil), niezależnie od jęz
 @KIT_CMD_PREFIX@headless <wykonawca> [--model <id>[,<id>…]] [--timeout <min>] [--heartbeat <min>] "<treść>"
 ```
 
-Przykłady (host → wywołanie):
+Przykłady (host → wywołanie, bez prefiksu komendy; dopisz prefiks swojego klienta, np. `/kit-ai:` w Claude, `/` w opencode):
 
 ```text
-claude:       @KIT_CMD_PREFIX@headless opencode "..."   albo   @KIT_CMD_PREFIX@headless gemini "..."
-opencode:     @KIT_CMD_PREFIX@headless gemini "..."
-antigravity:  @KIT_CMD_PREFIX@headless opencode "..."
+claude:       headless opencode "..."   albo   headless gemini "..."
+opencode:     headless gemini "..."
+antigravity:  headless opencode "..."
 ```
 
 Limit dostawcy, brak postępu albo pętla (`HANG`), inny błąd wykonawcy albo brak binarki → wrapper sam przekazuje

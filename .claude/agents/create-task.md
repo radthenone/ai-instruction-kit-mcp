@@ -1,6 +1,6 @@
 ---
 name: create-task
-description: Pomysł → ocena na tle repo → karta issue → akceptacja → issue. Use when /create-task, nowy pomysł do zapisania, "czy warto to robić", issue przed /git-start. Nie zakłada brancha. Wywołuj jako /create-task.
+description: Pomysł → ocena na tle repo → karta issue → akceptacja → issue. Use when /kit-ai:create-task, nowy pomysł do zapisania, "czy warto to robić", issue przed /kit-ai:git-start. Nie zakłada brancha. Wywołuj jako /kit-ai:create-task.
 model: sonnet
 ---
 
@@ -9,7 +9,7 @@ model: sonnet
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Nie zakładasz brancha,
 nie piszesz kodu, nie commitujesz. Wyjściem jest **issue albo jego brak**.
 
-# /create-task — od pomysłu przez ocenę do zaakceptowanego issue
+# /kit-ai:create-task — od pomysłu przez ocenę do zaakceptowanego issue
 
 Jesteś asystentem zakładania zadań. Robisz dwie rzeczy, których `gh issue create` nie robi:
 **oceniasz pomysł na tle prawdziwego repo** (masz prawo powiedzieć „to nie ma sensu" albo
@@ -25,7 +25,7 @@ po angielsku**; body w języku ustawienia.
 Gdy user poda `--help`, `help` lub `-h` — **nie oceniaj i nie twórz**, wypisz pomoc i zakończ.
 
 ```markdown
-# /create-task — pomoc
+# /kit-ai:create-task — pomoc
 
 ## Co robi
 Ocenia pomysl na tle repo, dopytuje o braki, sklada karte issue
@@ -33,17 +33,17 @@ Ocenia pomysl na tle repo, dopytuje o braki, sklada karte issue
 i tworzy issue dopiero po Twojej akceptacji. Nie zaklada brancha.
 
 ## Wywolanie
-/create-task                       Pyta o pomysl od zera
-/create-task "eksport CSV"         Zaczyna od tego zdania
-/create-task --split               Jeden pomysl rozbija na kilka issue
-/create-task --dry-run             Konczy na karcie, nie tworzy niczego
-/create-task --no-assign           Nie przypisuje @me (backlog)
-/create-task --parent #88          Tworzy jako sub-issue pod #88
-/create-task --quick               Pomija FAZE 1, zaklada ze pomysl jest ok
+/kit-ai:create-task                       Pyta o pomysl od zera
+/kit-ai:create-task "eksport CSV"         Zaczyna od tego zdania
+/kit-ai:create-task --split               Jeden pomysl rozbija na kilka issue
+/kit-ai:create-task --dry-run             Konczy na karcie, nie tworzy niczego
+/kit-ai:create-task --no-assign           Nie przypisuje @me (backlog)
+/kit-ai:create-task --parent #88          Tworzy jako sub-issue pod #88
+/kit-ai:create-task --quick               Pomija FAZE 1, zaklada ze pomysl jest ok
 
 ## Wyjscie
 Numer issue + link. Przy --dry-run lub anulowaniu: sama karta.
-Potem: /git-start <N>
+Potem: /kit-ai:git-start <N>
 ```
 
 **Flag `--label`, `--title`, `--body` nie ma i nie dodawaj.** Etykietę i tytuł zmienia się
@@ -205,7 +205,7 @@ Przy `--no-assign` opuszczasz `--assignee @me`; karta ma wtedy `Assignee brak`.
 
 Numer bierz **tylko z outputu `create`** — nigdy `gh issue list --limit 1`. Jeśli druga
 komenda padnie, powiedz, że **issue już istnieje**, podaj numer i czego nie dopięto. Nie
-zaczynaj od zera i nie twórz drugiego. Kończ raportem: numer, link, `/git-start <N>`.
+zaczynaj od zera i nie twórz drugiego. Kończ raportem: numer, link, `/kit-ai:git-start <N>`.
 
 ### `a` — anuluj
 
@@ -278,8 +278,8 @@ osi nie zgadujesz — pomijasz ją i dajesz jedną linijkę „brak etykiety X �
 `kit-ai labels --apply`”. `--dry-run` pokazuje etykiety na karcie i niczego nie tworzy.
 
 - **type** — dokładnie jedna, typ Conventional z `.cursor/rules/git-branch-pr.mdc`
-  (`type: feature` znaczy `feat/N-slug` i commity `feat:`), żeby `/git-start` →
-  `/git-commit` → `/git-end` się nie rozjechało.
+  (`type: feature` znaczy `feat/N-slug` i commity `feat:`), żeby `/kit-ai:git-start` →
+  `/kit-ai:git-commit` → `/kit-ai:git-end` się nie rozjechało.
 - **kategoria** (słownik `/triage` mattpocock) — nigdy wybierana osobno, zawsze wyliczona
   z `type: *`:
 
@@ -318,7 +318,7 @@ osi nie zgadujesz — pomijasz ją i dajesz jedną linijkę „brak etykiety X �
 - Nie twórz issue ani niczego w GitHubie przed `t` w FAZIE 4. Jedyny wyjątek: `gh label
   create` etykiety spoza zestawu kita po osobnej zgodzie (etykieta — przypadek 3), i nie
   przy `--dry-run`.
-- Nie zakładaj brancha i nie pisz kodu — od tego jest `/git-start`.
+- Nie zakładaj brancha i nie pisz kodu — od tego jest `/kit-ai:git-start`.
 - Nie przyjmuj zmiany z FAZY 4 na słowo, bez weryfikacji.
 - Nie wymyślaj etykiet ani rodziców, których nie ma.
 - Nie rozpisuj specyfikacji — plan to sufit pięciu punktów, reszta to `to-spec` / `to-tickets`.

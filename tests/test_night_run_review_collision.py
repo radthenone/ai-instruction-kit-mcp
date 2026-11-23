@@ -25,7 +25,7 @@ TEMPLATE_TICKET = ROOT / "templates" / "shared" / "agents" / "night-run-ticket.m
 
 NIGHT_RUN_COPIES = (
     ".claude/agents/night-run.md",
-    ".claude/commands/night-run.md",
+    ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
     ".opencode/command/night-run.md",
@@ -123,7 +123,7 @@ class TestNightRunReviewCollision(unittest.TestCase):
         """Wszystkie śledzone kopie szablonu night-run u klientów zachowują kontrakt #465."""
         for rel in NIGHT_RUN_COPIES:
             with self.subTest(copy=rel):
-                copy = (ROOT / rel).read_text(encoding="utf-8")
+                copy = (ROOT / rel).read_text(encoding="utf-8").replace("/kit-ai:", "/")
                 args_sec = copy.split("## Argumenty", 1)[1].split("## Start nocy", 1)[0]
                 review_args = args_sec.split("- **Skille review z argumentów**", 1)[1]
                 chain_sec = copy.split("## Łańcuch na ticket", 1)[1].split("## Zlecenie ticketu", 1)[0]
@@ -162,14 +162,14 @@ class TestNightRunReviewCollision(unittest.TestCase):
 
         ticket_copies = (
             ".claude/agents/night-run-ticket.md",
-            ".claude/commands/night-run-ticket.md",
+            ".claude/skills/kit-ai/skills/night-run-ticket/SKILL.md",
             ".codex/skills/night-run-ticket/SKILL.md",
             ".github/prompts/night-run-ticket.prompt.md",
             ".opencode/command/night-run-ticket.md",
         )
         for rel in ticket_copies:
             with self.subTest(ticket_copy=rel):
-                tcopy = (ROOT / rel).read_text(encoding="utf-8")
+                tcopy = (ROOT / rel).read_text(encoding="utf-8").replace("/kit-ai:", "/")
                 self.assertIn("katalog (worktree ticketu albo katalog główny)", tcopy)
 
 if __name__ == "__main__":

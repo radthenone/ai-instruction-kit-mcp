@@ -18,7 +18,7 @@ TEMPLATE_NIGHT_RUN = ROOT / "templates" / "shared" / "agents" / "night-run.md"
 
 NIGHT_RUN_COPIES = (
     ".claude/agents/night-run.md",
-    ".claude/commands/night-run.md",
+    ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
     ".opencode/command/night-run.md",

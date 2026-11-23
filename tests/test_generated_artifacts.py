@@ -5,8 +5,8 @@ Dwie luki, które ten moduł zamyka:
 
 1. Wpis w `manifest.yaml` może wskazywać na nieistniejący plik — dotąd ujawniało
    się to dopiero przy `get_module()` u użytkownika.
-2. To repo dogfooduje własny kit: `.claude/agents/` i `.claude/commands/`
-   to kopie `templates/shared/agents/`, a `.claude/skills/`
+2. To repo dogfooduje własny kit: `.claude/agents/` i plugin
+   `.claude/skills/kit-ai/` to kopie `templates/shared/agents/`, a `.claude/skills/`
    to kopia `templates/shared/skills/`. Dodanie agenta albo skilla bez
    regeneracji kopii przechodziło CI niezauważone.
 
@@ -36,7 +36,8 @@ KIT_ROOT = find_kit_root(Path(__file__))
 
 # Katalogi `.claude/`, które bootstrap wypełnia wyłącznie agentami kita — tylko tu
 # nadmiarowy plik dowodzi sieroty. Cursor wypadł w d6117a6, więc `.cursor/` nie ma kopii.
-DOGFOOD_DIRS = (".claude/agents", ".claude/commands")
+DOGFOOD_DIRS = (".claude/agents",)
+PLUGIN_SKILLS_DIR = ".claude/skills/kit-ai/skills"
 
 # Kopia agenta u każdego klienta z Profilu repo, którą trzymamy w gicie. Dawniej test
 # patrzył tylko na `.claude/` i Codex/Copilot/OpenCode rozjeżdżały się po cichu
@@ -44,7 +45,7 @@ DOGFOOD_DIRS = (".claude/agents", ".claude/commands")
 # .gitignore — nie ma czego porównywać.
 DOGFOOD_AGENT_PATHS = (
     ".claude/agents/{name}.md",
-    ".claude/commands/{name}.md",
+    ".claude/skills/kit-ai/skills/{name}/SKILL.md",
     ".codex/skills/{name}/SKILL.md",
     ".github/prompts/{name}.prompt.md",
     ".opencode/command/{name}.md",
@@ -249,11 +250,17 @@ class TestDogfoodCopies(unittest.TestCase):
     def test_no_orphan_copies(self) -> None:
         """Kopia bez odpowiednika w shared to pozostałość po usuniętym agencie."""
         known = {agent.name for agent in self._shared_agents()}
+        known_stems = {agent.stem for agent in self._shared_agents()}
         orphans = sorted(
             f"{rel_dir}/{found.name}"
             for rel_dir in DOGFOOD_DIRS
             for found in (KIT_ROOT / rel_dir).glob("*.md")
             if found.name not in known
+        )
+        orphans += sorted(
+            f"{PLUGIN_SKILLS_DIR}/{found.parent.name}"
+            for found in (KIT_ROOT / PLUGIN_SKILLS_DIR).glob("*/SKILL.md")
+            if found.parent.name not in known_stems
         )
         self.assertEqual(orphans, [], msg=f"kopie bez źródła w shared: {orphans}")
 

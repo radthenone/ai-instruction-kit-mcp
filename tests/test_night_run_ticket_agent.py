@@ -23,7 +23,7 @@ T3_CARD_TEMPLATE = ROOT / "templates" / "shared" / "night-run" / "t3.md"
 
 COPIES = (
     ".claude/agents/night-run.md",
-    ".claude/commands/night-run.md",
+    ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
     ".opencode/command/night-run.md",

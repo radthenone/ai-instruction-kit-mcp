@@ -1,6 +1,6 @@
 ---
 name: review-security
-description: Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /review-security.
+description: Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /kit-ai:review-security.
 readonly: true
 model: sonnet
 ---
@@ -9,7 +9,7 @@ Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profi
 
 ## Reguły wspólne (obowiązkowe)
 
-Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/review-bugbot`.
+Przestrzegaj `AGENTS.md` oraz reguł git/review. Przed pushem: `/kit-ai:review-bugbot`.
 Standardy projektu czytasz z `CODING_STANDARDS.md` (indeks źródeł w kolejności ważności),
 gdy plik jest; brak pliku → standardy z `AGENTS.md`.
 

@@ -563,7 +563,7 @@ class TestTierAgents(_BootstrapTestCase):
             # Nietknięty BUGBOT.md podąża za Tierami (install zawsze zaczyna od `none`).
             self.assertIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
             self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
-            for rel in (".claude/commands/review-backend.md", ".codex/skills/review-backend",
+            for rel in (".claude/skills/kit-ai/skills/review-backend/SKILL.md", ".codex/skills/review-backend",
                         ".opencode/command/review-backend.md"):
                 self.assertFalse((workspace / rel).exists(), rel)
 
@@ -1034,7 +1034,7 @@ class TestModelTiers(_BootstrapTestCase):
             self.assertIn(
                 "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/command/git-start.md")
             )
-            self.assertNotIn("model:", read(".claude/commands/git-start.md").split("---")[1])
+            self.assertNotIn("model:", read(".claude/skills/kit-ai/skills/git-start/SKILL.md").split("---")[1])
             self.assertNotIn("model:", read(".claude/agents/night-run.md").split("---")[1])
 
     def test_invalid_agents_block_fails_with_reason(self) -> None:
@@ -1226,7 +1226,7 @@ class TestHeadlessAgent(_BootstrapTestCase):
     """Agent `/headless` i wrapper tylko przy ≥2 klientach z trybem headless (#169)."""
 
     HOST_FILES = {
-        "claude": (".claude/agents/headless.md", ".claude/commands/headless.md"),
+        "claude": (".claude/agents/headless.md", ".claude/skills/kit-ai/skills/headless/SKILL.md"),
         "opencode": (".opencode/command/headless.md",),
         "codex": (".codex/skills/headless/SKILL.md",),
         "cursor": (".cursor/agents/headless.md",),
@@ -1288,7 +1288,7 @@ class TestHeadlessAgent(_BootstrapTestCase):
             self.assertFalse((workspace / ".agents/skills/headless").exists())
             self.assertFalse((workspace / ".ai/headless.mjs").exists())
             self.assertFalse((workspace / ".claude/agents/headless.md").exists())
-            self.assertFalse((workspace / ".claude/commands/headless.md").exists())
+            self.assertFalse((workspace / ".claude/skills/kit-ai/skills/headless/SKILL.md").exists())
 
     def test_light_tier_model_lands_in_claude_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

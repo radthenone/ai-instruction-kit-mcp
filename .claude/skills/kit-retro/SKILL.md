@@ -103,23 +103,23 @@ Gdy wynik skanu nie ma Znalezisk, podajesz tylko `Retro: 0 znalezisk.`
    i `kit` (commit kita z chwili skanu). Przy sprzeczności czytasz zapis sesji jak w punkcie 3
    z Wejścia. Starszy `kit` przy `replay=deny` oznacza, że problem mógł już zniknąć: „do
    potwierdzenia”.
-3. Propozycje robisz tylko dla `kit` i `agent`, z trasą `/create-task` w repo kita. Marker
+3. Propozycje robisz tylko dla `kit` i `agent`, z trasą `/kit-ai:create-task` w repo kita. Marker
    z raportu idzie do karty, żeby kolejny raport tę propozycję pominął. `projekt` nie dostaje
-   propozycji, bo `/kit-project-edit` nie zakłada issue i marker nie miałby gdzie trafić.
+   propozycji, bo `/kit-ai:kit-project-edit` nie zakłada issue i marker nie miałby gdzie trafić.
    Zamiast tego jedna linijka na repo: „<N> znalezisk projektowych, uruchom `/kit-retro` w repo <repo>”.
    `zewnętrzne` → bez karty i bez linijki.
 4. Wynik: jedna tabela z kolumnami Kategoria, Fingerprint, Sesje, Repo, Trasa karty, Ocena,
    Pewność, pod nią linijki odesłania dla `projekt`.
 
-Propozycje to tylko propozycje: karty tworzy człowiek przez `/create-task` po akceptacji.
-Zmianę w projekcie robi `/kit-project-edit` po lokalnym `/kit-retro` w tym repo.
+Propozycje to tylko propozycje: karty tworzy człowiek przez `/kit-ai:create-task` po akceptacji.
+Zmianę w projekcie robi `/kit-ai:kit-project-edit` po lokalnym `/kit-retro` w tym repo.
 
 ## Zasady
 
 - Nie edytuje plików: ani kodu, ani konfiguracji, ani wyniku skanu. Nie czyścisz katalogu cache.
 - Skill nie zakłada issue i nie pisze w GitHubie. Każda poprawka to Propozycja, którą człowiek
-  akceptuje przed jakimkolwiek zapisem (karty robi `/create-task` albo `/kit-project-edit`;
-  w trybie `--kit` tylko `/create-task`).
+  akceptuje przed jakimkolwiek zapisem (karty robi `/kit-ai:create-task` albo `/kit-ai:kit-project-edit`;
+  w trybie `--kit` tylko `/kit-ai:create-task`).
   Jedynym kontaktem z GitHubem jest odczyt issue (w każdym stanie) przez `kit-ai retro report`
   w trybie `--kit`.
 - Dane zamaskowane zostają zamaskowane. Nie odtwarzaj sekretów, adresów e-mail ani ścieżek

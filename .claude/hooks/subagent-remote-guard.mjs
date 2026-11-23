@@ -2,7 +2,7 @@
 /**
  * Guard: subagent nie woła narzędzi zdalnej sesji (PreToolUse: mcp__claude-code-remote__*).
  *
- * Noc `/night-run` stanęła na `confirm_repository_trust`: dialog do człowieka bez limitu
+ * Noc `/kit-ai:night-run` stanęła na `confirm_repository_trust`: dialog do człowieka bez limitu
  * czasu, mimo jawnego zakazu w prompcie (#403). Sesje `remote-control` dopuszczają bez
  * pytania tylko narzędzia odczytu, więc reszta tej przestrzeni kończy się dialogiem,
  * a `archive_session` niszczy sesję. Subagent kita nie potrzebuje żadnego z nich.

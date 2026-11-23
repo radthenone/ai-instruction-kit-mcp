@@ -1,6 +1,6 @@
 ---
 name: @KIT_NAME_PREFIX@git-end
-description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, @KIT_CMD_PREFIX@git-end. Wywołuj jako @KIT_CMD_PREFIX@git-end. (Dawniej @KIT_CMD_PREFIX@git-pr.)
+description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, @KIT_CMD_PREFIX@git-end. Wywołuj jako @KIT_CMD_PREFIX@git-end. (Dawniej git-pr.)
 model-tier: light
 classification: procedure
 ---
@@ -13,7 +13,7 @@ Przestrzegaj `.cursor/rules/git-branch-pr.mdc`. Chronione: `main` / `master` / `
 
 # @KIT_CMD_PREFIX@git-end — push + Pull Request
 
-Jesteś asystentem **końca** pracy na feature branchu (dawniej `@KIT_CMD_PREFIX@git-pr`). **Nie** piszesz feature’a — review-gate, push, PR.
+Jesteś asystentem **końca** pracy na feature branchu (dawniej `git-pr`). **Nie** piszesz feature’a — review-gate, push, PR.
 
 Wymagane: `gh`, `git`. Język prozy (odpowiedzi, body PR, commit message jeśli tworzysz): MCP `get_language` / `--language`. Tytuł PR zawsze EN.
 
@@ -46,10 +46,10 @@ git push -u origin HEAD
 gh pr create --base dev --title "feat: …" --body "Closes #42"
 ```
 
-Alias historyczny: `@KIT_CMD_PREFIX@git-pr` = to samo co `@KIT_CMD_PREFIX@git-end` (preferuj `@KIT_CMD_PREFIX@git-end`).
+Alias historyczny: `git-pr` = to samo co `@KIT_CMD_PREFIX@git-end` (preferuj `@KIT_CMD_PREFIX@git-end`).
 ```
 
-Jeśli user napisze `@KIT_CMD_PREFIX@git-pr` — traktuj jak `@KIT_CMD_PREFIX@git-end` i krótko wspomnij rename.
+Jeśli user napisze `git-pr` — traktuj jak `@KIT_CMD_PREFIX@git-end` i krótko wspomnij rename.
 
 ## Algorytm
 

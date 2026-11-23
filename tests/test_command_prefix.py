@@ -78,7 +78,8 @@ class TestManifestCommandPrefixes(unittest.TestCase):
         manifest = load_manifest(KIT_ROOT)
         for target in TARGETS:
             prefix = manifest.command_prefix(target)
-            self.assertEqual((prefix.sigil, prefix.namespace, prefix.name_prefix), ("/", "", ""), target)
+            expected = ("/", "kit-ai:", "") if target == "claude" else ("/", "", "")
+            self.assertEqual((prefix.sigil, prefix.namespace, prefix.name_prefix), expected, target)
 
     def test_unknown_target_raises(self) -> None:
         with self.assertRaises(ValueError):
@@ -271,6 +272,7 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
         bare_pattern = re.compile(
             rf"(?<!@KIT_CMD_PREFIX@)(?<![a-zA-Z0-9_.~/<>])/(?P<cmd>(?:{exact_alt})(?![-\w])(?!\.(?:md|mjs|sh|js|py|txt|json|yaml))|(?:{wildcard_alt})(?![-\w]))"
         )
+        shared_skills = {p.name for p in (shared_root / "skills").iterdir() if p.is_dir()}
         violations: list[str] = []
         for path in sorted(shared_root.rglob("*")):
             if not path.is_file():
@@ -280,8 +282,25 @@ class TestTemplatesSharedPlaceholders(unittest.TestCase):
                 continue
             for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                 for match in bare_pattern.finditer(line):
+                    # Skille spoza pluginu (templates/shared/skills) mają gołą nazwę także dla Claude.
+                    if match.group("cmd") in shared_skills:
+                        continue
                     violations.append(f"{rel}:{lineno}: /{match.group('cmd')} w: {line.strip()[:60]}")
         self.assertEqual(violations, [], f"Znaleziono gołe komendy kita bez prefiksu: {violations}")
+
+    def test_shared_skill_names_have_no_placeholder(self) -> None:
+        """Skille spoza pluginu (templates/shared/skills) nie dostają @KIT_CMD_PREFIX@ w szablonach."""
+        import re
+        shared_root = KIT_ROOT / "templates" / "shared"
+        names = [p.name for p in (shared_root / "skills").iterdir() if p.is_dir()]
+        alternatives = "|".join(re.escape(name) for name in names)
+        pattern = re.compile(rf"@KIT_CMD_PREFIX@(?:{alternatives})(?![-\w])")
+        violations = [
+            path.relative_to(shared_root).as_posix()
+            for path in sorted(shared_root.rglob("*"))
+            if path.is_file() and pattern.search(path.read_text(encoding="utf-8", errors="ignore"))
+        ]
+        self.assertEqual(violations, [], f"Placeholder prefiksu przy skillu spoza pluginu: {violations}")
 
     def test_external_skills_remain_unprefixed(self) -> None:
         """Zewnętrzne skille (/tdd, /grill-me, /code-review itp.) pozostają bez prefiksu."""
