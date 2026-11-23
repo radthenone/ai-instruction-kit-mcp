@@ -849,9 +849,6 @@ install_night_run_t3() {
   echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"
 }
 
-# Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
-# (mapa 1:1 z copy_shared_agents / render_agent_commands / install_codex_agents).
-# Tier zmieniony na `none` = agenci znikają przy reload.
 # Usuwa katalog skilla kita, gdy zawiera samo SKILL.md. Cudzy plik obok zostaje z komunikatem.
 prune_kit_skill_dir() {
   local dir="$1"
@@ -864,6 +861,9 @@ prune_kit_skill_dir() {
   fi
 }
 
+# Pliki agentów pominiętych przez Tier — po nazwie, we wszystkich formatach klientów
+# (mapa 1:1 z copy_shared_agents / render_agent_commands / install_codex_agents).
+# Tier zmieniony na `none` = agenci znikają przy reload.
 prune_tier_agents() {
   local name
   for name in $SKIPPED_AGENTS; do
