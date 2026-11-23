@@ -56,9 +56,9 @@ def referenced_review_agents() -> list[str]:
     """
     sources = [KIT_ROOT / "AGENTS.md", *sorted((KIT_ROOT / "modules").rglob("*.md"))]
     names = {
-        match.removeprefix("/")
+        match.removeprefix("@KIT_CMD_PREFIX@").removeprefix("/")
         for path in sources
-        for match in re.findall(r"/review-[a-z0-9-]+", path.read_text(encoding="utf-8"))
+        for match in re.findall(r"(?:/|@KIT_CMD_PREFIX@)review-[a-z0-9-]+", path.read_text(encoding="utf-8"))
     }
     return sorted(names)
 

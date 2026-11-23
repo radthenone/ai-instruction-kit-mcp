@@ -1,8 +1,8 @@
-# `/git-commit` — Conventional Commits z lokalnego diffa
+# `@KIT_CMD_PREFIX@git-commit` — Conventional Commits z lokalnego diffa
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/git-commit.md`.
 > Część osi czasu: [git-start](git-start.md) → kod → [git-commit](git-commit.md) →
-> [[git-check]](git-check.md) → `/review-*` → [git-end](git-end.md).
+> [[git-check]](git-check.md) → `@KIT_CMD_PREFIX@review-*` → [git-end](git-end.md).
 
 **Robi:** czyta staged + unstaged + untracked, planuje commit(y), robi `git add`
 po ścieżkach i commituje.
@@ -10,10 +10,10 @@ po ścieżkach i commituje.
 
 | Wywołanie | Co się dzieje |
 |---|---|
-| `/git-commit` | auto: jeden commit albo kilka logicznych (max ~5) |
-| `/git-commit --one` | wymuś jeden commit na wszystko |
-| `/git-commit --split` | wymuś podział po obszarach |
-| `/git-commit --dry-run` | pokaż plan (pliki + message), nic nie zapisuj |
+| `@KIT_CMD_PREFIX@git-commit` | auto: jeden commit albo kilka logicznych (max ~5) |
+| `@KIT_CMD_PREFIX@git-commit --one` | wymuś jeden commit na wszystko |
+| `@KIT_CMD_PREFIX@git-commit --split` | wymuś podział po obszarach |
+| `@KIT_CMD_PREFIX@git-commit --dry-run` | pokaż plan (pliki + message), nic nie zapisuj |
 
 **Do zapamiętania:**
 

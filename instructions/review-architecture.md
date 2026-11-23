@@ -1,4 +1,4 @@
-# `/review-architecture` — kontrakt API i układ monorepo
+# `@KIT_CMD_PREFIX@review-architecture` — kontrakt API i układ monorepo
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-architecture.md`.
 > Format wspólny i ściąga kogo wołać: [review-bugbot](review-bugbot.md).
@@ -17,5 +17,5 @@ Zwraca standardową tabelę `Severity | Location | Finding | Fix` — patrz form
 w [review-bugbot](review-bugbot.md).
 
 **vs [teacher-architecture](teacher-architecture.md):** ten łapie naruszenie
-granicy w gotowym diffie, po fakcie. `/teacher-architecture` uczy widzieć
+granicy w gotowym diffie, po fakcie. `@KIT_CMD_PREFIX@teacher-architecture` uczy widzieć
 granice zanim się kod napisze.

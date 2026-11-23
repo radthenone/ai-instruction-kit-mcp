@@ -13,15 +13,15 @@ alwaysApply: true
 | Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
 | codegen | MCP `get_codegen` / `codegen:` w `.ai/project.profile.yaml` |
 | Docs bibliotek | Context7 (user MCP) |
-| Review stacku | **minimalny zestaw** (nie wszystkie `/review-*`) — `code-review.mdc` |
-| Dwa okna | `/subagent-backend` ↔ `/subagent-frontend` |
-| Nauka / niepewna koncepcja **przed** kodem | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` (readonly) |
-| Przed pushem | `/review-bugbot` + opc. stack + hooki `gate-*` |
-| Branch / PR | `/git-start` … `/git-end` + `git-branch-pr.mdc` |
+| Review stacku | **minimalny zestaw** (nie wszystkie `@KIT_CMD_PREFIX@review-*`) — `code-review.mdc` |
+| Dwa okna | `@KIT_CMD_PREFIX@subagent-backend` ↔ `@KIT_CMD_PREFIX@subagent-frontend` |
+| Nauka / niepewna koncepcja **przed** kodem | `@KIT_CMD_PREFIX@teacher-backend`, `@KIT_CMD_PREFIX@teacher-frontend`, `@KIT_CMD_PREFIX@teacher-architecture` (readonly) |
+| Przed pushem | `@KIT_CMD_PREFIX@review-bugbot` + opc. stack + hooki `gate-*` |
+| Branch / PR | `@KIT_CMD_PREFIX@git-start` … `@KIT_CMD_PREFIX@git-end` + `git-branch-pr.mdc` |
 | Skrót czatu | **`/compact` tylko w Cursorze** (alias Summarize) |
 | Język prozy | MCP `get_language` / `--language pl\|en` — odpowiedzi zawsze w tym języku niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi) |
-| Worktree / finisz | Managed Worktree (opc.) metodą kita na branchu z `/git-start` (lub Superpowers + `sync`) |
-| PR → CI green | Autopilot po `/git-end` |
+| Worktree / finisz | Managed Worktree (opc.) metodą kita na branchu z `@KIT_CMD_PREFIX@git-start` (lub Superpowers + `sync`) |
+| PR → CI green | Autopilot po `@KIT_CMD_PREFIX@git-end` |
 
 Moduły: Tiery z `.ai/project.profile.yaml` + overlay `.ai/project.md`.  
 Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
@@ -30,7 +30,7 @@ Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 
 ## Grill / pewność
 
-- `/grill-me` **tylko** przy niejasnym scope; oczywisty fix → od razu `/git-start`.
+- `/grill-me` **tylko** przy niejasnym scope; oczywisty fix → od razu `@KIT_CMD_PREFIX@git-start`.
 - Auth, ACL, billing, migracje, brak dowodu → agent **pyta**, nie zgaduje.
 
 ## Proces i meta (poza kitem)
@@ -41,5 +41,5 @@ Lokalny `.ai/project.profile.yaml` tylko przy forku kategorii.
 | Meta | worktree / finishing / debug | opcjonalna izolacja (Managed Worktree), domknięcie |
 | PR loop | Autopilot | CI + komentarze |
 
-Priorytet: użytkownik → overlay+MCP → `/git-*`+review → Matt → Superpowers → Autopilot.  
+Priorytet: użytkownik → overlay+MCP → `@KIT_CMD_PREFIX@git-*`+review → Matt → Superpowers → Autopilot.  
 TDD: jeden path (preferuj Matt `/tdd`). Szczegóły: `AGENTS.md`.

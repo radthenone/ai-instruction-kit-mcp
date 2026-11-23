@@ -1,4 +1,4 @@
-# `/teacher-agent` — o narzędziu, nie o kodzie
+# `@KIT_CMD_PREFIX@teacher-agent` — o narzędziu, nie o kodzie
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/teacher-agent.md`.
 > Wspólna mechanika nauczycieli: patrz niżej. Rodzeństwo:
@@ -82,9 +82,9 @@ to czysty narzut.
 
 | Sytuacja | Kto |
 |---|---|
-| „nie wiem jakim narzędziem to ruszyć" | `/teacher-agent` |
-| „odpalić subagenta czy inline?" | `/teacher-agent` |
-| „puścić to na noc?" | `/teacher-agent` |
+| „nie wiem jakim narzędziem to ruszyć" | `@KIT_CMD_PREFIX@teacher-agent` |
+| „odpalić subagenta czy inline?" | `@KIT_CMD_PREFIX@teacher-agent` |
+| „puścić to na noc?" | `@KIT_CMD_PREFIX@teacher-agent` |
 | „czy dodać Redisa / wydzielić serwis" | [teacher-architecture](teacher-architecture.md) |
 | „gdzie to powinno mieszkać" | [teacher-architecture](teacher-architecture.md) |
 | „gdzie dać walidację" | [teacher-backend](teacher-backend.md) |
@@ -92,22 +92,22 @@ to czysty narzut.
 | „gdzie trzymać ten stan" | [teacher-frontend](teacher-frontend.md) |
 | „czemu to się re-renderuje" | [teacher-frontend](teacher-frontend.md) |
 
-Puste wywołanie (`/teacher-agent` bez argumentu) → przejrzy realny setup i
+Puste wywołanie (`@KIT_CMD_PREFIX@teacher-agent` bez argumentu) → przejrzy realny setup i
 nauczy o **najsłabszym ogniwie**. Warto raz na jakiś czas.
 
-## Pułapki (wspólne dla całej rodziny `/teacher-*`)
+## Pułapki (wspólne dla całej rodziny `@KIT_CMD_PREFIX@teacher-*`)
 
 1. **Pytanie nauczyciela o implementację.** Odmówi i odeśle. To nie jest
    uszkodzenie — to jego definicja.
 2. **Pytanie reviewera o projekt.** Odwrotny błąd, ten sam koszt.
-3. **Mieszanie domen.** Pytanie o Django zadane `/teacher-agent` → odeśle.
+3. **Mieszanie domen.** Pytanie o Django zadane `@KIT_CMD_PREFIX@teacher-agent` → odeśle.
    Celowo, żeby treść się nie rozjeżdżała między nimi.
 4. **Ignorowanie punktu „Twój ruch".** Kończy zadaniem i pytaniem kontrolnym.
    Pominięcie tego zamienia lekcję w esej, który przeczytam i zapomnę.
 
 ## Do przemyślenia
 
-- `/teacher-agent` opisuje flow kitu ([git-start](git-start.md) → … →
+- `@KIT_CMD_PREFIX@teacher-agent` opisuje flow kitu ([git-start](git-start.md) → … →
   [git-end](git-end.md)), ale nie wie o skillach Matta. Po przepisaniu
   `start-feat.md` warto sprawdzić, czy sekcja „Ten kit — jak to się spina" nie
   jest już nieaktualna.

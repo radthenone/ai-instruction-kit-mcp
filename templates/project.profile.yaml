@@ -39,7 +39,7 @@ integrations: []
 #   claude:
 #     light: haiku
 
-# Clean Slate w /night-run (#502) — model świeżego subagenta po 2. nieudanej rundzie
+# Clean Slate w @KIT_CMD_PREFIX@night-run (#502) — model świeżego subagenta po 2. nieudanej rundzie
 # naprawczej. Brak sekcji = model jak dotąd; każde pole opcjonalne.
 # night-run:
 #   clean-slate:

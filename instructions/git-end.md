@@ -1,11 +1,11 @@
-# `/git-end` — push + PR (dawniej `/git-pr`)
+# `@KIT_CMD_PREFIX@git-end` — push + PR (dawniej `@KIT_CMD_PREFIX@git-pr`)
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/git-end.md`.
 > Część osi czasu: [git-start](git-start.md) → kod → [git-commit](git-commit.md) →
-> [[git-check]](git-check.md) → `/review-*` → `/git-end`.
+> [[git-check]](git-check.md) → `@KIT_CMD_PREFIX@review-*` → `@KIT_CMD_PREFIX@git-end`.
 
 **Robi:** bramka review → `git push -u origin HEAD` → `gh pr create` z
-`Closes #N` → **powrót na branch sprzed `/git-start`**.
+`Closes #N` → **powrót na branch sprzed `@KIT_CMD_PREFIX@git-start`**.
 **Nie robi:** nie pisze feature'a, nie mergeuje.
 
 **Kolejność jest sztywna: push → dopiero potem PR.**
@@ -14,7 +14,7 @@
 nie pushuje. Odblokowuje to: „review done", „od razu end", albo wklejenie, że
 findingi naprawione.
 
-**Brudne drzewo → STOP** i odesłanie do [git-commit](git-commit.md). Potem znowu `/git-end`.
+**Brudne drzewo → STOP** i odesłanie do [git-commit](git-commit.md). Potem znowu `@KIT_CMD_PREFIX@git-end`.
 
 **Ręcznie:**
 
@@ -29,7 +29,7 @@ gh pr create --base master --title "feat: ..." --body "Closes #42"
   Bezpieczne, bo praca jest już na remote. Brak configu → zostaje na feature.
 - **Dwie różne rzeczy, których nie wolno mylić:** `--base` PR-a to target
   mergu; branch powrotu to to, na czym zostaje moje IDE.
-- `/git-pr` to alias historyczny — działa, ale wolę `/git-end`.
+- `@KIT_CMD_PREFIX@git-pr` to alias historyczny — działa, ale wolę `@KIT_CMD_PREFIX@git-end`.
 - `gh pr merge` **nie** odpali bez mojej wyraźnej prośby i zielonego CI.
 
-**Pułapka:** `/git-end` z brudnym drzewem. Nie pushuje. To nie jest błąd, to bramka.
+**Pułapka:** `@KIT_CMD_PREFIX@git-end` z brudnym drzewem. Nie pushuje. To nie jest błąd, to bramka.

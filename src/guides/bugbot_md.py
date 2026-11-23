@@ -301,6 +301,8 @@ def render(
         str: Gotowa treść pliku (LF).
     """
     chosen = set(tiers.split()) if isinstance(tiers, str) else set(tiers)
+    # shortcut: domyślny sigil "/" i pusty namespace dla cursor; docelowo czytać z manifestu command_prefixes["cursor"] (#525, #530)
+    template = template.replace("@KIT_CMD_PREFIX@", "/").replace("@KIT_NAME_PREFIX@", "")
     default_rules = extract_rules(template, block)
     block_rules = default_rules if rules is None else rules
     opener, closer = _markers(block)

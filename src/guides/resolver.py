@@ -979,6 +979,7 @@ def _build_bundle_content(
             continue
 
         body = info.path.read_text(encoding="utf-8").strip()
+        body = manifest.resolve_text(body, "shared")
         parts.append(f"<!-- module:{module_id} -->\n\n{body}")
 
     header = f"# Bundle: {bundle_name}\n\n"

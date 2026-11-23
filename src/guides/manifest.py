@@ -232,6 +232,10 @@ class LayoutHint:
     warning: str | None = None
 
 
+CMD_PLACEHOLDER = "@KIT_CMD_PREFIX@"
+NAME_PLACEHOLDER = "@KIT_NAME_PREFIX@"
+
+
 @dataclass(frozen=True)
 class CommandPrefix:
     """Forma wywołania komend jednego celu (#525): znak, przestrzeń w treści i w `name:`."""
@@ -239,6 +243,20 @@ class CommandPrefix:
     sigil: str
     namespace: str
     name_prefix: str
+
+    def resolve(self, text: str) -> str:
+        """
+        Podstaw placeholdery prefiksu w tekście.
+
+        Args:
+            text: Treść zawierająca placeholdery @KIT_CMD_PREFIX@ i @KIT_NAME_PREFIX@.
+
+        Returns:
+            str: Treść z rozwiniętymi prefiksami.
+        """
+        return text.replace(CMD_PLACEHOLDER, self.sigil + self.namespace).replace(
+            NAME_PLACEHOLDER, self.name_prefix
+        )
 
 
 @dataclass(frozen=True)
@@ -270,6 +288,22 @@ class Manifest:
             return self.command_prefixes[target]
         except KeyError:
             raise ValueError(f"Brak command_prefixes dla celu: {target}") from None
+
+    def resolve_text(self, text: str, target: str = "shared") -> str:
+        """
+        Podstaw placeholdery dla danego celu (domyślnie shared).
+
+        Args:
+            text: Treść z placeholderami.
+            target: Nazwa celu w command_prefixes.
+
+        Returns:
+            str: Rozwinięty tekst.
+        """
+        prefix = self.command_prefixes.get(target)
+        if prefix is not None:
+            return prefix.resolve(text)
+        return text.replace(CMD_PLACEHOLDER, "/").replace(NAME_PLACEHOLDER, "")
 
 
 def find_kit_root(start: Path | None = None) -> Path:

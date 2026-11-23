@@ -1,10 +1,10 @@
-# `/review-bugbot` — bramka przed pushem
+# `@KIT_CMD_PREFIX@review-bugbot` — bramka przed pushem
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-bugbot.md`.
 > Format wspólny wszystkim reviewerom: patrz [[review-format]] (na razie tylko
 > tu opisany).
 
-## Format wspólny dla wszystkich `/review-*`
+## Format wspólny dla wszystkich `@KIT_CMD_PREFIX@review-*`
 
 Każdy z siedmiu reviewerów zwraca **tylko tabelę**, po polsku, bez eseju:
 
@@ -44,7 +44,7 @@ w kolumnie Finding, ale sam nie odpali.
 
 | Zmiana dotyka | Kolejność |
 |---|---|
-| cokolwiek, przed pushem | `/review-bugbot` — **zawsze** |
+| cokolwiek, przed pushem | `@KIT_CMD_PREFIX@review-bugbot` — **zawsze** |
 | serializery, ACL, Celery, migracje | [review-backend](review-backend.md) |
 | ekrany, klient Orval, `.web`/`.native` | [review-frontend](review-frontend.md) |
 | kontrakt API, układ monorepo, capability-provider | [review-architecture](review-architecture.md) |
@@ -55,12 +55,12 @@ w kolumnie Finding, ale sam nie odpali.
 Zwykły PR: **bugbot + jeden stackowy**. Duży PR: **+ edge**. Po deklaracji
 gotowości: **+ tests**.
 
-## Pułapki (wspólne dla całej rodziny `/review-*`)
+## Pułapki (wspólne dla całej rodziny `@KIT_CMD_PREFIX@review-*`)
 
 1. **Wołanie wszystkich siedmiu na mały diff.** Dostaję siedem tabel, z czego
    pięć pustych, i przestaję je czytać. Dwóch reviewerów przeczytanych bije
    siedmiu przewiniętych.
-2. **`/review-*` zamiast CI.** Wszyscy mogą przejść, a build się wywali.
+2. **`@KIT_CMD_PREFIX@review-*` zamiast CI.** Wszyscy mogą przejść, a build się wywali.
    Review jest **przed** pushem, nie zamiast pipeline'u.
 3. **Mylenie z `/code-review` Matta.** Tamten porównuje diff do **punktu
    odniesienia** (`master`, SHA) na dwóch osiach: Standards i Spec, w dwóch

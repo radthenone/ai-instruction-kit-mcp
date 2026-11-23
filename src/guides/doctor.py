@@ -388,6 +388,12 @@ def _read(path: Path) -> str:
         return ""
 
 
+def _read_template(path: Path) -> str:
+    """Treść szablonu z podstawionymi placeholderami prefiksu (#525, #530)."""
+    # shortcut: domyślny sigil "/" i pusty namespace dla cursor/shared; docelowo czytać z manifestu command_prefixes["cursor"] (#525, #530)
+    return _read(path).replace("@KIT_CMD_PREFIX@", "/").replace("@KIT_NAME_PREFIX@", "")
+
+
 def _line_of(text: str, offset: int) -> int:
     """Numer linii 1-based dla pozycji w tekście."""
     return text.count("\n", 0, offset) + 1
@@ -688,7 +694,7 @@ def _kit_template_lines(
     if is_kit or kit_root is None or template is None:
         return set()
     kit_lines = {
-        line.strip() for line in render_paths(_read(kit_root / template), paths).splitlines()
+        line.strip() for line in render_paths(_read_template(kit_root / template), paths).splitlines()
     }
     kit_lines.discard("")
     return {
@@ -714,7 +720,7 @@ def _stale_kit_lines(
     if is_kit or kit_root is None or template is None:
         return set()
     current = {
-        line.strip() for line in render_paths(_read(kit_root / template), paths).splitlines()
+        line.strip() for line in render_paths(_read_template(kit_root / template), paths).splitlines()
     }
     own = {
         number: line.strip()
@@ -744,7 +750,7 @@ def _uncertain_migration(
     block = PROJECT_BLOCKS.get(rel)
     if is_kit or kit_root is None or template is None or block is None:
         return None
-    template_text = _read(kit_root / template)
+    template_text = _read_template(kit_root / template)
     if not template_text or not needs_migration(text, template_text, block):
         return None
     history = read_template_history(kit_root, template)
@@ -842,7 +848,7 @@ def _path_key_findings(
     if kit_root is None or not bugbot.is_file():
         return []
     rendered = {line.strip() for line in _read(bugbot).splitlines()}
-    template = _read(kit_root / KIT_TEMPLATES["BUGBOT.md"])
+    template = _read_template(kit_root / KIT_TEMPLATES["BUGBOT.md"])
     defaults = path_defaults(template)
     findings: list[Finding] = []
     for line in template.splitlines():
@@ -1338,7 +1344,7 @@ def run_doctor(
         if templates.is_dir():
             for path in sorted(templates.glob("*.md")):
                 rel = path.relative_to(workspace).as_posix()
-                template_text = _read(path).replace("@KIT_CMD_PREFIX@", "/")
+                template_text = _read_template(path)
                 findings.extend(
                     _command_findings(rel, template_text, available, clients_label)
                 )

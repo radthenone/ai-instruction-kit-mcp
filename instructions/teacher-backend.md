@@ -1,4 +1,4 @@
-# `/teacher-backend` — Django/DRF (albo co mówi overlay)
+# `@KIT_CMD_PREFIX@teacher-backend` — Django/DRF (albo co mówi overlay)
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/teacher-backend.md`.
 > Wspólna mechanika nauczycieli i format odpowiedzi: [teacher-agent](teacher-agent.md).

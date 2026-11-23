@@ -1,6 +1,6 @@
 # Kanon pracy z agentami — skąd wiedzieć, jak się nimi pracuje
 
-Moduł dla `/teacher-agent`. `core:engineering-canon` mówi, skąd brać wiedzę o **kodzie**. Ten moduł robi to samo dla wiedzy o **narzędziu**: agentach, skillach, promptach, autonomii.
+Moduł dla `@KIT_CMD_PREFIX@teacher-agent`. `core:engineering-canon` mówi, skąd brać wiedzę o **kodzie**. Ten moduł robi to samo dla wiedzy o **narzędziu**: agentach, skillach, promptach, autonomii.
 
 Dlaczego osobny moduł: ten obszar jest młody, nie ma w nim kanonu z dziesięcioleciami przebiegu, a większość treści powstaje w celach marketingowych. Reguła oceny źródła jest tu ostrzejsza niż w inżynierii ogólnej — **jeśli tekst nie tłumaczy mechanizmu, jest reklamą**.
 
@@ -39,7 +39,7 @@ Od najmocniejszego:
 | Źródło | Czego uczy | Zastrzeżenie |
 |--------|------------|--------------|
 | Skille procesowe (brainstorming, systematic-debugging, grillowanie) | Że kolejność „ustal, potem buduj” jest ważniejsza od wyboru modelu | Czytaj jako proces, nie jako magiczne zaklęcie |
-| Conventional Commits, SemVer | Konwencje, na których stoją `/git-*` w tym kicie | — |
+| Conventional Commits, SemVer | Konwencje, na których stoją `@KIT_CMD_PREFIX@git-*` w tym kicie | — |
 | DORA / *Accelerate* | Że sens ma lead time i odsetek nieudanych zmian, nie liczba wygenerowanych linii | Powstało przed agentami; metryki zostały trafne |
 | Fowler o granicach i koszcie podziału | Kiedy rozdzielenie pracy kupuje niezależność, a kiedy tylko koszt koordynacji | O systemach, ale stosuje się 1:1 do dzielenia zadań między agentów |
 

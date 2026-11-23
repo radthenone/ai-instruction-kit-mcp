@@ -1,4 +1,4 @@
-# `/review-tests` — weryfikator dowodu
+# `@KIT_CMD_PREFIX@review-tests` — weryfikator dowodu
 
 > Prywatne notatki z użycia. Źródło: `.claude/commands/review-tests.md`.
 > Format wspólny i ściąga kogo wołać: [review-bugbot](review-bugbot.md).
@@ -21,7 +21,7 @@ Nieudowodnione / czerwone: ...
 zamiast napisać „pewnie przechodzi". To jedyny reviewer, który pilnuje, żebym
 nie uwierzył we własną deklarację.
 
-**Pułapka:** traktowanie `/review-tests` jak stylisty. On nie ocenia nazw ani
+**Pułapka:** traktowanie `@KIT_CMD_PREFIX@review-tests` jak stylisty. On nie ocenia nazw ani
 layoutu. Pytam go o dowód, nie o opinię.
 
 **Kiedy:** po każdym „zrobione", przed [git-end](git-end.md).

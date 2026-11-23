@@ -8,7 +8,7 @@ Warstwowy pipeline review: szybkie bramki deterministyczne lokalnie, AI przed pu
 
 ```text
 1. pre-commit     → ruff, eslint (format + oczywiste błędy)
-2. lokalny AI     → /review-bugbot lub /review-security w Cursor
+2. lokalny AI     → @KIT_CMD_PREFIX@review-bugbot lub @KIT_CMD_PREFIX@review-security w Cursor
 3. commit + push
 4. PR             → Bugbot na GitHub (automatycznie lub cursor review)
 5. CI             → testy, typy, api-contract
@@ -23,8 +23,8 @@ Nie zastępuj testów review AI. AI łapie logikę i kontekst; CI łapie regresj
 
 | Skill | Kiedy |
 |-------|-------|
-| `/review-bugbot` | Domyślnie — bugi, logika, jakość |
-| `/review-security` | Auth, płatności, uprawnienia, sekrety |
+| `@KIT_CMD_PREFIX@review-bugbot` | Domyślnie — bugi, logika, jakość |
+| `@KIT_CMD_PREFIX@review-security` | Auth, płatności, uprawnienia, sekrety |
 | `/review` | Wybór między Bugbot a Security |
 
 **Zakres diffu:**
@@ -32,7 +32,7 @@ Nie zastępuj testów review AI. AI łapie logikę i kontekst; CI łapie regresj
 - Domyślnie `branch changes` — wszystko względem bazy (`main`), committed + uncommitted.
 - `uncommitted changes` — tylko przed pierwszym commitem lub gdy chcesz wąski feedback.
 
-**Sync z GitHub:** po lokalnym `/review-bugbot` i otwarciu PR z tym samym diffem Bugbot na GitHubie może pominąć ponowny review (ten sam patch ID).
+**Sync z GitHub:** po lokalnym `@KIT_CMD_PREFIX@review-bugbot` i otwarciu PR z tym samym diffem Bugbot na GitHubie może pominąć ponowny review (ten sam patch ID).
 
 ### Guardy — blokady destrukcyjne i sekrety
 
@@ -54,18 +54,18 @@ Guard nigdy nie odpowiada `ask` (ADR 0006) — w auto mode `ask` blokuje jak pro
 
 | Prefiks | Przykłady |
 |---------|-----------|
-| `/review-*` | `/review-backend`, `/review-frontend`, `/review-bugbot`, `/review-security` |
-| `/subagent-*` | `/subagent-backend`, `/subagent-frontend` (dwa okna) |
+| `@KIT_CMD_PREFIX@review-*` | `@KIT_CMD_PREFIX@review-backend`, `@KIT_CMD_PREFIX@review-frontend`, `@KIT_CMD_PREFIX@review-bugbot`, `@KIT_CMD_PREFIX@review-security` |
+| `@KIT_CMD_PREFIX@subagent-*` | `@KIT_CMD_PREFIX@subagent-backend`, `@KIT_CMD_PREFIX@subagent-frontend` (dwa okna) |
 
-**Minimalny zestaw** — nie odpalaj wszystkich `/review-*` naraz:
+**Minimalny zestaw** — nie odpalaj wszystkich `@KIT_CMD_PREFIX@review-*` naraz:
 
 | Zmiana | Minimum |
 |--------|---------|
-| Drobna | `/review-bugbot` |
+| Drobna | `@KIT_CMD_PREFIX@review-bugbot` |
 | Backend / Frontend | Bugbot + odpowiedni stack review |
 | API + UI | Bugbot + BE+FE **lub** para subagentów |
-| Auth / płatności | `/review-security` |
-| Dowód „działa” | `/review-tests` (komendy, nie styl) |
+| Auth / płatności | `@KIT_CMD_PREFIX@review-security` |
+| Dowód „działa” | `@KIT_CMD_PREFIX@review-tests` (komendy, nie styl) |
 
 **Bugbot** = blocking/security. **Stack** = konwencje MCP (`Severity | Location | Finding | Fix`). Bez dublowania.
 
@@ -118,7 +118,7 @@ Uczenie inline: `@cursor remember [fakt]` w komentarzu PR.
 
 | Źródło | Co dostajesz |
 |--------|--------------|
-| Cursor po `/review-bugbot` / stack | Tabela: Severity, Location, Finding, Fix |
+| Cursor po `@KIT_CMD_PREFIX@review-bugbot` / stack | Tabela: Severity, Location, Finding, Fix |
 | GitHub PR | Komentarze inline + check status |
 | Bugbot dashboard | Analytics, acceptance rate, rule performance |
 | Bugbot API (Enterprise) | `POST /bugbot/review` + `GET /analytics/team/bugbot-reviews` |
@@ -129,7 +129,7 @@ Uczenie inline: `@cursor remember [fakt]` w komentarzu PR.
 
 W `arch:ci-cd` masz joby lint/test/typecheck. Bugbot **uzupełnia** CI, nie go zastępuje.
 
-**Git flow:** kit `/git-start` → [worktree?] → review → `/git-end` | finishing → **Autopilot** → merge. Branch: `feat/<N>-<slug>`. Reguła: `.cursor/rules/git-branch-pr.mdc`.
+**Git flow:** kit `@KIT_CMD_PREFIX@git-start` → [worktree?] → review → `@KIT_CMD_PREFIX@git-end` | finishing → **Autopilot** → merge. Branch: `feat/<N>-<slug>`. Reguła: `.cursor/rules/git-branch-pr.mdc`.
 
 Rekomendowany branch protection:
 
@@ -145,9 +145,9 @@ Wymagane checks:
 
 | Zmiana | Minimum |
 |--------|---------|
-| Drobna poprawka, 1–2 pliki | lint + typecheck + `/review-bugbot` |
+| Drobna poprawka, 1–2 pliki | lint + typecheck + `@KIT_CMD_PREFIX@review-bugbot` |
 | Feature / refactor | Bugbot + stack review (BE/FE) przed pushem |
-| Auth, ACL, płatności, webhooki | `/review-security` + Bugbot na PR |
+| Auth, ACL, płatności, webhooki | `@KIT_CMD_PREFIX@review-security` + Bugbot na PR |
 | Kontrakt API (`codegen: orval`) | lint + `task ovral:generate` + api-contract CI |
 | Kontrakt API (`manual`/`none`) | spójność ręcznego klienta — bez Orval |
 | Merge do main | CI green + Bugbot + (opcjonalnie) człowiek |

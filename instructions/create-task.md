@@ -1,4 +1,4 @@
-# `/create-task` — od pomysłu przez ocenę do zaakceptowanego issue
+# `@KIT_CMD_PREFIX@create-task` — od pomysłu przez ocenę do zaakceptowanego issue
 
 > **Czym jest ten dokument.** Makietą skilla, którego **jeszcze nie ma**.
 > Wcześniejszy szkic był formularzem: cztery stałe pytania i gotowy szablon.
@@ -78,7 +78,7 @@ Do końca FAZY 4 **żadna komenda `gh`, która coś zmienia, nie leci**. W fazac
 ## `--help` — gdyby to była komenda
 
 ```markdown
-# /create-task — pomoc
+# @KIT_CMD_PREFIX@create-task — pomoc
 
 ## Co robi
 Ocenia pomysl na tle repo, dopytuje o braki, sklada karte issue
@@ -86,14 +86,14 @@ Ocenia pomysl na tle repo, dopytuje o braki, sklada karte issue
 i tworzy issue dopiero po Twojej akceptacji. Nie zaklada brancha.
 
 ## Wywolanie
-/create-task                       Pyta o pomysl od zera
-/create-task "eksport CSV"         Zaczyna od tego zdania
-/create-task --from-chat           Bierze temat z biezacej rozmowy
-/create-task --split               Jeden pomysl rozbija na kilka issue
-/create-task --dry-run             Konczy na karcie, nie tworzy niczego
-/create-task --no-assign           Nie przypisuje @me (backlog)
-/create-task --parent #88          Tworzy jako sub-issue pod #88
-/create-task --quick               Pomija FAZE 1, zaklada ze pomysl jest ok
+@KIT_CMD_PREFIX@create-task                       Pyta o pomysl od zera
+@KIT_CMD_PREFIX@create-task "eksport CSV"         Zaczyna od tego zdania
+@KIT_CMD_PREFIX@create-task --from-chat           Bierze temat z biezacej rozmowy
+@KIT_CMD_PREFIX@create-task --split               Jeden pomysl rozbija na kilka issue
+@KIT_CMD_PREFIX@create-task --dry-run             Konczy na karcie, nie tworzy niczego
+@KIT_CMD_PREFIX@create-task --no-assign           Nie przypisuje @me (backlog)
+@KIT_CMD_PREFIX@create-task --parent #88          Tworzy jako sub-issue pod #88
+@KIT_CMD_PREFIX@create-task --quick               Pomija FAZE 1, zaklada ze pomysl jest ok
 
 ## Wyjscie
 Numer issue + link. Przy --dry-run lub anulowaniu: sama karta.
@@ -101,14 +101,14 @@ Numer issue + link. Przy --dry-run lub anulowaniu: sama karta.
 
 | Wywołanie | Kiedy tego używasz |
 | --- | --- |
-| `/create-task` | Masz pomysł i chcesz wiedzieć, czy w ogóle warto |
-| `/create-task "…"` | Masz jedno zdanie, chcesz z niego zrobić zadanie |
-| `/create-task --from-chat` | Rozmawialiście o czymś i wyszedł konkret |
-| `/create-task --split` | Pomysł jest za duży na jedno issue |
-| `/create-task --dry-run` | Chcesz zobaczyć kartę, nic nie tworząc |
-| `/create-task --no-assign` | Zapisujesz na kiedyś |
-| `/create-task --parent #88` | Pomysł jest częścią większej rzeczy |
-| `/create-task --quick` | Ocenę już masz z głowy, chcesz tylko zapisać |
+| `@KIT_CMD_PREFIX@create-task` | Masz pomysł i chcesz wiedzieć, czy w ogóle warto |
+| `@KIT_CMD_PREFIX@create-task "…"` | Masz jedno zdanie, chcesz z niego zrobić zadanie |
+| `@KIT_CMD_PREFIX@create-task --from-chat` | Rozmawialiście o czymś i wyszedł konkret |
+| `@KIT_CMD_PREFIX@create-task --split` | Pomysł jest za duży na jedno issue |
+| `@KIT_CMD_PREFIX@create-task --dry-run` | Chcesz zobaczyć kartę, nic nie tworząc |
+| `@KIT_CMD_PREFIX@create-task --no-assign` | Zapisujesz na kiedyś |
+| `@KIT_CMD_PREFIX@create-task --parent #88` | Pomysł jest częścią większej rzeczy |
+| `@KIT_CMD_PREFIX@create-task --quick` | Ocenę już masz z głowy, chcesz tylko zapisać |
 
 **Flag `--label`, `--title`, `--body` nadal nie ma.** Etykietę i tytuł zmieniasz
 w FAZIE 4, gdzie agent może je sprawdzić. Podanie ich z góry omijałoby
@@ -328,7 +328,7 @@ Jeśli którakolwiek po pierwszej padnie — agent mówi, że **issue już istni
 podaje numer i co się nie udało dopiąć. Nie zaczyna od zera i nie tworzy
 drugiego.
 
-Nie zakłada brancha. Branch powstaje, gdy siadasz do roboty: `/git-start #N`.
+Nie zakłada brancha. Branch powstaje, gdy siadasz do roboty: `@KIT_CMD_PREFIX@git-start #N`.
 
 ### `a` — anuluj
 
@@ -498,7 +498,7 @@ gh label create ready-for-human --description "Wymaga czlowieka" --color 0052CC
 ## Przykład — cała rozmowa, z odrzuceniem po drodze
 
 ```text
-> /create-task "chcialbym miec eksport danych z listy"
+> @KIT_CMD_PREFIX@create-task "chcialbym miec eksport danych z listy"
 
 Czytam repo... (5 odczytow: CLAUDE.md, issue, etykiety, struktura, log)
 
@@ -559,7 +559,7 @@ kryterium, bo bez niego nie ma jak zamknac issue.
 https://github.com/radthenone/ai-instruction-kit-mcp/issues/127
 Dopiete do projektu 4, kolumna Todo.
 
-Gdy siadziesz: /git-start 127
+Gdy siadziesz: @KIT_CMD_PREFIX@git-start 127
 ```
 
 ---
@@ -569,19 +569,19 @@ Gdy siadziesz: /git-start 127
 ```text
 pomysl
   │
-  ├─ /create-task ──► ocena ──┬─ odrzucone ──► koniec, nic nie powstaje
+  ├─ @KIT_CMD_PREFIX@create-task ──► ocena ──┬─ odrzucone ──► koniec, nic nie powstaje
   │                           │
   │                           └─ issue #127
   │                                │
-  │                                └─ siadasz sam ──► /git-start 127
+  │                                └─ siadasz sam ──► @KIT_CMD_PREFIX@git-start 127
   │                                                   → start-feat od kroku 5
   │
   └─ pomysl za duzy ──► grill-with-docs
                         (wracasz z 3-4 zadaniami, kazde przez
-                         /create-task osobno)
+                         @KIT_CMD_PREFIX@create-task osobno)
 ```
 
-Granica jest ostra: **`/create-task` kończy się na issue albo na jego braku.**
+Granica jest ostra: **`@KIT_CMD_PREFIX@create-task` kończy się na issue albo na jego braku.**
 
 ---
 

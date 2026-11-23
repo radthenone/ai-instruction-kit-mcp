@@ -1067,9 +1067,9 @@ install_cursor() {
   install_guards "$TARGET/.cursor/hooks" cursor
   echo "  + .cursor/hooks.json (node invoke-hook → guardy .mjs)"
 
-  cp "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
-  cp "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
-  cp "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
+  copy_prefixed cursor "$KIT_ROOT/templates/cursor/rules/use-guides.mdc" "$TARGET/.cursor/rules/use-guides.mdc"
+  copy_prefixed cursor "$KIT_ROOT/templates/cursor/rules/code-review.mdc" "$TARGET/.cursor/rules/code-review.mdc"
+  copy_prefixed cursor "$KIT_ROOT/templates/cursor/rules/git-branch-pr.mdc" "$TARGET/.cursor/rules/git-branch-pr.mdc"
   copy_bugbot_md "$TARGET/.cursor/BUGBOT.md" ".cursor/BUGBOT.md"
 
   copy_shared_agents "$TARGET/.cursor/agents" cursor
@@ -1185,7 +1185,7 @@ install_vscode() {
   fill_mcp "$KIT_ROOT/templates/vscode/mcp.json" "$TARGET/.vscode/mcp.json"
   echo "  + .vscode/mcp.json"
   if [[ -f "$KIT_ROOT/templates/vscode/github/copilot-instructions.md" ]]; then
-    cp "$KIT_ROOT/templates/vscode/github/copilot-instructions.md" \
+    copy_prefixed vscode "$KIT_ROOT/templates/vscode/github/copilot-instructions.md" \
       "$TARGET/.github/copilot-instructions.md"
     echo "  + .github/copilot-instructions.md"
   fi
@@ -1216,7 +1216,7 @@ install_kiro() {
   fill_mcp "$KIT_ROOT/templates/kiro/settings/mcp.json" "$TARGET/.kiro/settings/mcp.json"
   echo "  + .kiro/settings/mcp.json"
   if [[ -f "$KIT_ROOT/templates/kiro/steering/instruction-kit.md" ]]; then
-    cp "$KIT_ROOT/templates/kiro/steering/instruction-kit.md" \
+    copy_prefixed kiro "$KIT_ROOT/templates/kiro/steering/instruction-kit.md" \
       "$TARGET/.kiro/steering/instruction-kit.md"
   fi
   copy_shared_agents "$TARGET/.kiro/agents" kiro
@@ -1433,10 +1433,15 @@ echo "  from=$FROM_SRC"
 mkdir -p "$TARGET/.ai"
 # Profil przed wszystkim innym — z niego biorą się Tiery (agenci, BUGBOT.md).
 if [[ ! -f "$TARGET/.ai/project.profile.yaml" ]]; then
+  TMP_PROFILE="$(mktemp)"
+  trap 'rm -f "$TMP_PROFILE"' EXIT
+  copy_prefixed shared "$KIT_ROOT/templates/project.profile.yaml" "$TMP_PROFILE"
   sed -e "s/^name: my-project$/name: $(basename "$TARGET")/" \
     -e "s/^language: .*/language: $LANGUAGE/" \
     -e "s/^clients: .*/clients: $CLIENTS_ARG/" \
-    "$KIT_ROOT/templates/project.profile.yaml" > "$TARGET/.ai/project.profile.yaml"
+    "$TMP_PROFILE" > "$TARGET/.ai/project.profile.yaml"
+  rm -f "$TMP_PROFILE"
+  trap - EXIT
   echo "  + .ai/project.profile.yaml (Tiery: backend/web/mobile = none — wybierz Stacki)"
 fi
 
@@ -1493,7 +1498,7 @@ install_design_handoff
 
 if [[ "$WITH_OVERLAY" -eq 1 ]]; then
   if [[ ! -f "$TARGET/.ai/project.md" ]]; then
-    cp "$KIT_ROOT/templates/project.md" "$TARGET/.ai/project.md"
+    copy_prefixed shared "$KIT_ROOT/templates/project.md" "$TARGET/.ai/project.md"
     echo "  + .ai/project.md"
   fi
 fi
