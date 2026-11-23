@@ -309,6 +309,9 @@ class TestNightRunT3CardContract(unittest.TestCase):
         """CodeRabbit: options z profilu i z parametru nocy opisane jedną zasadą, bez sprzeczności."""
         section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
         self.assertNotIn("options tylko gdy parametr nocy je podaje", section)
+        self.assertNotIn("a parametr zlecenia nie podaje konkretnego modelu lub opcji", section)
+        example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
+        self.assertIn("bez wpisu w profilu", example)
         self.assertIn("options: z wpisu profilu albo z parametru nocy", section)
         self.assertIn("pole podane jawnie w parametrze nocy nadpisuje wpis", section)
 

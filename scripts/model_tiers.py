@@ -32,8 +32,10 @@ TAKEOVER_ALIASES = ("haiku", "sonnet", "opus", "fable")
 # Stare klucze modeli: nie są czytane, a ich obecność to błąd z instrukcją migracji.
 RETIRED_KEYS = ("models", "t3")
 
-_OPTION = re.compile(r"\{\s*id:\s*([^,{}]+?)\s*,\s*value:\s*([^,{}]+?)\s*\}")
-_OPTION_NC = r"\{\s*id:\s*[^,{}]+?\s*,\s*value:\s*[^,{}]+?\s*\}"
+# Pole opcji bez przecinka i nawiasów, bez spacji na brzegach: dopasowanie jednoznaczne, czas liniowy.
+_FIELD = r"[^,{}\s](?:[^,{}]*[^,{}\s])?"
+_OPTION = re.compile(rf"\{{\s*id:\s*({_FIELD})\s*,\s*value:\s*({_FIELD})\s*\}}")
+_OPTION_NC = rf"\{{\s*id:\s*{_FIELD}\s*,\s*value:\s*{_FIELD}\s*\}}"
 # Lista opcji: wpisy oddzielone przecinkiem, dopuszczony końcowy przecinek (składnia YAML).
 _OPTIONS_BODY = re.compile(rf"\s*(?:{_OPTION_NC}(?:\s*,\s*{_OPTION_NC})*\s*,?)?\s*")
 
@@ -105,6 +107,10 @@ def _targets_tree(lines: list[str]) -> dict:
         if key in node:
             raise ProfileError(f"Profil: klucz `{path}.{key}` jest zdublowany — zostaw jeden wpis.")
         if value.strip():
+            if value.strip().startswith("[") and not value.strip().endswith("]"):
+                raise ProfileError(
+                    f"Profil: `{path}.{key}` zapisz inline, np. `options: [{{ id: effort, value: low }}]`."
+                )
             node[key] = value.strip().strip("'\"")
             scalar = (indent, f"{path}.{key}")
         else:

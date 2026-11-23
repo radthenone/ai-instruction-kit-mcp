@@ -6,6 +6,7 @@ import contextlib
 import io
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -271,7 +272,7 @@ class TestParseTargets(unittest.TestCase):
         )
         with self.assertRaises(ProfileError) as ctx:
             parse_profile(text)
-        self.assertIn("options", str(ctx.exception))
+        self.assertIn("rozdziel przecinkiem", str(ctx.exception))
 
     def test_options_trailing_comma_is_accepted(self) -> None:
         targets, _ = parse_profile(
@@ -279,6 +280,25 @@ class TestParseTargets(unittest.TestCase):
             "      options: [{ id: effort, value: low },]\n"
         )
         self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
+
+    def test_multiline_options_list_gets_inline_hint(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [\n        { id: effort, value: low }\n      ]\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("inline", str(ctx.exception))
+
+    def test_options_with_bad_tail_fails_fast(self) -> None:
+        """Błędny ogon listy opcji nie może zawiesić parsera (regresja: wykładniczy backtracking)."""
+        body = "{ id: effort, value: low }," * 30 + " x"
+        started = time.monotonic()
+        with self.assertRaises(ProfileError):
+            parse_profile(
+                f"targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: [{body}]\n"
+            )
+        self.assertLess(time.monotonic() - started, 2.0)
 
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
