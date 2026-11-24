@@ -81,7 +81,7 @@ targets:
   opencode:
     light:
       providerInstanceId: opencode
-      model: opencode/glm-5.3-flash-free
+      model: opencode/deepseek-v4.1-flash-free
       options: [{ id: variant, value: high }]
     standard:
       providerInstanceId: opencode

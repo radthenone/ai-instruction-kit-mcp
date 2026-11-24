@@ -1,6 +1,6 @@
 ---
 description: "Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /kit-ai/git-end. Wywołuj jako /kit-ai/git-end. (Dawniej git-pr.)"
-model: opencode/glm-5.3-flash-free#high
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

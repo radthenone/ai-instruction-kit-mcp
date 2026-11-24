@@ -1,6 +1,6 @@
 ---
 description: "Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /kit-ai/pr-stats."
-model: opencode/glm-5.3-flash-free#high
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

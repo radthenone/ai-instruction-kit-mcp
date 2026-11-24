@@ -1,6 +1,6 @@
 ---
 description: "Analiza i priorytetyzacja otwartych issues pod kątem gotowości do pracy autonomicznej (/kit-ai/night-run). Generuje 4-sekcyjny raport statusu, roadmapy, metodyki i segmentacji. Wywołuj jako /kit-ai/issue-stats."
-model: opencode/glm-5.3-flash-free#high
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
