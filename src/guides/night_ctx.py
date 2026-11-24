@@ -29,7 +29,14 @@ CI_TRIGGERS = ("pull_request", "pull_request_target", "push")
 _CI_EXCLUDE = re.compile(r"\b(deploy|publish|release|secret)\b", re.IGNORECASE)
 _GATE_LIMIT = 4
 _GATE_TICK = re.compile(r"`([^`]+)`")
-CLEAN_SLATE_KEYS = ("provider", "model", "effort")
+CLEAN_SLATE_KEYS = (
+    "target",
+    "providerInstanceId",
+    "model",
+    "options",
+    "provider",
+    "effort",
+)
 
 
 def marker(host: str) -> str:
@@ -187,24 +194,36 @@ def _profile(workspace: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
-def clean_slate_config(profile: Mapping[str, object]) -> dict[str, str]:
-    """Model i effort Clean Slate z ``night-run.clean-slate`` w Profilu (#502).
+def clean_slate_config(profile: Mapping[str, object]) -> dict[str, Any]:
+    """Model i opcje Clean Slate z ``night-run.clean-slate`` w Profilu (#502, #546).
+
+    Wspiera kształt wpisu ``target`` z #515 (ref ``target: <klient>.<tier>`` z opcjonalnym
+    nadpisaniem ``model`` / ``options`` albo pełny wpis ``{providerInstanceId, model, options}``)
+    oraz wsteczną zgodność z ``provider`` / ``model`` / ``effort``.
 
     Args:
         profile: Wczytany Profil projektu.
 
     Returns:
-        dict: Niepuste ``provider`` / ``model`` / ``effort``; brak albo zły typ sekcji → ``{}``.
+        dict: Niepuste pola konfiguracji; brak albo zły typ sekcji → ``{}``.
     """
     night = profile.get("night-run")
     section = night.get("clean-slate") if isinstance(night, dict) else None
     if not isinstance(section, dict):
         return {}
-    return {
-        key: str(section[key]).strip()
-        for key in CLEAN_SLATE_KEYS
-        if isinstance(section.get(key), (str, int, float)) and str(section[key]).strip()
-    }
+    res: dict[str, Any] = {}
+    for key in CLEAN_SLATE_KEYS:
+        if key not in section or section[key] is None:
+            continue
+        val = section[key]
+        if key == "options":
+            if isinstance(val, (list, dict)) and val:
+                res[key] = val
+        elif isinstance(val, (str, int, float)):
+            s = str(val).strip()
+            if s:
+                res[key] = s
+    return res
 
 
 def render_night_ctx(workspace: Path, *, host: str | None = None) -> str:

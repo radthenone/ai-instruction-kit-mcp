@@ -100,7 +100,9 @@ class TestNightRunTicketChainContract(unittest.TestCase):
         self.assertIn("limit albo quota wykonawcy", self.ticket)
         self.assertIn("przekroczony czas", self.ticket)
         self.assertIn("następny model", self.ticket)
-        self.assertIn("niezależnie od tego, czy delegat pozostawił niezacommitowane zmiany", self.ticket)
+        self.assertIn("gdy wykonawca pozostawił niezacommitowane zmiany (WIP) w worktree", self.ticket)
+        self.assertIn("przy zielonych testach sesja commituje zmiany", self.ticket)
+        self.assertIn("dokładnie jedną ponowną próbę naprawy", self.ticket)
 
     def test_needs_human_on_chain_exhaustion_and_unknown_executor(self) -> None:
         """Łańcuch wyczerpany -> needs-human dla ticketu, noc idzie dalej;

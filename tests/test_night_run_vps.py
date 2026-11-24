@@ -79,12 +79,12 @@ class TestNightRunTemplate(unittest.TestCase):
         for line in lines:
             self.assertIn("Host: vps", line)
 
-    def test_ci_retry_limit_is_three(self) -> None:
-        """Pętla poprawek po czerwonym CI w night-run ma limit 3 prób (zamiast 2)."""
+    def test_ci_retry_limit_shared_in_pool_of_six(self) -> None:
+        """Pętla poprawek po czerwonym CI w night-run wlicza się do puli 6 rund po pushu (#546)."""
         normalized_ticket = " ".join(self.ticket.split())
         normalized_night = " ".join(self.text.split())
-        self.assertIn("ponawiasz `/git-end` (maks. 3 próby)", normalized_ticket)
-        self.assertIn("CI czerwone po 3 próbach naprawy", normalized_night)
+        self.assertIn("puli 6 rund po pushu", normalized_ticket)
+        self.assertIn("pula 6 rund po pushu", normalized_night)
         self.assertNotIn("ponawiasz `/git-end` (maks. 2 próby)", normalized_ticket)
         self.assertNotIn("CI czerwone po 2 próbach naprawy", normalized_night)
 
