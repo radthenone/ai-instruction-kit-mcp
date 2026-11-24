@@ -44,7 +44,7 @@ class TestNightRunModels(unittest.TestCase):
             self.assertIn(client, self.text)
         self.assertIn("bez parametru `model`", self.text)
         self.assertIn("`.opencode/command/`", self.text)
-        self.assertIn("model z frontmattera, gdy", self.text)
+        self.assertIn("model z frontmattera; `targets.opencode`", self.text)
         self.assertIn("nadpisuje frontmatter", self.text)
         self.assertIn("fallback przy braku agenta", self.ticket)
 
