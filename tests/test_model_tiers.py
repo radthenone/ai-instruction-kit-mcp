@@ -294,10 +294,11 @@ class TestParseTargets(unittest.TestCase):
         """Błędny ogon listy opcji nie może zawiesić parsera (regresja: wykładniczy backtracking)."""
         body = "{ id: effort, value: low }," * 30 + " x"
         started = time.monotonic()
-        with self.assertRaises(ProfileError):
+        with self.assertRaises(ProfileError) as ctx:
             parse_profile(
                 f"targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: [{body}]\n"
             )
+        self.assertIn("rozdziel przecinkiem", str(ctx.exception))
         self.assertLess(time.monotonic() - started, 2.0)
 
     def test_missing_blocks_parse_as_empty(self) -> None:

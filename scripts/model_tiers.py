@@ -107,7 +107,7 @@ def _targets_tree(lines: list[str]) -> dict:
         if key in node:
             raise ProfileError(f"Profil: klucz `{path}.{key}` jest zdublowany — zostaw jeden wpis.")
         if value.strip():
-            if value.strip().startswith("[") and not value.strip().endswith("]"):
+            if key == "options" and value.strip().startswith("[") and not value.strip().endswith("]"):
                 raise ProfileError(
                     f"Profil: `{path}.{key}` zapisz inline, np. `options: [{{ id: effort, value: low }}]`."
                 )
@@ -130,7 +130,9 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
         raise ProfileError(
             f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}` (wpisy rozdziel przecinkiem)."
         )
-    options = [{"id": m.group(1).strip("'\""), "value": m.group(2).strip("'\"")} for m in _OPTION.finditer(body)]
+    options = [
+        {"id": m.group(1).strip("'\"").strip(), "value": m.group(2).strip("'\"").strip()} for m in _OPTION.finditer(body)
+    ]
     ids = [opt["id"] for opt in options]
     duplicate = next((opt_id for opt_id in ids if ids.count(opt_id) > 1), None)
     if duplicate:
