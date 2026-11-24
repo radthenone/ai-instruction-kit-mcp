@@ -135,7 +135,8 @@ class TestDefaultModelTiers(unittest.TestCase):
                 "review-ui",
             },
         )
-        self.assertLessEqual({path.stem for path in AGENTS_DIR.glob("review-*.md")}, heavy)
+        self.assertLessEqual({path.stem for path in AGENTS_DIR.glob("review-*.md") if path.stem != "review-council"}, heavy)
+        self.assertIn("review-council", agents.get("standard", []))
         self.assertIn("night-run", agents.get("standard", []))
 
 

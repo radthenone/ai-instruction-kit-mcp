@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ from guides.clients import (
     normalize_client_id,
     parse_clients,
 )
+from guides.council import load_council
 from guides.host_profile import get_host_profile
 from guides.kit_status import check_kit_updates
 from guides.labels import LabelsError, Runner
@@ -103,7 +105,7 @@ def build_instructions(resolved: ResolvedProfile) -> str:
             "",
             "- `get_bundle(name)` — pełna treść bundle'a (backend, frontend, architecture, …).",
             "- `get_overlay()` — unikalne fakty tego repo; pierwszeństwo przed bundlami.",
-            "- `get_language()` / `get_codegen()` / `get_clients()` — polityka i metadane z Profilu.",
+            "- `get_language()` / `get_codegen()` / `get_clients()` / `get_council()` — polityka i metadane z Profilu.",
             "- `get_index()` / `list_modules()` / `get_module(id)` — rejestr i pojedyncze moduły.",
             "- `bootstrap_workspace()` / `reload_workspace()` — instalacja plików kita, domyślnie dry-run.",
             "",
@@ -284,6 +286,40 @@ def get_codegen() -> str:
         "",
         f"Moduł: `arch:api-contract{module_suffix}`.",
     ]
+    return "\n".join(lines)
+
+@mcp.tool()
+def get_council() -> str:
+    """
+    Skład rady (`council:` w Profilu — jedyne źródło, ADR-0007): rundy, trzej delegaci i zapasowe supp-target.
+
+    Brak składu w Profilu to zgłoszenie, nie domyślny dobór flagowców.
+
+    Returns:
+        str: Markdown — liczba rund, delegaci jako JSON w kształcie `target` z `delegate_task` oraz `supp-target`, i uwagi z walidacji.
+    """
+    config = load_council(_get_resolved().profile_path)
+    if not config.members and any("brak bloku `council:`" in n for n in config.notices):
+        return (
+            "# Rada (council): brak bloku `council:` w Profilu\n\n"
+            "Skonfiguruj skład rady w `.ai/project.profile.yaml` przez `/kit-project-edit` "
+            "(blok `council:` z `rounds` i trzema członkami w `members`)."
+        )
+    lines = ["# Rada (council)", "", f"- Rundy: {config.rounds}"]
+    if config.members:
+        members_json = [member.to_dict() for member in config.members]
+        lines += [
+            "",
+            "Członkowie (`target` dla `delegate_task`):",
+            "",
+            "```json",
+            json.dumps(members_json, ensure_ascii=False, indent=2),
+            "```",
+        ]
+    else:
+        lines += ["", "Członkowie: brak poprawnych wpisów — popraw blok `council:` w Profilu."]
+    if config.notices:
+        lines += ["", *(f"- {notice}" for notice in config.notices)]
     return "\n".join(lines)
 
 
