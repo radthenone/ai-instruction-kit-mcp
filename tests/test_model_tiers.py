@@ -350,6 +350,17 @@ class TestParseTargets(unittest.TestCase):
             parse_profile('agents:\n  light: "git-start\n')
         self.assertIn("cytowanie", str(ctx.exception))
 
+    def test_doubled_apostrophe_in_single_quoted_value_is_kept(self) -> None:
+        targets, _ = parse_profile(
+            "targets:\n  claude:\n    light:\n      providerInstanceId: 'Claude d''Alice'\n"
+        )
+        self.assertEqual(targets["claude"]["light"]["providerInstanceId"], "Claude d'Alice")
+
+    def test_agents_list_items_quotes_are_checked(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile('agents:\n  light: ["git-start", "cleanup]\n')
+        self.assertIn("cytowanie", str(ctx.exception))
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 

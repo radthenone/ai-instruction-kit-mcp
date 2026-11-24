@@ -105,24 +105,31 @@ def _strip_comment(line: str) -> str:
 
 def _unquote(raw: str, where: str) -> str:
     """
-    Zdejmuje parę cudzysłowów z wartości pola; niedomknięty cudzysłów to błąd.
+    Zdejmuje cudzysłowy z wartości pola zgodnie z YAML; błędne cudzysłowy to błąd.
 
     Args:
         raw: Surowa wartość z Profilu, po wycięciu komentarzy.
         where: Ścieżka pola do komunikatu błędu.
 
     Returns:
-        str: Wartość bez cudzysłowów i białych znaków na brzegach.
+        str: Wartość bez cudzysłowów (escape `''` i `\\"` rozwinięte), bez białych znaków na brzegach.
 
     Raises:
-        ProfileError: Cudzysłów otwarty bez zamknięcia albo niezgodny.
+        ProfileError: Cudzysłów bez domknięcia albo nieescapowany cudzysłów w środku.
     """
     quotes = ("'", '"')
-    if raw[:1] in quotes or raw[-1:] in quotes:
-        if len(raw) < 2 or raw[0] != raw[-1] or raw[0] in raw[1:-1]:
+    if raw[:1] not in quotes and raw[-1:] not in quotes:
+        return raw.strip()
+    if len(raw) < 2 or raw[0] not in quotes or raw[-1] != raw[0]:
+        raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
+    quote, inner = raw[0], raw[1:-1]
+    if quote == "'":
+        if "'" in inner.replace("''", ""):
             raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
-        return raw[1:-1].strip()
-    return raw.strip()
+        return inner.replace("''", "'").strip()
+    if '"' in inner.replace('\\"', ""):
+        raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
+    return inner.replace('\\"', '"').strip()
 
 
 def _targets_tree(lines: list[str]) -> dict:
@@ -272,7 +279,7 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
                 f"Profil: nieznany tier `agents.{tier}`. Dozwolone: {_ALLOWED} — "
                 "przenieś jego agentów do jednego z nich."
             )
-        names = [n.strip().strip("'\"") for n in value.strip("[]").split(",") if n.strip()]
+        names = [_unquote(n.strip(), f"agents.{tier}") for n in value.strip("[]").split(",") if n.strip()]
         for name in names:
             if name in seen:
                 raise ProfileError(
