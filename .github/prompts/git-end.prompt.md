@@ -180,7 +180,7 @@ Jeśli brak `coderabbit` w `integrations:` — krok wątków bota jest pominięt
 
 **Pobranie wątków (GraphQL):**
 Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit dla bieżącego head commita PR (po zielonych checks, a przy `Host: local` bez checks po przejściu bramek szybkich).
-Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Po upływie limitu czasu (brak review bota dla bieżącego head): nadal pobierz otwarte wątki bota z GraphQL (poniżej) i obsłuż je jak w rundach. Dalej stosuj regułę „Brak review po limicie” w „Rundy wątków” (poniżej).
+Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Uwzględniaj treść (`body`) tylko tych recenzji bota, których `commit.oid == headRefOid`. Po upływie limitu czasu (brak review bota dla bieżącego head): nadal pobierz otwarte wątki bota z GraphQL (poniżej) i obsłuż je jak w rundach. Dalej stosuj regułę „Brak review po limicie” w „Rundy wątków” (poniżej).
 
 Pobierz wątki review przez GraphQL (`reviewThreads`) z paginacją (`gh api graphql --paginate` oraz `pageInfo { hasNextPage endCursor }`):
 
@@ -199,6 +199,7 @@ query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
           author { login }
           commit { oid }
           state
+          body
         }
       }
       reviewThreads(first: 100, after: $endCursor) {
@@ -256,14 +257,14 @@ mutation($threadId: ID!) {
 ```
 
 **Rundy wątków (maks. 6 rund):**
-- Definicja rundy: runda w puli 6 rund po pushu to push z poprawką (współdzielona między poprawkami po czerwonym CI a poprawkami po uwagach CodeRabbit — zarówno z otwartych wątków, jak i uwag actionable w treści review). Runda startuje tylko wtedy, gdy bot ma otwarte wątki lub uwagi actionable w treści review wymagające poprawek w kodzie. Cykl z samymi odpowiedziami z uzasadnieniem lub resolve nieaktualnych wątków nie jest rundą naprawczą i nie zwiększa licznika `R`.
+- Definicja rundy: runda w puli 6 rund po pushu to push z poprawką (współdzielona między poprawkami po czerwonym CI a poprawkami po uwagach CodeRabbit — zarówno z otwartych wątków, jak i uwag actionable w treści review bota na bieżący head). Runda startuje wtedy, gdy czerwone CI wymaga poprawki w kodzie lub gdy bot ma otwarte wątki bądź uwagi actionable w treści review na bieżący head wymagające poprawek w kodzie. Cykl z samymi odpowiedziami z uzasadnieniem lub resolve nieaktualnych wątków nie jest rundą naprawczą i nie zwiększa licznika `R`.
 - Kontrola limitu, także po wznowieniu: przed każdą rundą naprawczą (przed pushem) sprawdź `R >= 6` (R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta). Jeśli `R >= 6` przed zwiększeniem licznika, nie zapisuj R+1 i zastosuj „Priorytet przy R = 6” (poniżej).
 - Przed każdym pushem naprawczym, także gdy w jednym wywołaniu jest ich więcej, odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan` CTX (R = wartość odczytana przed tą rundą; brak linii dla #<N> → R z prompta), zapisz `coderabbit-rundy: #<N> <R+1>` (zastąp istniejącą linię dla #<N>, jedna linia w `## Stan`) i dopiero potem push i zmianę wątków. To jedyny zapis licznika w tym cyklu: obsługa odpowiedzi i wątków przestarzałych go nie powtarza. Przerwanie po zapisie zawyża licznik o jeden, nigdy go nie zaniża. Zapis tylko w procedurze night-run, gdy prompt niesie ścieżkę `<CTX>`. Bez `<CTX>` licznika nie zapisujesz: kontrolę limitu prowadź z R z prompta i rund wykonanych w tym wywołaniu, a wartość zwróć w raporcie.
 - W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
   - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, zapis licznika `coderabbit-rundy: #<N> <R+1>` w `## Stan`, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do puli 6 rund po pushu.
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push (brak nowego pusha nie zużywa rundy pushowej ani licznika R).
 - **Bezpiecznik Minor/nit:** gdy po review zostały wyłącznie uwagi Minor/nit bez wpływu na działanie aplikacji — nie uruchamiasz nowej rundy ani pusha: odpowiadasz w wątku z uzasadnieniem, rozwiązujesz wątek mutacją `resolveReviewThread`, a PR jest gotowy do merge bez nowej rundy (bez zwiększania licznika R).
-- Zero otwartych wątków i brak uwag actionable w treści review → koniec rund i przejście do kroku powrotu / merge.
+- Zero otwartych wątków i brak uwag actionable w treści review bota na bieżący head → koniec rund i przejście do kroku powrotu / merge.
 - Otwarte wątki po 6. rundzie → `needs-human` (zatrzymanie, brak merge, przypadek E).
 - Liczbę rund (0–6) podajesz w raporcie: `Rundy CodeRabbit: … (0–6 albo „pominięto — brak coderabbit w integrations”)`.
 
