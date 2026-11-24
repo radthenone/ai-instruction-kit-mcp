@@ -1,6 +1,6 @@
 ---
 name: pr-stats
-description: Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /kit-ai:pr-stats.
+description: "Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /kit-ai:pr-stats."
 model: claude-haiku-5-5
 effort: low
 ---

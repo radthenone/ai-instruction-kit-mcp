@@ -1,6 +1,6 @@
 ---
 name: night-run-ticket
-description: Subagent ticketu dla procedury /kit-ai:night-run — wykonuje pojedyncze issue pod nadzorem orkiestratora.
+description: "Subagent ticketu dla procedury /kit-ai:night-run — wykonuje pojedyncze issue pod nadzorem orkiestratora."
 model: claude-haiku-5-5
 effort: max
 ---

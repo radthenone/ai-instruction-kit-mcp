@@ -1,6 +1,6 @@
 ---
 name: review-edge
-description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /kit-ai:review-edge.
+description: "Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /kit-ai:review-edge."
 readonly: true
 model: claude-opus-5-5
 effort: medium

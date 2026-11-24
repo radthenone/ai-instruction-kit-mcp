@@ -943,9 +943,14 @@ copy_shared_agents() {
     exit 1
   fi
   mkdir -p "$dest_dir"
-  local src
+  local src dest
   for src in "$SHARED_AGENTS/"*.md; do
-    copy_prefixed "$target" "$src" "$dest_dir/$(basename "$src")"
+    dest="$dest_dir/$(basename "$src")"
+    copy_prefixed "$target" "$src" "$dest"
+    # Kopie Claude: opis cytowany, bo " #" i ": " w nim ucinają albo psują YAML (#547).
+    if [[ "$target" == claude ]]; then
+      "$PYTHON_BIN" "$KIT_ROOT/scripts/quote_agent_description.py" "$dest"
+    fi
   done
   echo "  + $dest_dir (shared agents)"
 }

@@ -1,6 +1,6 @@
 ---
 name: review-security
-description: Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /kit-ai:review-security.
+description: "Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /kit-ai:review-security."
 readonly: true
 model: claude-opus-5-5
 effort: medium
