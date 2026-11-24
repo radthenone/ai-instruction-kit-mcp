@@ -324,6 +324,32 @@ class TestParseTargets(unittest.TestCase):
             parse_profile(text)
         self.assertIn("cytowanie", str(ctx.exception))
 
+    def test_unclosed_quote_in_option_names_options_path(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            '      options: [{ id: effort, value: "low }]\n'
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light.options", str(ctx.exception))
+
+    def test_quote_inside_quoted_value_is_error(self) -> None:
+        text = 'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a"b"\n'
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_hash_inside_quoted_value_is_kept(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a #b"\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["model"], "a #b")
+
+    def test_unclosed_quote_in_agents_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile('agents:\n  light: "git-start\n')
+        self.assertIn("cytowanie", str(ctx.exception))
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 

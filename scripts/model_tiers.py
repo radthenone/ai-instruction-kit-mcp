@@ -73,12 +73,34 @@ def _entries(lines: list[str]) -> list[tuple[int, str, str]]:
     """(wcięcie, klucz, wartość) z linii bloku; komentarze wycięte."""
     found = []
     for line in lines:
-        line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\r\n"))
+        line = _strip_comment(line.rstrip("\r\n"))
         if not line.strip():
             continue
         key, _, value = line.strip().partition(":")
-        found.append((len(line) - len(line.lstrip()), key.strip(), value.strip().strip("'\"")))
+        found.append((len(line) - len(line.lstrip()), key.strip(), _unquote(value.strip(), f"agents.{key.strip()}")))
     return found
+
+
+def _strip_comment(line: str) -> str:
+    """
+    Wycina komentarz zaczynający się od `#` na początku linii lub po białym znaku, poza cudzysłowem.
+
+    Args:
+        line: Linia Profilu bez końca linii.
+
+    Returns:
+        str: Linia bez komentarza.
+    """
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1].isspace()):
+            return line[:i]
+    return line
 
 
 def _unquote(raw: str, where: str) -> str:
@@ -97,8 +119,8 @@ def _unquote(raw: str, where: str) -> str:
     """
     quotes = ("'", '"')
     if raw[:1] in quotes or raw[-1:] in quotes:
-        if len(raw) < 2 or raw[0] != raw[-1]:
-            raise ProfileError(f"Profil: `{where}` ma niedomknięte cytowanie: `{raw}`.")
+        if len(raw) < 2 or raw[0] != raw[-1] or raw[0] in raw[1:-1]:
+            raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
         return raw[1:-1].strip()
     return raw.strip()
 
@@ -109,7 +131,7 @@ def _targets_tree(lines: list[str]) -> dict:
     stack: list[tuple[int, dict, str]] = [(-1, root, "targets")]
     scalar: tuple[int, str] | None = None  # wcięcie i ścieżka ostatniego pola skalarnego
     for line in lines:
-        line = re.sub(r"(^|\s)#.*$", "", line.rstrip("\r\n"))
+        line = _strip_comment(line.rstrip("\r\n"))
         if not line.strip():
             continue
         leading = line[: len(line) - len(line.lstrip())]
@@ -153,7 +175,8 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
             f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}` (wpisy rozdziel przecinkiem)."
         )
     options = [
-        {"id": _unquote(m.group(1), where), "value": _unquote(m.group(2), where)} for m in _OPTION.finditer(body)
+        {"id": _unquote(m.group(1), f"{where}.options"), "value": _unquote(m.group(2), f"{where}.options")}
+        for m in _OPTION.finditer(body)
     ]
     seen: set[str] = set()
     for opt in options:
