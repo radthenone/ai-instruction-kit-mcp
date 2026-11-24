@@ -4,8 +4,8 @@ Stan na 2026-11-24. Test T3 na worktree PR #560 (`fix/534-kit-skill-prefix`). Po
 
 | Klient | Ścieżka skilla w repo | Forma natywna (#534) | Forma w T3 | Status |
 |---|---|---|---|---|
-| Codex | `.codex/skills/<name>/SKILL.md`, `.agents/skills/<name>/SKILL.md` | `$kit-ai:git-start` | `/skill:kit-ai:git-start` | T3: działa (test `--help`). Natywnie: nieprzetestowane. |
-| Antigravity | `.agents/skills/<name>/SKILL.md` | `/kit-ai:git-start` | `/skill:kit-ai:git-start` | T3: działa (test `--help`). Natywnie: nieprzetestowane. |
+| Codex | `.codex/skills/<name>/SKILL.md`, `.agents/skills/<name>/SKILL.md` | `$kit-ai:git-start` | `/skill:kit-ai:git-start` | T3: działa (test `--help`). Natywnie: działa. |
+| Antigravity | `.agents/skills/<name>/SKILL.md` | `/kit-ai:git-start` | `/skill:kit-ai:git-start` | T3: działa (test `--help`). Natywnie: działa. |
 | VS Code (Copilot) | `.github/prompts/` | — | — | Odłożony. Nieprzetestowane. |
 
 ## Zasady
@@ -17,5 +17,5 @@ Stan na 2026-11-24. Test T3 na worktree PR #560 (`fix/534-kit-skill-prefix`). Po
 ## Stan
 
 - Forma w T3 `/skill:kit-ai:git-start` działa w Codex i Antigravity (test `--help`, PR #560).
-- Formy natywne `$kit-ai:git-start` (Codex) i `/kit-ai:git-start` (Antigravity): do sprawdzenia w UI. Kryterium ręczne #534.
+- Formy natywne `$kit-ai:git-start` (Codex) i `/kit-ai:git-start` (Antigravity): działają (kryterium ręczne #534 spełnione).
 - #522 zostaje otwarte do sprawdzenia VS Code.
