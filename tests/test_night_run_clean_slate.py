@@ -38,6 +38,21 @@ class TestCleanSlateProfile(unittest.TestCase):
             {"provider": "claudeAgent", "model": "claude-opus-5-5", "effort": "high"},
         )
 
+    def test_reads_target_shape_section(self) -> None:
+        """Kształt wpisu target z #515 w night-run.clean-slate (#546)."""
+        profile = {
+            "night-run": {
+                "clean-slate": {
+                    "target": "claude.heavy",
+                    "options": [{"id": "effort", "value": "high"}],
+                }
+            }
+        }
+        self.assertEqual(
+            clean_slate_config(profile),
+            {"target": "claude.heavy", "options": [{"id": "effort", "value": "high"}]},
+        )
+
     def test_missing_or_malformed_section_is_empty(self) -> None:
         for profile in ({}, {"night-run": None}, {"night-run": {"clean-slate": "opus"}}, {"night-run": []}):
             with self.subTest(profile=profile):
@@ -63,18 +78,19 @@ class TestCleanSlateProfile(unittest.TestCase):
 
     def test_profile_template_documents_section(self) -> None:
         text = PROFILE_TEMPLATE.read_text(encoding="utf-8")
-        for token in ("# night-run:", "#   clean-slate:", "#     provider:", "#     model:", "#     effort:"):
+        for token in ("# night-run:", "#   clean-slate:", "#     target:", "#     options:"):
             with self.subTest(token=token):
                 self.assertIn(token, text)
 
 
 class TestCleanSlateProcedure(unittest.TestCase):
-    def test_ticket_hands_back_after_second_round(self) -> None:
+    def test_ticket_clean_slate_on_demand_and_trigger(self) -> None:
         text = _flat(TICKET)
-        self.assertIn("**Clean Slate:**", text)
-        self.assertIn("po 2. nieudanej rundzie naprawczej", text)
+        self.assertIn("**Clean Slate: tylko na żądanie (`clean-slate: on`):**", text)
+        self.assertIn("clean-slate: on", text)
         self.assertIn("hand-back `clean-slate`", text)
         self.assertIn("Clean Slate: użyty", text)
+        self.assertIn("gdy wyczerpie się pula 3 albo 6 albo zadziała bezpiecznik", text)
 
     def test_ticket_keeps_clean_slate_branch_name(self) -> None:
         text = _flat(TICKET)
@@ -84,18 +100,27 @@ class TestCleanSlateProcedure(unittest.TestCase):
             text,
         )
 
-    def test_trigger_includes_circuit_breaker(self) -> None:
+    def test_trigger_includes_pool_exhaustion_and_loop_guards(self) -> None:
         text = _flat(NIGHT_RUN)
-        self.assertIn("po 2. nieudanej rundzie naprawczej albo po zadziałaniu circuit breakera", text)
-        self.assertIn("po 2. rundzie albo po circuit breakerze najpierw Clean Slate", text)
+        self.assertIn("gdy wyczerpie się pula 3 albo 6 albo zadziała bezpiecznik", text)
+        self.assertIn("najpierw Clean Slate, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony", text)
+        self.assertIn("Bez `clean-slate: on` Clean Slate nie rusza", text)
 
     def test_orchestrator_rule_with_note_and_model(self) -> None:
         text = _flat(NIGHT_RUN)
-        self.assertIn("**Clean Slate**", text)
+        self.assertIn("**Clean Slate: tylko na żądanie (`clean-slate: on`).**", text)
         self.assertIn(NOTE, text)
         self.assertIn("`night-run.clean-slate`", text)
-        self.assertIn("Brak sekcji = model jak dotąd", text)
+        self.assertIn("Brak bloku przy `clean-slate: on` = model ticketu jak dotąd", text)
         self.assertIn("raz na ticket", text)
+        self.assertIn("Twardy sufit kosztu: domyślnie 9 delegacji na ticket (3 + 6)", text)
+        self.assertIn("Z `clean-slate: on` 10 delegacji na ticket (3 + 6 + 1 Clean Slate)", text)
+
+    def test_clean_slate_hands_over_coderabbit_round_counter(self) -> None:
+        """Nowy subagent po Clean Slate dostaje `coderabbit-rundy` z `## Stan`; limit 6 obejmuje cały ticket (#546)."""
+        text = _flat(NIGHT_RUN)
+        self.assertIn("linię `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
+        self.assertIn("limit 6 obejmuje cały ticket", text)
 
     def test_reset_safety_condition(self) -> None:
         text = _flat(NIGHT_RUN)
@@ -107,19 +132,23 @@ class TestCleanSlateProcedure(unittest.TestCase):
         self.assertIn("odmowa przełączenia (kolizja z plikiem ignorowanym) → needs-human bez resetu", text)
         self.assertNotIn("reset --hard origin", text)
         self.assertIn("błąd fetch albo komendy", text)
-        self.assertIn("własny sufit 3 rund", text)
+        self.assertIn("własny sufit rund", text)
 
 
 class TestCleanSlateT3Card(unittest.TestCase):
     def test_maps_to_fresh_delegate_task(self) -> None:
         text = _flat(T3_CARD)
         self.assertIn("## 7. Clean Slate", text)
+        self.assertIn("clean-slate: on", text)
         self.assertIn("nowy `clientRequestId`", text)
         self.assertIn("`<nazwa katalogu CTX>-<numer ticketu>-clean-slate`", text)
         self.assertIn("`target.providerInstanceId`", text)
         self.assertIn("`target.model`", text)
-        self.assertIn('`{id: "effort"', text)
+        self.assertIn("wpis `target` z #515", text)
         self.assertIn("warunek bezpieczeństwa z `night-run`", text)
+        self.assertIn("linię `coderabbit-rundy: #<N> <R>` z `## Stan`", text)
+        self.assertIn("limit 6 rund po pushu obejmuje cały ticket", text)
+        self.assertIn("10 delegacji na ticket (3 + 6 + 1 Clean Slate)", text)
 
     def test_records_stage_before_removing_worktree(self) -> None:
         text = _flat(T3_CARD)

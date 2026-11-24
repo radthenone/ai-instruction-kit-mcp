@@ -72,6 +72,7 @@ końca nocy; cel z `pauzy: N` (po N-tej pauzie halt C), `koniec: HH:MM` (teraz �
 halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, krok 6) je włącza. Pod `/goal` jego tekst to cel (niżej „Polecenia z tekstu celu”).
 
 - **Składnia `krok: wartość` (`implementacja:`, `review:`, `effort:`), spójna z `<komenda>: model <nazwa>`.**
+- **`clean-slate: on`** — włącza procedurę Clean Slate dla nocy (domyślnie wyłączona; bez tego parametru Clean Slate nie rusza, nawet gdy Profil ma blok `night-run.clean-slate`). Z `clean-slate: on` Clean Slate przysługuje raz na ticket, gdy wyczerpie się pula 3 albo 6 rund lub zadziała bezpiecznik pętli, przed needs-human. Twardy sufit kosztu: 10 delegacji na ticket (3 + 6 + 1 Clean Slate); bez `clean-slate: on` sufit wynosi 9 delegacji (3 + 6). Po nim zawsze stop.
 - **Lista issue** — `#N` przed pierwszym argumentem z `/` lub prefiksem kroku. Brak → kolejka (krok 4).
 - **`implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>`** — wykonawca implementacji z łańcuchem modeli albo z wolnego tekstu celu, który nazywa wykonawcę (wolny tekst celu np. „antigravity wykonuje implementację”). Średnik rozdziela wykonawców, przecinek modele jednego wykonawcy; `@poziom` (np. `@high`) kit tłumaczy na nazwę/parametr danego transportu. Każdy wskazany wykonawca jest sprawdzany raz na starcie nocy przeciw `clients:` w `.ai/project.profile.yaml`: wykonawca spoza `clients:` → `needs-human na starcie nocy` — żaden ticket nie startuje, NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
 - **Brak wskazania i jawne `@KIT_CMD_PREFIX@headless` → bez zmian:** brak wskazania wykonawcy oznacza implementację bezpośrednią w subagencie ticketu (kroki 2–3 bez `@KIT_CMD_PREFIX@headless`); jawne `@KIT_CMD_PREFIX@headless <wykonawca> [flagi] "<treść>"` to wywołanie wrappera `.ai/headless.mjs`.
@@ -172,8 +173,7 @@ nazwy domyślne — wstawiaj nazwy z `triage-labels.md` projektu, nie dosłownie
 ### 5. Kolejność
 
 Per issue: `gh api repos/<owner>/<repo>/issues/<N>/dependencies/blocked_by --jq '.[].number'`.
-Kolejność topologiczna, przy remisie z celu. Otwarty blokujący spoza listy → needs-human
-„zablokowany przez #X spoza listy”.
+Kolejność topologiczna, przy remisie z celu. Otwarty blokujący spoza listy nocy: sprawdź, czy ma powiązany PR w stanie CLEAN (`gh pr list --state open ...` / checks pass, brak konfliktów i draft); jeśli tak → dobierz go do kolejki nocy przed bieżącym ticketem w celu domknięcia (weryfikacja checks i merge istniejącego CLEAN PR zamiast ponownej implementacji od zera); w przeciwnym razie oznacz zależny ticket w raporcie jako `skipped: blocked` (bez needs-human).
 
 ### 6. Plik kontekstu nocy
 
@@ -204,7 +204,8 @@ nigdy tam (ani CTX, ani `## Stan`, ani logi pracy w tle).
 - **Stan (`## Stan` na końcu CTX):** linie `krok: ticket|review|resume|ci|koniec`,
   `subagent: <id>` (transkrypt czyta watchdog), `watchdog: <id zadania w tle>`, `wznowienia
   per ticket`, pauzy limitu: otwarta `pauza limitu od <ts>; wznowienie <ts> (epoch N)` (zapisuje
-  ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamyka ją watchdog po wznowieniu; ty tylko sprawdzasz). Nadpisujesz **Ty**
+  ją watchdog), zamknięta `pauza limitu od <ts> do <ts>` (zamyka ją watchdog po wznowieniu; ty tylko sprawdzasz),
+  oraz `coderabbit-rundy: #<N> <R>` (licznik rund po pushu ticketu #N w puli 6 rund wspólnej dla czerwonego CI i CodeRabbit; jedna linia, zastępowana przy każdym zapisie; zwiększany o jeden (`R+1`) przed każdym pushem naprawczym po czerwonym CI oraz przed pushem naprawczym z poprawkami po review CodeRabbit; cykle bez pusha, np. same odpowiedzi z uzasadnieniem, resolve nieaktualnych wątków lub bezpiecznik minor/nit, nie zwiększają `R`; linia innego ticketu nie dotyczy bieżącego ticketu, wtedy R = 0; przetrwa wznowienie i Clean Slate; nadpisując `## Stan`, najpierw przeczytaj aktualny plik i zachowaj tę linię). Na starcie nowego ticketu (nie przy wznowieniu ani fallbacku tego samego ticketu) w tym zapisie ustaw `coderabbit-rundy: #<N> 0`; wartość zachowaj tylko przy wznowieniu i Clean Slate tego samego ticketu. Nadpisujesz **Ty**
   przy każdej zmianie kroku; tik czyta ją jako pierwszą.
 
 ### 7. Watchdog i cron (tylko Claude Code)
@@ -299,6 +300,8 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    - **Wczytanie nowej wersji:** orkiestrator czyta ponownie zmienione sekcje swojej procedury (z odświeżonych plików); subagenci i agenci `@KIT_CMD_PREFIX@git-*` biorą nową wersję sami przy starcie.
    - **Obsługa błędów:** błąd reloadu (`kit-ai reload` zakończone błędem) → wpis w raporcie nocy (`błąd reloadu kita: <szczegóły>`) i utworzenie nowego issue (`gh issue create`), aby problem został naprawiony w kolejnym biegu. Noc idzie dalej.
 
+Limit providera (429 / quota): wykonaj jeden krok w dół łańcucha zapasowych modeli z Profilu (`targets`, #515), bez pytania i bez needs-human.
+Wykonawca bez commita i bez hand-backu, z WIP w worktree: sesja ticketu odpala testy lokalne; przy zielonych commituje WIP, przy czerwonych daje jedną ponowną próbę.
 Hand-back needs-human albo halt od subagenta → sekcja „Gdy ticket napotka problem”.
 
 ## Zlecenie ticketu
@@ -352,13 +355,31 @@ szybkich, krok 6 w `night-run-ticket`), nigdy push.
 
 ### Wyzwalacze
 
-**needs-human** (przypadek A, B lub E): finding blokujący po ponownym sprawdzeniu Spec (E); otwarte wątki CodeRabbit po wyczerpaniu sufitu rund (E); kryterium akceptacji niejasne albo sprzeczne
-z ADR/`CONTEXT.md`; decyzja produktowa/prawna, której nie ma w issue ani docs; CI czerwone
-po 3 próbach naprawy (wspólny sufit 3 rund naprawczych CI i CodeRabbit) albo circuit breaker (identyczny błąd, flip-flop,
-eksplozja diffa — krok 6 w `night-run-ticket`; po 2. rundzie albo po circuit breakerze najpierw Clean Slate, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony); blokujący deny `server-guard:` (alternatywa nie wystarcza) albo
-błąd builda przy aktualizacji samego lockfile → etykieta
-`needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi (wymagane review itp.) — PR
-zostaje otwarty.
+**needs-human tylko gdy:**
+1. auth, ACL, migracje albo billing (reguła z `AGENTS.md`);
+2. niejasna specyfikacja (brak sekcji `Kryterium ukończenia` / `Kryteria akceptacji` w body issue albo sprzeczność z ADR/`CONTEXT.md`);
+3. wyczerpana pula 3 rund przed pushem albo pula 6 rund po pushu (w tym R = 6 bez review bieżącego head po limicie);
+4. zadziałał bezpiecznik oscylacji (ten sam plik i miejsce wraca w nowym wątku 2 razy).
+
+To zamknięta lista powodów needs-human: żadna inna sytuacja (blokery z PR w stanie CLEAN, limit providera z zapasem w Profilu, brak hand-backu z WIP, uwagi Minor/nit) nie wywołuje needs-human.
+
+Wyzwalacze needs-human (przypadek A, B lub E):
+- **przypadek A:** auth, ACL, migracje, billing, niejasna specyfikacja;
+- **przypadek B:** zależność od issue z needs-human (`needs-human: czeka na odpowiedzi z #N`);
+- **przypadek E:** finding blokujący po ponownym sprawdzeniu Spec (E); potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu puli 3 (E); otwarte wątki CodeRabbit po wyczerpaniu puli 6 (E); R = 6 bez review bieżącego head po limicie (E); bezpiecznik oscylacji (E).
+
+Przy wyczerpaniu puli 3 lub 6 albo zadziałaniu bezpiecznika pętli: przy `clean-slate: on` najpierw Clean Slate, gdy jeszcze nie użyty i warunek bezpieczeństwa spełniony; po wyczerpaniu Clean Slate lub bez `clean-slate: on`: wyczerpanie puli 3 lub 6 oraz bezpiecznik oscylacji → needs-human (przypadek E z kartą eskalacji); bezpieczniki braku postępu oraz eksplozji zakresu → stop z kartą eskalacji (bez needs-human); bezpiecznik minor/nit → resolve wątków i przejście do bramki merge (bez Clean Slate i bez needs-human). Blokujący deny `server-guard:` (alternatywa nie wystarcza) albo błąd builda przy aktualizacji samego lockfile → etykieta `needs-local` zamiast `ready-for-human`; merge zablokowany przez ochronę gałęzi — PR zostaje otwarty.
+
+**Dwie pule rund:**
+- Przed pushem: 3 rundy. Licznik rusza tylko przy findingu High/Medium z `review-bugbot`, `review-edge` albo Spec. Uwagi Low idą do listy w body PR i nie zużywają rundy.
+- Po pushu: 6 rund wspólnie dla czerwonego CI i CodeRabbit. Runda to push z poprawką.
+- Twardy sufit kosztu: domyślnie 9 delegacji na ticket (3 + 6). Z `clean-slate: on` 10 delegacji na ticket (3 + 6 + 1 Clean Slate). Po nim zawsze stop.
+
+**Cztery bezpieczniki przeciw pętli (zatrzymują pracę przed 6. rundą):**
+- ten sam plik i miejsce wraca w nowym wątku 2 razy (oscylacja);
+- liczba uwag actionable nie maleje przez 2 kolejne rundy;
+- poprawka dotyka plików spoza zakresu PR;
+- zostały tylko Minor/nit bez wpływu na działanie: odpowiedź na wątku, resolve mutacją GraphQL, PR gotowy do merge, bez nowej rundy.
 
 **halt** (przypadek C): czerwona gałąź bazowa, awaria CI/infrastruktury, brak sekretów,
 nagłówek CTX bez znacznika `kit-ai night-ctx` albo `host=` ≠ `kit-ai host` (zgłasza watchdog).
@@ -368,18 +389,20 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 
 ### Clean Slate — hand-back `clean-slate`
 
-**Clean Slate** przysługuje raz na ticket, po 2. nieudanej rundzie naprawczej albo po zadziałaniu circuit breakera (krok 6 w `night-run-ticket`):
-1. Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`: `git status --porcelain` pusty
-   i `git log origin/<branch>..HEAD` pusty; niespełniony warunek, błąd fetch albo komendy → needs-human bez resetu (przypadek A).
+**Clean Slate: tylko na żądanie (`clean-slate: on`).**
+Domyślnie wyłączony. Włącza go wyłącznie argument celu `clean-slate: on` (np. `/goal Wykonaj #A–#C wg /kit-ai:night-run clean-slate: on`). Profil wskazuje tylko model: `night-run.clean-slate` w kształcie wpisu `target` z #515 (ref `target: <klient>.<tier>` z nadpisaniem `model` / `options` albo pełny wpis `{ providerInstanceId, model, options }`). Dowolny provider: claude, codex, antigravity, opencode. Brak bloku przy `clean-slate: on` = model ticketu jak dotąd. Bez `clean-slate: on` Clean Slate nie rusza, nawet gdy Profil ma blok.
+Z `clean-slate: on`: Clean Slate przysługuje raz na ticket, gdy wyczerpie się pula 3 albo 6 albo zadziała bezpiecznik, przed needs-human.
+1. Przed resetem orkiestrator zapisuje w `## Stan` CTX etap `ticket: #<N> clean-slate: w toku` (co gwarantuje, że wznowienie po restarcie nie uzna Clean Slate za powtórnie dostępny). Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`:
+   - dla podejścia przed pierwszym pushem (z puli 3 rund): `git status --porcelain` pusty (brak niezacommitowanych zmian roboczych); niespełniony warunek → needs-human bez resetu (przypadek A);
+   - dla podejścia po pushu (z puli 6 rund lub po otwarciu PR): `git status --porcelain` pusty oraz `git log origin/<branch>..HEAD` pusty (wszystkie commity wypchnięte); niespełniony warunek, błąd fetch albo komendy → needs-human bez resetu (przypadek A).
 2. Reset: `git switch --no-overwrite-ignore --detach origin/<BASE>` (bez tej opcji git nadpisuje pliki
    ignorowane kolidujące z plikami śledzonymi w bazie); odmowa przełączenia (kolizja z plikiem ignorowanym) → needs-human bez resetu
-   (przypadek A). Stary branch zostaje; jego PR zamykasz
+   (przypadek A). Stary branch zostaje (jako historia poprzedniego podejścia); jeśli istniał już otwarty PR, zamykasz go
    `gh pr close <PR> --comment "Zastąpiony przez Clean Slate"`. Nowy branch: `<typ>/<N>-<slug>-clean-slate`.
-3. Świeży subagent ticketu od kroku 1, z modelem i effort z linii `Clean Slate:` w nagłówku CTX
-   (`night-run.clean-slate` w Profilu: `provider`, `model`, `effort`). Brak sekcji = model jak dotąd.
-   Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty” i notatkę: „Poprzednie podejście zawiodło
-   z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu). Nowy subagent ma
-   własny sufit 3 rund; drugiego Clean Slate nie ma, więc wyczerpany sufit → needs-human.
+3. Świeży subagent ticketu od kroku 1, z modelem z `night-run.clean-slate` w Profilu (wpis `target` z #515: `providerInstanceId`, `model`, `options` lub ref `target`). Brak sekcji = model jak dotąd.
+   W `## Stan` CTX trwale zapisujesz linię `clean-slate: #<N> użyty` (co po wznowieniu i restarcie gwarantuje, że Clean Slate nie zostanie uruchomiony ponownie dla tego ticketu), do parametrów zlecenia dopisujesz linię „Clean Slate: użyty”, notatkę: „Poprzednie podejście zawiodło
+   z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu) oraz linię `coderabbit-rundy: #<N> <R>` z `## Stan`. Nowy subagent ma
+   własny sufit rund, limit 6 obejmuje cały ticket; drugiego Clean Slate nie ma, więc wyczerpany sufit → needs-human. Twardy sufit kosztu z `clean-slate: on` to 10 delegacji na ticket (3 + 6 + 1 Clean Slate).
 
 ### Zasięg — zanim cokolwiek zrobisz
 
@@ -402,7 +425,7 @@ tickety B i C są w zasięgu.
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
   po wznowieniu ponowny `@KIT_CMD_PREFIX@headless` dla tego ticketu od kroku 2–3 w `night-run-ticket`. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
-- **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu albo otwarte wątki bota CodeRabbit po wyczerpaniu sufitu rund): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
+- **E — finding blokujący i pule rund** (Spec High niezałatwiony po ponownym sprawdzeniu; potwierdzona, nierozwiązana uwaga review orkiestratora po wyczerpaniu sufitu 3 (E); otwarte wątki bota CodeRabbit po wyczerpaniu sufitu 6 (E); R = 6 bez review bieżącego head po limicie (E); bezpiecznik oscylacji (E)): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
 
 Przy A, B i E, obok komentarza, przełącz stan ticketu (tylko gdy etykieta jest w repo; inaczej
 sam komentarz; `--remove-label` tylko, gdy issue ma `ready-for-agent`):

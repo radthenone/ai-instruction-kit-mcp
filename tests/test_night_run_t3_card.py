@@ -380,6 +380,36 @@ class TestNightRunT3CardContract(unittest.TestCase):
             with self.subTest(cls_name=cls_name):
                 self.assertIn(cls_name, section)
 
+    def test_null_review_decision_follows_git_end_by_round(self) -> None:
+        """#542, #546: limit mierzy orkiestrator, po nim decyzja wg git-end; runda 1 odnotowuje brak review, R ≥ 1 (w tym R = 6) → needs-human."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("Limit mierzy orkiestrator od wejścia w czekanie", card)
+        self.assertIn("Po upływie limitu nie czekasz dalej i podejmujesz decyzję od razu", card)
+        self.assertIn("runda 1 (R = 0): bez otwartych wątków bota odnotuj brak review bota w raporcie i przejdź dalej", card)
+        self.assertIn("kolejne rundy (R ≥ 1, w tym R = 6)", card)
+        self.assertIn("`needs-human` (bez merge, także bez otwartych wątków) dopiero po upływie limitu czasu, nie od razu", card)
+        self.assertIn("Bez zdarzenia po upływie limitu decyzja zapada przy najbliższym wybudzeniu (sekcja 4)", card)
+
+    def test_timer_mechanism_for_review_timeout(self) -> None:
+        """#546: orkiestrator uzbraja jednorazowy timer na czas oczekiwania na review, gdy checki są gotowe."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("uzbraja jednorazowy timer na limit czasu oczekiwania na review", card)
+        self.assertIn("schedule", card)
+        self.assertIn("wcześniejsze wybudzenie z `watch_pull_request` anuluje timer", card)
+
+    def test_provider_limit_rotates_down_fallback_chain(self) -> None:
+        """#546: limit providera rotuje o jeden krok w dół łańcucha targets bez pytania."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("jeden krok w dół łańcucha zapasowych modeli z Profilu", card)
+        self.assertIn("bez pytania i bez needs-human", card)
+
+    def test_executor_wip_handling_in_card(self) -> None:
+        """#546: wykonawca z WIP bez commita: sesja testuje, commituje przy zielonych, jedna próba przy czerwonych."""
+        card = " ".join(self.card_text.split())
+        self.assertIn("wykonawca bez commita i bez hand-backu, z WIP w worktree", card)
+        self.assertIn("przy zielonych testach sesja commituje zmiany", card)
+        self.assertIn("przy czerwonych testach daje wykonawcy dokładnie jedną ponowną próbę", card)
+
     def test_report_fields_in_card(self) -> None:
         """Raport: czas z wątków, tokeny delegatów n/d, model niepotwierdzony gdy executedModel jest null."""
         self.assertIn("czas z wątków", self.card_text)
