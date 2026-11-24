@@ -146,6 +146,24 @@ _Avoid_: lockfile, manifest, version file
 A linked git worktree built or synced by the Kit's method, so it carries the gitignored files and dependencies it needs from the main checkout. A plain git worktree is not one until synced (ADR-0014).
 _Avoid_: kit worktree, isolated workspace
 
+### Commands
+
+**Command**:
+The slash-command form of a kit agent template, written for one Client in that Client's native form (ADR-0019). The name a user types depends on the Client. The same template also yields a Subagent form, which another agent starts.
+_Avoid_: flat command, alias, prompt
+
+**Command prefix**:
+What a Client's native form adds to a Command name: `kit-ai:` in the Claude plugin, `kit-ai/` as a directory in opencode, nothing for Clients with bare names. Set per Client in `command_prefixes` in the Manifest, and filled into generated files and the Brief.
+_Avoid_: scope, tag
+
+**Kit-ai plugin**:
+The Claude Code plugin `kit-ai`, which Bootstrap writes as a skills directory. Each Command is one skill, invoked `/kit-ai:<name>`. Tier-dependent Commands are added and removed with their Tier.
+_Avoid_: marketplace plugin, skills folder
+
+**Flat command file**:
+The retired form of a Command: `.claude/commands/<name>.md` for Claude and `.opencode/command/<name>.md` for opencode, invoked `/<name>`. Bootstrap writes none. Reload removes those whose names match a Command (ADR-0019). `/goal` and `/loop` stay flat in opencode while it is selected.
+_Avoid_: legacy command, old command file
+
 ### Agents
 
 **Classification**:
