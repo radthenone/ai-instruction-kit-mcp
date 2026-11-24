@@ -322,10 +322,14 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
                 f"Profil: nieznany tier `agents.{tier}`. Dozwolone: {_ALLOWED} — "
                 "przenieś jego agentów do jednego z nich."
             )
-        body = value[1:-1] if value.startswith("[") and value.endswith("]") else value
-        if "[" in body or "]" in body:
-            raise ProfileError(f"Profil: `agents.{tier}` ma niedopasowane nawiasy `[]`.")
-        names = [_unquote(n.strip(), f"agents.{tier}") for n in body.split(",") if n.strip()]
+        if value[:1] in ("'", '"') and value[-1:] == value[:1]:
+            # Cały zapis w cudzysłowie: zdejmij go raz i dziel po przecinkach; pozycji nie cytujemy ponownie.
+            names = [n.strip() for n in _unquote(value, f"agents.{tier}").split(",") if n.strip()]
+        else:
+            body = value[1:-1] if value.startswith("[") and value.endswith("]") else value
+            if "[" in body or "]" in body:
+                raise ProfileError(f"Profil: `agents.{tier}` ma niedopasowane nawiasy `[]`.")
+            names = [_unquote(n.strip(), f"agents.{tier}") for n in body.split(",") if n.strip()]
         if "" in names:
             raise ProfileError(f"Profil: pusta nazwa agenta w `agents.{tier}`.")
         for name in names:

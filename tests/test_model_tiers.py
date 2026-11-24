@@ -429,6 +429,16 @@ class TestParseTargets(unittest.TestCase):
             )
         self.assertIn("pust", str(ctx.exception))
 
+    def test_whole_value_quoted_agents_list_is_split(self) -> None:
+        for text in (
+            'agents:\n  light: "git-start,cleanup"\n',
+            "agents:\n  light: git-start,cleanup\n",
+            'agents:\n  light: ["git-start", "cleanup"]\n',
+        ):
+            with self.subTest(text=text):
+                _, agents = parse_profile(text)
+                self.assertEqual(agents, {"light": ["git-start", "cleanup"]})
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 
