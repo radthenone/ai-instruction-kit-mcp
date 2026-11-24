@@ -101,7 +101,7 @@ Kroki:
 
      **Trzy reguły porażki wykonawcy → następny model:**
      Porażką wykonawcy na bieżącym modelu skutkującą przejściem do następnego modelu z łańcucha (odnotowanym w raporcie jako przejście na zapas) jest:
-     1. brak commita i brak hand-backu: gdy wykonawca pozostawił niezacommitowane zmiany (WIP) w worktree, sesja ticketu odpala testy lokalne; przy zielonych testach sesja weryfikuje ukończenie zadania (zgodność z issue) i commituje zmiany pod właściwym tematem Conventional Commit (`/kit-ai/git-commit`), a przy czerwonych testach lub nieukończonym zadaniu daje wykonawcy dokładnie jedną ponowną próbę naprawy; dopiero gdy ponowna próba nie przyniesie commita ani zielonych testów i ukończonego zadania, następuje przejście do następnego modelu z łańcucha; brak zmian w worktree (brak WIP) i brak hand-backu → od razu przejście do następnego modelu z łańcucha,
+     1. brak commita i brak hand-backu: gdy wykonawca pozostawił niezacommitowane zmiany (WIP) w worktree, sesja ticketu odpala testy lokalne; przy zielonych testach sesja commituje zmiany pod właściwym tematem Conventional Commit (`/kit-ai/git-commit`), gdy weryfikacja ukończenia zadania potwierdzi zgodność z issue; przy czerwonych testach lub nieukończonym zadaniu daje wykonawcy dokładnie jedną ponowną próbę naprawy; po ponownej próbie sesja weryfikuje testy i ukończenie zadania (także gdy wykonawca utworzył commit): brak zielonych testów lub nieukończone zadanie → przejście do następnego modelu z łańcucha; brak zmian w worktree (brak WIP) i brak hand-backu → od razu przejście do następnego modelu z łańcucha,
      2. limit albo quota wykonawcy (błąd 429, wyczerpany limit tokenów lub quota modelu),
      3. przekroczony czas (timeout wykonawcy / brak odpowiedzi).
 
