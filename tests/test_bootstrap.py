@@ -40,6 +40,22 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 class _BootstrapTestCase(unittest.TestCase):
     """Wspólny strażnik dostępności basha."""
 
+    # Render starej wersji szablonu BUGBOT.md — bez bloku `project:rules`.
+    OLD_TEMPLATE = """# Bugbot — reguły projektu
+
+Intro (stara wersja szablonu).
+
+## Ogólne
+
+- stara reguła kita
+
+<!-- tier:backend -->
+## Backend
+
+- stara reguła backendu
+<!-- /tier:backend -->
+"""
+
     def setUp(self) -> None:
         if not resolve_bash():
             if is_ci():
@@ -51,6 +67,37 @@ class _BootstrapTestCase(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config_home.name})
         patcher.start()
         self.addCleanup(patcher.stop)
+
+    def _git(self, cwd: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
+        )
+        return result.stdout.strip()
+
+    def _kit_with_history(self, root: Path) -> Path:
+        """Kopia kita z commitem starego szablonu — do testu migracji."""
+        for rel in ("templates", "scripts", "src", "manifest.yaml"):
+            src = KIT_ROOT / rel
+            if src.is_dir():
+                shutil.copytree(
+                    src,
+                    root / rel,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                )
+            elif src.is_file():
+                root.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, root / rel)
+        try:
+            self._git(root, "init", "-q")
+        except FileNotFoundError:
+            self.skipTest("brak gita w środowisku")
+        self._git(root, "config", "user.email", "test@test.local")
+        self._git(root, "config", "user.name", "test")
+        template = root / "templates" / "cursor" / "BUGBOT.md"
+        template.write_text(self.OLD_TEMPLATE, encoding="utf-8", newline="\n")
+        self._git(root, "add", ".")
+        self._git(root, "commit", "-q", "-m", "old template")
+        return root
 
 
 class TestFindBash(_BootstrapTestCase):
@@ -583,53 +630,6 @@ class TestTierAgents(_BootstrapTestCase):
 class TestBugbotProjectRules(_BootstrapTestCase):
     """BUGBOT.md odświeża się z szablonu, a blok ``project:rules`` zostaje (#240)."""
 
-    # Render starej wersji szablonu — bez bloku `project:rules`.
-    OLD_TEMPLATE = """# Bugbot — reguły projektu
-
-Intro (stara wersja szablonu).
-
-## Ogólne
-
-- stara reguła kita
-
-<!-- tier:backend -->
-## Backend
-
-- stara reguła backendu
-<!-- /tier:backend -->
-"""
-
-    def _git(self, cwd: Path, *args: str) -> str:
-        result = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
-        )
-        return result.stdout.strip()
-
-    def _kit_with_history(self, root: Path) -> Path:
-        """Kopia kita z commitem starego szablonu — do testu migracji."""
-        for rel in ("templates", "scripts", "src", "manifest.yaml"):
-            src = KIT_ROOT / rel
-            if src.is_dir():
-                shutil.copytree(
-                    src,
-                    root / rel,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-                )
-            elif src.is_file():
-                root.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, root / rel)
-        try:
-            self._git(root, "init", "-q")
-        except FileNotFoundError:
-            self.skipTest("brak gita w środowisku")
-        self._git(root, "config", "user.email", "test@test.local")
-        self._git(root, "config", "user.name", "test")
-        template = root / "templates" / "cursor" / "BUGBOT.md"
-        template.write_text(self.OLD_TEMPLATE, encoding="utf-8", newline="\n")
-        self._git(root, "add", ".")
-        self._git(root, "commit", "-q", "-m", "old template")
-        return root
-
     def test_block_survives_reload_and_rest_is_refreshed(self) -> None:
         """Blok reguł projektu wraca bajt w bajt, reszta pliku jest z szablonu."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -701,11 +701,6 @@ Intro (stara wersja szablonu).
 
 class TestAgentsProjectBlock(_BootstrapTestCase):
     """AGENTS.md: część kita odświeżana przy reloadzie, blok ``project:agents`` zostaje (#269)."""
-
-    # Kopia kita z gitem jak w testach BUGBOT.md (bez dziedziczenia ich testów).
-    OLD_TEMPLATE = TestBugbotProjectRules.OLD_TEMPLATE
-    _git = TestBugbotProjectRules._git
-    _kit_with_history = TestBugbotProjectRules._kit_with_history
 
     OLD_AGENTS = "# AGENTS.md\n\nHooki: `.claude/hooks/gate-push.sh`.\n"
 
