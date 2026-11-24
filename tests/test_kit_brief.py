@@ -60,7 +60,7 @@ class TestKitBrief(unittest.TestCase):
         instructions = server.build_instructions(resolved)
 
         self.assertRegex(instructions, r"Zadanie kodowe:\*\*.*src/.*tests/")
-        self.assertRegex(instructions, r"Zadanie proceduralne:\*\*.*/git-.*/review-.*/night-run")
+        self.assertRegex(instructions, r"Zadanie proceduralne:\*\*.*git-\*.*review-\*.*night-run")
 
         self.assertRegex(instructions, r"pierwszą edycją.*get_overlay")
         self.assertRegex(instructions, r"`get_bundle` gdy brief wskazuje moduł")
@@ -85,7 +85,7 @@ class TestKitBrief(unittest.TestCase):
 
         self.assertIn("## Task classification and MCP rules (#307, #324)", instructions)
         self.assertRegex(instructions, r"Coding task:\*\*.*src/.*tests/")
-        self.assertRegex(instructions, r"Procedural task:\*\*.*/git-.*/review-.*/night-run")
+        self.assertRegex(instructions, r"Procedural task:\*\*.*git-\*.*review-\*.*night-run")
         self.assertIn("get_overlay", instructions)
         self.assertIn("in English", instructions)
         self.assertNotIn("Zadanie kodowe", instructions)
@@ -135,8 +135,51 @@ class TestKitBrief(unittest.TestCase):
         self.assertIn("get_overlay", output)
         self.assertIn("Args/Returns", output)
         self.assertIn("src/", output)
-        self.assertIn("/git-", output)
+        self.assertIn("git-*", output)
         self.assertIn("lockfile-only", output)
+
+    def test_command_mapping_table_includes_only_active_clients(self) -> None:
+        """Tabela mapowania w kit:brief zawiera tylko klientów aktywnych w --clients (#532)."""
+        from guides.resolver import render_project_brief
+
+        brief = render_project_brief(
+            name="test-app",
+            language="pl",
+            codegen="none",
+            tiers={"backend": "none", "web": "none", "mobile": "none"},
+            clients="claude,codex,antigravity,opencode,vscode",
+            profile_path=Path("/tmp/.ai/project.profile.yaml"),
+            workspace_root=Path("/tmp"),
+            overlay_content="# Overlay\n\nbase: dev\n",
+            bundle_names=(),
+            module_ids=(),
+        )
+        self.assertIn("### Mapowanie komend kita", brief)
+        self.assertIn("| `claude` | `/kit-ai:<komenda>` |", brief)
+        self.assertIn("| `codex` | `$kit-ai:<komenda>` | w T3: `/skill:kit-ai:<komenda>` |", brief)
+        self.assertIn("| `antigravity` | `/kit-ai:<komenda>` | w T3: `/skill:kit-ai:<komenda>` |", brief)
+        self.assertIn("| `opencode` | `/kit-ai/<komenda>` |", brief)
+        self.assertIn("| `vscode` | `/<komenda>` | odłożony (#522) |", brief)
+        self.assertNotIn("| `cursor` |", brief)
+        self.assertNotIn("| `kiro` |", brief)
+        self.assertNotIn("| `kilo` |", brief)
+
+    def test_agents_and_bugbot_have_no_bare_kit_slash_commands(self) -> None:
+        """AGENTS.md i BUGBOT.md nie zawierają gołych /<nazwa kita> poza tabelą mapowania (#532)."""
+        import re
+        from guides.bugbot_md import render as render_bugbot
+
+        bare_re = re.compile(
+            r"(?<![A-Za-z0-9_.\-/])/(?:git-|review-|create-task|create-skill|"
+            r"kit-project-|teacher-|subagent-|night-run|headless|cleanup|issue-stats|pr-stats|compact)"
+        )
+
+        agents_template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIsNone(bare_re.search(agents_template), "Gołe /<nazwa kita> w templates/AGENTS.md")
+
+        bugbot_template = (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(encoding="utf-8")
+        rendered_bugbot = render_bugbot(bugbot_template, "backend client")
+        self.assertIsNone(bare_re.search(rendered_bugbot), "Gołe /<nazwa kita> w wyrenderowanym BUGBOT.md")
 
 
 if __name__ == "__main__":

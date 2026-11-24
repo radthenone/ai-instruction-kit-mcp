@@ -10,7 +10,7 @@ _Brief nie jest jeszcze wyrenderowany — uruchom `kit-ai reload`._
 ## Klasyfikacja zadań i reguły MCP (#307, #324)
 
 - **Zadanie kodowe:** tworzenie, edycja lub debug plików w `src/`, `tests/`, `templates/`, `modules/`; implementacja, testy, refactor, pytanie o zachowanie kodu do zmiany.
-- **Zadanie proceduralne:** każdy slash command z procedury kita (`/git-*`, `/review-*`, `/create-task`, `/create-skill`, `/night-run`, `/headless`, `/tdd`, `/kit-project-*`) oraz każda czynność zapisu na GitHub.
+- **Zadanie proceduralne:** każda komenda z procedury kita (`git-*`, `review-*`, `create-task`, `create-skill`, `night-run`, `headless`, `/tdd`, `kit-project-*`) oraz każda czynność zapisu na GitHub.
 - **Wymóg wywołania:** przed pierwszą edycją przy zadaniu kodowym lub proceduralnym wywołaj `get_overlay`, a `get_bundle` gdy brief wskazuje moduł. W wątpliwości wywołaj `get_overlay` (koszt mały, błędny fix bez overlay kosztuje dużo).
 - **Bez wywołań MCP:** pytania o język, bazę lub Tiery (są w briefie), rozmowa, wyjaśnienie, odpowiedź tekstowa bez zmiany plików.
 - **Docstringi:** format repo (Args/Returns, po polsku).
@@ -21,7 +21,7 @@ _Brief nie jest jeszcze wyrenderowany — uruchom `kit-ai reload`._
 
 | Warstwa | Co | Gdzie | Po co |
 |---------|-----|------|--------|
-| **1. Fundament** | instruction-kit MCP + `/git-*` + `/review-*` | `.cursor/mcp.json`, `.ai/`, agents | Stack, konwencja gita, Managed Worktree, review |
+| **1. Fundament** | instruction-kit MCP + `git-*` + `review-*` | `.cursor/mcp.json`, `.ai/`, agents | Stack, konwencja gita, Managed Worktree, review |
 | **2. Proces** | mattpocock | skills | `/grill-me`, `/tdd` — *jak* budować feature |
 | **3. Meta / izolacja** | Superpowers | plugin / skills | worktree, brainstorm, debug, **finishing** branch |
 | **4. PR → green** | Autopilot (Cursor) | skill Autopilot | pętla CI + komentarze na istniejącym PR |
@@ -44,7 +44,7 @@ Profil (Tiery backend/web/mobile + `codegen:`) w `.ai/project.profile.yaml`; ove
 
 1. Polecenie użytkownika  
 2. `.ai/project.md` + bundle MCP  
-3. `/git-*` / `/review-*` / `git-branch-pr`  
+3. `git-*` / `review-*` / `git-branch-pr`  
 4. Matt (`/grill-me`, `/tdd`)  
 5. Superpowers (worktree, finishing, debug…)  
 6. Autopilot (po otwarciu PR)  
@@ -57,15 +57,15 @@ Konflikt TDD: Matt `/tdd` *albo* Superpowers TDD — nie oba. Domyślnie Matt na
 Pełna reguła: `.cursor/rules/git-branch-pr.mdc`.
 
 ```text
-[/grill-me gdy scope niejasny] → /git-start → [worktree?] → kod [+/tdd]
-  → [/git-check] → /git-commit → /review-bugbot (+ min. stack) → /git-end | finishing→PR → Autopilot → merge
+[/grill-me gdy scope niejasny] → git-start → [worktree?] → kod [+/tdd]
+  → [git-check] → git-commit → review-bugbot (+ min. stack) → git-end | finishing→PR → Autopilot → merge
 ```
 
-- **`/git-start` / `/git-check` / `/git-commit` / `/git-end`** — issue, sync, Conventional commit(s), push+PR.  
+- **`git-start` / `git-check` / `git-commit` / `git-end`** — issue, sync, Conventional commit(s), push+PR.  
 - **`/grill-me`** — tylko przy niejasnym scope / trade-offach (nie przy oczywistym fixie).  
-- **`/teacher-backend` / `/teacher-frontend` / `/teacher-architecture`** — nauka **przed** kodem: koncepcja, „dlaczego tak”, opcje i koszty. Nie edytują plików; nie mylić z `/review-*` (te działają na gotowym diffie).  
+- **`teacher-backend` / `teacher-frontend` / `teacher-architecture`** — nauka **przed** kodem: koncepcja, „dlaczego tak”, opcje i koszty. Nie edytują plików; nie mylić z `review-*` (te działają na gotowym diffie).  
 - **Worktree** — opcjonalna izolacja *na już nazwanym* branchu (decyzja człowieka/Superpowers/procedury kita); każdy worktree to Managed Worktree metodą kita (`worktree.mjs add` lub natywny/Superpowers + natychmiastowy `sync`, na końcu `remove`).  
-- **Finishing** — lokalne testy OK → opcja PR (zamiast lub obok `/git-end`).  
+- **Finishing** — lokalne testy OK → opcja PR (zamiast lub obok `git-end`).  
 - **Autopilot** — po PR: CI/komentarze aż merge-ready (bez auto-merge).
 
 Chronione: `main` / `master` / `dev`.
@@ -73,14 +73,14 @@ Chronione: `main` / `master` / `dev`.
 ## Flow jednej zmiany
 
 1. (Opc.) `/grill-me` — **tylko** gdy scope niejasny  
-2. `/git-start` — issue + branch  
+2. `git-start` — issue + branch  
 3. (Opc.) Worktree (Managed Worktree: `node .ai/worktree.mjs add` lub Superpowers/natywny + `sync`)  
 4. MCP `get_bundle` + `get_overlay` (+ `get_language`; `codegen:` z profilu)  
 5. Implementacja (+ opc. `/tdd`)  
-6. (Opc.) `/git-check` — gdy scope/diff rozjechał się z issue  
-7. `/git-commit` — Conventional Commit(s) z lokalnego diffa  
-8. `/review-bugbot` + **minimalny** stack (`/review-backend` i/lub `/review-frontend`; nie wszystkie `/review-*`)  
-9. `/git-end` **lub** Superpowers finishing → PR  
+6. (Opc.) `git-check` — gdy scope/diff rozjechał się z issue  
+7. `git-commit` — Conventional Commit(s) z lokalnego diffa  
+8. `review-bugbot` + **minimalny** stack (`review-backend` i/lub `review-frontend`; nie wszystkie `review-*`)  
+9. `git-end` **lub** Superpowers finishing → PR  
 10. (Opc.) Autopilot → CI green → merge  
 
 ## Niska pewność
@@ -108,22 +108,22 @@ Wyjście (odpowiedzi, statusy, prompty dla subagentów, hand-backi) idzie w jęz
 
 | Prefiks | Przykłady | Źródło |
 |---------|-----------|--------|
-| `/compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
-| `/kit-project-begin` | Po `kit-ai install`: pytania o projekt → Profil + `.ai/project.md` → reload | kit |
-| `/kit-project-edit` | Jedna zmiana konfiguracji albo odstępstwo od modułu w `.ai/project.md` | kit |
-| `/git-*` | `/git-start`, `/git-check`, `/git-commit`, `/git-end` | kit |
-| `/review-*` | `/review-backend`, `/review-bugbot` | kit + Cursor |
-| `/subagent-*` | `/subagent-backend` | kit |
-| `/teacher-*` | `/teacher-backend`, `/teacher-frontend`, `/teacher-architecture` | kit |
-| `/night-run` | `/goal Wykonaj #A–#C wg /night-run …` — nocna praca na liście issue | kit |
+| `compact` | **Cursor only** — alias Summarize; nie Claude/Codex | kit → `.cursor/skills/compact/` |
+| `kit-project-begin` | Po `kit-ai install`: pytania o projekt → Profil + `.ai/project.md` → reload | kit |
+| `kit-project-edit` | Jedna zmiana konfiguracji albo odstępstwo od modułu w `.ai/project.md` | kit |
+| `git-*` | `git-start`, `git-check`, `git-commit`, `git-end` | kit |
+| `review-*` | `review-backend`, `review-bugbot` | kit + Cursor |
+| `subagent-*` | `subagent-backend` | kit |
+| `teacher-*` | `teacher-backend`, `teacher-frontend`, `teacher-architecture` | kit |
+| `night-run` | `/goal Wykonaj #A–#C wg night-run …` — nocna praca na liście issue | kit |
 | `/grill-me`, `/tdd`, … | proces | mattpocock |
 | Superpowers / Autopilot | worktree, finishing, CI loop | plugin / skills Cursor |
 
 ## Code review
 
-Przed `git push`: `/review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `/review-security`.  
+Przed `git push`: `review-bugbot` + minimalny stack (nie cały wachlarz). Auth/płatności: `review-security`.  
 Format stack review: `Severity | Location | Finding | Fix`.  
-`/review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
+`review-tests` = dowód że komendy przechodzą — nie drugi stylista.  
 Guardy (zero `ask`): `git-guard.mjs` (deny `reset --hard`, `clean -f`, force/push na main/master/dev, `branch -D`, `checkout .`), `sensitive-files-guard.mjs` (deny sekrety, lockfile), `server-guard.mjs` (tylko VPS: deny kontenery, instalacja paczek, buildy, e2e, `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn` z `reload`).
 Bootstrap: `scripts/bootstrap-project.sh`.
 
