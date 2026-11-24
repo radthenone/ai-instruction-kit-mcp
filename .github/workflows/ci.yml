@@ -27,8 +27,9 @@ jobs:
 
       # `tests/` jest importowalne w runtime (patrz [tool.ty.environment] w pyproject),
       # więc type checker musi biec z tą samą konfiguracją co IDE.
+      # ty przypięty: nieprzypięta wersja zaczęła zgłaszać błędy w testach (#551).
       - name: Typecheck
-        run: uv tool run ty check
+        run: uv tool run ty@0.0.109 check
 
       - name: Smoke FastMCP import (mcp 1.x pin)
         run: |
