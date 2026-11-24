@@ -163,6 +163,8 @@ skills-lock.json
 !.agents/skills/review-architecture/**
 !.agents/skills/review-bugbot/
 !.agents/skills/review-bugbot/**
+!.agents/skills/review-council/
+!.agents/skills/review-council/**
 !.agents/skills/review-edge/
 !.agents/skills/review-edge/**
 !.agents/skills/review-security/
