@@ -81,6 +81,28 @@ def _entries(lines: list[str]) -> list[tuple[int, str, str]]:
     return found
 
 
+def _unquote(raw: str, where: str) -> str:
+    """
+    Zdejmuje parę cudzysłowów z wartości pola; niedomknięty cudzysłów to błąd.
+
+    Args:
+        raw: Surowa wartość z Profilu, po wycięciu komentarzy.
+        where: Ścieżka pola do komunikatu błędu.
+
+    Returns:
+        str: Wartość bez cudzysłowów i białych znaków na brzegach.
+
+    Raises:
+        ProfileError: Cudzysłów otwarty bez zamknięcia albo niezgodny.
+    """
+    quotes = ("'", '"')
+    if raw[:1] in quotes or raw[-1:] in quotes:
+        if len(raw) < 2 or raw[0] != raw[-1]:
+            raise ProfileError(f"Profil: `{where}` ma niedomknięte cytowanie: `{raw}`.")
+        return raw[1:-1].strip()
+    return raw.strip()
+
+
 def _targets_tree(lines: list[str]) -> dict:
     """Zagnieżdżone słowniki z wcięć; pusta wartość = podsłownik, pozostałe = tekst."""
     root: dict = {}
@@ -111,7 +133,7 @@ def _targets_tree(lines: list[str]) -> dict:
                 raise ProfileError(
                     f"Profil: `{path}.{key}` zapisz inline, np. `options: [{{ id: effort, value: low }}]`."
                 )
-            node[key] = value.strip().strip("'\"")
+            node[key] = _unquote(value.strip(), f"{path}.{key}")
             scalar = (indent, f"{path}.{key}")
         else:
             child: dict = {}
@@ -131,7 +153,7 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
             f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}` (wpisy rozdziel przecinkiem)."
         )
     options = [
-        {"id": m.group(1).strip("'\"").strip(), "value": m.group(2).strip("'\"").strip()} for m in _OPTION.finditer(body)
+        {"id": _unquote(m.group(1), where), "value": _unquote(m.group(2), where)} for m in _OPTION.finditer(body)
     ]
     seen: set[str] = set()
     for opt in options:

@@ -309,6 +309,21 @@ class TestParseTargets(unittest.TestCase):
             parse_profile(text + "{ id: a, value: b }" + " " * 30000 + "x]\n")
         self.assertLess(time.monotonic() - started, 2.0)
 
+    def test_unclosed_quote_in_option_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            '      options: [{ id: effort, value: "low }]\n'
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_unclosed_quote_in_model_is_error(self) -> None:
+        text = 'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "claude-haiku-5-5\n'
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("cytowanie", str(ctx.exception))
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 
