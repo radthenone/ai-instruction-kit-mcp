@@ -307,8 +307,10 @@ class TestParseTargets(unittest.TestCase):
         for raw in ('""', '",,,"', ""):
             with self.subTest(raw=raw), self.assertRaises(ProfileError):
                 parse_profile(f"agents:\n  light: {raw}\n")
-        _, agents = parse_profile("agents:\n  light: []\n")
-        self.assertEqual(agents["light"], [])
+        for raw in ("[]", "[ ]"):
+            with self.subTest(raw=raw):
+                _, agents = parse_profile(f"agents:\n  light: {raw}\n")
+                self.assertEqual(agents["light"], [])
 
     def test_empty_client_is_error(self) -> None:
         with self.assertRaises(ProfileError) as ctx:

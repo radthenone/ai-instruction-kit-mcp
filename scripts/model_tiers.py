@@ -335,7 +335,9 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
             if "[" in body or "]" in body:
                 raise ProfileError(f"Profil: `agents.{tier}` ma niedopasowane nawiasy `[]`.")
             names = [_unquote(n.strip(), f"agents.{tier}") for n in body.split(",") if n.strip()]
-        if not names and value.strip() != "[]":
+        stripped = value.strip()
+        explicit_empty = stripped.startswith("[") and stripped.endswith("]") and stripped[1:-1].strip() == ""
+        if not names and not explicit_empty:
             raise ProfileError(f"Profil: `agents.{tier}` jest pusty — wpisz nazwy agentów albo `[]`.")
         if "" in names:
             raise ProfileError(f"Profil: pusta nazwa agenta w `agents.{tier}`.")
