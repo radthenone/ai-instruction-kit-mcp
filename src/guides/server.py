@@ -302,7 +302,7 @@ def get_council() -> str:
     if not config.members and any("brak bloku `council:`" in n for n in config.notices):
         return (
             "# Rada (council): brak bloku `council:` w Profilu\n\n"
-            "Skonfiguruj skład rady w `.ai/project.profile.yaml` przez `/kit-project-edit` "
+            "Skonfiguruj skład rady w `.ai/project.profile.yaml` przez `/kit-ai:kit-project-edit` "
             "(blok `council:` z `rounds` i trzema członkami w `members`)."
         )
     lines = ["# Rada (council)", "", f"- Rundy: {config.rounds}"]

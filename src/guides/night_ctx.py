@@ -1,4 +1,4 @@
-"""Nagłówek kontekstu nocy ``/night-run`` — jedno deterministyczne źródło (#314).
+"""Nagłówek kontekstu nocy ``/kit-ai:night-run`` — jedno deterministyczne źródło (#314).
 
 Orkiestrator nie wnioskuje już ``Host`` z treści bundla: uruchamia ``kit-ai night-ctx``
 i wkleja wynik bez zmian. Ten sam moduł liczy BASE wspólną regułą bazy, bramki szybkie
@@ -87,7 +87,7 @@ def _is_strict_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
 
 
 def base_branch(workspace: Path, overlay_text: str) -> tuple[str, str]:
-    """BASE i powód — ta sama reguła co w ``/git-start`` i ``/night-run``.
+    """BASE i powód — ta sama reguła co w ``/kit-ai:git-start`` i ``/kit-ai:night-run``.
 
     Returns:
         tuple: ``(gałąź, powód)`` — ``base: z project.md``, ``dev aktywny``,

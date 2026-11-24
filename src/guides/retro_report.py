@@ -167,7 +167,7 @@ def report_command(workspace: Path, *, cache_root: Path, gh_run: GhRun | None = 
         lines += _proposal_lines(group)
     if proposals:
         lines.append(
-            "Karty zakłada człowiek po akceptacji: /create-task (zmiana kitu) albo "
-            "/kit-project-edit (zmiana w projekcie). Raport niczego nie zakłada."
+            "Karty zakłada człowiek po akceptacji: /kit-ai:create-task (zmiana kitu) albo "
+            "/kit-ai:kit-project-edit (zmiana w projekcie). Raport niczego nie zakłada."
         )
     return "\n".join(lines)

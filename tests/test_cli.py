@@ -52,7 +52,7 @@ class TestInstall(_BootstrapTestCase):
 
             self.assertIn('"mcpServers"', out)
             self.assertIn("claude: .mcp.json", out)
-            self.assertIn("/kit-project-begin", out)
+            self.assertIn("/kit-ai:kit-project-begin", out)
             # #122: brak hooka pre-push, Superpowers z settings.json, blok „Dalej”.
             self.assertFalse((app / "git-hooks").exists())
             settings = json.loads((app / ".claude" / "settings.json").read_text(encoding="utf-8"))

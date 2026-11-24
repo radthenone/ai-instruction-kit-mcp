@@ -19,6 +19,6 @@ Edit the right-hand column to match whatever vocabulary you actually use.
 Execution condition labels (`needs-local`) are distinct from triage state labels. A ticket can have both `ready-for-agent` and `needs-local` simultaneously (warunek wykonania, nie stan triage).
 
 - `needs-local`: The ticket requires execution/verification on a local machine (e.g. device tests, manual UI checks, hardware access, or dependency/lockfile updates that cannot be built/verified on VPS).
-  - On `Host: vps`, `/night-run` skips this ticket (`skipped: needs-local`).
-  - On `Host: local`, `/night-run` processes it normally.
+  - On `Host: vps`, `/kit-ai:night-run` skips this ticket (`skipped: needs-local`).
+  - On `Host: local`, `/kit-ai:night-run` processes it normally.
   - **Removal by user / zdjęcie etykiety przez użytkownika**: The user can instruct the agent to remove `needs-local` (or run `gh issue edit <N> --remove-label needs-local`). The next run on VPS will then pick up the ticket.

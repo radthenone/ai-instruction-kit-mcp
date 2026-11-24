@@ -27,7 +27,7 @@ Opcje:
                       (lista po przecinku; alias: copilot→vscode). Domyślnie: all
   --from SOURCE       Źródło uvx: ścieżka lokalna lub git+https://… (domyślnie: placeholder GitHub)
   --with-overlay      Skopiuj templates/project.md → .ai/project.md (jeśli brak)
-  --skip-agents       Nie kopiuj agentów (/git-*, /review-*, /subagent-*) ani skilli
+  --skip-agents       Nie kopiuj agentów (/kit-ai:git-*, /kit-ai:review-*, /kit-ai:subagent-*) ani skilli
                       z templates/shared/skills/
   --with-plugins      Best-effort doinstaluj zewnętrzne pluginy (mattpocock skills przez npx;
                       Superpowers/Autopilot tylko instrukcja — to marketplace pluginów Claude/Cursor,
@@ -276,7 +276,7 @@ prune_legacy_claude_commands() {
 }
 
 # Komendy kita spod starej ścieżki OpenCode (#527): przed #527 agentów, skille i
-# /headless renderowaliśmy do `.opencode/command/<nazwa>.md` (wywołanie `/<nazwa>`).
+# /kit-ai:headless renderowaliśmy do `.opencode/command/<nazwa>.md` (wywołanie `/<nazwa>`).
 # Teraz to `.opencode/commands/kit-ai/<nazwa>.md` (`/kit-ai/<nazwa>`), a `.opencode/command/`
 # zostaje tylko dla `/goal` i `/loop` — te przenosimy osobno, więc ich tu nie ruszamy.
 prune_legacy_opencode_commands() {
@@ -736,7 +736,7 @@ def gate(match: re.Match) -> str:
 
 dest = Path(os.environ["DEST"])
 for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
-    # /headless ma sens dopiero przy dwóch klientach z trybem headless (#169).
+    # /kit-ai:headless ma sens dopiero przy dwóch klientach z trybem headless (#169).
     if src.stem == "headless" and os.environ["HEADLESS"] != "1":
         print(src.stem)
         continue
@@ -781,7 +781,7 @@ install_design_handoff() {
   fi
 }
 
-# /headless (#169): wrapper wspólny dla hostów + `@KIT_HOST@` w pliku agenta każdego
+# /kit-ai:headless (#169): wrapper wspólny dla hostów + `@KIT_HOST@` w pliku agenta każdego
 # klienta, żeby wrapper wiedział, kto woła (wykonawca != host). Wykonawcy = klienci
 # z trybem headless i guardami kita — ta sama lista co EXECUTORS w headless.mjs.
 HEADLESS_EXECUTORS="claude opencode antigravity"
@@ -832,10 +832,10 @@ install_headless() {
       sed "s/@KIT_HOST@/$c/g" "$TARGET/$rel" > "$TARGET/$rel.tmp" && mv "$TARGET/$rel.tmp" "$TARGET/$rel"
     done
   done
-  echo "  + .ai/headless.mjs (/headless — wykonawcy: $HEADLESS_EXECUTORS)"
+  echo "  + .ai/headless.mjs (/kit-ai:headless — wykonawcy: $HEADLESS_EXECUTORS)"
 }
 
-# Watchdog nocy /night-run (#249): skrypt odpalany przez Bash w tle — tylko z klientem claude
+# Watchdog nocy /kit-ai:night-run (#249): skrypt odpalany przez Bash w tle — tylko z klientem claude
 # (tam działa `run_in_background`). Bez claude albo z --skip-agents: usuwany przy reloadzie.
 install_night_run_watchdog() {
   if ! client_enabled claude || [[ "$SKIP_AGENTS" -ne 0 ]]; then
@@ -844,10 +844,10 @@ install_night_run_watchdog() {
   fi
   copy_prefixed shared "$KIT_ROOT/templates/shared/night-run/watchdog.sh" "$TARGET/.ai/night-run-watchdog.sh"
   chmod +x "$TARGET/.ai/night-run-watchdog.sh"
-  echo "  + .ai/night-run-watchdog.sh (watchdog /night-run)"
+  echo "  + .ai/night-run-watchdog.sh (watchdog /kit-ai:night-run)"
 }
 
-# Karta transportu T3 Code dla /night-run (#474) — instalowana jako .ai/night-run-t3.md
+# Karta transportu T3 Code dla /kit-ai:night-run (#474) — instalowana jako .ai/night-run-t3.md
 # tylko gdy Profil ma `t3code` w `integrations:` (#514). Bez agentów (--skip-agents) albo bez
 # `t3code` karta jest usuwana przy reloadzie. Profil nieczytelny, niejednoznaczny lub bez PyYAML: stan karty bez zmian.
 install_night_run_t3() {
@@ -865,7 +865,7 @@ install_night_run_t3() {
     *) echo "  ! nie ustalono t3code (kod $rc) — karta T3 bez zmian" >&2; return 0 ;;
   esac
   copy_prefixed shared "$KIT_ROOT/templates/shared/night-run/t3.md" "$TARGET/.ai/night-run-t3.md"
-  echo "  + .ai/night-run-t3.md (karta transportu T3 /night-run)"
+  echo "  + .ai/night-run-t3.md (karta transportu T3 /kit-ai:night-run)"
 }
 
 # Usuwa katalog skilla kita, gdy zawiera samo SKILL.md. Drugi argument 1 = agent wyłączony Tierem:
@@ -1047,7 +1047,7 @@ install_matt_contract() {
   "$PYTHON_BIN" "$KIT_ROOT/scripts/matt_contract.py" "$TARGET" "$KIT_ROOT"
 }
 
-# BUGBOT.md w root — niezależnie od --clients, bo /review-bugbot (manualny odpowiednik)
+# BUGBOT.md w root — niezależnie od --clients, bo /kit-ai:review-bugbot (manualny odpowiednik)
 # ma działać dla WSZYSTKICH klientów (Claude, Codex, VS Code…), nie tylko Cursor.
 # .cursor/BUGBOT.md (install_cursor) zostaje osobno — to dla natywnej usługi Cursor
 # BugBot, która czyta z tamtej ścieżki; ta funkcja to nie duplikat, to inny konsument.
@@ -1056,7 +1056,7 @@ install_bugbot_md_once() {
   [[ -f "$TARGET/BUGBOT.md" ]] && existed=1
   copy_bugbot_md "$TARGET/BUGBOT.md"
   if [[ "$existed" -eq 0 ]]; then
-    echo "  + BUGBOT.md (root — dla /review-bugbot wszystkich klientów)"
+    echo "  + BUGBOT.md (root — dla /kit-ai:review-bugbot wszystkich klientów)"
   fi
 }
 
@@ -1583,7 +1583,7 @@ warn_tracked_machine_files
 echo ""
 echo "Gotowe. Zrestartuj IDE w $TARGET."
 echo "Clients: ${CLIENTS_ARG}"
-echo "Slash: /git-start, /git-check, /git-commit, /git-end, /review-*, /subagent-*, /teacher-*"
+echo "Slash: /kit-ai:git-start, /kit-ai:git-check, /kit-ai:git-commit, /kit-ai:git-end, /kit-ai:review-*, /kit-ai:subagent-*, /kit-ai:teacher-*"
 if client_enabled cursor; then
   echo "Slash (Cursor): /compact (= Summarize; nie dla Claude/Codex)"
 fi

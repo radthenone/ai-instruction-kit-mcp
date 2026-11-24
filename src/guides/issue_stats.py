@@ -288,8 +288,8 @@ def detect_merged_issues(issues: list[IssueInfo], workspace: Path, gh_run: GhRun
 
 
 def _night_run_command(issue: IssueInfo) -> str:
-    """Gotowa komenda ``/night-run`` dla issue."""
-    return f"/night-run #{issue.number}"
+    """Gotowa komenda ``/kit-ai:night-run`` dla issue."""
+    return f"/kit-ai:night-run #{issue.number}"
 
 
 def _gh_edit_command(issue: IssueInfo, action: str) -> str:
@@ -474,11 +474,11 @@ def render_report(issues: list[IssueInfo], is_partial: bool = False) -> str:
                 lines.append(f"  1. *Scope & Alignment:* `/grill-me` (wyjaśnienie otwartych pytań i nadanie `ready-for-agent`)")
             else:
                 lines.append(f"  1. *Scope & Alignment:* pominięte (gotowa specyfikacja `ready-for-agent`)")
-            lines.append(f"  2. *Start i izolacja:* `/git-start #{i.number}` (+ opcjonalny worktree)")
+            lines.append(f"  2. *Start i izolacja:* `/kit-ai:git-start #{i.number}` (+ opcjonalny worktree)")
             lines.append(f"  3. *Implementacja:* `/tdd` (czerwony test → implementacja → zielony → refactor)")
-            lines.append(f"  4. *Commit:* `/git-commit` (Conventional Commits)")
-            lines.append(f"  5. *Code Review:* `/review-bugbot` + review domenowe (`/review-backend` / `/review-frontend`)")
-            lines.append(f"  6. *Finisz:* `/git-end` (lub Superpowers finishing → PR → merge)")
+            lines.append(f"  4. *Commit:* `/kit-ai:git-commit` (Conventional Commits)")
+            lines.append(f"  5. *Code Review:* `/kit-ai:review-bugbot` + review domenowe (`/kit-ai:review-backend` / `/kit-ai:review-frontend`)")
+            lines.append(f"  6. *Finisz:* `/kit-ai:git-end` (lub Superpowers finishing → PR → merge)")
             lines.append(f"- **Komenda night-run:** `{_night_run_command(i)}`")
             if not i.is_ready:
                 lines.append(f"- **Gotowe polecenie zmiany etykiety:** `{_gh_edit_command(i, 'ready')}`")
@@ -506,7 +506,7 @@ def render_report(issues: list[IssueInfo], is_partial: bool = False) -> str:
             nl = "tak" if i.needs_local else "—"
             q_count = f"{len(i.open_questions)} pytań" if i.open_questions else "brak"
             if i.is_ready:
-                next_step = "gotowe do `/night-run`"
+                next_step = "gotowe do `/kit-ai:night-run`"
             elif i.open_questions:
                 next_step = "zamknąć pytania + `ready-for-agent`"
             else:
@@ -542,14 +542,14 @@ def render_report(issues: list[IssueInfo], is_partial: bool = False) -> str:
             segment_idx = 1
             if solo:
                 solo_cmds = " ".join(f"#{i.number}" for i in solo)
-                lines.append(f"- **Segment {segment_idx} (szybkie / niezależne):** `/night-run {solo_cmds} /review-bugbot`")
+                lines.append(f"- **Segment {segment_idx} (szybkie / niezależne):** `/kit-ai:night-run {solo_cmds} /kit-ai:review-bugbot`")
                 segment_idx += 1
             if dependent_or_heavy:
                 dep_cmds = " ".join(f"#{i.number}" for i in dependent_or_heavy)
-                lines.append(f"- **Segment {segment_idx} (złożone / powiązane):** `/night-run {dep_cmds} /review-bugbot`")
+                lines.append(f"- **Segment {segment_idx} (złożone / powiązane):** `/kit-ai:night-run {dep_cmds} /kit-ai:review-bugbot`")
             lines.append("")
             all_cmds = " ".join(f"#{i.number}" for i in ready_ordered)
-            lines.append(f"**Łączna komenda dla wszystkich gotowych:** `/night-run {all_cmds} /review-bugbot`")
+            lines.append(f"**Łączna komenda dla wszystkich gotowych:** `/kit-ai:night-run {all_cmds} /kit-ai:review-bugbot`")
         else:
             lines.append("Brak zadań z etykietą `ready-for-agent`. Przygotuj zadania powyższymi komendami.")
         lines.append("")

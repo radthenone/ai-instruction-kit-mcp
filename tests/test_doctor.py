@@ -692,7 +692,7 @@ class TestStaleKitContent(unittest.TestCase):
 
             self.assertEqual(len(report.warnings), 1)
             self.assertEqual(report.fixable, report.warnings)
-            self.assertIn('/kit-project-edit "napraw zgłoszenia doctora"', report.warnings[0].message)
+            self.assertIn('/kit-ai:kit-project-edit "napraw zgłoszenia doctora"', report.warnings[0].message)
 
 
 class TestUncertainMigration(unittest.TestCase):
@@ -1265,7 +1265,7 @@ class TestCli(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertEqual(
                 out.rstrip().splitlines()[-1],
-                'doctor: 1 do naprawy → /kit-project-edit "napraw zgłoszenia doctora"',
+                'doctor: 1 do naprawy → /kit-ai:kit-project-edit "napraw zgłoszenia doctora"',
             )
             self.assertEqual(json.loads(state.read_text(encoding="utf-8"))["warnings"], 1)
 
@@ -1386,7 +1386,7 @@ class TestMcpReload(unittest.TestCase):
                 out = server.reload_workspace(dry_run=False)
 
             self.assertIn("doctor: OSTRZEŻENIE", out)
-            self.assertIn('Uruchom teraz `/kit-project-edit "napraw zgłoszenia doctora"`', out)
+            self.assertIn('Uruchom teraz `/kit-ai:kit-project-edit "napraw zgłoszenia doctora"`', out)
 
 
 class TestMcpStatus(unittest.TestCase):
