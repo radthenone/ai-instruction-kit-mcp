@@ -400,7 +400,7 @@ Z `clean-slate: on`: Clean Slate przysługuje raz na ticket, gdy wyczerpie się 
    (przypadek A). Stary branch zostaje (jako historia poprzedniego podejścia); jeśli istniał już otwarty PR, zamykasz go
    `gh pr close <PR> --comment "Zastąpiony przez Clean Slate"`. Nowy branch: `<typ>/<N>-<slug>-clean-slate`.
 3. Świeży subagent ticketu od kroku 1, z modelem z `night-run.clean-slate` w Profilu (wpis `target` z #515: `providerInstanceId`, `model`, `options` lub ref `target`). Brak sekcji = model jak dotąd.
-   Do parametrów zlecenia dopisujesz linię „Clean Slate: użyty”, notatkę: „Poprzednie podejście zawiodło
+   W `## Stan` CTX trwale zapisujesz linię `clean-slate: #<N> użyty` (co po wznowieniu i restarcie gwarantuje, że Clean Slate nie zostanie uruchomiony ponownie dla tego ticketu), do parametrów zlecenia dopisujesz linię „Clean Slate: użyty”, notatkę: „Poprzednie podejście zawiodło
    z powodu błędu X. Zacznij od czystej karty i unikaj ścieżki Y” (X i Y z hand-backu) oraz linię `coderabbit-rundy: #<N> <R>` z `## Stan`. Nowy subagent ma
    własny sufit rund, limit 6 obejmuje cały ticket; drugiego Clean Slate nie ma, więc wyczerpany sufit → needs-human. Twardy sufit kosztu z `clean-slate: on` to 10 delegacji na ticket (3 + 6 + 1 Clean Slate).
 
