@@ -315,6 +315,16 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("options: z wpisu profilu albo z parametru nocy", section)
         self.assertIn("pole podane jawnie w parametrze nocy nadpisuje wpis", section)
 
+    def test_antigravity_effort_option_id_is_thought_level(self) -> None:
+        """CodeRabbit: jeden identyfikator opcji wysiłku Antigravity w całej karcie."""
+        self.assertNotIn("thinking_level", self.card_text)
+        self.assertIn('`id: "thought_level"` (Antigravity)', self.card_text)
+
+    def test_default_instance_rule_covers_profile_entries(self) -> None:
+        """CodeRabbit: reguła domyślnej instancji obejmuje też providerInstanceId z wpisu profilu."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertIn("`providerInstanceId` z wpisu profilu, a bez wpisu z tabeli", section)
+
     def test_disabled_default_provider_instance_is_needs_human(self) -> None:
         """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""
         section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]

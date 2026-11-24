@@ -37,7 +37,7 @@ _FIELD = r"[^,{}\s](?:[^,{}]*[^,{}\s])?"
 _OPTION = re.compile(rf"\{{\s*id:\s*({_FIELD})\s*,\s*value:\s*({_FIELD})\s*\}}")
 _OPTION_NC = rf"\{{\s*id:\s*{_FIELD}\s*,\s*value:\s*{_FIELD}\s*\}}"
 # Lista opcji: wpisy oddzielone przecinkiem, dopuszczony końcowy przecinek (składnia YAML).
-_OPTIONS_BODY = re.compile(rf"\s*(?:{_OPTION_NC}(?:\s*,\s*{_OPTION_NC})*\s*,?)?\s*")
+_OPTIONS_BODY = re.compile(rf"(?:{_OPTION_NC}(?:\s*,\s*{_OPTION_NC})*\s*,?)?")
 
 
 class ProfileError(ValueError):
@@ -126,7 +126,7 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
     if not isinstance(raw, str) or not (raw.startswith("[") and raw.endswith("]")):
         raise ProfileError(form)
     body = raw[1:-1]
-    if not _OPTIONS_BODY.fullmatch(body):
+    if not _OPTIONS_BODY.fullmatch(body.strip()):
         raise ProfileError(
             f"Profil: `{where}.options` ma wpis poza formatem `{{ id: …, value: … }}` (wpisy rozdziel przecinkiem)."
         )
