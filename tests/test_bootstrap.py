@@ -580,8 +580,8 @@ class TestTierAgents(_BootstrapTestCase):
                     self.assertNotIn("\ntier:", text)
 
 
-class TestBugbotProjectRules(_BootstrapTestCase):
-    """BUGBOT.md odświeża się z szablonu, a blok ``project:rules`` zostaje (#240)."""
+class _KitHistoryCase(_BootstrapTestCase):
+    """Baza bez testów: kopia kita z gitem i commitem starego szablonu BUGBOT.md (#240, #269)."""
 
     # Render starej wersji szablonu — bez bloku `project:rules`.
     OLD_TEMPLATE = """# Bugbot — reguły projektu
@@ -629,6 +629,10 @@ Intro (stara wersja szablonu).
         self._git(root, "add", ".")
         self._git(root, "commit", "-q", "-m", "old template")
         return root
+
+
+class TestBugbotProjectRules(_KitHistoryCase):
+    """BUGBOT.md odświeża się z szablonu, a blok ``project:rules`` zostaje (#240)."""
 
     def test_block_survives_reload_and_rest_is_refreshed(self) -> None:
         """Blok reguł projektu wraca bajt w bajt, reszta pliku jest z szablonu."""
@@ -699,13 +703,8 @@ Intro (stara wersja szablonu).
             self.assertIn("  ~ .cursor/BUGBOT.md: reguły", out)
 
 
-class TestAgentsProjectBlock(_BootstrapTestCase):
+class TestAgentsProjectBlock(_KitHistoryCase):
     """AGENTS.md: część kita odświeżana przy reloadzie, blok ``project:agents`` zostaje (#269)."""
-
-    # Kopia kita z gitem jak w testach BUGBOT.md (bez dziedziczenia ich testów).
-    OLD_TEMPLATE = TestBugbotProjectRules.OLD_TEMPLATE
-    _git = TestBugbotProjectRules._git
-    _kit_with_history = TestBugbotProjectRules._kit_with_history
 
     OLD_AGENTS = "# AGENTS.md\n\nHooki: `.claude/hooks/gate-push.sh`.\n"
 
