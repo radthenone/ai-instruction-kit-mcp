@@ -1,6 +1,6 @@
 ---
 name: issue-stats
-description: Analiza i priorytetyzacja otwartych issues pod kątem gotowości do pracy autonomicznej (/kit-ai:night-run). Generuje 4-sekcyjny raport statusu, roadmapy, metodyki i segmentacji. Wywołuj jako /kit-ai:issue-stats.
+description: "Analiza i priorytetyzacja otwartych issues pod kątem gotowości do pracy autonomicznej (/kit-ai:night-run). Generuje 4-sekcyjny raport statusu, roadmapy, metodyki i segmentacji. Wywołuj jako /kit-ai:issue-stats."
 model: claude-haiku-5-5
 effort: low
 ---

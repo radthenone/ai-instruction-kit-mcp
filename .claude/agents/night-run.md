@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Autonomiczna praca na liście issue w nocy albo w dzień (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /kit-ai:headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /kit-ai:night-run. Wywołuj jako /kit-ai:night-run.
+description: "Autonomiczna praca na liście issue w nocy albo w dzień (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /kit-ai:headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /kit-ai:night-run. Wywołuj jako /kit-ai:night-run."
 model: claude-haiku-5-5
 effort: max
 ---

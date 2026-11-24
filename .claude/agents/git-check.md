@@ -1,6 +1,6 @@
 ---
 name: git-check
-description: Sync GitHub issue title/body to actual file diffs. Use when /kit-ai:git-check, issue stale vs branch work. Wywołuj jako /kit-ai:git-check.
+description: "Sync GitHub issue title/body to actual file diffs. Use when /kit-ai:git-check, issue stale vs branch work. Wywołuj jako /kit-ai:git-check."
 model: claude-haiku-5-5
 effort: low
 ---

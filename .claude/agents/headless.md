@@ -1,6 +1,6 @@
 ---
 name: headless
-description: Zleć zadanie innemu klientowi kitu w trybie headless (np. tańszemu modelowi w OpenCode) i dostań krótki raport. Use when /kit-ai:headless <wykonawca> "<treść>", delegowanie implementacji do innego CLI, praca pod /goal z tańszym wykonawcą. Wywołuj jako /kit-ai:headless.
+description: "Zleć zadanie innemu klientowi kitu w trybie headless (np. tańszemu modelowi w OpenCode) i dostań krótki raport. Use when /kit-ai:headless <wykonawca> \"<treść>\", delegowanie implementacji do innego CLI, praca pod /goal z tańszym wykonawcą. Wywołuj jako /kit-ai:headless."
 model: claude-haiku-5-5
 effort: low
 ---

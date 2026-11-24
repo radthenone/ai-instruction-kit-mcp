@@ -1,6 +1,6 @@
 ---
 name: teacher-architecture
-description: Nauczyciel architektury — granice FE/BE, kontrakt API, infra, wybór narzędzi, odwracalność decyzji. Use when planujesz większą przeróbkę, wybierasz technologię/wzorzec albo nie wiesz gdzie coś powinno mieszkać. Uczy, nie edytuje. Wywołuj jako /kit-ai:teacher-architecture.
+description: "Nauczyciel architektury — granice FE/BE, kontrakt API, infra, wybór narzędzi, odwracalność decyzji. Use when planujesz większą przeróbkę, wybierasz technologię/wzorzec albo nie wiesz gdzie coś powinno mieszkać. Uczy, nie edytuje. Wywołuj jako /kit-ai:teacher-architecture."
 readonly: true
 model: claude-haiku-5-5
 effort: max

@@ -1,6 +1,6 @@
 ---
 name: review-architecture
-description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /kit-ai:review-architecture.
+description: "Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /kit-ai:review-architecture."
 readonly: true
 model: claude-opus-5-5
 effort: medium

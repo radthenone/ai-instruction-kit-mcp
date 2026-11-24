@@ -1,6 +1,6 @@
 ---
 name: review-council
-description: Rada trzech delegatów dyskutujących w rundach o zmianie lub architekturze. Use when /kit-ai:review-council, council, rada modeli. Wywołuj jako /kit-ai:review-council.
+description: "Rada trzech delegatów dyskutujących w rundach o zmianie lub architekturze. Use when /kit-ai:review-council, council, rada modeli. Wywołuj jako /kit-ai:review-council."
 model: claude-haiku-5-5
 effort: max
 ---

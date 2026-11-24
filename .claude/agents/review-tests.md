@@ -1,6 +1,6 @@
 ---
 name: review-tests
-description: Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /kit-ai:review-tests.
+description: "Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /kit-ai:review-tests."
 readonly: true
 model: claude-opus-5-5
 effort: medium

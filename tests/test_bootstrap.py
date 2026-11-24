@@ -18,6 +18,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 from _shell import is_ci, resolve_bash
 
 from guides import server
@@ -1062,6 +1064,20 @@ class TestModelTiers(_BootstrapTestCase):
                     "\ntargets:\n  claude:\n    turbo:\n      providerInstanceId: claudeAgent\n",
                 )
             self.assertIn("targets.claude.turbo", str(ctx.exception))
+
+
+class TestClaudeAgentDescription(_BootstrapTestCase):
+    """Kopia agenta Claude z " #" w opisie wraca z YAML w całości (#547)."""
+
+    def test_generated_claude_agent_keeps_full_description(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
+            text = (workspace / ".claude" / "agents" / "git-end.md").read_text(encoding="utf-8")
+            meta = yaml.safe_load(text.split("---\n")[1])
+            self.assertIn("(Closes #N)", meta["description"])
+            self.assertTrue(meta["description"].endswith("(Dawniej git-pr.)"), meta["description"])
 
 
 class TestOpencodeGuards(_BootstrapTestCase):
