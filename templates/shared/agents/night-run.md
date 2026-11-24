@@ -392,7 +392,7 @@ U klientów bez `CronCreate` także limit API; w Claude Code limit API to przypa
 **Clean Slate: tylko na żądanie (`clean-slate: on`).**
 Domyślnie wyłączony. Włącza go wyłącznie argument celu `clean-slate: on` (np. `/goal Wykonaj #A–#C wg /kit-ai:night-run clean-slate: on`). Profil wskazuje tylko model: `night-run.clean-slate` w kształcie wpisu `target` z #515 (ref `target: <klient>.<tier>` z nadpisaniem `model` / `options` albo pełny wpis `{ providerInstanceId, model, options }`). Dowolny provider: claude, codex, antigravity, opencode. Brak bloku przy `clean-slate: on` = model ticketu jak dotąd. Bez `clean-slate: on` Clean Slate nie rusza, nawet gdy Profil ma blok.
 Z `clean-slate: on`: Clean Slate przysługuje raz na ticket, gdy wyczerpie się pula 3 albo 6 albo zadziała bezpiecznik, przed needs-human.
-1. Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`:
+1. Przed resetem orkiestrator zapisuje w `## Stan` CTX etap `ticket: #<N> clean-slate: w toku` (co gwarantuje, że wznowienie po restarcie nie uzna Clean Slate za powtórnie dostępny). Warunek bezpieczeństwa w worktree ticketu, po `git fetch origin`:
    - dla podejścia przed pierwszym pushem (z puli 3 rund): `git status --porcelain` pusty (brak niezacommitowanych zmian roboczych); niespełniony warunek → needs-human bez resetu (przypadek A);
    - dla podejścia po pushu (z puli 6 rund lub po otwarciu PR): `git status --porcelain` pusty oraz `git log origin/<branch>..HEAD` pusty (wszystkie commity wypchnięte); niespełniony warunek, błąd fetch albo komendy → needs-human bez resetu (przypadek A).
 2. Reset: `git switch --no-overwrite-ignore --detach origin/<BASE>` (bez tej opcji git nadpisuje pliki
