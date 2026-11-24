@@ -341,6 +341,7 @@ class TestPruneAndRemove(_BootstrapTestCase):
                 ".claude/skills",
                 ".claude/skills/kit-ai",
                 ".opencode/command",
+                ".opencode/commands",
                 ".opencode/plugins",
                 "opencode.json",
                 ".codex/skills/git-start",
@@ -540,7 +541,7 @@ class TestWorkspaceSettings(unittest.TestCase):
         """Stamp jest w .gitignore — świeży klon / worktree ma tylko zacommitowane pliki kita."""
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp)
-            for rel in (".claude/agents/git-start.md", ".opencode/command/git-start.md"):
+            for rel in (".claude/agents/git-start.md", ".opencode/commands/kit-ai/git-start.md"):
                 (app / rel).parent.mkdir(parents=True)
                 (app / rel).write_text("---\n", encoding="utf-8")
 

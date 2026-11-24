@@ -7,9 +7,9 @@ Użycie:
     model_tiers.py apply CLIENT PROFILE DEST_DIR
 
 `sync` waliduje Profil i dopasowuje blok `agents:` do agentów kita (przepisuje tylko
-ten blok, raport na stdout). `apply` dla klienta `claude` dopisuje `model:` i `effort:`
-do frontmattera plików `DEST_DIR/<agent>.md`, gdy `targets.claude.<tier>` je podaje.
-Pozostali klienci nie dostają plików z modelem (OpenCode po #527).
+ten blok, raport na stdout). `apply` dopisuje do frontmattera plików `DEST_DIR/<agent>.md`
+`model:` (Claude także `effort:`) z `targets.<klient>.<tier>`; OpenCode dostaje wariant jako
+sufiks nazwy modelu (`provider/model#variant`). Codex i Antigravity nie mają plików.
 
 Bez PyYAML — bootstrap leci na systemowym Pythonie, a bloki mają wcięcia i proste wartości.
 """
@@ -334,21 +334,22 @@ def takeover_alias(model: str | None) -> str | None:
 
 
 def apply_models(client: str, profile_text: str, dest_dir: Path) -> None:
-    """Dopisz `model:` i `effort:` agentom Claude, których tier ma wpis w `targets:` (ADR-0018)."""
-    if client != "claude":
-        return  # OpenCode po #527 (`.opencode/commands/kit-ai/`); Codex i Antigravity bez plików.
+    """Dopisz `model:` (Claude też `effort:`) agentom, których tier ma wpis w `targets:` (ADR-0018)."""
+    if client not in ("claude", "opencode"):
+        return  # Codex i Antigravity nie mają plików agentów.
     targets, agents = parse_profile(profile_text)
-    mapping = targets.get("claude", {})
+    mapping = targets.get(client, {})
     for tier, names in (agents or {}).items():
         entry = mapping.get(tier)
         if not entry:
             continue
+        option = {opt["id"]: opt["value"] for opt in entry["options"]}
         extra = []
         if entry["model"]:
-            extra.append(f"model: {entry['model']}\n")
-        effort = next((opt["value"] for opt in entry["options"] if opt["id"] == "effort"), None)
-        if effort:
-            extra.append(f"effort: {effort}\n")
+            suffix = f"#{option['variant']}" if client == "opencode" and "variant" in option else ""
+            extra.append(f"model: {entry['model']}{suffix}\n")
+        if client == "claude" and "effort" in option:
+            extra.append(f"effort: {option['effort']}\n")
         if not extra:
             continue
         for name in names:

@@ -563,7 +563,7 @@ agents:                  # synchronizuje reload
 - Brak wpisu klienta albo tieru w `targets:` = brak pól `model` i `effort` (agent dziedziczy model sesji).
   Bez bloku `targets:` pliki agentów są takie jak przed tą funkcją.
 - Claude: `model:` i `effort:` (z opcji `effort`) trafiają do frontmattera `.claude/agents/<agent>.md`.
-  OpenCode dostanie `model:` po #527 (nowa ścieżka `.opencode/commands/kit-ai/`); do tego czasu pliki bez `model:`.
+  OpenCode: `model:` w `.opencode/commands/kit-ai/`; gdy wpis ma opcję `variant`, jest dopisywany jako sufiks `#<variant>`.
   Codex i Antigravity nie mają plików — ich wpisy czyta tylko T3 Code.
 - Stare klucze `models:` i `t3.targets` przerywają reload z komunikatem o migracji. Przenieś wpisy do
   `targets:` przez `/kit-project-edit`.
@@ -582,7 +582,7 @@ agents:                  # synchronizuje reload
 | Klient | Wspiera `model` | Plik | Format nazwy modelu | Przykład |
 |--------|-----------------|------|---------------------|----------|
 | Claude Code | tak | `.claude/agents/<agent>.md` | id modelu albo alias (`haiku`/`sonnet`/`opus`) | `targets.claude.light.model: claude-haiku-5-5` |
-| opencode | nie (po #527) | `.opencode/commands/kit-ai/<agent>.md` | `provider/model` | `targets.opencode.light.model: anthropic/claude-haiku-5-5` |
+| opencode | tak | `.opencode/commands/kit-ai/<agent>.md` | `provider/model` (`#<variant>` gdy jest `variant`) | `targets.opencode.light.model: anthropic/claude-haiku-5-5` |
 | Cursor, Codex, VS Code, Kiro, Kilo, Antigravity | nie — pole pomijane | — | — | — |
 
 Komendy `/nazwa` Claude (`.claude/commands/`) zostają bez `model:` — działają w sesji głównej.
@@ -765,7 +765,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
 | Kilo Code | `kilo` | rozszerzenie Kilo Code | `.kilocode/mcp.json` + `.kilocode/workflows/*.md` (`/nazwa`, `$ARGUMENTS` wspierane) |
 | Google Antigravity | `antigravity` | Antigravity IDE / CLI (`agy`) | `.agents/mcp_config.json` + `.agents/skills/<nazwa>/SKILL.md` (agenty jako natywne skille) + `.agents/hooks.json` (guardy kita: git-guard, server-guard, sensitive-files-guard) |
-| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/command/*.md` (`/nazwa`, `$ARGUMENTS`) |
+| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/commands/kit-ai/*.md` (`/kit-ai/nazwa`, `$ARGUMENTS`) + `.opencode/command/{goal,loop}.md` (`/goal`, `/loop`) |
 
 Wiele klientów naraz: `--clients cursor,claude` albo `--clients all`. Każdy klient dostaje **ten sam** `--language`/`--workspace` — różni się tylko format pliku MCP i ścieżka komend.
 
@@ -1235,7 +1235,7 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
 - **VS Code/Copilot**: `scripts/render_agent_commands.py vscode` → `.github/prompts/*.prompt.md` (wywołanie `/nazwa` w Copilot Chat).
 - **Kilo**: `scripts/render_agent_commands.py kilo` → `.kilocode/workflows/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
 - **Antigravity**: agenty jako natywne skille w `.agents/skills/<nazwa>/` (`agy` nie zna workflow — patrz `install_agent_skills.py`).
-- **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/command/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
+- **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/commands/kit-ai/*.md` (wywołanie `/kit-ai/nazwa`, `$ARGUMENTS` wspierane).
   Guardy kita: plugin `.opencode/plugins/kit-guards.js` + `.opencode/hooks/` (sekcja „Guardrails”).
   Model: projektowy `opencode.json` dostaje przy install i reload `model` z globalnego configu
   OpenCode, tylko gdy projekt nie ma własnego `model`. Katalog jak w OpenCode:
@@ -1283,7 +1283,7 @@ w odróżnieniu od agenta (`/nazwa`), którego ktoś musi wywołać. Jedno źró
 | vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
 | kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
 | kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
-| opencode | `.opencode/command/` | degradacja: komenda `/nazwa` |
+| opencode | `.opencode/commands/kit-ai/` | degradacja: komenda `/kit-ai/nazwa` |
 
 **Degradacja kosztuje dwie rzeczy:** skill przestaje odpalać się sam (trzeba wpisać
 `/nazwa`) i gubi wszystko poza `SKILL.md`, bo komenda to jeden plik. Instalator mówi

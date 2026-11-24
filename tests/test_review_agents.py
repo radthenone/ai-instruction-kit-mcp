@@ -30,7 +30,7 @@ CLIENT_PATHS: dict[str, tuple[str, ...]] = {
     "kiro": (".kiro/agents/{name}.md",),
     "kilo": (".kilocode/workflows/{name}.md",),
     "antigravity": (".agents/skills/{name}/SKILL.md",),
-    "opencode": (".opencode/command/{name}.md",),
+    "opencode": (".opencode/commands/kit-ai/{name}.md",),
 }
 
 # Profil z oboma Tierami: inaczej agenci `tier: backend` / `tier: client` są pomijani.

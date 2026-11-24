@@ -275,6 +275,25 @@ prune_legacy_claude_commands() {
   rmdir "$TARGET/.claude/commands" 2>/dev/null || true
 }
 
+# Komendy kita spod starej ścieżki OpenCode (#527): przed #527 agentów, skille i
+# /headless renderowaliśmy do `.opencode/command/<nazwa>.md` (wywołanie `/<nazwa>`).
+# Teraz to `.opencode/commands/kit-ai/<nazwa>.md` (`/kit-ai/<nazwa>`), a `.opencode/command/`
+# zostaje tylko dla `/goal` i `/loop` — te przenosimy osobno, więc ich tu nie ruszamy.
+prune_legacy_opencode_commands() {
+  local name
+  for name in "$ALL_AGENTS"/*.md; do
+    kit_rm ".opencode/command/$(basename "$name")"
+  done
+  for name in "${LEGACY_COMMAND_NAMES[@]}"; do
+    kit_rm ".opencode/command/${name}.md"
+  done
+  if compgen -G "$SHARED_SKILLS/*/SKILL.md" >/dev/null; then
+    for name in "$SHARED_SKILLS"/*/; do
+      kit_rm ".opencode/command/$(basename "$name").md"
+    done
+  fi
+}
+
 prune_client() {
   local id="$1" files rel name
   client_present "$id" || return 0
@@ -298,7 +317,7 @@ prune_client() {
     kiro) skills_dir=".kiro/agents" ;;
     kilo) skills_dir=".kilocode/workflows" ;;
     antigravity) skills_dir=".agents/skills" ;;
-    opencode) skills_dir=".opencode/command" ;;
+    opencode) skills_dir=".opencode/commands/kit-ai" ;;
   esac
   if [[ -d "$TARGET/$skills_dir" ]]; then
     "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed "$id" "$TARGET/$skills_dir"
@@ -805,7 +824,7 @@ install_headless() {
       kiro) set -- .kiro/agents/headless.md ;;
       kilo) set -- .kilocode/workflows/headless.md ;;
       antigravity) set -- .agents/skills/headless/SKILL.md ;;
-      opencode) set -- .opencode/command/headless.md ;;
+      opencode) set -- .opencode/commands/kit-ai/headless.md ;;
     esac
     for rel in "$@"; do
       [[ -f "$TARGET/$rel" ]] || continue
@@ -879,7 +898,7 @@ prune_tier_agents() {
     rm -f "$TARGET/.claude/agents/$name.md" \
       "$TARGET/.cursor/agents/$name.md" "$TARGET/.kiro/agents/$name.md" \
       "$TARGET/.github/prompts/$name.prompt.md" "$TARGET/.kilocode/workflows/$name.md" \
-      "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/command/$name.md"
+      "$TARGET/.agents/workflows/$name.md" "$TARGET/.opencode/commands/kit-ai/$name.md"
     prune_kit_skill_dir "$TARGET/.claude/skills/kit-ai/skills/$name" 1
     rm -rf "$TARGET/.codex/skills/$name" "$TARGET/.agents/skills/$name"
   done
@@ -1314,14 +1333,20 @@ install_opencode() {
   fill_mcp "$KIT_ROOT/templates/opencode/opencode.json" "$TARGET/opencode.json" "$WORKSPACE_PATH"
   echo "  + opencode.json"
   inherit_opencode_model
-  render_agent_commands opencode "$TARGET/.opencode/command"
-  copy_shared_skills opencode "$TARGET/.opencode/command"
-  # /goal i /loop jak w Claude Code: komendy + plugin, który po session.execution.succeeded
-  # wznawia turę (sam markdown kończy się z końcem tury).
+  if [[ "$SKIP_AGENTS" -eq 0 ]]; then
+    # Komendy kitu od #527 to plugin commands-dir: `.opencode/commands/kit-ai/` +
+    # `/kit-ai:<nazwa>`. Stare `.opencode/command/<nazwa>.md` z poprzednich wersji znikają.
+    prune_legacy_opencode_commands
+  fi
+  render_agent_commands opencode "$TARGET/.opencode/commands/kit-ai"
+  apply_model_tiers opencode "$TARGET/.opencode/commands/kit-ai"
+  copy_shared_skills opencode "$TARGET/.opencode/commands/kit-ai"
+  # /goal i /loop zostają w `.opencode/command/` (wywołanie `/goal`, `/loop`) — plugin
+  # kit-loop.js nasłuchuje tych form, a komendy współdzielone idą pod prefiks kit-ai.
   mkdir -p "$TARGET/.opencode/command" "$TARGET/.opencode/plugins"
   cp "$KIT_ROOT/templates/opencode/command/"*.md "$TARGET/.opencode/command/"
   cp "$KIT_ROOT/templates/opencode/plugins/kit-loop.js" "$TARGET/.opencode/plugins/kit-loop.js"
-  echo "  + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
+  echo "  + .opencode/commands/kit-ai/ (komendy kitu) + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
   # Guardy kita (git-guard, sensitive-files-guard) przed każdym narzędziem — plugin woła
   # adapter `invoke-hook.js --to opencode`, deny działa także przy `allow` w permission.
   install_guards "$TARGET/.opencode/hooks" opencode

@@ -23,7 +23,7 @@ COPIES = (
     ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
-    ".opencode/command/night-run.md",
+    ".opencode/commands/kit-ai/night-run.md",
 )
 RULE = "Komendy kitu uruchamiasz według klienta"
 BRANCHES = ("**Claude Code:**", "**opencode:**", "**klienci bez modelu per agent**")
@@ -43,7 +43,7 @@ class TestNightRunModels(unittest.TestCase):
         for client in ("Cursor", "Codex", "VS Code", "Kiro", "Kilo", "Antigravity"):
             self.assertIn(client, self.text)
         self.assertIn("bez parametru `model`", self.text)
-        self.assertIn("`.opencode/command/`", self.text)
+        self.assertIn("`.opencode/commands/kit-ai/`", self.text)
         self.assertIn("model z frontmattera; `targets.opencode`", self.text)
         self.assertIn("nadpisuje frontmatter", self.text)
         self.assertIn("fallback przy braku agenta", self.ticket)

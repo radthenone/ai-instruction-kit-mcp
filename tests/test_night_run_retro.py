@@ -18,7 +18,7 @@ COPIES = (
     ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
-    ".opencode/command/night-run.md",
+    ".opencode/commands/kit-ai/night-run.md",
 )
 RETRO_HEADING = "\n## Retro\n"
 REPORT_HEADING = "\n## NIGHT-RUN REPORT"

@@ -1,5 +1,5 @@
 ---
-description: "Jak napisać skill do instruction-kit: frontmatter, opis który faktycznie odpala, sufit długości, zasoby obok SKILL.md i degradacja u klientów bez natywnych skilli. Użyj tego zawsze, gdy piszesz albo poprawiasz SKILL.md, realizujesz issue założone przez /create-skill, zastanawiasz się czy coś ma być skillem czy agentem, albo gdy skill nie odpala się mimo że powinien."
+description: "Jak napisać skill do instruction-kit: frontmatter, opis który faktycznie odpala, sufit długości, zasoby obok SKILL.md i degradacja u klientów bez natywnych skilli. Użyj tego zawsze, gdy piszesz albo poprawiasz SKILL.md, realizujesz issue założone przez /kit-ai/create-skill, zastanawiasz się czy coś ma być skillem czy agentem, albo gdy skill nie odpala się mimo że powinien."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -130,7 +130,7 @@ klientów. Cztery czytają skille natywnie, cztery nie mają takiego formatu:
 | vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
 | kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
 | kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
-| opencode | `.opencode/command/` | degradacja: komenda `/nazwa` |
+| opencode | `.opencode/commands/kit-ai/` | degradacja: komenda `/kit-ai/nazwa` |
 
 Degradacja ma dwa skutki, z którymi trzeba pisać: skill przestaje odpalać się sam
 (ktoś musi wpisać `/nazwa`) i **gubi wszystko poza `SKILL.md`** — komenda to jeden

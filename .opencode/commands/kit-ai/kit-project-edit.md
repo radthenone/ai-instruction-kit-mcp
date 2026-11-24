@@ -1,5 +1,5 @@
 ---
-description: "Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i blokach project:rules w BUGBOT.md / project:agents w AGENTS.md. Use when /kit-project-edit, 'zmień web na angular', 'nie zgadzam się z modułem X', 'napraw zgłoszenia doctora'. Wywołuj jako /kit-project-edit."
+description: "Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i blokach project:rules w BUGBOT.md / project:agents w AGENTS.md. Use when /kit-ai/kit-project-edit, 'zmień web na angular', 'nie zgadzam się z modułem X', 'napraw zgłoszenia doctora'. Wywołuj jako /kit-ai/kit-project-edit."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -12,7 +12,7 @@ w repo projektu. Nie edytujesz `modules/`,
 `manifest.yaml` ani plików kita — także wtedy, gdy repo kita jest pod ręką.
 Bez akceptacji podglądu nic nie zapisujesz.
 
-# /kit-project-edit — jedna odpowiedź, odstępstwo albo naprawa doctora
+# /kit-ai/kit-project-edit — jedna odpowiedź, odstępstwo albo naprawa doctora
 
 Trzy tryby. Rozpoznaj go z polecenia; niejasne → zapytaj jednym zdaniem.
 
@@ -25,14 +25,14 @@ Trzy tryby. Rozpoznaj go z polecenia; niejasne → zapytaj jednym zdaniem.
 ## `--help` / `help` / `-h`
 
 ```markdown
-# /kit-project-edit — pomoc
+# /kit-ai/kit-project-edit — pomoc
 
-/kit-project-edit "zmień web na angular"        Tryb A: jedna odpowiedź → podgląd → zapis → reload
-/kit-project-edit "nie zgadzam się z …"         Tryb B: grillowanie → odstępstwo w .ai/project.md
-/kit-project-edit "napraw zgłoszenia doctora"   Tryb C: doctor → podgląd poprawek → zapis
-/kit-project-edit --help                         Ta pomoc
+/kit-ai/kit-project-edit "zmień web na angular"        Tryb A: jedna odpowiedź → podgląd → zapis → reload
+/kit-ai/kit-project-edit "nie zgadzam się z …"         Tryb B: grillowanie → odstępstwo w .ai/project.md
+/kit-ai/kit-project-edit "napraw zgłoszenia doctora"   Tryb C: doctor → podgląd poprawek → zapis
+/kit-ai/kit-project-edit --help                         Ta pomoc
 
-Cały wywiad od zera: /kit-project-begin
+Cały wywiad od zera: /kit-ai/kit-project-begin
 ```
 
 ## Tryb A — jedna odpowiedź
@@ -52,7 +52,7 @@ Cały wywiad od zera: /kit-project-begin
    | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (allow projektu > deny projektu > lista kita) |
 
    Wartość spoza dozwolonych → pokaż listę, nie zgaduj. Brak Stacka w katalogu → `none` +
-   podpowiedź `/create-task` w repo kita.
+   podpowiedź `/kit-ai/create-task` w repo kita.
 2. **Podgląd** — tylko zmieniane linie:
 
    ```text
@@ -66,11 +66,11 @@ Cały wywiad od zera: /kit-project-begin
    Skutki do nazwania wprost: zmiana Tieru na/z `none` dodaje lub usuwa agentów Tieru;
    zmiana `clients` **usuwa** pliki kita klientów spoza listy (własne pliki zostają);
    zmiana Tieru może włączyć pytania zależne (np. `codegen`, warianty) — wymień je i podaj
-   gotowe kolejne `/kit-project-edit` (jedna zmiana na wywołanie); Tier → `none` usuwa
+   gotowe kolejne `/kit-ai/kit-project-edit` (jedna zmiana na wywołanie); Tier → `none` usuwa
    w tym samym podglądzie jego linię `- <tier>:` z `## Ścieżki` w `.ai/project.md` oraz linie
    pytań, które przestają być aktywne (`routes-web` / `routes-mobile`, `design-tokens` gdy
    web i mobile są `none` — `list_questions` po zmianie). Tier `none` → Stack web/mobile:
-   zaproponuj kolejne `/kit-project-edit` na `design-tokens` i `routes-*` z wykryciem
+   zaproponuj kolejne `/kit-ai/kit-project-edit` na `design-tokens` i `routes-*` z wykryciem
    z `detect:` katalogu.
 3. **Zapis** jednej linii (komentarze i reszta pliku nietknięte) → MCP
    `reload_workspace(dry_run=True)`; błąd → przywróć oryginał, pokaż błąd. OK →
@@ -105,7 +105,7 @@ Cały wywiad od zera: /kit-project-begin
      Sekcji nie ma → dodaj ją na końcu pliku. Overlay ma pierwszeństwo przed bundlem, więc
      wpis wygrywa z modułem od razu, bez reloadu.
    - **Dotyczy wszystkich projektów** → nie zapisujesz nic w module. Daj gotowy szkic do
-     `/create-task` w repo kita (tytuł EN, cytat z modułu, propozycja zmiany, uzasadnienie).
+     `/kit-ai/create-task` w repo kita (tytuł EN, cytat z modułu, propozycja zmiany, uzasadnienie).
      Na życzenie dodatkowo lokalne odstępstwo jak wyżej, do czasu zmiany w kicie.
 
 ## Tryb C — napraw zgłoszenia doctora
@@ -113,7 +113,7 @@ Cały wywiad od zera: /kit-project-begin
 Doctor nie blokuje reloadu: pokazuje `doctor: OSTRZEŻENIE <plik>:<linia> — …` i
 `doctor: INFO …`. Ten tryb zamienia zgłoszenia w poprawki reguł — nie w kod.
 
-Start bez prośby: reload kończy się linią `doctor: N do naprawy → /kit-project-edit
+Start bez prośby: reload kończy się linią `doctor: N do naprawy → /kit-ai/kit-project-edit
 "napraw zgłoszenia doctora"` (MCP `reload_workspace` — poleceniem dla agenta), a partia
 leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
 
@@ -130,7 +130,7 @@ leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
    | Ścieżka w szablonowej części `BUGBOT.md` | **nie edytuj** — reload nadpisze | Jeśli reguła ma zostać, dopisz jej wersję z właściwą ścieżką do `project:rules` |
    | Ścieżka w bloku `project:agents` w `AGENTS.md` | tylko ten blok | Podmień/usuń linię; blok przechodzi przez reload bez zmian |
    | Ścieżka w szablonowej części `AGENTS.md` / w `CODING_STANDARDS.md` | poza zakresem trybu | Pokaż propozycję i poproś o ręczną decyzję — tych części ten tryb nie zapisuje |
-   | Komenda bez agenta/komendy/skilla | overlay albo `project:rules` | Usuń odwołanie **albo** — gdy komenda ma istnieć w kicie — daj szkic `/create-task` (nie edytuj `templates/`) |
+   | Komenda bez agenta/komendy/skilla | overlay albo `project:rules` | Usuń odwołanie **albo** — gdy komenda ma istnieć w kicie — daj szkic `/kit-ai/create-task` (nie edytuj `templates/`) |
    | `INFO` o pakiecie workspace'u | overlay | Dopisz pakiet (albo jego katalog nadrzędny) do `## Ścieżki` / sekcji struktury |
    | `missing-path-key` (reguła szablonu `BUGBOT.md` na ścieżce domyślnej, której nie ma; `ui` / `api-generated` domyślnie idą za `web:`) | overlay: `## Ścieżki` | Dopisz klucz z `value` (wartość z `suggestion`), potem reload — szablon wyrenderuje regułę z tą ścieżką. Bez `suggestion`, a komunikat ma „kandydaci w drzewie” → pokaż listę do wyboru (w jednym podglądzie partii) i dopisz klucz z wybraną ścieżką |
    | `negated-path-exists` | overlay | Zdanie twierdzi, że ścieżki nie ma, a jest — popraw albo usuń zdanie |
@@ -164,22 +164,22 @@ leży w `.ai/.kit-doctor.json`. Wtedy wchodzisz w ten tryb sam.
    ostrzeżeń → usuń `.ai/.kit-doctor.json`.
 5. **Zakazy.** Nie edytuj szablonowych sekcji `BUGBOT.md` i `AGENTS.md` (poza blokami),
    `CODING_STANDARDS.md`, `templates/`, `modules/`. Jedno wywołanie = jedna partia
-   zgłoszeń; kolejna partia → kolejne `/kit-project-edit`.
+   zgłoszeń; kolejna partia → kolejne `/kit-ai/kit-project-edit`.
 
 ## Raport
 
 ```markdown
-## /kit-project-edit OK
+## /kit-ai/kit-project-edit OK
 - Tryb: A | B | C
 - Zmiana: <plik> — <linia przed> → <linia po>
 - Reload: tak (N/M/K) | nie (tylko overlay)
 - Doctor: <ile zgłoszeń zostało i gdzie>
-- Dalej: <zrestartuj okno | /create-task w repo kita | nic>
+- Dalej: <zrestartuj okno | /kit-ai/create-task w repo kita | nic>
 ```
 
 ## Zakazy
 
 - Zapis do `modules/`, `manifest.yaml`, plików kita albo poza repo projektu — nigdy.
-- Więcej niż jedna zmiana na wywołanie (kolejna → kolejne `/kit-project-edit`); wyjątek:
+- Więcej niż jedna zmiana na wywołanie (kolejna → kolejne `/kit-ai/kit-project-edit`); wyjątek:
   linia `## Ścieżki` usuwana razem z Tierem → `none`.
 - Zapis bez podglądu i akceptacji.

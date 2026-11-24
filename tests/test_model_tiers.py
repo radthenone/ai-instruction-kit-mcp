@@ -541,17 +541,35 @@ class TestApplyModels(unittest.TestCase):
                 "---\nname: git-start\ndescription: d\nmodel: claude-haiku-5-5\n---\n\nbody\n",
             )
 
-    def test_opencode_targets_write_nothing_until_command_path_moves(self) -> None:
-        """OpenCode: `model:` dopiero po #527 (nowa ścieżka `.opencode/commands/kit-ai/`)."""
+    def test_opencode_apply_writes_plain_model_without_variant(self) -> None:
+        """OpenCode: `model:` z `targets.opencode`, bez sufiksu, gdy nie ma opcji `variant` (ADR-0018)."""
         profile = (
             "targets:\n  opencode:\n    light:\n      providerInstanceId: opencode\n"
             "      model: anthropic/claude-haiku-5-5\nagents:\n  light: git-start\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             start = self._agent(Path(tmp), "git-start")
-            before = start.read_text(encoding="utf-8")
             apply_models("opencode", profile, Path(tmp))
-            self.assertEqual(start.read_text(encoding="utf-8"), before)
+            self.assertEqual(
+                start.read_text(encoding="utf-8"),
+                "---\nname: git-start\ndescription: d\nmodel: anthropic/claude-haiku-5-5\n---\n\nbody\n",
+            )
+
+    def test_opencode_variant_becomes_model_suffix(self) -> None:
+        """OpenCode bierze wariant jako sufiks nazwy modelu: `model: provider/model#variant`."""
+        profile = (
+            "targets:\n  opencode:\n    light:\n      providerInstanceId: opencode\n"
+            "      model: opencode/glm-5.3-flash-free\n"
+            "      options: [{ id: variant, value: high }]\n"
+            "agents:\n  light: git-start\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            start = self._agent(Path(tmp), "git-start")
+            apply_models("opencode", profile, Path(tmp))
+            self.assertEqual(
+                start.read_text(encoding="utf-8"),
+                "---\nname: git-start\ndescription: d\nmodel: opencode/glm-5.3-flash-free#high\n---\n\nbody\n",
+            )
 
 
 if __name__ == "__main__":

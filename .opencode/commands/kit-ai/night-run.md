@@ -1,5 +1,5 @@
 ---
-description: "Autonomiczna praca na liście issue w nocy albo w dzień (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /night-run. Wywołuj jako /night-run."
+description: "Autonomiczna praca na liście issue w nocy albo w dzień (samodzielnie, /goal opcjonalny) — orkiestrator, na każdy ticket świeży subagent (git-start → test-first → PR → merge) albo wykonawca /kit-ai/headless, review na diffie (także skille review z argumentów), needs-human zamiast pytań, na końcu NIGHT-RUN REPORT. Użyj TYLKO gdy cel lub użytkownik wprost nazywa /kit-ai/night-run. Wywołuj jako /kit-ai/night-run."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -10,7 +10,7 @@ Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profi
 
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Chronione: `main` / `master` / `dev`.
 
-# /night-run — lista issue bez człowieka
+# /kit-ai/night-run — lista issue bez człowieka
 
 Przerabiasz listę issue z argumentów albo celu (bez listy — kolejkę `ready-for-agent`),
 jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human**. Człowiek
@@ -22,15 +22,15 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
   ticketu, review osobny świeży subagent albo skille review z argumentów. Łańcuch prowadzi sesja ticketu.
   Orkiestrator zleca tylko ticket i trzyma jedną linię stanu (`#N: <stan> <PR> <koszt>`). Sam nie czytasz
   kodu i nie odpalasz testów: Twój kontekst ma zostać mały.
-- **Komendy kitu uruchamiasz według klienta** (`/git-*`, `/review-*` i inne z argumentów
+- **Komendy kitu uruchamiasz według klienta** (`/kit-ai/git-*`, `/kit-ai/review-*` i inne z argumentów
   lub promptu ticketu), by działały na modelu z frontmattera agenta, nie sesji:
   - **Claude Code:** agent o nazwie komendy jest w `.claude/agents/<nazwa>.md` → **Agent**
     tego typu bez parametru `model` (model bierze się z frontmattera); brak agenta →
     **Skill**. Subagent ticketu uruchamiasz typem `night-run-ticket` (nie `general-purpose`). Subagent uruchamia kolejne komendy-agentów (do 3 poziomów,
-    `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), więc `/git-*` zostają wewnątrz subagenta
-    ticketu, a orkiestrator nie dostaje z nich tur. Sam `/night-run` działa w głównej
+    `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), więc `/kit-ai/git-*` zostają wewnątrz subagenta
+    ticketu, a orkiestrator nie dostaje z nich tur. Sam `/kit-ai/night-run` działa w głównej
     sesji (w Claude uruchamiany Skillem, nie Agentem): potrzebuje `CronCreate` i watchdoga.
-  - **opencode:** komenda `/<nazwa>` z `.opencode/command/` (model z frontmattera, gdy
+  - **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera, gdy
     Profil ma `models.opencode`); brak `model:` → model sesji.
   - **klienci bez modelu per agent** (Cursor, Codex, VS Code, Kiro, Kilo, Antigravity) →
     bez zmian: inline albo skill na modelu sesji. Dla klientów bez typu agenta (Codex, VS Code, Antigravity, inline): wczytaj `night-run-ticket` (skill albo prompt klienta) i wykonaj go z parametrami zlecenia.
@@ -61,7 +61,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
 ## Argumenty
 
 ```text
-/night-run #N1 #N2 [implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>] [/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/review-* …]
+/kit-ai/night-run #N1 #N2 [implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>] [/kit-ai/headless <wykonawca> [--model …] [--timeout …] [--heartbeat …] "<treść>"] [/kit-ai/review-* …]
 ```
 
 `/goal` opcjonalny: noc działa sama. Wznawianie nocy = watchdog `.ai/night-run-watchdog.sh`
@@ -72,20 +72,20 @@ halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, 
 - **Składnia `krok: wartość` (`implementacja:`, `review:`, `effort:`), spójna z `<komenda>: model <nazwa>`.**
 - **Lista issue** — `#N` przed pierwszym argumentem z `/` lub prefiksem kroku. Brak → kolejka (krok 4).
 - **`implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>`** — wykonawca implementacji z łańcuchem modeli albo z wolnego tekstu celu, który nazywa wykonawcę (wolny tekst celu np. „antigravity wykonuje implementację”). Średnik rozdziela wykonawców, przecinek modele jednego wykonawcy; `@poziom` (np. `@high`) kit tłumaczy na nazwę/parametr danego transportu. Każdy wskazany wykonawca jest sprawdzany raz na starcie nocy przeciw `clients:` w `.ai/project.profile.yaml`: wykonawca spoza `clients:` → `needs-human na starcie nocy` — żaden ticket nie startuje, NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
-- **Brak wskazania i jawne `/headless` → bez zmian:** brak wskazania wykonawcy oznacza implementację bezpośrednią w subagencie ticketu (kroki 2–3 bez `/headless`); jawne `/headless <wykonawca> [flagi] "<treść>"` to wywołanie wrappera `.ai/headless.mjs`.
-- **`/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
+- **Brak wskazania i jawne `/kit-ai/headless` → bez zmian:** brak wskazania wykonawcy oznacza implementację bezpośrednią w subagencie ticketu (kroki 2–3 bez `/kit-ai/headless`); jawne `/kit-ai/headless <wykonawca> [flagi] "<treść>"` to wywołanie wrappera `.ai/headless.mjs`.
+- **`/kit-ai/headless <wykonawca> [flagi] "<treść>"`** — implementację ticketu robi wykonawca
   headless (`EXEC`, `FLAGI`, `TREŚĆ`). Argument kończy zamykający cudzysłów treści
   (cudzysłów obowiązkowy); treść i flagi wrappera przekazujesz bez zmian (`--timeout`
   domyślnie 60 min — większy ticket potrzebuje więcej). Wariant w `night-run-ticket`.
   `EXEC` sprawdzasz raz na starcie nocy, przed pierwszym ticketem:
-  - klient bez `/headless` (brak skilla/komendy `headless` albo `.ai/headless.mjs`) →
+  - klient bez `/kit-ai/headless` (brak skilla/komendy `headless` albo `.ai/headless.mjs`) →
     fallback: implementacja subagentem jak bez argumentu, w raporcie
-    `wykonawca: subagent (brak /headless)`;
+    `wykonawca: subagent (brak /kit-ai/headless)`;
   - wykonawca spoza `clients:` w `.ai/project.profile.yaml` albo równy hostowi (klient tej
     sesji) → nieznany wykonawca → needs-human na starcie nocy — żaden ticket nie startuje,
     NIGHT-RUN REPORT z `needs-human: nieznany wykonawca <nazwa>`, koniec.
-- **Skille review z argumentów** — jeden lub kilka (`/review-edge`, `/review-bugbot`,
-  `/review-security`, `/review --fix`, …), z ich własnymi flagami. Bez nich → domyślny łańcuch review (łańcuch, krok 2). Skille review z argumentów nadal zastępują domyślny łańcuch.
+- **Skille review z argumentów** — jeden lub kilka (`/kit-ai/review-edge`, `/kit-ai/review-bugbot`,
+  `/kit-ai/review-security`, `/review --fix`, …), z ich własnymi flagami. Bez nich → domyślny łańcuch review (łańcuch, krok 2). Skille review z argumentów nadal zastępują domyślny łańcuch.
   Każdy sprawdzasz raz na starcie nocy na liście skilli klienta:
   nieznany skill review → needs-human na starcie nocy — żaden ticket nie startuje,
   NIGHT-RUN REPORT z `needs-human: nieznany skill review <nazwa>`, koniec.
@@ -96,8 +96,8 @@ halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, 
   - `/review [effort] [--fix]` = wbudowane review Claude Code; dostaje zakres `<BASE>...HEAD`;
   - kryterium wykrycia osobistego skilla `code-review`: skill nie deklaruje flag `--fix`/`--comment`;
   - gdy w argumentach podano `/code-review` z flagami `--fix` albo `--comment`: orkiestrator najpierw sprawdza, czy klient ma wbudowane `/review` (Claude Code); dopiero wtedy — przy wykryciu osobistego skilla `code-review` (niedeklarującego tych flag) — tłumaczy na `/review` z tymi flagami (decyzja odwracalna) i zapisuje to w raporcie (w linii Założenia). Poza Claude Code brak wbudowanego `/review` uniemożliwia tłumaczenie (needs-human na starcie nocy);
-  - po `--fix`: zebranie poprawek przez `/git-commit` w osobnym commicie na branchu ticketu i ponowne CI;
-  - `--comment` działa tylko wtedy, gdy PR już istnieje (po `/git-end`); przy review przed `/git-end` nie przekazujesz `--comment` — wynik zostaje w raporcie nocy (bez publikacji na nieistniejący PR);
+  - po `--fix`: zebranie poprawek przez `/kit-ai/git-commit` w osobnym commicie na branchu ticketu i ponowne CI;
+  - `--comment` działa tylko wtedy, gdy PR już istnieje (po `/kit-ai/git-end`); przy review przed `/kit-ai/git-end` nie przekazujesz `--comment` — wynik zostaje w raporcie nocy (bez publikacji na nieistniejący PR);
   pozostałe skille review dostają tylko diff.
 
 `EXEC` i `REVIEW` (albo „domyślne”) → nagłówek `CTX` i NIGHT-RUN REPORT.
@@ -106,7 +106,7 @@ halt C) albo `ctx: <sufiks>` (osobny katalog CTX nocy dla równoległych sesji, 
 
 ### 1. Gałąź bazowa
 
-Baza (ta sama reguła w `/git-start`, `/git-check`, `/git-end`, `/night-run`): linia `base: <gałąź>`
+Baza (ta sama reguła w `/kit-ai/git-start`, `/kit-ai/git-check`, `/kit-ai/git-end`, `/kit-ai/night-run`): linia `base: <gałąź>`
 w `.ai/project.md`, jeśli jest; inaczej `dev` tylko wtedy, gdy `origin/dev` istnieje i **nie jest
 w tyle** za gałęzią domyślną (nie jest jej ścisłym przodkiem); inaczej gałąź domyślna repo.
 Gdy ostatnie scalone PR-y szły gdzie indziej — jedna linijka ostrzeżenia, wybór bez zmian.
@@ -238,7 +238,7 @@ więc nie jest mechanizmem oczekiwania.
 - **Cron co 4 h jako siatka:** cron łapie to, co ginie razem z sesją (watchdog) i pauzę
   dłuższą niż życie watchdoga. **`CronList` przed `CronCreate`** — obowiązkowo, także przy wznowieniu sesji (cron przeżywa wznowienie i działa obok nowego): jest już cron dla tej nocy (dla tego `<CTX>`) o tym
   harmonogramie → nic nie tworzysz. Inaczej `CronCreate`, recurring `57 */4 * * *`, z promptem
-  i wpisaną na sztywno ścieżką CTX: `night-run tik: przeczytaj sekcję „Tick watchdoga i crona” w /night-run
+  i wpisaną na sztywno ścieżką CTX: `night-run tik: przeczytaj sekcję „Tick watchdoga i crona” w /kit-ai/night-run
   i „## Stan” w <CTX>, działaj wg niej.` Tik crona to tura z kontekstem, więc nie częściej niż co 4 h.
 - Bez `CronCreate` u klienta → ten krok pomiń (watchdog zostaje, jeśli jest Bash w tle).
 - Każde zakończenie nocy (wszystko MERGED, halt, raport) zaczyna się od `CronDelete`
@@ -254,11 +254,11 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
 1. **Subagent ticketu** (świeży, typ `night-run-ticket`, `model: MODEL`): z parametrami zlecenia z sekcji „Zlecenie ticketu” (kroki 1–8 w `night-run-ticket`), z podstawioną listą plików `handoff-<B>.md` dla blokujących #N (`blocked_by`, przechodnio w obrębie listy tej nocy; brak blokujących → brak handoffów). Łańcuch prowadzi sesja ticketu. Orkiestrator zleca tylko ticket i trzyma jedną linię stanu (`#N: <stan> <PR> <koszt>`). Przed startem ticketu upewnij się, że żaden inny CTX tego dnia nie ma go w `## Stan` jako trwającego (reguła z kroku 4; w razie kolizji pomijasz: `skipped: w innej nocy <katalog>`). Subagent ticketu dostaje z kontekstu nocy tylko część wspólną (nagłówek, mapa, konwencje, pułapki) oraz wskazane handoffy blokujących — nie cały CTX z Przekazaniami ani handoffy niezależnych ticketów. `## Stan` w `CTX` (ticket, id, krok `ticket`) nadpisujesz **w tym samym
    wywołaniu narzędzi co uruchomienie subagenta** (Claude Code: razem z odnowieniem watchdoga, sekcja 7), nie w osobnej turze — każda
    tura czyta cały kontekst. Wraca z hand-backiem i niewypchniętym branchem; wtedy
-   poprawiasz `## Stan`, jeśli hand-back zmienia krok. W parametrach zlecenia kroki 2–3 w `night-run-ticket` dostają `Wykonawca` z wpisanymi `implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>` albo `/headless <EXEC> [FLAGI] "<TREŚĆ>"` lub `brak`, oraz dwiema
+   poprawiasz `## Stan`, jeśli hand-back zmienia krok. W parametrach zlecenia kroki 2–3 w `night-run-ticket` dostają `Wykonawca` z wpisanymi `implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>` albo `/kit-ai/headless <EXEC> [FLAGI] "<TREŚĆ>"` lub `brak`, oraz dwiema
    rozstrzygniętymi wartościami: `LIMIT` (`przejmij` / `czekaj`; z tekstu celu `limit:`, brak → `przejmij`)
    i `PRZEJĘCIE` (alias + źródło): (a) tekst celu `przejęcie: <alias>` (tylko ta noc), (b) Profil
    `models.claude.takeover`, (c) brak → `sesja` (model sesji). Alias z celu spoza `haiku`/`sonnet`/
-   `opus`/`fable` → `sesja` z wpisem w raporcie („nieznany alias przejęcia”). Bez `/headless` i `implementacja:` pole `Wykonawca` ma wartość `brak`.
+   `opus`/`fable` → `sesja` z wpisem w raporcie („nieznany alias przejęcia”). Bez `/kit-ai/headless` i `implementacja:` pole `Wykonawca` ma wartość `brak`.
 2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
    skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co
    uruchomienie review. Ze skillami review z argumentów: uruchamiasz je **Ty** według reguły
@@ -267,16 +267,16 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    wg reguły z sekcji Argumenty.
    Skille review uruchamiasz w katalogu brancha ticketu (worktree ticketu z hand-backu albo katalog główny, gdy worktree nie był używany): `git -C <katalog brancha>` albo cwd ustawiony na ten katalog. Przed startem sprawdzasz `git -C <katalog brancha> branch --show-current`: inny branch niż branch ticketu → nie odpalasz review na złym diffie, tylko zgłaszasz rozjazd w raporcie nocy (needs-human).
    Od skilla bierzesz tylko tabelę niżej (dla wbudowanego `/review`: orkiestrator przepisuje findingi do tabeli `Severity | Location | Finding | Fix` — nagłówek bez zmian — i oznacza każdy wiersz jako potwierdzony albo niepewny); skill / review z `--fix` poprawia sam — po `--fix` subagent ticketu po
-   wznowieniu zbiera poprawki przez `/git-commit` (w osobnym commicie na branchu ticketu) i uruchamia ponowne CI.
+   wznowieniu zbiera poprawki przez `/kit-ai/git-commit` (w osobnym commicie na branchu ticketu) i uruchamia ponowne CI.
    Bez argumentów — **subagent review** (zawsze nowy), który wykonuje domyślny łańcuch review dobrany po typach plików w diffie:
-   - zawsze `/review-bugbot`;
-   - diff dotyka plików wykonywalnych (`*.py`, `*.mjs`, `*.js`, `*.ts`, `*.sh`) → + jedno review, w kolejności: `/review-security` (auth, sekrety, guardy) > review stacku (Tier ≠ `none`) > `/review-edge`;
+   - zawsze `/kit-ai/review-bugbot`;
+   - diff dotyka plików wykonywalnych (`*.py`, `*.mjs`, `*.js`, `*.ts`, `*.sh`) → + jedno review, w kolejności: `/kit-ai/review-security` (auth, sekrety, guardy) > review stacku (Tier ≠ `none`) > `/kit-ai/review-edge`;
    - sam tekst (`*.md`, docs, szablony procedur) → tylko bugbot;
    - maks. 2 review na ticket;
    - bez `/code-review` w domyślnym łańcuchu (Spec sprawdza bramka przed merge) i bez `--fix`.
    Prompt subagenta review: „Review `git diff origin/$BASE...HEAD` na `<branch>`:
    Język wyjścia: <language> (wartość z `get_language`).
-   Review w tej kolejności: `/review-bugbot`; gdy diff dotyka plików wykonywalnych (`*.py`, `*.mjs`, `*.js`, `*.ts`, `*.sh`), jedno dodatkowe review: `/review-security` > review stacku (Tier ≠ `none`) > `/review-edge`. Maks. 2 review; bez `/code-review` i `--fix`. Czytaj tylko diff
+   Review w tej kolejności: `/kit-ai/review-bugbot`; gdy diff dotyka plików wykonywalnych (`*.py`, `*.mjs`, `*.js`, `*.ts`, `*.sh`), jedno dodatkowe review: `/kit-ai/review-security` > review stacku (Tier ≠ `none`) > `/kit-ai/review-edge`. Maks. 2 review; bez `/code-review` i `--fix`. Czytaj tylko diff
    i dotknięte pliki, zakresami. Zwróć `Severity | Location | Finding | Fix` (nagłówek tabeli
    bez zmian) + potwierdzony/niepewny. Dodaj wiersze Spec: każde kryterium z sekcji `Kryterium ukończenia` (albo `Kryteria akceptacji`; nagłówek bez ogonków `Kryterium ukonczenia` też się liczy) w body issue (`gh issue view <N>`) to wiersz Spec z Location `Spec: …`; niespełnione = High, spełnione = bez findingu. Linie `Ręcznie:` / `Recznie:` są niesprawdzalne w diffie: wiersz Spec ze statusem `niesprawdzalne`, nie High. Nie edytuj.” Zapisz jego id w `## Stan`.
    Raport review pokazywany użytkownikowi (i zapisywany w `## Stan` / raporcie nocy) orkiestrator
@@ -284,8 +284,8 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    `## Spec`, `TWARDE` / `OCENA`). Bez zmian: nagłówek tabeli `Severity | Location | Finding | Fix`
    i wartości Severity, cytaty kodu, identyfikatory i ścieżki.
 3. **Wznów subagenta ticketu** (w Claude `SendMessage` na jego id, nie nowy start) z samą
-   tabelą findingów (bez tłumaczenia): findingi → wykonawca implementacji, poprawka razem z testem (potwierdzone → poprawka + test; niepewne → opis PR). Gdy review miało `--fix`, subagent najpierw wykonuje `/git-commit` dla wprowadzonych poprawek i ponawia CI przed `/git-end`. Review z kroku 2 **jest**
-   potwierdzeniem review dla `/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
+   tabelą findingów (bez tłumaczenia): findingi → wykonawca implementacji, poprawka razem z testem (potwierdzone → poprawka + test; niepewne → opis PR). Gdy review miało `--fix`, subagent najpierw wykonuje `/kit-ai/git-commit` dla wprowadzonych poprawek i ponawia CI przed `/kit-ai/git-end`. Review z kroku 2 **jest**
+   potwierdzeniem review dla `/kit-ai/git-end`. Przed wznowieniem nadpisz `## Stan` (krok `resume`),
    przed CI — krok `ci`. Dalej kroki 6–8 w `night-run-ticket`.
 4. Sprawdź dowód sam: `gh pr view <PR> --json state` → `MERGED`.
 5. Zapisz Przekazanie z hand-backu do osobnego pliku `$CTX_DIR/handoff-<N>.md` (≤ 30 linii: fakty dla następcy — modele, serwisy, endpointy, migracje, zmienione kontrakty, bez streszczenia pracy), dopisz wpis do indeksu w `CTX` (`#N → handoff-<N>.md`), a w rozmowie orkiestratora zostaw tylko jedną linię stanu: `#N: <stan> <PR> <koszt>` (dzięki temu kontekst orkiestratora nie rośnie z każdym ticketem). Policz koszt ticketu (sekcja „Pomiar”); powrót do bazy przed następnym ticketem: gdy `.git` jest plikiem (linked worktree, np. `[ -f .git ]`), `git fetch origin` i `git switch --detach origin/$BASE`; w głównym checkoucie bez zmian: `git checkout $BASE && git pull`.
@@ -294,7 +294,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    - **Warunek:** diff zmergowanego PR dotyka ścieżek `templates/` albo `src/guides/`. Repo aplikacji (brak `manifest.yaml` w root) albo brak zmian w tych ścieżkach → krok pominięty.
    - **Czyste drzewo robocze:** przed pullem sprawdź stan drzewa: `git status --porcelain`. Gdy drzewo jest brudne (`git status --porcelain` niepuste) → pominięcie z wpisem w raporcie nocy (`pominięto reload kita: brudne drzewo robocze`).
    - **Pull i reload:** przy czystym drzewie (`git status --porcelain` puste) wykonaj `git fetch origin`, następnie `git pull --ff-only origin "$BASE"` (bez przełączania branchy; działa też przy odłączonym HEAD), potem `kit-ai reload .`.
-   - **Wczytanie nowej wersji:** orkiestrator czyta ponownie zmienione sekcje swojej procedury (z odświeżonych plików); subagenci i agenci `/git-*` biorą nową wersję sami przy starcie.
+   - **Wczytanie nowej wersji:** orkiestrator czyta ponownie zmienione sekcje swojej procedury (z odświeżonych plików); subagenci i agenci `/kit-ai/git-*` biorą nową wersję sami przy starcie.
    - **Obsługa błędów:** błąd reloadu (`kit-ai reload` zakończone błędem) → wpis w raporcie nocy (`błąd reloadu kita: <szczegóły>`) i utworzenie nowego issue (`gh issue create`), aby problem został naprawiony w kolejnym biegu. Noc idzie dalej.
 
 Hand-back needs-human albo halt od subagenta → sekcja „Gdy ticket napotka problem”.
@@ -306,7 +306,7 @@ Przekazujesz subagentowi ticketu parametry zlecenia (orkiestrator nie przepisuje
 ```markdown
 Ticket #N, BASE, CTX: #<N>, baza <BASE>, kontekst <CTX>
 Handoffy blokujących: <lista plików $CTX_DIR/handoff-<B>.md | brak blokujących>
-Wykonawca: implementacja: <wykonawca> <model>, <model>; <wykonawca> <model> | /headless <EXEC> [FLAGI] "<TREŚĆ>" --ctx <CTX_DIR> | brak
+Wykonawca: implementacja: <wykonawca> <model>, <model>; <wykonawca> <model> | /kit-ai/headless <EXEC> [FLAGI] "<TREŚĆ>" --ctx <CTX_DIR> | brak
 LIMIT: <przejmij | czekaj>
 PRZEJĘCIE: <alias> (<źródło>)
 Nadpisania: merge-mimo-spec, merge-mimo-wątków | brak
@@ -398,7 +398,7 @@ tickety B i C są w zasięgu.
   i `koniec:` (teraz ≥ koniec → halt C); inaczej odnów watchdoga i wznów łańcuch od kroku
   z `## Stan`. Bez zmiany stanu w CTX nie wznawiaj ticketu, który już ma MERGED.
   Hand-back „pauza wykonawcy do <ISO>” (kod 75 wrappera): zapisz pauzę jak wyżej i odnów watchdoga;
-  po wznowieniu ponowny `/headless` dla tego ticketu od kroku 2–3 w `night-run-ticket`. Pauza wykonawcy nie liczy się do wznowień ticketu.
+  po wznowieniu ponowny `/kit-ai/headless` dla tego ticketu od kroku 2–3 w `night-run-ticket`. Pauza wykonawcy nie liczy się do wznowień ticketu.
 
 - **E — finding blokujący** (Spec High niezałatwiony po ponownym sprawdzeniu albo otwarte wątki bota CodeRabbit po wyczerpaniu sufitu rund): PR zostaje otwarty bez merge, issue zostaje otwarte, krok 8 w `night-run-ticket` pominięty. Komentarz na issue `needs-human: …` (zawiera link do PR) pisze orkiestrator. Etykieta: `ready-for-agent` → `ready-for-human`, zgodnie z regułą „pozostałe przypadki needs-human” niżej. Zasięg jak w „Zasięg”: zależne tickety dostają `needs-human: czeka na odpowiedzi z #N` (jak B), kolejne niezależne idą dalej.
 
@@ -465,7 +465,7 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
   (`TaskStop` + start z `timeout: 7200000` + `watchdog:` w `## Stan`); cron bez zmian: jedna linia „ok”, koniec tiku;
 - wznowienie po pauzie → zamknij pauzę w `## Stan`, potem jak w przypadku D i odpala watchdoga;
 - hand-back „pauza wykonawcy do <ISO>” → jak w przypadku D (pauza w `## Stan`, odnów watchdoga);
-  po wznowieniu ponowny `/headless` dla tego ticketu (krok 2–3 w `night-run-ticket`), pauza nie liczy się do wznowień ticketu;
+  po wznowieniu ponowny `/kit-ai/headless` dla tego ticketu (krok 2–3 w `night-run-ticket`), pauza nie liczy się do wznowień ticketu;
 - failed albo zakończony bez hand-backu → `SendMessage` na jego id; gdy się nie da → nowy
   subagent ticketu „kontynuuj z brancha `<branch>`: sprawdź `git log` / PR, dokończ od kroku X”
   (fallback obowiązkowy — `SendMessage` po 429 może nie zadziałać);
@@ -475,7 +475,7 @@ Najpierw zaległe powiadomienia, potem status subagenta z `## Stan` (`ListAgents
   z `## Stan` (przypadek D).
 - restart hosta / `kill` sesji: CTX i `## Stan` przetrwały w `~/.cache` — łańcuch od kroku
   z `## Stan`, praca od ostatniego commitu. Wznów sesję (`claude --continue`) albo nowy
-  `/night-run`: czyta `## Stan`, `CronList` przed `CronCreate`, odpala watchdoga, gdy go nie ma.
+  `/kit-ai/night-run`: czyta `## Stan`, `CronList` przed `CronCreate`, odpala watchdoga, gdy go nie ma.
 
 ## Pomiar kosztu ticketu (tylko Claude Code)
 
@@ -487,7 +487,7 @@ kit-ai retro scan --session <sesja>
 
 Wynik podaje koszt tokenów Sesji (tury, wejście, cache, wyjście, maks. kontekst) i zapisuje metryki w `${XDG_CACHE_HOME:-~/.cache}/kit-ai/retro/<repo>/<sesja>.jsonl` jako jedyne źródło kosztu Sesji (#409).
 Model per krok: `meta.json` subagenta (`$HOME/.claude/projects/<projekt>/<sesja>/subagents/agent-<id>.meta.json`) i transkrypt (`message.model`) → kolumna `Model` w NIGHT-RUN REPORT; fallback jako `<komenda>: skill (sesja)`.
-Czas = wall-clock. Inny klient → „brak transkryptu”. Z `/headless` albo review z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
+Czas = wall-clock. Inny klient → „brak transkryptu”. Z `/kit-ai/headless` albo review z argumentów dopisz „koszt bez wykonawcy headless i review w sesji głównej”.
 
 **Orkiestrator:** to samo wywołanie `kit-ai retro scan --session <sesja_orkiestratora>` na sesji głównej; do raportu idą jego tury i `cache_read`.
 
@@ -501,7 +501,7 @@ Ostatni krok przed raportem, raz na noc. Nie blokuje raportu: gdy skan albo klas
 3. Są znaleziska → uruchom skill `/kit-retro` na zapisach z tej nocy: pliki `*.jsonl` z katalogu z kroku 1, których `scanned_at` jest z tego przebiegu. Tabelę z ocenami zostaw w rozmowie, nie zapisuj jej do pliku.
 4. Do raportu wpisz linię `Retro: …` z liczbami per kategoria (w bloku raportu poniżej).
 
-Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i raportu. Issue zakłada człowiek po akceptacji (`/create-task`), więc nie zakładasz issue ani nie piszesz w GitHubie z tego kroku.
+Propozycje z tego kroku (kit, projekt, agent, zewnętrzne) idą do rozmowy i raportu. Issue zakłada człowiek po akceptacji (`/kit-ai/create-task`), więc nie zakładasz issue ani nie piszesz w GitHubie z tego kroku.
 
 ## NIGHT-RUN REPORT — ostatnia wiadomość
 
@@ -519,7 +519,7 @@ Host: <vps | local> (z `kit-ai host`; nagłówek CTX)
 Sufiks CTX: <brak / z celu: <sufiks> / automatyczny: <sufiks> (noc w toku w <katalog>)>
 Bramki szybkie: <lista> (źródło: CI / overlay / założenie) · pełny zestaw: CI
 Model ticketu: <MODEL> albo per ticket: #N <model> — <powód>
-Wykonawca: <EXEC / subagent / subagent (brak /headless)> · Review: <skille z argumentów / domyślne>
+Wykonawca: <EXEC / subagent / subagent (brak /kit-ai/headless)> · Review: <skille z argumentów / domyślne>
 Modele kroków: <git-start: haiku · git-commit: haiku · git-end: haiku · review: sonnet>
 Fallback modelu: <komenda: skill / inline (sesja) — gdy brak agenta>
 Pauzy limitu: <liczba> (przestój <od>–<do>, reset: <godzina z komunikatu / brak>)
@@ -531,12 +531,12 @@ Retro: <liczba znalezisk> (kit <n> · projekt <n> · agent <n> · zewnętrzne <n
 
 | Ticket | Stan | Wykonawca | Review | Model | Dowód | Koszt (tury / cache_read / output / kontekst / czas) |
 | --- | --- | --- | --- | --- | --- | --- |
-| #N | MERGED | opencode | /review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
+| #N | MERGED | opencode | /kit-ai/review-edge | git-start: haiku · git-commit: haiku · git-end: haiku · review-bugbot: sonnet | `gh pr view <PR> --json state` → MERGED; <link Final report> | 58 / 6.1M / 41k / 164k / 20 min |
 | #M | needs-human → ready-for-human | subagent | domyślne | git-end: skill (sesja) | <link do komentarza> | … |
-| #K | MERGED | opencode → przejęte (haiku, limit) | /review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
+| #K | MERGED | opencode → przejęte (haiku, limit) | /kit-ai/review-edge | przejęcie: haiku (Profil) · git-end: haiku | `gh pr view <PR> --json state` → MERGED; <link Final report> | 40 / 3.2M / 25k / 120k / 14 min |
 | #J | skipped: needs-local / skipped: <etykieta> / skipped: w innej nocy <katalog> / skipped: zależność #N w innej nocy <katalog> / halted | — | — | — | etykieta stanu, inna noc albo link do komentarza halted | — |
 
-Raport per krok: kolumny Wykonawca i Model odnotowują transport (natywna delegacja / `/headless` / subagent), użyty model oraz przejścia na zapas (np. `<model-1> → <model-2> (limit)`). Koszt delegata `n/a`, gdy transport nie zostawia logów.
+Raport per krok: kolumny Wykonawca i Model odnotowują transport (natywna delegacja / `/kit-ai/headless` / subagent), użyty model oraz przejścia na zapas (np. `<model-1> → <model-2> (limit)`). Koszt delegata `n/a`, gdy transport nie zostawia logów.
 
 Kolumna Wykonawca: gdy kod 75 został przejęty, zapisz `opencode → przejęte (<model>, limit)` (zamiast `opencode`
 nazwa wykonawcy z `EXEC`); model i źródło (cel / Profil / sesja) przepisz z hand-backu do kolumny Model jako

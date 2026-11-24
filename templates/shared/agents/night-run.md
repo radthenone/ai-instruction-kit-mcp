@@ -33,8 +33,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
     ticketu, a orkiestrator nie dostaje z nich tur. Sam `@KIT_CMD_PREFIX@night-run` działa w głównej
     sesji (w Claude uruchamiany Skillem, nie Agentem): potrzebuje `CronCreate` i watchdoga.
 <!-- /clients -->
-  - **opencode:** komenda `/<nazwa>` z `.opencode/command/` (model z frontmattera; `targets.opencode`
-    zapisuje `model:` dopiero po #527); brak `model:` → model sesji.
+  - **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera; `targets.opencode`); brak `model:` → model sesji.
   - **klienci bez modelu per agent** (Cursor, Codex, VS Code, Kiro, Kilo, Antigravity) →
     bez zmian: inline albo skill na modelu sesji. Dla klientów bez typu agenta (Codex, VS Code, Antigravity, inline): wczytaj `night-run-ticket` (skill albo prompt klienta) i wykonaj go z parametrami zlecenia.
   - **Model komendy z celu** — tylko jawna forma `<komenda>: model <nazwa>` (np.

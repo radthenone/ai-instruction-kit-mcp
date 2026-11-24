@@ -63,7 +63,7 @@ def render_kilo(meta: dict[str, str], body: str) -> str:
 
 
 def render_opencode(meta: dict[str, str], body: str) -> str:
-    # opencode custom command: .opencode/command/<name>.md, wywołanie /<name>, $ARGUMENTS wspierane.
+    # opencode custom command: .opencode/commands/kit-ai/<name>.md, wywołanie /kit-ai/<name>, $ARGUMENTS wspierane.
     description = meta.get("description", "").replace('"', "'")
     front = f'---\ndescription: "{description}"\n---\n\n'
     front += "Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS\n\n"
