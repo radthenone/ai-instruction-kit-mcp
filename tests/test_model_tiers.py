@@ -290,6 +290,10 @@ class TestParseTargets(unittest.TestCase):
             parse_profile(text)
         self.assertIn("inline", str(ctx.exception))
 
+    def test_agents_whole_value_in_quotes_is_read(self) -> None:
+        _, agents = parse_profile('agents:\n  light: "git-start,cleanup"\n')
+        self.assertEqual(agents["light"], ["git-start", "cleanup"])
+
     def test_empty_client_is_error(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
             parse_profile("targets:\n  claude:\n")
