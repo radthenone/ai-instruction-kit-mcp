@@ -361,6 +361,50 @@ class TestParseTargets(unittest.TestCase):
             parse_profile('agents:\n  light: ["git-start", "cleanup]\n')
         self.assertIn("cytowanie", str(ctx.exception))
 
+    def test_double_quoted_backslash_is_unescaped(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\\\"\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["model"], "a\\")
+
+    def test_escaped_quote_does_not_start_comment(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\" # c"\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["model"], 'a" # c')
+
+    def test_unclosed_double_quote_with_trailing_backslash_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "ab\\"\n'
+            )
+        self.assertIn("escape", str(ctx.exception))
+
+    def test_unknown_escape_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\tb"\n'
+            )
+        self.assertIn("escape", str(ctx.exception))
+
+    def test_empty_agent_name_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile('agents:\n  light: [""]\n')
+        self.assertIn("pust", str(ctx.exception))
+
+    def test_unbalanced_brackets_in_agents_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("agents:\n  light: [a]]\n")
+        self.assertIn("nawias", str(ctx.exception))
+
+    def test_empty_option_id_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n'
+                '      options: [{ id: "", value: low }]\n'
+            )
+        self.assertIn("pust", str(ctx.exception))
+
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 

@@ -77,13 +77,15 @@ def _entries(lines: list[str]) -> list[tuple[int, str, str]]:
         if not line.strip():
             continue
         key, _, value = line.strip().partition(":")
-        found.append((len(line) - len(line.lstrip()), key.strip(), _unquote(value.strip(), f"agents.{key.strip()}")))
+        found.append((len(line) - len(line.lstrip()), key.strip(), value.strip()))
     return found
 
 
 def _strip_comment(line: str) -> str:
     """
     Wycina komentarz zaczynający się od `#` na początku linii lub po białym znaku, poza cudzysłowem.
+
+    W cudzysłowie podwójnym zapis escape nie zamyka cudzysłowu.
 
     Args:
         line: Linia Profilu bez końca linii.
@@ -92,7 +94,12 @@ def _strip_comment(line: str) -> str:
         str: Linia bez komentarza.
     """
     quote = None
-    for i, ch in enumerate(line):
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote == '"' and ch == "\\":
+            i += 2
+            continue
         if quote:
             if ch == quote:
                 quote = None
@@ -100,22 +107,26 @@ def _strip_comment(line: str) -> str:
             quote = ch
         elif ch == "#" and (i == 0 or line[i - 1].isspace()):
             return line[:i]
+        i += 1
     return line
 
 
 def _unquote(raw: str, where: str) -> str:
     """
-    Zdejmuje cudzysłowy z wartości pola zgodnie z YAML; błędne cudzysłowy to błąd.
+    Zdejmuje cudzysłowy z wartości pola zgodnie z YAML.
+
+    Obsługiwane są tylko: podwojony apostrof w cudzysłowie pojedynczym oraz backslash i cudzysłów
+    jako escape w cudzysłowie podwójnym. Pozostałe escape'y są błędem, a nie cichym przepisaniem.
 
     Args:
         raw: Surowa wartość z Profilu, po wycięciu komentarzy.
         where: Ścieżka pola do komunikatu błędu.
 
     Returns:
-        str: Wartość bez cudzysłowów (escape `''` i `\\"` rozwinięte), bez białych znaków na brzegach.
+        str: Wartość bez cudzysłowów, bez białych znaków na brzegach.
 
     Raises:
-        ProfileError: Cudzysłów bez domknięcia albo nieescapowany cudzysłów w środku.
+        ProfileError: Cudzysłów bez domknięcia, nieescapowany cudzysłów w środku albo nieobsługiwany escape.
     """
     quotes = ("'", '"')
     if raw[:1] not in quotes and raw[-1:] not in quotes:
@@ -127,9 +138,22 @@ def _unquote(raw: str, where: str) -> str:
         if "'" in inner.replace("''", ""):
             raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
         return inner.replace("''", "'").strip()
-    if '"' in inner.replace('\\"', ""):
-        raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
-    return inner.replace('\\"', '"').strip()
+    out: list[str] = []
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "\\":
+            nxt = inner[i + 1 : i + 2]
+            if nxt not in ('"', "\\"):
+                raise ProfileError(f"Profil: `{where}` ma nieobsługiwany escape: `{raw}`.")
+            out.append(nxt)
+            i += 2
+            continue
+        if ch == '"':
+            raise ProfileError(f"Profil: `{where}` ma błędne cytowanie: `{raw}`.")
+        out.append(ch)
+        i += 1
+    return "".join(out).strip()
 
 
 def _targets_tree(lines: list[str]) -> dict:
@@ -185,6 +209,8 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
         {"id": _unquote(m.group(1), f"{where}.options"), "value": _unquote(m.group(2), f"{where}.options")}
         for m in _OPTION.finditer(body)
     ]
+    if any(not opt["id"] or not opt["value"] for opt in options):
+        raise ProfileError(f"Profil: pusta wartość w `{where}.options`.")
     seen: set[str] = set()
     for opt in options:
         if opt["id"] in seen:
@@ -279,7 +305,12 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
                 f"Profil: nieznany tier `agents.{tier}`. Dozwolone: {_ALLOWED} — "
                 "przenieś jego agentów do jednego z nich."
             )
-        names = [_unquote(n.strip(), f"agents.{tier}") for n in value.strip("[]").split(",") if n.strip()]
+        body = value[1:-1] if value.startswith("[") and value.endswith("]") else value
+        if "[" in body or "]" in body:
+            raise ProfileError(f"Profil: `agents.{tier}` ma niedopasowane nawiasy `[]`.")
+        names = [_unquote(n.strip(), f"agents.{tier}") for n in body.split(",") if n.strip()]
+        if "" in names:
+            raise ProfileError(f"Profil: pusta nazwa agenta w `agents.{tier}`.")
         for name in names:
             if name in seen:
                 raise ProfileError(
