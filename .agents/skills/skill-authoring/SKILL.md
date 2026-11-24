@@ -1,5 +1,5 @@
 ---
-name: skill-authoring
+name: kit-ai:skill-authoring
 description: >-
   Jak napisać skill do instruction-kit: frontmatter, opis który faktycznie
   odpala, sufit długości, zasoby obok SKILL.md i degradacja u klientów bez

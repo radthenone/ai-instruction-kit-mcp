@@ -1,5 +1,5 @@
 ---
-name: pr-stats
+name: kit-ai:pr-stats
 description: Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /pr-stats.
 ---
 

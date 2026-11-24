@@ -1,5 +1,5 @@
 ---
-name: review-architecture
+name: kit-ai:review-architecture
 description: Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /review-architecture.
 readonly: true
 ---

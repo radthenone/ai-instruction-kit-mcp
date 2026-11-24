@@ -1,5 +1,5 @@
 ---
-name: git-start
+name: kit-ai:git-start
 description: Start pracy git — issue (#N, auto-diff lub --help) + branch Conventional. Use when /git-start, --help, new branch from issue. Wywołuj jako /git-start.
 ---
 

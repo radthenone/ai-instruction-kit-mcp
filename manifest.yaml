@@ -875,13 +875,13 @@ layouts:
 # ─── Prefiks komend per klient (#525, ADR 0001) ──────────
 # sigil: znak wywołania (`/` albo `$`). namespace: przestrzeń w treści (@KIT_CMD_PREFIX@).
 # name_prefix: przestrzeń w frontmatter `name:` (@KIT_NAME_PREFIX@).
-# Claude ma wartość docelową (`kit-ai:`, #526); pozostałe cele wpisują ich tickety.
+# Claude ma wartość docelową (`kit-ai:`, #526); Codex i Antigravity mają name_prefix `kit-ai:` (#534); pozostałe cele wpisują ich tickety.
 # Jeden wpis = jedna linia: scripts/command_prefix.py czyta te linie bez PyYAML.
 command_prefixes:
   claude: {sigil: "/", namespace: "kit-ai:", name_prefix: ""}
-  codex: {sigil: "/", namespace: "", name_prefix: ""}
+  codex: {sigil: "/", namespace: "", name_prefix: "kit-ai:"}
   vscode: {sigil: "/", namespace: "", name_prefix: ""}
-  antigravity: {sigil: "/", namespace: "", name_prefix: ""}
+  antigravity: {sigil: "/", namespace: "", name_prefix: "kit-ai:"}
   opencode: {sigil: "/", namespace: "kit-ai/", name_prefix: ""}
   kilo: {sigil: "/", namespace: "", name_prefix: ""}
   cursor: {sigil: "/", namespace: "", name_prefix: ""}

@@ -77,9 +77,15 @@ class TestManifestCommandPrefixes(unittest.TestCase):
 
     def test_every_target_has_default_triple(self) -> None:
         manifest = load_manifest(KIT_ROOT)
+        expected_by_target = {
+            "claude": ("/", "kit-ai:", ""),
+            "opencode": ("/", "kit-ai/", ""),
+            "codex": ("/", "", "kit-ai:"),
+            "antigravity": ("/", "", "kit-ai:"),
+        }
         for target in TARGETS:
             prefix = manifest.command_prefix(target)
-            expected = ("/", "kit-ai:", "") if target == "claude" else ("/", "kit-ai/", "") if target == "opencode" else ("/", "", "")
+            expected = expected_by_target.get(target, ("/", "", ""))
             self.assertEqual((prefix.sigil, prefix.namespace, prefix.name_prefix), expected, target)
 
     def test_unknown_target_raises(self) -> None:
@@ -431,3 +437,32 @@ class TestTargetFilesPlaceholders(unittest.TestCase):
             self.assertNotIn("@KIT_CMD_PREFIX@", text)
             self.assertNotIn("@KIT_NAME_PREFIX@", text)
             self.assertIn("/night-run", text)
+
+
+def _frontmatter_name(path: Path) -> str:
+    """Zwróć wartość ``name:`` z frontmatteru pliku SKILL.md."""
+    _, block, _ = path.read_text(encoding="utf-8").split("---", 2)
+    return str(yaml.safe_load(block)["name"])
+
+
+class TestGeneratedSkillNames(unittest.TestCase):
+    """Kryteria akceptacji #534: ``name:`` w SKILL.md Codex i Antigravity to ``kit-ai:<katalog>``."""
+
+    SKILL_ROOTS = {".codex/skills": "codex", ".agents/skills": "antigravity"}
+
+    def test_generated_skill_names_follow_name_prefix(self) -> None:
+        manifest = load_manifest(KIT_ROOT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = _init_workspace(root / "ws")
+            result = _run_bootstrap(KIT_ROOT, workspace, root / "config")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for rel, target in self.SKILL_ROOTS.items():
+                prefix = manifest.command_prefix(target).name_prefix
+                skills = sorted((workspace / rel).glob("*/SKILL.md"))
+                self.assertGreater(len(skills), 0, rel)
+                for skill in skills:
+                    name = skill.parent.name
+                    with self.subTest(target=target, skill=name):
+                        self.assertNotIn(":", name)
+                        self.assertEqual(_frontmatter_name(skill), f"{prefix}{name}")

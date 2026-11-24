@@ -1,5 +1,5 @@
 ---
-name: night-run-ticket
+name: kit-ai:night-run-ticket
 description: Subagent ticketu dla procedury /night-run — wykonuje pojedyncze issue pod nadzorem orkiestratora.
 ---
 
