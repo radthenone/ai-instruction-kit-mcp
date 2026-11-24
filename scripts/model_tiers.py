@@ -277,6 +277,10 @@ def _parse_targets(lines: list[str]) -> dict[str, dict[str, dict]]:
             found[tier] = _target_entry(client, tier, fields)
         if "takeover" not in found and "standard" in found:
             found["takeover"] = copy.deepcopy(found["standard"])
+        if "standard" not in found and "takeover" not in found:
+            raise ProfileError(
+                f"Profil: `targets.{client}` bez `standard` wymaga wpisu `takeover` — kopia standard nie ma skąd wziąć."
+            )
         targets[client] = found
     return targets
 

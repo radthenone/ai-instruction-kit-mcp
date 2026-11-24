@@ -1024,8 +1024,10 @@ class TestModelTiers(_BootstrapTestCase):
                 workspace,
                 "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
                 "      model: claude-haiku-5-5\n      options: [{ id: effort, value: low }]\n"
+                "    takeover:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
                 "  opencode:\n    light:\n      providerInstanceId: opencode\n"
-                "      model: anthropic/claude-haiku-5-5\n",
+                "      model: anthropic/claude-haiku-5-5\n"
+                "    takeover:\n      providerInstanceId: opencode\n      model: anthropic/claude-haiku-5-5\n",
             )
             read = lambda rel: (workspace / rel).read_text(encoding="utf-8")  # noqa: E731
             self.assertIn("\nmodel: claude-haiku-5-5\neffort: low\n---", read(".claude/agents/git-start.md"))
@@ -1316,7 +1318,8 @@ class TestHeadlessAgent(_BootstrapTestCase):
             profile = workspace / ".ai/project.profile.yaml"
             profile.write_text(
                 profile.read_text(encoding="utf-8")
-                + "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: haiku\n",
+                + "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: haiku\n"
+                "    takeover:\n      providerInstanceId: claudeAgent\n      model: haiku\n",
                 encoding="utf-8",
             )
             self._install(workspace, "claude,opencode")

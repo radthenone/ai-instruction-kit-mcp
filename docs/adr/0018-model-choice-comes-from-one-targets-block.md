@@ -8,7 +8,7 @@ For Claude, bootstrap writes `model:` and `effort:` into the frontmatter of `.cl
 
 Options are written inline as `options: [{ id, value }]`, the shape T3 Code uses. The parser reads that without PyYAML, because bootstrap runs on the system Python.
 
-Structural errors in the block stop reload with a message that names the entry: an unknown client or tier, a field other than `providerInstanceId`, `model` or `options`, an entry without `providerInstanceId`, an empty `model`, options written outside the inline form, and an agent in two tiers. The kit does not yet validate option values (for example the Claude `effort` level); a value is written as given. [ADR-0004](0004-unknown-decisions-are-reported-not-fatal.md) still covers unrecognised decisions elsewhere in the Profile.
+Structural errors in the block stop reload with a message that names the entry: an unknown client or tier, a field other than `providerInstanceId`, `model` or `options`, an entry without `providerInstanceId`, an empty `model`, options written outside the inline form, a client with neither `standard` nor `takeover` (there is no `standard` to copy), and an agent in two tiers. The kit does not yet validate option values (for example the Claude `effort` level); a value is written as given. [ADR-0004](0004-unknown-decisions-are-reported-not-fatal.md) still covers unrecognised decisions elsewhere in the Profile.
 
 [ADR-0013](0013-agent-classification-and-ponytail-matcher.md) is unchanged. It makes the agent `classification` a required field that fails bootstrap and reload when missing. Model tiers are optional, and a missing one has a safe default, the session model, so that stricter rule does not apply to them.
 

@@ -572,7 +572,7 @@ agents:                  # synchronizuje reload
   nazwy spoza kita znikają. Każde dopisanie (`+ agents.<tier>: <agent>`) i usunięcie (`-`)
   jest w wyjściu reloadu. Reload przepisuje tylko blok `agents:` — komentarze w nim giną.
 - Nieznany klient albo tier w `targets:`, pole spoza `providerInstanceId` / `model` / `options`, wpis bez
-  `providerInstanceId`, pusty `model`, zapis w jednej linii (`targets: {…}`) albo agent w dwóch tierach
+  `providerInstanceId`, pusty `model`, zapis w jednej linii (`targets: {…}`), klient bez `standard` i `takeover` albo agent w dwóch tierach
   przerywają reload z opisem błędu. Bloki pisz z wcięciami, jak wyżej; `agents:` obejmuje wszystkich agentów
   kita, także Tierów Stacku spoza Profilu.
 - `targets.<klient>.takeover` (obok tierów agentów): model przejęcia ticketu nocnego, gdy wykonawca zwróci

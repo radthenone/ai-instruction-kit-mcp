@@ -187,6 +187,7 @@ class TestParseTargets(unittest.TestCase):
         targets, _ = parse_profile(
             'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n'
             '      options: [{ id: "effort", value: "low" }]\n'
+            '    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
         )
         self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
 
@@ -278,6 +279,7 @@ class TestParseTargets(unittest.TestCase):
         targets, _ = parse_profile(
             "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
             "      options: [{ id: effort, value: low },]\n"
+            "    standard:\n      providerInstanceId: claudeAgent\n      model: m\n"
         )
         self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
 
@@ -294,13 +296,12 @@ class TestParseTargets(unittest.TestCase):
         _, agents = parse_profile('agents:\n  light: "git-start,cleanup"\n')
         self.assertEqual(agents["light"], ["git-start", "cleanup"])
 
-    def test_client_without_standard_or_takeover_has_no_takeover_target(self) -> None:
-        """Bez `standard` i `takeover` parser nie tworzy celu przejęcia; karta T3 zgłasza needs-human."""
-        targets, _ = parse_profile(
-            "targets:\n  claude:\n    heavy:\n      providerInstanceId: claudeAgent\n      model: claude-opus-5-5\n"
-        )
-        self.assertNotIn("takeover", targets["claude"])
-        self.assertIn("heavy", targets["claude"])
+    def test_client_without_standard_or_takeover_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                "targets:\n  claude:\n    heavy:\n      providerInstanceId: claudeAgent\n      model: claude-opus-5-5\n"
+            )
+        self.assertIn("takeover", str(ctx.exception))
 
     def test_empty_agents_tier_is_error_but_explicit_list_is_kept(self) -> None:
         for raw in ('""', '",,,"', ""):
@@ -384,7 +385,7 @@ class TestParseTargets(unittest.TestCase):
 
     def test_hash_inside_quoted_value_is_kept(self) -> None:
         targets, _ = parse_profile(
-            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a #b"\n'
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a #b"\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
         )
         self.assertEqual(targets["claude"]["light"]["model"], "a #b")
 
@@ -395,7 +396,7 @@ class TestParseTargets(unittest.TestCase):
 
     def test_doubled_apostrophe_in_single_quoted_value_is_kept(self) -> None:
         targets, _ = parse_profile(
-            "targets:\n  claude:\n    light:\n      providerInstanceId: 'Claude d''Alice'\n"
+            "targets:\n  claude:\n    light:\n      providerInstanceId: 'Claude d''Alice'\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n"
         )
         self.assertEqual(targets["claude"]["light"]["providerInstanceId"], "Claude d'Alice")
 
@@ -406,13 +407,13 @@ class TestParseTargets(unittest.TestCase):
 
     def test_double_quoted_backslash_is_unescaped(self) -> None:
         targets, _ = parse_profile(
-            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\\\"\n'
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\\\"\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
         )
         self.assertEqual(targets["claude"]["light"]["model"], "a\\")
 
     def test_escaped_quote_does_not_start_comment(self) -> None:
         targets, _ = parse_profile(
-            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\" # c"\n'
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\" # c"\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
         )
         self.assertEqual(targets["claude"]["light"]["model"], 'a" # c')
 
@@ -502,7 +503,7 @@ class TestParseTargets(unittest.TestCase):
 
     def test_empty_options_list_is_empty(self) -> None:
         targets, _ = parse_profile(
-            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: []\n"
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: []\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n"
         )
         self.assertEqual(targets["claude"]["light"]["options"], [])
 
@@ -664,6 +665,7 @@ class TestApplyModels(unittest.TestCase):
         profile = (
             "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
             "      model: claude-haiku-5-5\n      options: [{ id: effort, value: low }]\n"
+            "    standard:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
             "agents:\n  light: git-start\n  heavy: night-run\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -680,7 +682,9 @@ class TestApplyModels(unittest.TestCase):
     def test_claude_apply_without_effort_option_writes_only_model(self) -> None:
         profile = (
             "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
-            "      model: claude-haiku-5-5\nagents:\n  light: git-start\n"
+            "      model: claude-haiku-5-5\n"
+            "    standard:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
+            "agents:\n  light: git-start\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             start = self._agent(Path(tmp), "git-start")
@@ -694,7 +698,9 @@ class TestApplyModels(unittest.TestCase):
         """OpenCode: `model:` z `targets.opencode`, bez sufiksu, gdy nie ma opcji `variant` (ADR-0018)."""
         profile = (
             "targets:\n  opencode:\n    light:\n      providerInstanceId: opencode\n"
-            "      model: anthropic/claude-haiku-5-5\nagents:\n  light: git-start\n"
+            "      model: anthropic/claude-haiku-5-5\n"
+            "    standard:\n      providerInstanceId: opencode\n      model: anthropic/claude-haiku-5-5\n"
+            "agents:\n  light: git-start\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             start = self._agent(Path(tmp), "git-start")
@@ -710,6 +716,7 @@ class TestApplyModels(unittest.TestCase):
             "targets:\n  opencode:\n    light:\n      providerInstanceId: opencode\n"
             "      model: opencode/glm-5.3-flash-free\n"
             "      options: [{ id: variant, value: high }]\n"
+            "    standard:\n      providerInstanceId: opencode\n      model: opencode/glm-5.3-flash-free\n"
             "agents:\n  light: git-start\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
