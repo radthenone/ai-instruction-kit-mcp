@@ -563,7 +563,7 @@ agents:                  # synchronizuje reload
 | Klient | Wspiera `model` | Plik | Format nazwy modelu | Przykład |
 |--------|-----------------|------|---------------------|----------|
 | Claude Code | tak | `.claude/agents/<agent>.md` | alias (`haiku`/`sonnet`/`opus`) albo pełne id | `models.claude.light: haiku` |
-| opencode | tak | `.opencode/command/<agent>.md` | `provider/model` | `models.opencode.light: anthropic/claude-haiku-5-5` |
+| opencode | tak | `.opencode/commands/kit-ai/<agent>.md` | `provider/model` | `models.opencode.light: anthropic/claude-haiku-5-5` |
 | Cursor, Codex, VS Code, Kiro, Kilo, Antigravity | nie — pole pomijane | — | — | — |
 
 Komendy `/nazwa` Claude (`.claude/commands/`) zostają bez `model:` — działają w sesji głównej.
@@ -746,7 +746,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
 | Kilo Code | `kilo` | rozszerzenie Kilo Code | `.kilocode/mcp.json` + `.kilocode/workflows/*.md` (`/nazwa`, `$ARGUMENTS` wspierane) |
 | Google Antigravity | `antigravity` | Antigravity IDE / CLI (`agy`) | `.agents/mcp_config.json` + `.agents/skills/<nazwa>/SKILL.md` (agenty jako natywne skille) + `.agents/hooks.json` (guardy kita: git-guard, server-guard, sensitive-files-guard) |
-| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/command/*.md` (`/nazwa`, `$ARGUMENTS`) |
+| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/commands/kit-ai/*.md` (`/kit-ai/nazwa`, `$ARGUMENTS`) + `.opencode/command/{goal,loop}.md` (`/goal`, `/loop`) |
 
 Wiele klientów naraz: `--clients cursor,claude` albo `--clients all`. Każdy klient dostaje **ten sam** `--language`/`--workspace` — różni się tylko format pliku MCP i ścieżka komend.
 
@@ -1216,7 +1216,7 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
 - **VS Code/Copilot**: `scripts/render_agent_commands.py vscode` → `.github/prompts/*.prompt.md` (wywołanie `/nazwa` w Copilot Chat).
 - **Kilo**: `scripts/render_agent_commands.py kilo` → `.kilocode/workflows/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
 - **Antigravity**: agenty jako natywne skille w `.agents/skills/<nazwa>/` (`agy` nie zna workflow — patrz `install_agent_skills.py`).
-- **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/command/*.md` (wywołanie `/nazwa`, `$ARGUMENTS` wspierane).
+- **opencode**: `scripts/render_agent_commands.py opencode` → `.opencode/commands/kit-ai/*.md` (wywołanie `/kit-ai/nazwa`, `$ARGUMENTS` wspierane).
   Guardy kita: plugin `.opencode/plugins/kit-guards.js` + `.opencode/hooks/` (sekcja „Guardrails”).
   Model: projektowy `opencode.json` dostaje przy install i reload `model` z globalnego configu
   OpenCode, tylko gdy projekt nie ma własnego `model`. Katalog jak w OpenCode:
@@ -1264,7 +1264,7 @@ w odróżnieniu od agenta (`/nazwa`), którego ktoś musi wywołać. Jedno źró
 | vscode | `.github/prompts/` | degradacja: komenda `/nazwa` |
 | kiro | `.kiro/agents/` | degradacja: komenda `/nazwa` |
 | kilo | `.kilocode/workflows/` | degradacja: komenda `/nazwa` |
-| opencode | `.opencode/command/` | degradacja: komenda `/nazwa` |
+| opencode | `.opencode/commands/kit-ai/` | degradacja: komenda `/kit-ai/nazwa` |
 
 **Degradacja kosztuje dwie rzeczy:** skill przestaje odpalać się sam (trzeba wpisać
 `/nazwa`) i gubi wszystko poza `SKILL.md`, bo komenda to jeden plik. Instalator mówi

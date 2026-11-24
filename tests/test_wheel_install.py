@@ -79,7 +79,7 @@ class TestWheelInstall(unittest.TestCase):
 
             self.assertTrue((app / ".claude" / "agents" / "git-start.md").is_file())
             self.assertTrue((app / ".claude" / "hooks" / "git-guard.mjs").is_file())
-            self.assertTrue((app / ".opencode" / "command" / "git-start.md").is_file())
+            self.assertTrue((app / ".opencode" / "commands" / "kit-ai" / "git-start.md").is_file())
             mcp = (app / ".mcp.json").read_text(encoding="utf-8")
             self.assertIn('"uvx"', mcp)
             self.assertIn("git+https://github.com/radthenone/ai-instruction-kit-mcp.git@dev-2", mcp)

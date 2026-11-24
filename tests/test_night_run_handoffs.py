@@ -24,7 +24,7 @@ NIGHT_RUN_COPIES = (
     ".claude/skills/kit-ai/skills/night-run/SKILL.md",
     ".codex/skills/night-run/SKILL.md",
     ".github/prompts/night-run.prompt.md",
-    ".opencode/command/night-run.md",
+    ".opencode/commands/kit-ai/night-run.md",
 )
 
 TICKET_COPIES = (
@@ -32,7 +32,7 @@ TICKET_COPIES = (
     ".claude/skills/kit-ai/skills/night-run-ticket/SKILL.md",
     ".codex/skills/night-run-ticket/SKILL.md",
     ".github/prompts/night-run-ticket.prompt.md",
-    ".opencode/command/night-run-ticket.md",
+    ".opencode/commands/kit-ai/night-run-ticket.md",
 )
 
 

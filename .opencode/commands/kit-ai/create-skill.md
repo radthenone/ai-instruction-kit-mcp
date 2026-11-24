@@ -1,5 +1,5 @@
 ---
-description: "Pomysł na skill → rozstrzygnięcie skill czy agent → ocena na tle repo → karta → issue. Use when /create-skill, 'chcę mieć skill na X', nowy SKILL.md, wiedza którą model ma ładować sam. Nie pisze skilla. Wywołuj jako /create-skill."
+description: "Pomysł na skill → rozstrzygnięcie skill czy agent → ocena na tle repo → karta → issue. Use when /kit-ai/create-skill, 'chcę mieć skill na X', nowy SKILL.md, wiedza którą model ma ładować sam. Nie pisze skilla. Wywołuj jako /kit-ai/create-skill."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
@@ -9,7 +9,7 @@ Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 Przestrzegaj `.cursor/rules/git-branch-pr.mdc` i `AGENTS.md`. Nie zakładasz brancha,
 nie piszesz skilla, nie commitujesz. Wyjściem jest **issue albo jego brak**.
 
-# /create-skill — od pomysłu na skill do zaakceptowanego issue
+# /kit-ai/create-skill — od pomysłu na skill do zaakceptowanego issue
 
 Robisz trzy rzeczy, których `gh issue create` nie robi: **rozstrzygasz, czy to w ogóle
 skill** (bardzo często okazuje się agentem), **oceniasz pomysł na tle prawdziwego repo**
@@ -27,7 +27,7 @@ skill `skill-authoring`. Nie powtarzaj go tutaj; odsyłaj do niego w issue.
 Gdy user poda `--help`, `help` lub `-h` — **nie oceniaj i nie twórz**, wypisz pomoc i zakończ.
 
 ```markdown
-# /create-skill — pomoc
+# /kit-ai/create-skill — pomoc
 
 ## Co robi
 Rozstrzyga czy pomysl to skill czy agent, ocenia go na tle repo, dopytuje
@@ -35,16 +35,16 @@ o braki, sklada karte (nazwa, description, zasoby, klienci, kryterium)
 i tworzy issue dopiero po Twojej akceptacji. Nie pisze SKILL.md.
 
 ## Wywolanie
-/create-skill                      Pyta o pomysl od zera
-/create-skill "konwencje migracji" Zaczyna od tego zdania
-/create-skill --dry-run            Konczy na karcie, nie tworzy niczego
-/create-skill --no-assign          Nie przypisuje @me (backlog)
-/create-skill --parent #88         Tworzy jako sub-issue pod #88
-/create-skill --quick              Pomija FAZE 1, zaklada ze to skill i ma sens
+/kit-ai/create-skill                      Pyta o pomysl od zera
+/kit-ai/create-skill "konwencje migracji" Zaczyna od tego zdania
+/kit-ai/create-skill --dry-run            Konczy na karcie, nie tworzy niczego
+/kit-ai/create-skill --no-assign          Nie przypisuje @me (backlog)
+/kit-ai/create-skill --parent #88         Tworzy jako sub-issue pod #88
+/kit-ai/create-skill --quick              Pomija FAZE 1, zaklada ze to skill i ma sens
 
 ## Wyjscie
 Numer issue + link. Przy --dry-run lub anulowaniu: sama karta.
-Potem: /git-start <N>
+Potem: /kit-ai/git-start <N>
 ```
 
 **Flag `--label`, `--title`, `--body` nie ma i nie dodawaj** — etykietę i tytuł
@@ -75,7 +75,7 @@ Wydaj **jeden z sześciu werdyktów**. Zawsze wprost, zawsze w pierwszym zdaniu.
 | --- | --- | --- |
 | **Ma sens** | To skill, nie ma go, da się wpiąć | FAZA 2 |
 | **Ma sens, ale** | To skill, ale coś trzeba przestawić | FAZA 2, uwagi w karcie |
-| **To nie skill, to agent** | Wiedza ma sens tylko wywołana ręcznie | Odeślij do `/create-task`, koniec |
+| **To nie skill, to agent** | Wiedza ma sens tylko wywołana ręcznie | Odeślij do `/kit-ai/create-task`, koniec |
 | **Już istnieje** | Zrobione albo zgłoszone | Link, pytanie czy mimo to |
 | **Nie w tej formie** | Cel dobry, ujęcie złe | Propozycja innego ujęcia |
 | **Nie w tym projekcie** | To nie należy do kita | Uzasadnienie, koniec |
@@ -207,7 +207,7 @@ Przy `--no-assign` opuszczasz `--assignee @me`; karta ma wtedy `Assignee brak`.
 
 Numer bierz **tylko z outputu `create`** — nigdy `gh issue list --limit 1`. Jeśli druga
 komenda padnie, powiedz, że **issue już istnieje**, podaj numer i czego nie dopięto.
-Kończ raportem: numer, link, `/git-start <N>`.
+Kończ raportem: numer, link, `/kit-ai/git-start <N>`.
 
 ### `a` — anuluj
 
@@ -235,7 +235,7 @@ zaproponuj `gh label create` i **zapytaj osobno**. To **jedyny** zapis dozwolony
 i nie przy `--dry-run`.
 
 **Zmiana, która wywraca werdykt:** jeśli po zmianie pomysł jest już agentem, a nie skillem
-— powiedz to **zanim** pokażesz kartę i odeślij do `/create-task`. Bez tego pętla
+— powiedz to **zanim** pokażesz kartę i odeślij do `/kit-ai/create-task`. Bez tego pętla
 akceptacji staje się drogą do przemycenia agenta w przebraniu skilla.
 
 **Czwarty obrót pętli:** zauważ to. „Zwykle znaczy to, że nie zgadzamy się co do samego
@@ -244,15 +244,15 @@ pomysłu, a nie co do jego zapisu. Wracamy do FAZY 1?"
 ## Etykiety
 
 Wybierasz **jedną** etykietę z istniejących (`gh label list`) — tę, która odpowiada typowi
-Conventional z `.cursor/rules/git-branch-pr.mdc`, żeby `/git-start` → `/git-commit` →
-`/git-end` się nie rozjechało. Nowy skill to zwykle `type: feature`, poprawka istniejącego
+Conventional z `.cursor/rules/git-branch-pr.mdc`, żeby `/kit-ai/git-start` → `/kit-ai/git-commit` →
+`/kit-ai/git-end` się nie rozjechało. Nowy skill to zwykle `type: feature`, poprawka istniejącego
 `type: fix` lub `type: docs`.
 
 ## Zakazy
 
 - Nie twórz issue ani niczego w GitHubie przed `t` w FAZIE 4. Jedyny wyjątek:
   `gh label create` po osobnej zgodzie, i nie przy `--dry-run`.
-- Nie pisz `SKILL.md` i nie zakładaj katalogu skilla — od tego jest `/git-start`.
+- Nie pisz `SKILL.md` i nie zakładaj katalogu skilla — od tego jest `/kit-ai/git-start`.
 - Nie powtarzaj w issue treści skilla `skill-authoring` — odeślij do niego.
 - Nie przyjmuj zmiany z FAZY 4 na słowo, bez weryfikacji.
 - Nie zakładaj skilla o nazwie kolidującej z agentem.

@@ -4,7 +4,7 @@ Which model each kit agent runs on, and which model and options a T3 Code delega
 
 The model tiers are `light`, `standard` and `heavy`, which agent templates already set through `model-tier:`, plus `takeover`, which exists only for Claude. A tier with no entry writes no `model:`, so Claude Code picks the model through its subagent model order: a `model` passed on the Agent call, then `CLAUDE_CODE_SUBAGENT_MODEL` when set, otherwise the model of the agent that started it (the session model for a top-level subagent). "Session model" below means this default.
 
-For Claude, bootstrap writes `model:` and `effort:` into the frontmatter of `.claude/agents/*.md`. For OpenCode, it writes `model: <provider/model>#<variant>` into `.opencode/command/*.md`, because OpenCode takes the variant as a suffix on the model name and has no separate key; without a `variant` option it writes the plain `model: <provider/model>`. Codex and Antigravity get no files; their targets are used only by T3 Code.
+For Claude, bootstrap writes `model:` and `effort:` into the frontmatter of `.claude/agents/*.md`. For OpenCode, it writes `model: <provider/model>#<variant>` into `.opencode/commands/kit-ai/*.md` (komendy kitu pod prefiksem `kit-ai`, #527), because OpenCode takes the variant as a suffix on the model name and has no separate key; without a `variant` option it writes the plain `model: <provider/model>`. Codex and Antigravity get no files; their targets are used only by T3 Code.
 
 Options are written inline as `options: [{ id, value }]`, the shape T3 Code uses. The parser reads that without PyYAML, because bootstrap runs on the system Python.
 

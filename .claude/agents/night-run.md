@@ -30,7 +30,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
     `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), więc `/kit-ai:git-*` zostają wewnątrz subagenta
     ticketu, a orkiestrator nie dostaje z nich tur. Sam `/kit-ai:night-run` działa w głównej
     sesji (w Claude uruchamiany Skillem, nie Agentem): potrzebuje `CronCreate` i watchdoga.
-  - **opencode:** komenda `/<nazwa>` z `.opencode/command/` (model z frontmattera, gdy
+  - **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera, gdy
     Profil ma `models.opencode`); brak `model:` → model sesji.
   - **klienci bez modelu per agent** (Cursor, Codex, VS Code, Kiro, Kilo, Antigravity) →
     bez zmian: inline albo skill na modelu sesji. Dla klientów bez typu agenta (Codex, VS Code, Antigravity, inline): wczytaj `night-run-ticket` (skill albo prompt klienta) i wykonaj go z parametrami zlecenia.

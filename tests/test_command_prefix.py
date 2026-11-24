@@ -79,7 +79,7 @@ class TestManifestCommandPrefixes(unittest.TestCase):
         manifest = load_manifest(KIT_ROOT)
         for target in TARGETS:
             prefix = manifest.command_prefix(target)
-            expected = ("/", "kit-ai:", "") if target == "claude" else ("/", "", "")
+            expected = ("/", "kit-ai:", "") if target == "claude" else ("/", "kit-ai/", "") if target == "opencode" else ("/", "", "")
             self.assertEqual((prefix.sigil, prefix.namespace, prefix.name_prefix), expected, target)
 
     def test_unknown_target_raises(self) -> None:
@@ -186,7 +186,7 @@ class TestRenderAgentCommands(unittest.TestCase):
             rc = module.main(["render_agent_commands.py", "opencode", str(src_dir), str(dest_dir)])
             self.assertEqual(rc, 0)
             out = (dest_dir / "git-start.md").read_text(encoding="utf-8")
-            self.assertIn("Uruchom /git-start", out)
+            self.assertIn("Uruchom /kit-ai/git-start", out)
             self.assertNotIn("@KIT_", out)
 
 
