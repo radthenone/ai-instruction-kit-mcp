@@ -462,7 +462,7 @@ def install_summary(workspace: Path, kit_root: Path, *, language: str, clients: 
             "     w pozostałych klientach albo gdy pytanie nie padło:",
             "       /plugin marketplace add obra/superpowers-marketplace",
             "       /plugin install superpowers@superpowers-marketplace",
-            "  2. /kit-project-begin — konfiguracja projektu (Stacki, codegen, .ai/project.md)",
+            "  2. /kit-ai:kit-project-begin — konfiguracja projektu (Stacki, codegen, .ai/project.md)",
         ]
     )
     return "\n".join(lines)
@@ -573,7 +573,7 @@ def doctor_report(
 
 
 DOCTOR_STATE = ".ai/.kit-doctor.json"
-DOCTOR_FIX_COMMAND = '/kit-project-edit "napraw zgłoszenia doctora"'
+DOCTOR_FIX_COMMAND = '/kit-ai:kit-project-edit "napraw zgłoszenia doctora"'
 
 
 def reload_doctor(
@@ -583,7 +583,7 @@ def reload_doctor(
     Doctor po reloadzie: raport, linia trybu C i plik stanu partii (#266).
 
     Zgłoszenia do naprawy trafiają do ``.ai/.kit-doctor.json`` (wynik ``--json``), z którego
-    tryb C ``/kit-project-edit`` bierze partię; czysty przebieg plik usuwa.
+    tryb C ``/kit-ai:kit-project-edit`` bierze partię; czysty przebieg plik usuwa.
 
     Args:
         workspace: Repo aplikacji.

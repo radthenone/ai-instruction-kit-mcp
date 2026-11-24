@@ -220,8 +220,8 @@ class DedupTests(unittest.TestCase):
     def test_proposal_names_both_card_routes(self) -> None:
         self._three_sessions(FP_GUARD)
         report = self._report()
-        self.assertIn("/create-task", report)
-        self.assertIn("/kit-project-edit", report)
+        self.assertIn("/kit-ai:create-task", report)
+        self.assertIn("/kit-ai:kit-project-edit", report)
 
 
 class ParseIssueMarkersTests(unittest.TestCase):

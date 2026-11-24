@@ -22,11 +22,11 @@ Bez `@` instalujesz gałąź domyślną (`master`). Nowsze, jeszcze nie wydane z
 Zrestartuj IDE / CLI, potem w kliencie AI:
 
 ```text
-/kit-project-begin      # pierwszy raz: pytania o Stack, karta Profilu i .ai/project.md
-/kit-project-edit "…"   # później: jedna zmiana, np. "zmień web na angular"
+/kit-ai:kit-project-begin      # pierwszy raz: pytania o Stack, karta Profilu i .ai/project.md
+/kit-ai:kit-project-edit "…"   # później: jedna zmiana, np. "zmień web na angular"
 ```
 
-`/kit-project-begin` proponuje odpowiedzi wykryte w repo, a `/kit-project-edit` zmienia jedną
+`/kit-ai:kit-project-begin` proponuje odpowiedzi wykryte w repo, a `/kit-ai:kit-project-edit` zmienia jedną
 odpowiedź bez całego wywiadu ([pełny opis](#slash-commands--konwencja-nazw)). Po zapisie
 zrestartuj klienta.
 
@@ -62,7 +62,7 @@ kit-ai install                             # bez ścieżki = bieżący katalog
 kit-ai reload | kit-ai status | kit-ai doctor | kit-ai remove [--dry-run]
 kit-ai labels [--apply]                    # brakujące etykiety GitHuba (bez --apply = plan)
 kit-ai host                                # profil hosta: vps | local (detect_host_profile)
-kit-ai night-ctx [ścieżka]                 # nagłówek CTX dla /night-run (Host z kit-ai host)
+kit-ai night-ctx [ścieżka]                 # nagłówek CTX dla /kit-ai:night-run (Host z kit-ai host)
 kit-ai retro scan [ścieżka] [--session ID] [--since YYYY-MM-DD|Nd]  # sygnały i koszt sesji → ~/.cache/kit-ai/retro/<repo>/
 kit-ai retro report [ścieżka]              # propozycje z wielu repo (≥3 sesje albo ≥2 repo), bez znalezisk z issue z markerem (otwartym lub zamkniętym)
 
@@ -100,7 +100,7 @@ Niskopoziomowo to samo robi `scripts/bootstrap-project.sh "$APP" --from "$KIT" -
 
 ### 2. Po instalacji (kroki, których skrypt nie zrobi za Ciebie)
 
-`kit-ai install` kończy się blokiem „Dalej” (Superpowers + `/kit-project-begin`). Pełna
+`kit-ai install` kończy się blokiem „Dalej” (Superpowers + `/kit-ai:kit-project-begin`). Pełna
 lista poniżej — rób tylko to, czego jeszcze nie masz, i tylko dla klientów z `clients:`.
 Wszystko poza 2.5 robisz **raz na maszynę**, nie per projekt.
 
@@ -257,7 +257,7 @@ odświeża `~/.agents/skills/`, więc po aktualizacji skopiuj skille ponownie.
 
 #### 2.5. Konfiguracja projektu
 
-`/kit-project-begin` — patrz [Krok 2](#krok-2--konfiguracja).
+`/kit-ai:kit-project-begin` — patrz [Krok 2](#krok-2--konfiguracja).
 
 Hooka `pre-push` kit już nie dostarcza (guardraile siedzą w hookach klientów);
 istniejący `git-hooks/pre-push` w Twoim repo zostaje nietknięty.
@@ -340,7 +340,7 @@ Tieru. `--verbose` łączy się z `--json`.
 ma — po cichu przestaje działać. `INFO` to porządki w overlayu. Doctor **nigdy nie
 blokuje** reloadu: raport i tak wychodzi, a kod wyjścia to 0.
 
-**Naprawa — tryb C** `/kit-project-edit "napraw zgłoszenia doctora"`: proponuje poprawki
+**Naprawa — tryb C** `/kit-ai:kit-project-edit "napraw zgłoszenia doctora"`: proponuje poprawki
 w overlayu, w bloku `project:rules` w `BUGBOT.md` i w bloku `project:agents` w `AGENTS.md`
 (przestarzała treść kita), pokazuje jeden podgląd na całą partię i zapisuje po
 akceptacji. Ścieżki w szablonowych częściach `BUGBOT.md` / `AGENTS.md` i w
@@ -349,7 +349,7 @@ akceptacji. Ścieżki w szablonowych częściach `BUGBOT.md` / `AGENTS.md` i w
 **Po reloadzie** (`kit-ai reload`, MCP `reload_workspace`) ostrzeżenia do naprawy trafiają
 do pliku stanu `.ai/.kit-doctor.json` (ten sam format co `kit-ai doctor --json`); czysty
 przebieg plik usuwa, `--dry-run` go nie dotyka. Raport kończy linia
-`doctor: N do naprawy → /kit-project-edit "napraw zgłoszenia doctora"`, a MCP
+`doctor: N do naprawy → /kit-ai:kit-project-edit "napraw zgłoszenia doctora"`, a MCP
 `reload_workspace` każe agentowi od razu uruchomić tryb C na tej partii — bez czekania na
 prośbę (auto-start). Tryb C bierze partię z pliku stanu albo z `kit-ai doctor --json`.
 
@@ -378,7 +378,7 @@ reload_workspace(dry_run=False)     # odświeżenie z Profilu (= kit-ai reload)
 (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — nazwy
 z `docs/agents/triage-labels.md` projektu, jeśli jest). Zestaw leży w
 `templates/shared/labels.tsv`; brakujące zakłada `ensure_labels(dry_run=False)` albo
-`kit-ai labels --apply` (istniejących nie zmienia). `/kit-project-begin` proponuje to po
+`kit-ai labels --apply` (istniejących nie zmienia). `/kit-ai:kit-project-begin` proponuje to po
 reloadzie.
 Etykiety `design: layout` / `design: tokens` dochodzą tylko przy Tierze web/mobile **i**
 `claude` w `clients:` — sesję designu robi człowiek w Claude Code (opis:
@@ -521,7 +521,7 @@ Lista zewnętrznych narzędzi w Profilu. Pusta lista = brak integracji. Nierozpo
 
 - `orca` — render `orca.yaml`. Reload usuwa plik, gdy Profil go już nie wymienia (tylko pliki z markerem kita).
 - `coderabbit` — render `.coderabbit.yaml` (język z `language:`). Usuwanie jak przy `orca`.
-- `t3code` — bez pliku w repo. Włącza kartę transportu T3 Code dla `/night-run` (`.ai/night-run-t3.md`). Bez `t3code` reload usuwa kartę (przy zainstalowanym PyYAML, zależności kita; patrz niżej).
+- `t3code` — bez pliku w repo. Włącza kartę transportu T3 Code dla `/kit-ai:night-run` (`.ai/night-run-t3.md`). Bez `t3code` reload usuwa kartę (przy zainstalowanym PyYAML, zależności kita; patrz niżej).
 
 Profil z błędem składni YAML: reload ostrzega i nie zmienia plików integracji ani karty T3. Zdublowany klucz `integrations:` albo nieprawidłowa data (np. `2026-13-01`): karta T3 zostaje bez zmian.
 
@@ -566,7 +566,7 @@ agents:                  # synchronizuje reload
   OpenCode: `model:` w `.opencode/commands/kit-ai/`; gdy wpis ma opcję `variant`, jest dopisywany jako sufiks `#<variant>`.
   Codex i Antigravity nie mają plików — ich wpisy czyta tylko T3 Code.
 - Stare klucze `models:` i `t3.targets` przerywają reload z komunikatem o migracji. Przenieś wpisy do
-  `targets:` przez `/kit-project-edit`.
+  `targets:` przez `/kit-ai:kit-project-edit`.
 - `agents:` przy reloadzie: blok powstaje, gdy go nie ma; brakujący agenci kita trafiają
   do tieru z template; agenta już przypisanego reload nie przenosi (Profil wygrywa);
   nazwy spoza kita znikają. Każde dopisanie (`+ agents.<tier>: <agent>`) i usunięcie (`-`)
@@ -788,7 +788,7 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 Kit **nie** bundluje tych pluginów w `guides-mcp` (różna dystrybucja: MCP vs Claude/Cursor plugin marketplace vs npx skill). Pełna tabela warstw i priorytet źródeł: `AGENTS.md`.
 
 ```text
-1. Fundament   — ten kit (MCP + /git-* + /review-*)     → instaluje bootstrap
+1. Fundament   — ten kit (MCP + /kit-ai:git-* + /kit-ai:review-*)     → instaluje bootstrap
 2. Proces      — mattpocock/skills (/grill-me, /tdd)     → npx skills@latest add mattpocock/skills
 3. Meta/izolacja — Superpowers (worktree, finishing…)     → Claude Code: /plugin marketplace add obra/superpowers-marketplace
                                                               /plugin install superpowers@superpowers-marketplace
@@ -869,7 +869,7 @@ potrafią zabić produkcję obok przez OOM.
 - Moduł operuje kategoriami (kontenery, dev serwery, buildy, e2e vs lint/typecheck/
   unit in-memory), nie zakłada Django/React/Next ani innego stacku.
 - Podział Twojego repo dopisz w overlay (`.ai/project.md`), np. `task lint` lekkie
-  vs `task test:e2e` ciężkie — jedna zmiana przez `/kit-project-edit`.
+  vs `task test:e2e` ciężkie — jedna zmiana przez `/kit-ai:kit-project-edit`.
 
 ## Wariant auth (`decisions.auth`)
 
@@ -926,11 +926,11 @@ W **repo aplikacji** uruchom `scripts/bootstrap-project.sh` albo skopiuj z `temp
 | `.ai/project.profile.yaml`          | Tiery (backend/web/mobile) + `codegen:` — jedyna konfiguracja kita                                              | **tak** |
 | `.cursor/rules/use-guides.mdc`      | Bootstrap MCP                                                           | tak                  |
 | `.cursor/rules/code-review.mdc`     | Review przed pushem                                                     | tak                  |
-| `.cursor/rules/git-branch-pr.mdc`   | `/git-start`+`/git-check`+`/git-commit`+`/git-end`, issue#, chronione main/master/dev | tak                  |
+| `.cursor/rules/git-branch-pr.mdc`   | `/kit-ai:git-start`+`/kit-ai:git-check`+`/kit-ai:git-commit`+`/kit-ai:git-end`, issue#, chronione main/master/dev | tak                  |
 | `.cursor/BUGBOT.md`                 | Reguły Bugbota                                                          | tak                  |
 | `.cursor/hooks.json` + `hooks/invoke-hook.js` + `hooks/*.mjs` | Guardy: git-guard + sensitive-files (adapter → node) | tak                  |
 | `AGENTS.md`                         | Cienki — odsyła do MCP                                                  | tak                  |
-| `.cursor/agents/*.md`               | Subagenty `/review-*`, `/subagent-*`, `/git-*`                          | zalecany             |
+| `.cursor/agents/*.md`               | Subagenty `/kit-ai:review-*`, `/kit-ai:subagent-*`, `/kit-ai:git-*`                          | zalecany             |
 | `.cursor/skills/compact/`           | **Tylko Cursor:** `/compact` = alias UI Summarize (nie Claude/Codex)    | zalecany (Cursor)    |
 
 
@@ -1001,15 +1001,15 @@ Gdy pokaże zmiany: `bootstrap-project.sh` ponownie z tymi samymi flagami co pop
 | Prefiks       | Rola                                                 | Przykłady                                                                                                                                          |
 | ------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/compact`    | **Cursor only** — alias UI Summarize w tym projekcie | `/compact`                                                                                                                                         |
-| `/git-*`      | Start / sync issue / commit / PR                   | `/git-start`, `/git-check`, `/git-commit`, `/git-end`                                                                                               |
-| `/create-task` | Pomysł → ocena na tle repo → issue (bez brancha)   | `/create-task`, `/create-task "eksport CSV"`; flagi: `/create-task --help`                                                                          |
-| `/create-skill` | Pomysł na skill → skill czy agent → issue (bez brancha) | `/create-skill`, `/create-skill "konwencje migracji"`; flagi: `/create-skill --help`                                                            |
-| `/kit-project-begin` | Konfiguracja projektu po `kit-ai install` | `/kit-project-begin`, `/kit-project-begin --yes` |
-| `/kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu / naprawa doctora | `/kit-project-edit "zmień web na angular"`, `/kit-project-edit "nie zgadzam się z …"`, `/kit-project-edit "napraw zgłoszenia doctora"` |
-| `/review-*`   | Review tylko do odczytu, raport                      | `/review-backend`, `/review-frontend`, `/review-architecture`, `/review-ui`, `/review-edge`, `/review-tests`, `/review-bugbot`, `/review-security` |
-| `/subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/subagent-backend`, `/subagent-frontend`                                                                                                          |
-| `/kit-retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); `--kit` w repo kita: propozycje z wielu repo; nic nie zmienia | `kit-ai retro scan`, potem `/kit-retro`; w repo kita `kit-ai retro report`, potem `/kit-retro --kit` |
-| `/night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /night-run …`                                                                                                          |
+| `/kit-ai:git-*`      | Start / sync issue / commit / PR                   | `/kit-ai:git-start`, `/kit-ai:git-check`, `/kit-ai:git-commit`, `/kit-ai:git-end`                                                                                               |
+| `/kit-ai:create-task` | Pomysł → ocena na tle repo → issue (bez brancha)   | `/kit-ai:create-task`, `/kit-ai:create-task "eksport CSV"`; flagi: `/kit-ai:create-task --help`                                                                          |
+| `/kit-ai:create-skill` | Pomysł na skill → skill czy agent → issue (bez brancha) | `/kit-ai:create-skill`, `/kit-ai:create-skill "konwencje migracji"`; flagi: `/kit-ai:create-skill --help`                                                            |
+| `/kit-ai:kit-project-begin` | Konfiguracja projektu po `kit-ai install` | `/kit-ai:kit-project-begin`, `/kit-ai:kit-project-begin --yes` |
+| `/kit-ai:kit-project-edit` | Jedna zmiana konfiguracji / odstępstwo od modułu / naprawa doctora | `/kit-ai:kit-project-edit "zmień web na angular"`, `/kit-ai:kit-project-edit "nie zgadzam się z …"`, `/kit-ai:kit-project-edit "napraw zgłoszenia doctora"` |
+| `/kit-ai:review-*`   | Review tylko do odczytu, raport                      | `/kit-ai:review-backend`, `/kit-ai:review-frontend`, `/kit-ai:review-architecture`, `/kit-ai:review-ui`, `/kit-ai:review-edge`, `/kit-ai:review-tests`, `/kit-ai:review-bugbot`, `/kit-ai:review-security` |
+| `/kit-ai:subagent-*` | Praca w dwóch oknach (wymiana raportów)              | `/kit-ai:subagent-backend`, `/kit-ai:subagent-frontend`                                                                                                          |
+| `/kit-ai:kit-retro`      | Klasyfikacja znalezisk ze skanu sesji (kit / projekt / agent / zewnętrzne); `--kit` w repo kita: propozycje z wielu repo; nic nie zmienia | `kit-ai retro scan`, potem `/kit-ai:kit-retro`; w repo kita `kit-ai retro report`, potem `/kit-ai:kit-retro --kit` |
+| `/kit-ai:night-run`  | Nocna praca na liście issue (`/goal` opcjonalny)     | `/goal Wykonaj #150–#157 wg /kit-ai:night-run …`                                                                                                          |
 
 
 
@@ -1030,7 +1030,7 @@ Bootstrap **nie** kopiuje tego do Claude / Codex. Nie nadpisuje ani nie „tłum
 
 
 
-### `/git-start`, `/git-check`, `/git-commit`, `/git-end` + Superpowers + Autopilot
+### `/kit-ai:git-start`, `/kit-ai:git-check`, `/kit-ai:git-commit`, `/kit-ai:git-end` + Superpowers + Autopilot
 
 Wymaga `gh` + `git`. Konwencja: `feat/42-add-cart-coupon`. Pełne zasady: `.cursor/rules/git-branch-pr.mdc`.
 
@@ -1040,46 +1040,46 @@ Wymaga `gh` + `git`. Konwencja: `feat/42-add-cart-coupon`. Pełne zasady: `.curs
 | Krok                     | Narzędzie                                                                  | Uwagi                                        |
 | ------------------------ | -------------------------------------------------------------------------- | -------------------------------------------- |
 | Scope / TDD              | Matt `/grill-me`, `/tdd`                                                   | `/grill-me` tylko przy niejasnym scope; nie mieszać z Superpowers TDD |
-| Issue + branch           | `/git-start` (kit)                                                         | Numeracja issue, Conventional name           |
-| Sync issue ↔ diff        | `/git-check` (kit)                                                         | Gdy tytuł/body rozjechały się z plikami      |
-| Commit(y)                | `/git-commit` (kit)                                                        | Conventional; `--one` / `--split` / `--dry-run` |
-| Izolacja (opc.)          | Superpowers `using-git-worktrees`                                          | Na branchu z `/git-start`, nie zamiast niego |
-| Review przed pushem      | `/review-bugbot` + **minimalny** stack (`/review-backend` i/lub `/review-frontend`) | Nie wszystkie `/review-*` naraz; format: Severity\|Location\|Finding\|Fix |
-| Push + PR                | `/git-end` **lub** Superpowers `finishing-a-development-branch` → opcja PR | Jedno z dwóch. `/git-end` = push + PR (`Closes #N`); **bez** merge; brudne tree → najpierw `/git-commit` |
+| Issue + branch           | `/kit-ai:git-start` (kit)                                                         | Numeracja issue, Conventional name           |
+| Sync issue ↔ diff        | `/kit-ai:git-check` (kit)                                                         | Gdy tytuł/body rozjechały się z plikami      |
+| Commit(y)                | `/kit-ai:git-commit` (kit)                                                        | Conventional; `--one` / `--split` / `--dry-run` |
+| Izolacja (opc.)          | Superpowers `using-git-worktrees`                                          | Na branchu z `/kit-ai:git-start`, nie zamiast niego |
+| Review przed pushem      | `/kit-ai:review-bugbot` + **minimalny** stack (`/kit-ai:review-backend` i/lub `/kit-ai:review-frontend`) | Nie wszystkie `/kit-ai:review-*` naraz; format: Severity\|Location\|Finding\|Fix |
+| Push + PR                | `/kit-ai:git-end` **lub** Superpowers `finishing-a-development-branch` → opcja PR | Jedno z dwóch. `/kit-ai:git-end` = push + PR (`Closes #N`); **bez** merge; brudne tree → najpierw `/kit-ai:git-commit` |
 | CI / komentarze aż green | **Autopilot**                                                              | Po istniejącym PR; bez auto-merge            |
 | Merge                    | Ty / `gh pr merge`                                                         | Gdy green → GitHub zamyka issue (`Closes #N`) |
 
 
 ```text
-Krótko:   /git-start → kod → [/git-check] → /git-commit → /review-bugbot → /git-end → [Autopilot]
-Długo:    [/grill-me] → /git-start → worktree → kod → [/git-check] → /git-commit → finishing| /git-end → Autopilot → merge
+Krótko:   /kit-ai:git-start → kod → [/kit-ai:git-check] → /kit-ai:git-commit → /kit-ai:review-bugbot → /kit-ai:git-end → [Autopilot]
+Długo:    [/grill-me] → /kit-ai:git-start → worktree → kod → [/kit-ai:git-check] → /kit-ai:git-commit → finishing| /kit-ai:git-end → Autopilot → merge
 ```
 
 
 | Komenda kit  | Co robi                                                                                 |
 | ------------ | --------------------------------------------------------------------------------------- |
-| `/create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; `--dry-run` / `--quick` / `--split` / `--no-assign` / `--parent #N`. **Nie** zakłada brancha |
-| `/create-skill` | Rozstrzyga skill vs agent, potem karta issue z nazwą, `description` i kryterium odpalenia; `--dry-run` / `--quick` / `--no-assign` / `--parent #N`. **Nie** pisze `SKILL.md` |
-| `/kit-project-begin` | Pytania z MCP `list_questions` z propozycjami wykrytymi w repo (zawsze z wolną odpowiedzią) → karta Profilu i `.ai/project.md` → zapis → `reload_workspace`. `--yes` = same propozycje |
-| `/kit-project-edit` | (A) jedna odpowiedź: Stack per Tier, codegen, klienci, język, sekcja `project.md` → podgląd → zapis → reload; (B) spór z modułem → grillowanie → `## Odstępstwa od modułów` w `.ai/project.md`; (C) naprawa zgłoszeń doctora → podgląd poprawek w overlayu i bloku `project:rules`; zmiana dla wszystkich projektów → szkic `/create-task` w repo kita. **Nigdy** nie edytuje `modules/` |
-| `/git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
-| `/git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
-| `/git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
-| `/git-end`   | Push + PR z `Closes #N` w body; `--help`; alias `/git-pr`. **Nie** merguje i **nie** zamyka issue od razu — issue zamyka się **po merge** PR |
+| `/kit-ai:create-task` | Ocena pomysłu na tle repo → karta issue → utworzenie po akceptacji; `--dry-run` / `--quick` / `--split` / `--no-assign` / `--parent #N`. **Nie** zakłada brancha |
+| `/kit-ai:create-skill` | Rozstrzyga skill vs agent, potem karta issue z nazwą, `description` i kryterium odpalenia; `--dry-run` / `--quick` / `--no-assign` / `--parent #N`. **Nie** pisze `SKILL.md` |
+| `/kit-ai:kit-project-begin` | Pytania z MCP `list_questions` z propozycjami wykrytymi w repo (zawsze z wolną odpowiedzią) → karta Profilu i `.ai/project.md` → zapis → `reload_workspace`. `--yes` = same propozycje |
+| `/kit-ai:kit-project-edit` | (A) jedna odpowiedź: Stack per Tier, codegen, klienci, język, sekcja `project.md` → podgląd → zapis → reload; (B) spór z modułem → grillowanie → `## Odstępstwa od modułów` w `.ai/project.md`; (C) naprawa zgłoszeń doctora → podgląd poprawek w overlayu i bloku `project:rules`; zmiana dla wszystkich projektów → szkic `/kit-ai:create-task` w repo kita. **Nigdy** nie edytuje `modules/` |
+| `/kit-ai:git-start` | `#N` / opis / **puste = auto-diff** / `--help` (ręcznie: `gh issue create` / `develop`) |
+| `/kit-ai:git-check` | Dopasuj tytuł (EN) i body (język MCP) issue do realnego diffa; `--dry-run`              |
+| `/kit-ai:git-commit` | Conventional Commit(s) z diffa; `--one` (jeden) / `--split` / `--dry-run`; odpala pre-commit |
+| `/kit-ai:git-end`   | Push + PR z `Closes #N` w body; `--help`; alias `/git-pr`. **Nie** merguje i **nie** zamyka issue od razu — issue zamyka się **po merge** PR |
 | `/compact`   | **Cursor only** — skrót czatu (alias UI Summarize); nie Claude/Codex                     |
 
 
 ```text
-/git-start --help
-/git-start feat add cart coupon
-/git-start fix #108 login returns 500
-/git-start                    # auto z lokalnego diffa
+/kit-ai:git-start --help
+/kit-ai:git-start feat add cart coupon
+/kit-ai:git-start fix #108 login returns 500
+/kit-ai:git-start                    # auto z lokalnego diffa
 # … praca zmieniła scope …
-/git-check
-/git-commit                   # lub --one / --split / --dry-run
+/kit-ai:git-check
+/kit-ai:git-commit                   # lub --one / --split / --dry-run
 # … review …
-/git-end --help
-/git-end
+/kit-ai:git-end --help
+/kit-ai:git-end
 ```
 
 Ręczny odpowiednik:
@@ -1097,31 +1097,31 @@ UI: GitHub Issue → Development → **Create a branch** (potem nazwij spójnie 
 
 | Slash                                | Plik szablonu                                    |
 | ------------------------------------ | ------------------------------------------------ |
-| `/create-task`                       | `templates/shared/agents/create-task.md`         |
-| `/create-skill`                      | `templates/shared/agents/create-skill.md`        |
-| `/kit-project-begin`                 | `templates/shared/agents/kit-project-begin.md`   |
-| `/kit-project-edit`                  | `templates/shared/agents/kit-project-edit.md`    |
-| `/git-start`                         | `templates/shared/agents/git-start.md`           |
-| `/git-check`                         | `templates/shared/agents/git-check.md`           |
-| `/git-commit`                        | `templates/shared/agents/git-commit.md`          |
-| `/git-end`                           | `templates/shared/agents/git-end.md`             |
-| `/kit-retro` (skill)                     | `templates/shared/skills/kit-retro/SKILL.md`         |
+| `/kit-ai:create-task`                       | `templates/shared/agents/create-task.md`         |
+| `/kit-ai:create-skill`                      | `templates/shared/agents/create-skill.md`        |
+| `/kit-ai:kit-project-begin`                 | `templates/shared/agents/kit-project-begin.md`   |
+| `/kit-ai:kit-project-edit`                  | `templates/shared/agents/kit-project-edit.md`    |
+| `/kit-ai:git-start`                         | `templates/shared/agents/git-start.md`           |
+| `/kit-ai:git-check`                         | `templates/shared/agents/git-check.md`           |
+| `/kit-ai:git-commit`                        | `templates/shared/agents/git-commit.md`          |
+| `/kit-ai:git-end`                           | `templates/shared/agents/git-end.md`             |
+| `/kit-ai:kit-retro` (skill)                     | `templates/shared/skills/kit-retro/SKILL.md`         |
 | `/compact` (Cursor)                  | `templates/cursor/skills/compact/SKILL.md`       |
-| `/review-architecture`               | `templates/shared/agents/review-architecture.md` |
-| `/review-backend`                    | `templates/shared/agents/review-backend.md`      |
-| `/review-frontend`                   | `templates/shared/agents/review-frontend.md`     |
-| `/review-ui`                         | `templates/shared/agents/review-ui.md`           |
-| `/review-edge`                       | `templates/shared/agents/review-edge.md`         |
-| `/review-tests`                      | `templates/shared/agents/review-tests.md`        |
-| `/review-bugbot`                     | `templates/shared/agents/review-bugbot.md` (manualny odpowiednik natywnego Cursor BugBot — stosuje reguły z `BUGBOT.md` ręcznie, dla klientów bez tej usługi) |
-| `/cleanup`                           | `templates/shared/agents/cleanup.md` (znajdź i usuń zbędne scratch/testowe pliki zostawione po weryfikacji — pyta o potwierdzenie) |
-| `/subagent-backend`                  | `templates/shared/agents/subagent-backend.md`    |
-| `/subagent-frontend`                 | `templates/shared/agents/subagent-frontend.md`   |
-| `/teacher-backend`                   | `templates/shared/agents/teacher-backend.md`     |
-| `/teacher-frontend`                  | `templates/shared/agents/teacher-frontend.md`    |
-| `/teacher-architecture`              | `templates/shared/agents/teacher-architecture.md` |
-| `/teacher-agent`                     | `templates/shared/agents/teacher-agent.md`       |
-| `/review-security`                   | `templates/shared/agents/review-security.md`      |
+| `/kit-ai:review-architecture`               | `templates/shared/agents/review-architecture.md` |
+| `/kit-ai:review-backend`                    | `templates/shared/agents/review-backend.md`      |
+| `/kit-ai:review-frontend`                   | `templates/shared/agents/review-frontend.md`     |
+| `/kit-ai:review-ui`                         | `templates/shared/agents/review-ui.md`           |
+| `/kit-ai:review-edge`                       | `templates/shared/agents/review-edge.md`         |
+| `/kit-ai:review-tests`                      | `templates/shared/agents/review-tests.md`        |
+| `/kit-ai:review-bugbot`                     | `templates/shared/agents/review-bugbot.md` (manualny odpowiednik natywnego Cursor BugBot — stosuje reguły z `BUGBOT.md` ręcznie, dla klientów bez tej usługi) |
+| `/kit-ai:cleanup`                           | `templates/shared/agents/cleanup.md` (znajdź i usuń zbędne scratch/testowe pliki zostawione po weryfikacji — pyta o potwierdzenie) |
+| `/kit-ai:subagent-backend`                  | `templates/shared/agents/subagent-backend.md`    |
+| `/kit-ai:subagent-frontend`                 | `templates/shared/agents/subagent-frontend.md`   |
+| `/kit-ai:teacher-backend`                   | `templates/shared/agents/teacher-backend.md`     |
+| `/kit-ai:teacher-frontend`                  | `templates/shared/agents/teacher-frontend.md`    |
+| `/kit-ai:teacher-architecture`              | `templates/shared/agents/teacher-architecture.md` |
+| `/kit-ai:teacher-agent`                     | `templates/shared/agents/teacher-agent.md`       |
+| `/kit-ai:review-security`                   | `templates/shared/agents/review-security.md`      |
 
 ### Git worktree (.ai/worktree.mjs)
 
@@ -1158,28 +1158,28 @@ Dla Pythona tryb `venv: auto` (oraz `overlay`) tworzy lekki overlay venv bazują
 - **Server guard w worktree**: działa w worktree tylko wtedy, gdy projekt commituje pliki hooków kita (np. `.cursor/hooks/`, `.claude/hooks/`). Doctor **nie** sprawdza obecności hooków w repozytorium; przed założeniem worktree zweryfikuj ręcznie, np. `git ls-files .cursor/hooks .claude/hooks`.
 
 
-### `/teacher-*` — tryb nauki (przed kodem, nie po)
+### `/kit-ai:teacher-*` — tryb nauki (przed kodem, nie po)
 
-`/review-*` sprawdza **gotowy diff** i zwraca tabelę findingów. `/teacher-*` działa **zanim** napiszesz kod: bierze Twoją koncepcję (albo bieżący diff, gdy nie podasz argumentu), tłumaczy o co w problemie naprawdę chodzi, pokazuje max 3 opcje z kosztami, wskazuje **jedną** rekomendację i zostawia Ci zadanie do zrobienia samodzielnie.
+`/kit-ai:review-*` sprawdza **gotowy diff** i zwraca tabelę findingów. `/kit-ai:teacher-*` działa **zanim** napiszesz kod: bierze Twoją koncepcję (albo bieżący diff, gdy nie podasz argumentu), tłumaczy o co w problemie naprawdę chodzi, pokazuje max 3 opcje z kosztami, wskazuje **jedną** rekomendację i zostawia Ci zadanie do zrobienia samodzielnie.
 
 | Komenda | Zakres |
 | --- | --- |
-| `/teacher-backend` | Django/DRF (opc. FastAPI, Flask+Pydantic): warstwy, modele, migracje, transakcje, Celery, ACL, pytest, uv/ruff |
-| `/teacher-frontend` | React, React Native/Expo Router (opc. Angular): stan serwera vs klienta, granice komponentów, re-rendery, web/native, typy TS, RTL/Playwright |
-| `/teacher-architecture` | granice FE/BE, kontrakt API, kiedy **nie** dzielić, infra (Postgres/Redis/Celery/S3), Docker+Taskfile, odwracalność decyzji, ADR |
-| `/teacher-agent` | praca z samymi agentami: skille, worktree i izolacja zadań, delegacja do subagentów, autonomia (`/goal` vs `/loop`), pisanie promptów, jak spiąć `/git-*` i `/review-*` w jeden flow |
+| `/kit-ai:teacher-backend` | Django/DRF (opc. FastAPI, Flask+Pydantic): warstwy, modele, migracje, transakcje, Celery, ACL, pytest, uv/ruff |
+| `/kit-ai:teacher-frontend` | React, React Native/Expo Router (opc. Angular): stan serwera vs klienta, granice komponentów, re-rendery, web/native, typy TS, RTL/Playwright |
+| `/kit-ai:teacher-architecture` | granice FE/BE, kontrakt API, kiedy **nie** dzielić, infra (Postgres/Redis/Celery/S3), Docker+Taskfile, odwracalność decyzji, ADR |
+| `/kit-ai:teacher-agent` | praca z samymi agentami: skille, worktree i izolacja zadań, delegacja do subagentów, autonomia (`/goal` vs `/loop`), pisanie promptów, jak spiąć `/kit-ai:git-*` i `/kit-ai:review-*` w jeden flow |
 
 Kontrakt tych agentów: `readonly` — **nie edytują plików**, nie dają gotowca do wklejenia (szkic ≤ 20 linii), nazywają wzorce po imieniu i mówią wprost, gdy koncepcja jest zła. Czytają `get_bundle` + `get_overlay`, więc uczą na Twoim stacku i Twoim kodzie, nie na `Foo/Bar`.
 
 ```
-/teacher-backend czy walidację ceny dać do serializera czy do serwisu
-/teacher-frontend                 # bez argumentu → uczy o tym, co masz w git diff
-/teacher-architecture czy dodać Redisa pod cache koszyka
+/kit-ai:teacher-backend czy walidację ceny dać do serializera czy do serwisu
+/kit-ai:teacher-frontend                 # bez argumentu → uczy o tym, co masz w git diff
+/kit-ai:teacher-architecture czy dodać Redisa pod cache koszyka
 ```
 
-### `/night-run` — lista issue przez noc
+### `/kit-ai:night-run` — lista issue przez noc
 
-Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/night-run` działa sam (wznawia go heartbeat `CronCreate`, `/goal` opcjonalny) i daje procedurę: na każdy ticket `/git-start` → test-first → szybkie bramki → `/git-commit` → review na diffie → `/git-end` → CI → merge → jeden raport na PR i zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
+Za dnia grillujesz issue (kryteria akceptacji, relacje blocked-by). W nocy `/kit-ai:night-run` działa sam (wznawia go heartbeat `CronCreate`, `/goal` opcjonalny) i daje procedurę: na każdy ticket `/kit-ai:git-start` → test-first → szybkie bramki → `/kit-ai:git-commit` → review na diffie → `/kit-ai:git-end` → CI → merge → jeden raport na PR i zamknięcie issue. Problem zamiast pytania kończy się komentarzem `needs-human` z pytaniami Q1/Q2 na issue i agent idzie dalej. Pełna procedura: `templates/shared/agents/night-run.md`.
 
 Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako subagent). Sam nie czyta kodu: na ticket odpala świeżego subagenta ticketu, a review robi osobny świeży subagent na samym `git diff` (albo — przy skillach review z argumentów — orkiestrator przez Skill, biorąc od skilla tylko tabelę findingów). Dzięki temu żaden kontekst nie puchnie do 200k, a każda tura nie czyta go od nowa. Niczego nie dopisujesz do overlay:
 
@@ -1193,15 +1193,15 @@ Agent jest **orkiestratorem w głównej sesji** (w Claude przez Skill, nie jako 
 Bez `/goal`, z wykonawcą headless i wskazanym review:
 
 ```text
-/night-run #150 #151 /headless opencode --timeout 90 "implementacja i testy" /review-edge /review-bugbot
+/kit-ai:night-run #150 #151 /kit-ai:headless opencode --timeout 90 "implementacja i testy" /kit-ai:review-edge /kit-ai:review-bugbot
 ```
 
-`/headless` zastępuje implementację w subagencie ticketu (subagent pilnuje wrappera, sprawdza raport i commituje resztę); skille review uruchamia orkiestrator przez Skill, nieznany skill albo wykonawca (spoza `clients:` lub równy hostowi) zatrzymuje noc na starcie jako needs-human, a klient bez `/headless` wraca do implementacji subagentem. Wykonawca i review każdego ticketu trafiają do `NIGHT-RUN REPORT`.
+`/kit-ai:headless` zastępuje implementację w subagencie ticketu (subagent pilnuje wrappera, sprawdza raport i commituje resztę); skille review uruchamia orkiestrator przez Skill, nieznany skill albo wykonawca (spoza `clients:` lub równy hostowi) zatrzymuje noc na starcie jako needs-human, a klient bez `/kit-ai:headless` wraca do implementacji subagentem. Wykonawca i review każdego ticketu trafiają do `NIGHT-RUN REPORT`.
 
 Pod `/goal` sędzia widzi tylko transkrypt, więc warunek żąda dowodów w rozmowie:
 
 ```text
-/goal Wykonaj issue #150–#157 wg /night-run, model: sonnet. Koniec, gdy w transkrypcie jest
+/goal Wykonaj issue #150–#157 wg /kit-ai:night-run, model: sonnet. Koniec, gdy w transkrypcie jest
 NIGHT-RUN REPORT, w którym każdy ticket ma: MERGED (wynik gh pr view --json state)
 albo needs-human (link do komentarza), albo jest wpis "night-run halted".
 ```
@@ -1216,7 +1216,7 @@ Tańszy token nie znaczy tańszy ticket: mocniejszy model może zrobić mniej tu
 2. Na każdy model osobny worktree z tego commitu i osobna sesja z dokładnym id modelu:
    ```bash
    node .ai/worktree.mjs add ../measure-<model> --detach <commit>
-   cd ../measure-<model> && claude -p --model <id> "/night-run #<N>, bez merge"
+   cd ../measure-<model> && claude -p --model <id> "/kit-ai:night-run #<N>, bez merge"
    ```
 3. PR służy tylko do pomiaru: po zebraniu wyników `gh pr close <PR> --delete-branch` i `node .ai/worktree.mjs remove ../measure-<model>`.
 4. Metryki: snippet z sekcji „Pomiar kosztu ticketu” w agencie, uruchomiony na transkryptach sesji i jej subagentów (`~/.claude/projects/<projekt>/<sesja>.jsonl` i `…/<sesja>/subagents/*.jsonl`). Koszt liczysz **osobno** dla input, cache_creation, cache_read i output według aktualnego cennika, nie jedną stawką.
@@ -1229,7 +1229,7 @@ Wynik (tabela + rekomendacja modelu domyślnego) trafia do issue pomiaru; zmiana
 Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:
 
 - **Cursor**: `.cursor/agents/` — natywne slash commands, działa 1:1.
-- **Claude Code**: `.claude/agents/` (subagenty, wywołanie przez Task/Agent tool) **oraz** `.claude/commands/` (prawdziwe slash commands `/git-start` itd. — `$ARGUMENTS` wstrzyknięty automatycznie przy kopiowaniu).
+- **Claude Code**: `.claude/agents/` (subagenty, wywołanie przez Task/Agent tool) **oraz** `.claude/commands/` (prawdziwe slash commands `/kit-ai:git-start` itd. — `$ARGUMENTS` wstrzyknięty automatycznie przy kopiowaniu).
 - **Codex**: agenty instalowane jako natywne skille w `.codex/skills/<nazwa>/` (renderowane z `templates/shared/agents/*.md` przez `scripts/install_shared_skills.py`). Custom prompts (`.codex/agents/*.toml`) zostały wycofane w Codex CLI — Codex sam ładuje SKILL.md, gdy `description` pasuje do sytuacji.
 - **Kiro**: `.kiro/agents/` — kopiowane 1:1, format niezweryfikowany na żywym Kiro.
 - **VS Code/Copilot**: `scripts/render_agent_commands.py vscode` → `.github/prompts/*.prompt.md` (wywołanie `/nazwa` w Copilot Chat).
@@ -1254,15 +1254,15 @@ Po skopiowaniu/wyrenderowaniu **zrestartuj** okno IDE — agenty/komendy ładuj�
 ### Wywołanie
 
 ```text
-/git-start feat #42 cart coupon   # lub bez # — utworzy issue
-/git-check                        # gdy diff rozjechał się z opisem issue
-/git-commit                       # Conventional Commit(s)
-/review-backend przejrzyj zmiany w backend/apps/products/
-/git-end
+/kit-ai:git-start feat #42 cart coupon   # lub bez # — utworzy issue
+/kit-ai:git-check                        # gdy diff rozjechał się z opisem issue
+/kit-ai:git-commit                       # Conventional Commit(s)
+/kit-ai:review-backend przejrzyj zmiany w backend/apps/products/
+/kit-ai:git-end
 ```
 
 ```text
-/subagent-backend przejrzyj zmiany…   # potem wklej raport do /subagent-frontend w drugim oknie
+/kit-ai:subagent-backend przejrzyj zmiany…   # potem wklej raport do /kit-ai:subagent-frontend w drugim oknie
 ```
 
 
@@ -1294,16 +1294,16 @@ w pięciu na osiem klientów wydmuszką — wtedy to prawdopodobnie powinien by�
 więc odznaczenie klienta kasuje tam **tylko** katalogi o nazwach ze wspólnego źródła,
 nigdy całego katalogu skilli.
 
-Nowy skill zakładasz przez **`/create-skill`** (issue), a piszesz według skilla
+Nowy skill zakładasz przez **`/kit-ai:create-skill`** (issue), a piszesz według skilla
 `skill-authoring` — to on trzyma zasady frontmatter, sufity długości i kryteria odpalania.
 
-## `/headless` — zadanie dla innego klienta
+## `/kit-ai:headless` — zadanie dla innego klienta
 
 Z dowolnego klienta kitu (host) zlecasz zadanie innemu klientowi uruchomionemu bez
 interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wynik.
 
 ```text
-/headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] "<treść>"
+/kit-ai:headless <wykonawca> [--model <id>] [--timeout <min>] [--heartbeat <min>] [--ctx <katalog>] "<treść>"
 ```
 
 | Flaga | Znaczenie |
@@ -1311,7 +1311,7 @@ interfejsu (wykonawca). Host czeka, wrapper sprząta procesy, host streszcza wyn
 | `--model <id>` | Model sesji wykonawcy w jego formacie (`haiku`, `anthropic/claude-haiku-5-5`) |
 | `--timeout <min>` | Limit w minutach, domyślnie 60; po nim drzewo procesów jest zabijane (kod `124`) |
 | `--heartbeat <min>` | Co ile minut linia stanu `[headless] ♥` w wyjściu i logu, domyślnie 10 |
-| `--ctx <katalog>` | Katalog nocy (podaje `/night-run`): wiersz wywołania trafia do `headless-rows.jsonl`, a przy klasie innej niż `OK` wycinek logu do `headless-excerpt-<run>.txt` |
+| `--ctx <katalog>` | Katalog nocy (podaje `/kit-ai:night-run`): wiersz wywołania trafia do `headless-rows.jsonl`, a przy klasie innej niż `OK` wycinek logu do `headless-excerpt-<run>.txt` |
 
 Inna flaga = błąd z listą dozwolonych. Treść idzie do wykonawcy słowo w słowo, plus stała
 stopka: na branchu `typ/<N>-slug` linia „Ticket #N: przeczytaj `gh issue view N --comments`”
@@ -1322,12 +1322,12 @@ plan 5–10 kroków przy tickecie z więcej niż 3 kryteriami albo więcej niż 
 test-first z lokalnym commitem po każdym zielonym kroku, temat commita po polsku wg `language` z Profilu (po angielsku dla `en`), na końcu każdego commita trailer `Co-Authored-By: Claude <noreply@anthropic.com>`, lokalnie tylko testy dotknięte
 zmianą i szybkie bramki (pełny zestaw robi CI), na VPS `uv run --no-sync`, maks. 2 próby
 naprawy tego samego błędu, raport `## Zmiany` / `## Testy` / `## Problemy`. Dlatego
-`/headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza.
+`/kit-ai:headless <wykonawca> "implementacja i testy"` na branchu ticketu wystarcza.
 W logu runu linia `[headless] ticket #N`.
-Push i PR robi host (`/git-end`) po review commitów.
+Push i PR robi host (`/kit-ai:git-end`) po review commitów.
 
 **Log i heartbeat.** Wrapper przechwytuje wyjście wykonawcy, przepuszcza je dalej i zapisuje
-do `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>-<wykonawca>/headless.log`, bez (albo z względnym) `XDG_CACHE_HOME` do `~/.cache/kit-ai/headless/<repo>/…` (poza projektem, także dla worktree; przy starcie kasuje runy poza 5 najnowszymi, z wyjątkiem nieudanych bez wycinka w katalogu nocy);
+do `$XDG_CACHE_HOME/kit-ai/headless/<repo>/<start>-<wykonawca>/kit-ai:headless.log`, bez (albo z względnym) `XDG_CACHE_HOME` do `~/.cache/kit-ai/headless/<repo>/…` (poza projektem, także dla worktree; przy starcie kasuje runy poza 5 najnowszymi, z wyjątkiem nieudanych bez wycinka w katalogu nocy);
 ścieżka logu to pierwsza linia wyjścia. Co `--heartbeat` minut dopisuje
 `[headless] ♥ <min> min | pliki: <git status --short> | commity: <od startu> | ostatnio: <linia>`,
 a po dwóch interwałach bez wyjścia — `[headless] możliwe zacięcie: brak wyjścia od X min`
@@ -1354,7 +1354,7 @@ Limit dostawcy i błędny model agy nie są pętlą — mają własne klasy (`LI
 **Raport końcowy** — zawsze, także po timeoucie (`124`) i po SIGINT / SIGTERM / SIGHUP wrappera (nie po SIGKILL): `git status
 --short`, commity wykonawcy od startu (`git log <start>..HEAD --oneline`), nowe wpisy
 `git stash list` z ostrzeżeniem `UWAGA` (bez auto-`pop` — konflikt) i ostatnie 20 linii
-wykonawcy. Agent `/headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.
+wykonawcy. Agent `/kit-ai:headless` przenosi ostrzeżenie o stashu do raportu dla użytkownika.
 Commity z zakresu wywołania (`start..HEAD`) bez trailera `Co-Authored-By` trafiają do linii `UWAGA: commity bez trailera` z hashami;
 wrapper ich nie przepisuje, poprawia je orkiestrator na branchu ticketu przed push.
 
@@ -1367,7 +1367,7 @@ postępu 30 min albo sygnał w trakcie pracy wykonawcy); `ERROR` (kod ≠ 0 albo
 wszystkich wywołań w kolejności; bufor kasuje dopiero po wypisaniu, więc przerwany raport go zostawia.
 
 **Reguły.** Wykonawca musi być w `clients:` Profilu, mieć tryb headless z guardami kita
-i być **inny niż host** — `/headless <host>` z tego samego hosta kończy się błędem z listą
+i być **inny niż host** — `/kit-ai:headless <host>` z tego samego hosta kończy się błędem z listą
 dozwolonych wykonawców.
 
 | Wykonawca | Komenda | Model | Treść |
@@ -1379,10 +1379,10 @@ dozwolonych wykonawców.
 **Przekazanie zadania (fallback).** Limit (`75`), `HANG`, inny kod wyjścia ≠ 0 albo brak binarki u wykonawcy →
 wrapper przekazuje tę samą treść 1:1 pozostałym z `FALLBACK_ORDER` (`opencode`, `antigravity`), jeśli są
 w `clients:` i nie są hostem; zastępca bierze swój domyślny model. Klasa `MODEL` (zły model agy) nie przechodzi dalej,
-bo to błąd konfiguracji. Limit u ostatniego → kod `75` i zadanie przejmuje host (agent `/headless`, krok 2).
+bo to błąd konfiguracji. Limit u ostatniego → kod `75` i zadanie przejmuje host (agent `/kit-ai:headless`, krok 2).
 Inny błąd albo `HANG` u ostatniego → kod wyjścia wykonawcy (`124` przy zabiciu), wiersz `HANG`/`ERROR`; night-run
 przejmuje ticket subagentem przejęcia (`targets.claude.takeover`), a porażka przejęcia kończy się needs-human. Z Claude:
-`/headless opencode "…"` → `gemini` → Claude sam; `/headless gemini "…"` → `opencode` → Claude sam.
+`/kit-ai:headless opencode "…"` → `gemini` → Claude sam; `/kit-ai:headless gemini "…"` → `opencode` → Claude sam.
 Limit rozpoznaje tekst w ogonie wyjścia; agy po błędzie dodatkowo `agy -p "/quota"` — grupa
 `Gemini Models` na 0% = limit, reset z najwcześniejszego wyczerpanego wiersza.
 
@@ -1423,7 +1423,7 @@ kita i wpisem w `EXECUTORS`):
 | Antigravity | tak | tak | — (sam siebie) |
 | Codex, Cursor, VS Code, Kiro, Kilo | tak | tak | tak |
 
-**Instalacja.** Agent `/headless` trafia do każdego klienta z `--clients`, gdy lista zawiera
+**Instalacja.** Agent `/kit-ai:headless` trafia do każdego klienta z `--clients`, gdy lista zawiera
 co najmniej dwóch wykonawców (dziś: `claude`, `opencode` i `antigravity`; `all` też). Bootstrap wpisuje w plik
 agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wykonawców
 = agent i wrapper znikają przy reload.
@@ -1432,7 +1432,7 @@ agenta id hosta, a wrapper kładzie w `.ai/headless.mjs`. Mniej niż dwóch wyko
 
 | Warstwa | Skąd model |
 |---------|------------|
-| Agent `/headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
+| Agent `/kit-ai:headless` u hosta | `models.<host>.light` w Profilu (#168), bez mapowania — model sesji hosta |
 | Sesja wykonawcy | `--model` → projektowy config wykonawcy (`model` w `opencode.json`, #167; `.agents/agy.json` dla agy) → domyślny model wykonawcy. Wrapper podaje tylko `--model`; resztę rozstrzyga CLI wykonawcy. W linked worktree config z głównego checkoutu idzie jako `OPENCODE_CONFIG`, a raport mówi `CONFIG=main-checkout`/`CONFIG=missing` (#300) |
 | Agenci kitu wołani w sesji wykonawcy | `models.<wykonawca>.<tier>` w Profilu, bez mapowania — model sesji wykonawcy |
 
@@ -1446,7 +1446,7 @@ Zabicie samego wrappera (SIGINT / SIGTERM / SIGHUP — np. koniec sesji hosta) t
 drzewo wykonawcy. Na Windows shim `.cmd` z npm (`opencode2.cmd`) wrapper zamienia na
 binarkę `.exe`, którą shim wskazuje (`"%dp0%\…\x.exe"`), i uruchamia ją bez powłoki. Shim
 bez `.exe` jest odrzucany: `cmd.exe` rozbiłby wieloliniową treść w argumencie. Nazwa binarki
-działa jak nazwa wykonawcy (`/headless opencode2` = `/headless opencode`). Sesje wykonawców zostają na
+działa jak nazwa wykonawcy (`/kit-ai:headless opencode2` = `/kit-ai:headless opencode`). Sesje wykonawców zostają na
 dysku (historia `claude` i `opencode`); wrapper ich nie usuwa.
 
 ## Guardrails — bezpieczeństwo
@@ -1461,7 +1461,7 @@ hooków wybranego klienta (`--clients`), więc Claude Code, Cursor, OpenCode, Co
 | `sensitive-files-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity (tylko narzędzia plikowe — bez Basha) | **deny** odczyt i zapis sekretów (`.env*` poza `.env.example|sample|template`, `*.pem|key|p12|pfx`, `id_rsa*`, `id_ed25519*`, `.netrc`, `credentials.json`, `.git/objects|refs|hooks`); **deny** oczywisty odczyt sekretu przez Bash — komenda czytająca (`cat`, `head`, `tail`, `less`, `more`, `bat`, `grep`, `rg`, `sed`, `awk`, `xxd`, `base64`, `strings`, `source`/`.`, `rtk read`, `rtk grep`) z argumentem będącym ścieżką sekretu; segmenty po `;`/`&`/`&&`/`||`/`|`, prefiksy `sudo`/`env`/`rtk` (z opcjami, `rtk proxy`, `VAR=1`; i powłoka z `-c`), podstawienia `$(...)`; pierwszy argument `grep`/`rg`/`sed`/`awk` to wzorzec, a cel przekierowania (`> .env`) to zapis — przechodzą; Bash pilnują wszyscy poza Antigravity; **deny** ręczną edycję lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `bun.lock`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`) — odczyt lockfile wolny |
 | `server-guard.mjs` | Claude, Cursor, OpenCode, Codex, VS Code (Copilot), Antigravity | Tylko VPS (decyzja w runtime): **deny** kontenery (`docker`/`podman`, poza `ps`/`images`/`logs` bez `-f`), instalację paczek w każdym ekosystemie (`uv`/`pip`/`bun`/`npm`/`pnpm`/`yarn`/`cargo`/`go`/`apt`/`corepack`), pobieranie przez launchery (`npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`uvx`, poza trybem offline), buildy (`next`/`nuxt`/`astro`/`vite`/`webpack`/`tsup`/`cargo`/`turbo run build`, `expo`, `eas`), e2e (`playwright`/`cypress`/`maestro`, narzędzia Playwright MCP), `pytest -n`; wrappery `task`/`bun|npm|pnpm|yarn run` rozwijane przy `reload`. Na PC i w CI **allow** |
 | `bash-guard.mjs` | Claude | Tylko Windows: **deny** `pwsh` / `powershell` / `cmd` uruchamiane z narzędzia Bash — agent używa Git Basha. Narzędzie PowerShell nie jest blokowane |
-| `subagent-remote-guard.mjs` | Claude | Na każdym Hoście: **deny** całej przestrzeni `mcp__claude-code-remote__*`, gdy woła subagent (payload ma `agent_id`). Sesja główna bez zmian: Guard nie podejmuje wtedy decyzji. Powód: dialog `confirm_repository_trust` zatrzymywał noc `/night-run`, a `archive_session` niszczy sesję (#403) |
+| `subagent-remote-guard.mjs` | Claude | Na każdym Hoście: **deny** całej przestrzeni `mcp__claude-code-remote__*`, gdy woła subagent (payload ma `agent_id`). Sesja główna bez zmian: Guard nie podejmuje wtedy decyzji. Powód: dialog `confirm_repository_trust` zatrzymywał noc `/kit-ai:night-run`, a `archive_session` niszczy sesję (#403) |
 | `linters-guard.mjs` | Claude | PostToolUse po Edit/Write: format → lint edytowanego pliku (ruff, prettier, eslint, shellcheck, hadolint, yamllint), tylko gdy repo ma config danego narzędzia; wynik wraca do modelu jako `additionalContext`, nigdy nie blokuje |
 | `rtk-check.mjs` | Claude | SessionStart: brak `rtk` w PATH lub hooka `rtk hook claude` w `~/.claude/settings.json` → instrukcja `rtk init -g --auto-patch` dla użytkownika; kit sam nic w `~/.claude` nie zmienia |
 | `retro-session-end.mjs` | Claude | SessionEnd (#371): `kit-ai retro scan --session <id>` analizuje zakończoną sesję razem z subagentami i zapisuje wpisy do `~/.cache/kit-ai/retro/<repo>/`; zawsze kończy się kodem 0 i nie blokuje zamknięcia sesji |
@@ -1786,20 +1786,20 @@ Moduł MCP: `core:code-review` (bundle `devops` lub `architecture`).
 
 | Zmiana | Minimum |
 |--------|---------|
-| Drobna | `/review-bugbot` |
-| Backend / Frontend | Bugbot + `/review-backend` lub `/review-frontend` |
-| API + UI | Bugbot + BE+FE **lub** para `/subagent-*` |
-| Auth / płatności | `/review-security` |
-| Dowód „działa” | `/review-tests` (komendy, nie styl) |
+| Drobna | `/kit-ai:review-bugbot` |
+| Backend / Frontend | Bugbot + `/kit-ai:review-backend` lub `/kit-ai:review-frontend` |
+| API + UI | Bugbot + BE+FE **lub** para `/kit-ai:subagent-*` |
+| Auth / płatności | `/kit-ai:review-security` |
+| Dowód „działa” | `/kit-ai:review-tests` (komendy, nie styl) |
 
-Bugbot = blocking/security. Stack `/review-*` = konwencje z MCP (`Severity | Location | Finding | Fix`).  
+Bugbot = blocking/security. Stack `/kit-ai:review-*` = konwencje z MCP (`Severity | Location | Finding | Fix`).  
 Przy `codegen: orval` w overlay — po zmianie API regeneruj klienta.
 
 
 | Warstwa            | Plik / akcja                                                                |
 | ------------------ | --------------------------------------------------------------------------- |
-| Lokalnie           | `/review-bugbot`, `/review-security`, `/review-backend`…                    |
-| Przed push         | `git-guard.mjs` (deny na main/master/dev) — review przypomina `/git-end`     |
+| Lokalnie           | `/kit-ai:review-bugbot`, `/kit-ai:review-security`, `/kit-ai:review-backend`…                    |
+| Przed push         | `git-guard.mjs` (deny na main/master/dev) — review przypomina `/kit-ai:git-end`     |
 | Na PR              | Bugbot (GitHub integration)                                                 |
 | Reguły             | `.cursor/BUGBOT.md`                                                         |
 | CI (ten kit)       | `.github/workflows/ci.yml` — unittest (w tym suity powłoki) + smoke FastMCP |
@@ -1824,7 +1824,7 @@ Trzy warstwy — nie bundluj Matt/Superpowers w `guides-mcp`:
 
 | Warstwa   | Przykłady                                                 | Gdzie                                     | Rola                         |
 | --------- | --------------------------------------------------------- | ----------------------------------------- | ---------------------------- |
-| Fundament | Context7, `project-guides`, `/review-*`, `/git-*`, Cursor `/compact` | MCP + agents/skills z bootstrap | stack, git, skrót czatu (Cursor) |
+| Fundament | Context7, `project-guides`, `/kit-ai:review-*`, `/kit-ai:git-*`, Cursor `/compact` | MCP + agents/skills z bootstrap | stack, git, skrót czatu (Cursor) |
 | Proces    | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` | `/grill-me`, `/tdd`          |
 | Meta      | superpowers, caveman, Autopilot                                      | user / plugin Cursor                      | worktree, finishing, CI loop |
 
@@ -1851,7 +1851,7 @@ krok pomijany bez błędu.
 | `CODING_STANDARDS.md` | indeks źródeł standardów w kolejności ważności: `AGENTS.md`, `.ai/project.md`, `BUGBOT.md` (z `project:rules`), `docs/adr/`, `CONTEXT.md`, MCP `project-guides` — tylko pozycje istniejące w repo |
 
 `CODING_STANDARDS.md` to sam indeks (bez kopii reguł), odświeżany przy każdym reloadzie.
-Czytają go agenci `/review-*` kita **oraz** `/code-review` i `retro` Matta — dlatego nazwa
+Czytają go agenci `/kit-ai:review-*` kita **oraz** `/code-review` i `retro` Matta — dlatego nazwa
 jest zgodna z tym, czego szukają skille Matta. Dzięki temu `/code-review` nie prosi
 o `/setup-matt-pocock-skills`, a jego oś Standards widzi `BUGBOT.md`, overlay i ADR-y.
 `--remove` usuwa `CODING_STANDARDS.md` i `docs/agents/*` tylko wtedy, gdy są nietkniętym
@@ -1863,4 +1863,4 @@ Context7 (docs Django/Expo): globalnie `npx ctx7 setup --cursor`.
 
 Każdy plik agentów jest **cienkim wrapperem**: przy starcie woła `get_bundle` / `get_overlay` z MCP `project-guides`. Wiedza merytoryczna żyje w `modules/`.
 
-Praca w dwóch oknach: `/subagent-backend` ↔ `/subagent-frontend` — sekcja „Raport do przekazania” na końcu odpowiedzi.
+Praca w dwóch oknach: `/kit-ai:subagent-backend` ↔ `/kit-ai:subagent-frontend` — sekcja „Raport do przekazania” na końcu odpowiedzi.

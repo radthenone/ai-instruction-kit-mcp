@@ -2,7 +2,7 @@
 # Git pre-push — deterministyczne bramki przed pushem.
 # Instalacja: cp templates/git-hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 #
-# Nie uruchamia AI (wymaga Cursor). AI review: /review-bugbot w IDE + hook gate-push.sh.
+# Nie uruchamia AI (wymaga Cursor). AI review: /kit-ai:review-bugbot w IDE + hook gate-push.sh.
 
 set -euo pipefail
 
@@ -23,8 +23,8 @@ fi
 
 echo ""
 echo "────────────────────────────────────────────────────────"
-echo "  Przed pushem uruchom w Cursor:  /review-bugbot"
-echo "  (auth/płatności: /review-security)"
+echo "  Przed pushem uruchom w Cursor:  /kit-ai:review-bugbot"
+echo "  (auth/płatności: /kit-ai:review-security)"
 echo "  Bypass hook Cursor: SKIP_PUSH_REVIEW=1 git push"
 echo "────────────────────────────────────────────────────────"
 echo ""

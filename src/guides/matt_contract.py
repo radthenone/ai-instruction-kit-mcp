@@ -6,7 +6,7 @@ bez zmian w kicie. Renderowane są tylko brakujące pliki ``docs/agents/*``
 (użytkownik może je edytować) oraz blok ``## Agent skills`` w ``AGENTS.md``.
 
 ``CODING_STANDARDS.md`` jest indeksem źródeł standardów (bez kopii reguł),
-odświeżanym przy każdym reloadzie. Korzystają z niego agenci ``/review-*`` kita
+odświeżanym przy każdym reloadzie. Korzystają z niego agenci ``/kit-ai:review-*`` kita
 i skill ``/code-review`` Matta.
 
 Moduł jest stdlib-only: bootstrap woła go przez ``scripts/matt_contract.py``.

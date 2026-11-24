@@ -71,8 +71,8 @@ AGENT_TEMPLATES = "templates/shared/agents"
 
 # Komendy z innych warstw (Matt, Superpowers, Cursor) i wbudowane w klienta (`/review`
 # w Claude Code), których kit nie instaluje. Ich brak to brak warstwy zewnętrznej —
-# nie rozjazd reguł projektu — więc doctor ich nie zgłasza. Komendy kita (`/review-*`,
-# `/git-*`, …) muszą istnieć.
+# nie rozjazd reguł projektu — więc doctor ich nie zgłasza. Komendy kita (`/kit-ai:review-*`,
+# `/kit-ai:git-*`, …) muszą istnieć.
 EXTERNAL_COMMANDS = frozenset(
     {
         "grill-me",
@@ -256,7 +256,7 @@ _URL_CONTEXT = re.compile(
     r"|\b(?:GET|POST|PUT|PATCH|DELETE)\b"
 )
 # Komenda: `/nazwa` albo `/nazwa-z-myslnikami`. Odrzuca fragmenty ścieżek
-# (`src/foo`, `/dev/null`), wildcardy (`/review-*`) i URL-e (`https://`).
+# (`src/foo`, `/dev/null`), wildcardy (`/kit-ai:review-*`) i URL-e (`https://`).
 _COMMAND = re.compile(
     r"(?<![\w/.\-*?<>])/([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?![-\w/.*:]|\s*-->)"
 )
@@ -759,7 +759,7 @@ def _uncertain_migration(
     migration = propose_migration(text, template_text, history, paths, block)
     if migration.text is not None:
         return None
-    fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
+    fix = '`/kit-ai:kit-project-edit "napraw zgłoszenia doctora"`'
     if migration.proposal:
         count = _plural(len(migration.proposal), "linia", "linie", "linii")
         what = f"propozycja bloku: {count} w `value`"
@@ -1308,7 +1308,7 @@ def run_doctor(
             stale = _stale_kit_lines(rel, text, kit_root, is_kit=is_kit, paths=path_keys)
         if stale:
             skip_lines |= stale
-            fix = '`/kit-project-edit "napraw zgłoszenia doctora"`'
+            fix = '`/kit-ai:kit-project-edit "napraw zgłoszenia doctora"`'
             findings.append(
                 Finding(
                     "warning",

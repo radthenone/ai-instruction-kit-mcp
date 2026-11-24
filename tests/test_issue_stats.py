@@ -217,7 +217,7 @@ class TestRenderReport(unittest.TestCase):
     def test_ready_issue_in_night_run_table(self) -> None:
         issue = IssueInfo(7, "Ready issue", labels=["ready-for-agent"])
         report = render_report([issue])
-        self.assertIn("/night-run #7", report)
+        self.assertIn("/kit-ai:night-run #7", report)
 
     def test_empty_issues_still_has_four_sections(self) -> None:
         """Nawet przy braku issues muszą być 4 sekcje."""

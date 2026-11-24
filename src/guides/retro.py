@@ -548,7 +548,7 @@ def default_cache_root() -> Path:
 
 
 def default_headless_root() -> Path:
-    """``$XDG_CACHE_HOME/kit-ai/headless`` — runy ``/headless`` poza projektem (#463)."""
+    """``$XDG_CACHE_HOME/kit-ai/headless`` — runy ``/kit-ai:headless`` poza projektem (#463)."""
     xdg = os.environ.get("XDG_CACHE_HOME")
     # Względny XDG ignorujemy jak ``runsRoot()``: log w worktree zniknąłby razem z nim.
     # ``root`` zamiast ``is_absolute()``: na Windows ``\cache`` jest bezwzględne dla ``isAbsolute`` w node.
@@ -878,7 +878,7 @@ def night_sessions(
 ) -> list[ParsedSession]:
     """Sesje nocne repo: jeden ticket (wszystkie logi i próby) to jedna Sesja.
 
-    Próba to plik logu ``headless-<N>[-rK].log`` (jedno wywołanie ``/headless``). Linie wykonawcy
+    Próba to plik logu ``headless-<N>[-rK].log`` (jedno wywołanie ``/kit-ai:headless``). Linie wykonawcy
     wklejone do logu (np. ``cat`` własnego ``headless.log``) nie tworzą prób ani klas.
     Okno ticketu w ``opencode.log`` to od startu wywołania do mtime jego logów.
     Halt bez numeru ticketu zostaje na Sesji nocy ``night-<data>-halt`` (osobna przestrzeń ID).
