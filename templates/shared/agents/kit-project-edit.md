@@ -73,7 +73,7 @@ Cały wywiad od zera: @KIT_CMD_PREFIX@kit-project-begin
    web i mobile są `none` — `list_questions` po zmianie). Tier `none` → Stack web/mobile:
    zaproponuj kolejne `@KIT_CMD_PREFIX@kit-project-edit` na `design-tokens` i `routes-*` z wykryciem
    z `detect:` katalogu.
-3. **Zapis** zaakceptowanej zmiany: jednej linii albo wszystkich linii tego samego wpisu (np. blok `targets.<klient>.takeover` z kilku linii; komentarze i reszta pliku nietknięte) → MCP
+3. **Zapis** zaakceptowanej zmiany: jednej linii albo wszystkich linii tego samego wpisu (np. blok `targets.<klient>.takeover` z kilku linii) wraz z brakującymi kluczami nadrzędnymi (`targets:`, `<klient>:`) w tej samej zmianie; komentarze i reszta pliku nietknięte → MCP
    `reload_workspace(dry_run=True)`; błąd → przywróć oryginał, pokaż błąd. OK →
    `reload_workspace(dry_run=False)`. Zmiana tylko w `.ai/project.md` → bez reloadu
    (serwer czyta overlay na żywo).

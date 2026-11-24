@@ -311,12 +311,13 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
         return targets, None
     agents: dict[str, list[str]] = {}
     seen: dict[str, str] = {}
-    for _, tier, value in _entries(lines[span[0] + 1 : span[1]]):
-        if tier.startswith("-"):
-            raise ProfileError(
-                "Profil: `agents.<tier>` to lista nazw po przecinku w jednej linii, "
-                "np. `light: git-start,cleanup`."
-            )
+    entries = _entries(lines[span[0] + 1 : span[1]])
+    if any(tier.startswith("-") for _, tier, _ in entries):
+        raise ProfileError(
+            "Profil: `agents.<tier>` to lista nazw po przecinku w jednej linii, "
+            "np. `light: git-start,cleanup`."
+        )
+    for _, tier, value in entries:
         if tier not in TIERS:
             raise ProfileError(
                 f"Profil: nieznany tier `agents.{tier}`. Dozwolone: {_ALLOWED} — "
@@ -330,6 +331,8 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
             if "[" in body or "]" in body:
                 raise ProfileError(f"Profil: `agents.{tier}` ma niedopasowane nawiasy `[]`.")
             names = [_unquote(n.strip(), f"agents.{tier}") for n in body.split(",") if n.strip()]
+        if not names and value.strip() != "[]":
+            raise ProfileError(f"Profil: `agents.{tier}` jest pusty — wpisz nazwy agentów albo `[]`.")
         if "" in names:
             raise ProfileError(f"Profil: pusta nazwa agenta w `agents.{tier}`.")
         for name in names:

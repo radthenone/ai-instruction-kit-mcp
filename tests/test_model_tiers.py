@@ -294,6 +294,21 @@ class TestParseTargets(unittest.TestCase):
         _, agents = parse_profile('agents:\n  light: "git-start,cleanup"\n')
         self.assertEqual(agents["light"], ["git-start", "cleanup"])
 
+    def test_client_without_standard_or_takeover_has_no_takeover_target(self) -> None:
+        """Bez `standard` i `takeover` parser nie tworzy celu przejęcia; karta T3 zgłasza needs-human."""
+        targets, _ = parse_profile(
+            "targets:\n  claude:\n    heavy:\n      providerInstanceId: claudeAgent\n      model: claude-opus-5-5\n"
+        )
+        self.assertNotIn("takeover", targets["claude"])
+        self.assertIn("heavy", targets["claude"])
+
+    def test_empty_agents_tier_is_error_but_explicit_list_is_kept(self) -> None:
+        for raw in ('""', '",,,"', ""):
+            with self.subTest(raw=raw), self.assertRaises(ProfileError):
+                parse_profile(f"agents:\n  light: {raw}\n")
+        _, agents = parse_profile("agents:\n  light: []\n")
+        self.assertEqual(agents["light"], [])
+
     def test_empty_client_is_error(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
             parse_profile("targets:\n  claude:\n")
