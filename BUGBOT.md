@@ -28,7 +28,7 @@ If the diff adds or renames a function, class, or test (`test_*`, `class Test*`;
 If changed paths match `**/auth/**`, `**/permissions/**`, `**/acl/**`, `**/payments/**`, `**/stripe/**`:
 
 - Add a blocking bug if webhook handlers skip signature verification.
-- Recommend `/review-security` in PR description if not already run locally.
+- Recommend `review-security` in PR description if not already run locally.
 
 ## Sekrety i compliance
 
@@ -46,4 +46,4 @@ When suggesting fixes, prefer `task <namespace>:<nazwa>` from `.ai/project.md` o
 
 ## Lokalny workflow
 
-Przed pushem developer powinien uruchomić `/review-bugbot` w Cursor (przypomina o tym `/git-end`). Guard `git-guard.mjs` blokuje push bezpośrednio na main/master/dev.
+Przed pushem developer powinien uruchomić `review-bugbot` w Cursor (przypomina o tym `git-end`). Guard `git-guard.mjs` blokuje push bezpośrednio na main/master/dev.

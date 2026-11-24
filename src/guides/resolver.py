@@ -384,6 +384,48 @@ def _demote_headings(text: str) -> str:
     )
 
 
+_CLIENT_COMMAND_FORMS: dict[str, tuple[str, str]] = {
+    "cursor": ("`/<komenda>`", "—"),
+    "claude": ("`/kit-ai:<komenda>`", "—"),
+    "codex": ("`$kit-ai:<komenda>`", "w T3: `/skill:kit-ai:<komenda>`"),
+    "vscode": ("`/<komenda>`", "odłożony (#522)"),
+    "kiro": ("`/<komenda>`", "—"),
+    "kilo": ("`/<komenda>`", "—"),
+    "antigravity": ("`/kit-ai:<komenda>`", "w T3: `/skill:kit-ai:<komenda>`"),
+    "opencode": ("`/kit-ai/<komenda>`", "—"),
+}
+
+
+def _render_command_mapping(client_ids: Sequence[str]) -> list[str]:
+    """
+    Zrenderuj tabelę mapowania neutralnych nazw komend kita na formy per klient (#532).
+
+    Args:
+        client_ids: Aktywne identyfikatory klientów z ``--clients``.
+
+    Returns:
+        list[str]: Wiersze sekcji Markdown lub pusta lista, gdy brak klientów.
+    """
+    rows = [
+        f"| `{cid}` | {form} | {notes} |"
+        for cid in client_ids
+        if (entry := _CLIENT_COMMAND_FORMS.get(cid)) is not None
+        for form, notes in (entry,)
+    ]
+    if not rows:
+        return []
+    return [
+        "",
+        "### Mapowanie komend kita",
+        "",
+        "Komendy kita w tym pliku i `BUGBOT.md` mają nazwy neutralne (np. `git-start`). Zewnętrzne skille (`/tdd`, `/grill-me`, `/goal`) bez zmian.",
+        "",
+        "| Klient | Wywołanie | Uwagi |",
+        "|---|---|---|",
+        *rows,
+    ]
+
+
 def render_project_brief(
     *,
     name: str,
@@ -491,6 +533,7 @@ def render_project_brief(
             f"- **Komendy:** {commands_line}",
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
+            *_render_command_mapping(client_ids),
             *codegraph_section,
         ]
     )
