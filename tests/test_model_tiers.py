@@ -294,6 +294,7 @@ class TestParseTargets(unittest.TestCase):
 
     def test_agents_whole_value_in_quotes_is_read(self) -> None:
         _, agents = parse_profile('agents:\n  light: "git-start,cleanup"\n')
+        assert agents is not None
         self.assertEqual(agents["light"], ["git-start", "cleanup"])
 
     def test_client_without_standard_or_takeover_is_error(self) -> None:
@@ -310,6 +311,7 @@ class TestParseTargets(unittest.TestCase):
         for raw in ("[]", "[ ]"):
             with self.subTest(raw=raw):
                 _, agents = parse_profile(f"agents:\n  light: {raw}\n")
+                assert agents is not None
                 self.assertEqual(agents["light"], [])
 
     def test_empty_client_is_error(self) -> None:
