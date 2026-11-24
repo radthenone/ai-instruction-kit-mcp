@@ -408,23 +408,26 @@ function profileText() {
   }
 }
 
-// `models.<klient>.<tier>` z Profilu (#397): tani model checkera zacięcia. Bez klucza albo pliku — null.
-// Klucze klienta na wcięciu 2, tier na 4; `agents: light:` to inna sekcja i nie jest modelem.
+// `targets.<klient>.<tier>.model` z Profilu (#397, ADR-0018): tani model checkera zacięcia. Bez wpisu albo pliku — null.
+// Liczy poziomy zagnieżdżenia, nie wartości wcięć: klient, tier i `model:` to kolejne poziomy pod `targets:`.
+// Komentarze i CRLF jak w `model_tiers.py`; `agents:` i `night-run:` to inne sekcje i nie są modelem.
 export function profileModel(client, tier, text = profileText()) {
-  let inModels = false
-  let inClient = false
+  const open = [] // otwarte klucze pod `targets:`: { indent, key }
+  let inTargets = false
   for (const raw of lines(text)) {
-    const line = raw.replace(/\s+#.*$/, "")
+    if (/^\s*#/.test(raw)) continue
+    const line = raw.replace(/\r$/, "").replace(/\s+#.*$/, "")
     if (/^\S/.test(line)) {
-      inModels = line.trimEnd() === "models:"
-      inClient = false
+      inTargets = line.trimEnd() === "targets:"
+      open.length = 0
       continue
     }
     const key = /^(\s+)([\w-]+):(?:[ \t]+(.*?))?[ \t]*$/.exec(line)
-    if (!inModels || !key) continue
-    if (key[1].length <= 2) {
-      inClient = key[2] === client
-    } else if (inClient && key[2] === tier) {
+    if (!inTargets || !key) continue
+    const indent = key[1].length
+    while (open.length && open[open.length - 1].indent >= indent) open.pop()
+    open.push({ indent, key: key[2] })
+    if (open.length === 3 && open[0].key === client && open[1].key === tier && key[2] === "model") {
       return key[3]?.replace(/^["']|["']$/g, "") || null
     }
   }
@@ -815,7 +818,7 @@ export function repoFingerprint() {
   return createHash("sha1").update([head, status, diff, ...files].join("\0")).digest("hex")
 }
 
-// Checker zacięcia (#397): tani model z `models.claude.light` tylko opisuje, co robi wykonawca.
+// Checker zacięcia (#397): tani model z `targets.claude.light.model` tylko opisuje, co robi wykonawca.
 // Nie decyduje o zabiciu — brak postępu zabija zawsze, a opis trafia do raportu.
 export const CHECKER_TIMEOUT_MS = 60_000
 export const CHECKER_LOG_LINES = 40
@@ -832,7 +835,7 @@ const runChecker = (args, input, { timeout }) => new Promise((done) => {
 })
 
 export async function describeStall({ tail, status, idleMs, model, run = runChecker }) {
-  if (!model) return "checker wyłączony: brak models.claude.light w Profilu"
+  if (!model) return "checker wyłączony: brak targets.claude.light.model w Profilu"
   const log = (Array.isArray(tail) ? tail : lines(tail)).slice(-CHECKER_LOG_LINES).join("\n")
   const prompt = [
     `Wykonawca headless nie dał postępu przez ${Math.round(idleMs / 60_000)} min (bez nowych bajtów wyjścia, zmiany HEAD i git status, wzrostu CPU).`,

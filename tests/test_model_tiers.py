@@ -290,6 +290,30 @@ class TestParseTargets(unittest.TestCase):
             parse_profile(text)
         self.assertIn("inline", str(ctx.exception))
 
+    def test_empty_client_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude:\n")
+        self.assertIn("targets.claude", str(ctx.exception))
+
+    def test_options_block_list_gets_inline_hint_at_once(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options:\n        - id: effort\n          value: low\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("inline", str(ctx.exception))
+        self.assertNotIn("skalarną", str(ctx.exception))
+
+    def test_sibling_indent_mismatch_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "     model: claude-haiku-5-5\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("rodzeństwo", str(ctx.exception))
+
     def test_options_with_bad_tail_fails_fast(self) -> None:
         """Błędny ogon listy opcji nie może zawiesić parsera (regresja: wykładniczy backtracking)."""
         body = "{ id: effort, value: low }," * 30 + " x"

@@ -23,7 +23,7 @@ from pathlib import Path
 
 TIERS = ("light", "standard", "heavy")
 _ALLOWED = ", ".join(TIERS)
-# Blok `targets:` (ADR-0018): klienci i tiery; `takeover` istnieje u każdego klienta.
+# Blok `targets:` (ADR-0018): klienci i tiery; `takeover` jest opcjonalny u każdego klienta (brak = kopia `standard`).
 TARGET_CLIENTS = ("claude", "codex", "antigravity", "opencode")
 TARGET_TIERS = TIERS + ("takeover",)
 TARGET_FIELDS = ("providerInstanceId", "model", "options")
@@ -159,7 +159,8 @@ def _unquote(raw: str, where: str) -> str:
 def _targets_tree(lines: list[str]) -> dict:
     """Zagnieżdżone słowniki z wcięć; pusta wartość = podsłownik, pozostałe = tekst."""
     root: dict = {}
-    stack: list[tuple[int, dict, str]] = [(-1, root, "targets")]
+    # ramka: [wcięcie węzła, słownik, ścieżka, wcięcie dzieci (ustala się przy pierwszym dziecku)]
+    stack: list[list] = [[-1, root, "targets", None]]
     scalar: tuple[int, str] | None = None  # wcięcie i ścieżka ostatniego pola skalarnego
     for line in lines:
         line = _strip_comment(line.rstrip("\r\n"))
@@ -178,7 +179,14 @@ def _targets_tree(lines: list[str]) -> dict:
         scalar = None
         while stack[-1][0] >= indent:
             stack.pop()
-        _, node, path = stack[-1]
+        frame = stack[-1]
+        _, node, path, child_indent = frame
+        if child_indent is None:
+            frame[3] = indent
+        elif indent != child_indent:
+            raise ProfileError(
+                f"Profil: klucz `{key}` w `{path}` ma inne wcięcie niż rodzeństwo — wyrównaj wcięcia."
+            )
         if key in node:
             raise ProfileError(f"Profil: klucz `{path}.{key}` jest zdublowany — zostaw jeden wpis.")
         if value.strip():
@@ -189,9 +197,14 @@ def _targets_tree(lines: list[str]) -> dict:
             node[key] = _unquote(value.strip(), f"{path}.{key}")
             scalar = (indent, f"{path}.{key}")
         else:
+            if key == "options":
+                raise ProfileError(
+                    f"Profil: `{path}.options` zapisz inline, np. `options: [{{ id: effort, value: low }}]` "
+                    "albo `options: []`."
+                )
             child: dict = {}
             node[key] = child
-            stack.append((indent, child, f"{path}.{key}"))
+            stack.append([indent, child, f"{path}.{key}", None])
     return root
 
 
@@ -249,6 +262,10 @@ def _parse_targets(lines: list[str]) -> dict[str, dict[str, dict]]:
             raise ProfileError(f"Profil: nieznany klient `targets.{client}`. Dozwolone: {', '.join(TARGET_CLIENTS)}.")
         if not isinstance(tiers, dict):
             raise ProfileError(f"Profil: `targets.{client}` ma wartość zamiast tierów ({', '.join(TARGET_TIERS)}).")
+        if not tiers:
+            raise ProfileError(
+                f"Profil: `targets.{client}` bez tierów — dopisz co najmniej jeden tier ({', '.join(TARGET_TIERS)}) albo usuń klienta."
+            )
         found: dict[str, dict] = {}
         for tier, fields in tiers.items():
             if tier not in TARGET_TIERS:
@@ -279,7 +296,7 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
     if retired:
         raise ProfileError(
             f"Profil: `{retired.group(1)}:` nie jest już czytany — przenieś wpisy do bloku `targets:` "
-            "(README „Model tiers”), np. przez `/kit-project-edit`."
+            "(README „Model tiers”), np. przez komendę kit-project-edit."
         )
     for key in ("targets", "agents"):
         if re.search(rf"^{key}:[ \t]*[^\s#]", text, re.MULTILINE):

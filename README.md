@@ -1338,10 +1338,10 @@ w osobnym terminalu: `tail -f <log>`; agent czyta stan jedną linią:
 **Termin i kontrola postępu (#397, #424).** Bez `--timeout` termin to 60 min. Co 10 min wrapper sprawdza postęp:
 nowe bajty wyjścia wykonawcy, zmiana `HEAD` albo `git status`, albo wzrost CPU jego potomków (`/proc/<pid>/stat`;
 na Windows i bez `/proc` liczą się tylko log i git). Jeśli w ostatnim kroku był postęp, termin przedłuża się o 10 min,
-najwyżej do sufitu 120 min. Brak postępu przy terminie → zrzut drzewa procesów do logu, checker z `models.claude.light` z Profilu opisuje stan w 1–3 zdaniach
+najwyżej do sufitu 120 min. Brak postępu przy terminie → zrzut drzewa procesów do logu, checker z `targets.claude.light.model` z Profilu opisuje stan w 1–3 zdaniach
 (ostatnie 40 linii wyjścia, `git status`, czas bez postępu; timeout 60 s; nie decyduje o zabiciu), drzewo zabite
 łagodnie jak przy `--timeout` (SIGTERM, po 2 s SIGKILL), klasa `HANG`, kod `124`, zadanie idzie 1:1 dalej.
-Opis trafia do raportu końcowego jako `## zacięcie: …`. Brak klucza `models.claude.light` wyłącza checker, nie kontrolę.
+Opis trafia do raportu końcowego jako `## zacięcie: …`. Brak wpisu `targets.claude.light.model` wyłącza checker, nie kontrolę.
 
 **Sufit i jawny `--timeout` (#424).** Przedłużanie kończy się na 120 min, nawet przy ciągłym postępie (`[headless] sufit …`,
 klasa `HANG`, kod `124`). Jawny `--timeout <min>` to twardy limit bez przedłużania — zabija w swoim terminie, także przy postępie.

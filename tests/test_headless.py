@@ -2366,17 +2366,24 @@ class HeadlessActiveRunsPruneTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("node"), "brak node")
 class HeadlessStallProfileTest(unittest.TestCase):
-    """Tani model checkera zacięcia z `models.claude.light` w Profilu (#397)."""
+    """Tani model checkera zacięcia z `targets.claude.light.model` w Profilu (#397, ADR-0018)."""
 
     PROFILE = """name: app
 agents:
   light: cleanup,headless
-models:
+targets:
   claude:
-    light: haiku # tani model checkera
-    takeover: haiku
+    light:
+      providerInstanceId: claudeAgent
+      model: haiku # tani model checkera
+      options: [{ id: effort, value: low }]
+    takeover:
+      providerInstanceId: claudeAgent
+      model: haiku
   opencode:
-    light: gpt-mini
+    light:
+      providerInstanceId: opencode
+      model: gpt-mini
 clients: claude,opencode
 """
 
@@ -2388,7 +2395,7 @@ clients: claude,opencode
         # LF także na Windows: parser profilu dzieli linie po "\n", a write_text zapisuje CRLF.
         (self.root / ".ai/project.profile.yaml").write_bytes(self.PROFILE.encode("utf-8"))
 
-    def test_reads_claude_light_from_models_block(self) -> None:
+    def test_reads_claude_light_from_targets_block(self) -> None:
         self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
 
     def test_agents_light_list_is_not_a_model(self) -> None:
@@ -2397,6 +2404,21 @@ clients: claude,opencode
     def test_missing_tier_or_client_is_null(self) -> None:
         self.assertIsNone(node_export('h.profileModel("claude", "heavy")', self.root))
         self.assertIsNone(node_export('h.profileModel("codex", "light")', self.root))
+
+    def _write_profile(self, text: str) -> None:
+        (self.root / ".ai/project.profile.yaml").write_bytes(text.encode("utf-8"))
+
+    def test_comment_at_column_zero_inside_targets_keeps_reading(self) -> None:
+        self._write_profile("targets:\n# uwaga\n  claude:\n    light:\n      model: haiku\n")
+        self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
+
+    def test_other_consistent_indentation_is_read(self) -> None:
+        self._write_profile("targets:\n    claude:\n        light:\n            model: haiku\n")
+        self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
+
+    def test_crlf_line_endings_are_read(self) -> None:
+        self._write_profile("targets:\r\n  claude:\r\n    light:\r\n      model: haiku\r\n")
+        self.assertEqual(node_export('h.profileModel("claude", "light")', self.root), "haiku")
 
     def test_missing_profile_is_null(self) -> None:
         (self.root / ".ai/project.profile.yaml").unlink()
@@ -2986,7 +3008,7 @@ class HeadlessStallCheckerTest(unittest.TestCase):
 })()""",
             self.root,
         )
-        self.assertEqual(result, {"note": "checker wyłączony: brak models.claude.light w Profilu", "called": False})
+        self.assertEqual(result, {"note": "checker wyłączony: brak targets.claude.light.model w Profilu", "called": False})
 
     def test_checker_failure_is_described_not_thrown(self) -> None:
         result = node_export(
