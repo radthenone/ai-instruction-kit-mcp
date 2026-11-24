@@ -1,5 +1,5 @@
 ---
-name: review-council
+name: kit-ai:review-council
 description: Rada trzech delegatów dyskutujących w rundach o zmianie lub architekturze. Use when /review-council, council, rada modeli. Wywołuj jako /review-council.
 ---
 

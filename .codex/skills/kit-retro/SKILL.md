@@ -1,5 +1,5 @@
 ---
-name: kit-retro
+name: kit-ai:kit-retro
 description: >-
   Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`, zapisy JSONL w
   ~/.cache/kit-ai/retro/<repo>/) na kategorie kit / projekt / agent / zewnętrzne z oceną.
