@@ -21,7 +21,7 @@ overlays:
 
 agents:
   light: cleanup,git-check,git-commit,git-end,git-start,headless,issue-stats,pr-stats
-  standard: create-skill,create-task,kit-project-begin,kit-project-edit,night-run,night-run-ticket,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend
+  standard: create-skill,create-task,kit-project-begin,kit-project-edit,night-run,night-run-ticket,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend,review-council
   heavy: review-architecture,review-backend,review-bugbot,review-edge,review-frontend,review-security,review-tests,review-ui
 
 night-run:
@@ -91,6 +91,19 @@ targets:
       providerInstanceId: opencode
       model: opencode/deepseek-v4.1-flash-free
       options: [{ id: variant, value: high }]
+
+council:
+  rounds: 2
+  members:
+    claude:
+      target: claude.heavy
+      supp-target: { providerInstanceId: claudeAgent, model: claude-opus-5-5, options: [{ id: effort, value: medium }] }
+    opencode:
+      target: opencode.heavy
+      supp-target: { providerInstanceId: opencode, model: opencode/deepseek-v4.1-flash-free, options: [{ id: variant, value: high }] }
+    antigravity:
+      target: antigravity.heavy
+      supp-target: { providerInstanceId: antigravity, model: gemini-3.8-flash, options: [{ id: thinking_level, value: high }] }
 
 worktree:
   copy:
