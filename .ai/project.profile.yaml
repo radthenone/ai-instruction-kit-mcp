@@ -78,6 +78,10 @@ targets:
       providerInstanceId: antigravity
       model: claude-opus-4-6-thinking
       options: [{ id: thought_level, value: high }]
+    takeover:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+      options: [{ id: thought_level, value: high }]
   opencode:
     light:
       providerInstanceId: opencode
@@ -88,6 +92,10 @@ targets:
       model: opencode/deepseek-v4.1-flash-free
       options: [{ id: variant, value: high }]
     heavy:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+      options: [{ id: variant, value: high }]
+    takeover:
       providerInstanceId: opencode
       model: opencode/deepseek-v4.1-flash-free
       options: [{ id: variant, value: high }]
