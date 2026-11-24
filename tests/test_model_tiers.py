@@ -302,11 +302,11 @@ class TestParseTargets(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 2.0)
 
     def test_options_whitespace_tail_fails_fast(self) -> None:
-        """Białe znaki przed błędnym końcem listy nie mogą zawiesić parsera (kwadratowy backtracking)."""
+        """Białe znaki po poprawnym wpisie, przed błędnym końcem listy, nie mogą zawiesić parsera (kwadratowy backtracking)."""
         text = "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: ["
         started = time.monotonic()
         with self.assertRaises(ProfileError):
-            parse_profile(text + " " * 30000 + "x]\n")
+            parse_profile(text + "{ id: a, value: b }" + " " * 30000 + "x]\n")
         self.assertLess(time.monotonic() - started, 2.0)
 
     def test_missing_blocks_parse_as_empty(self) -> None:

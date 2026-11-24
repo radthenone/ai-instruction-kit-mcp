@@ -133,10 +133,11 @@ def _parse_options(where: str, raw: object) -> list[dict[str, str]]:
     options = [
         {"id": m.group(1).strip("'\"").strip(), "value": m.group(2).strip("'\"").strip()} for m in _OPTION.finditer(body)
     ]
-    ids = [opt["id"] for opt in options]
-    duplicate = next((opt_id for opt_id in ids if ids.count(opt_id) > 1), None)
-    if duplicate:
-        raise ProfileError(f"Profil: opcja `{duplicate}` w `{where}.options` jest zdublowana — zostaw jedną.")
+    seen: set[str] = set()
+    for opt in options:
+        if opt["id"] in seen:
+            raise ProfileError(f"Profil: opcja `{opt['id']}` w `{where}.options` jest zdublowana — zostaw jedną.")
+        seen.add(opt["id"])
     return options
 
 
