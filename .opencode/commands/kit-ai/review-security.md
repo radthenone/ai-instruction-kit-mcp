@@ -1,5 +1,6 @@
 ---
 description: "Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /kit-ai/review-security."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

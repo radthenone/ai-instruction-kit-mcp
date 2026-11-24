@@ -287,15 +287,43 @@ class TestNightRunT3CardContract(unittest.TestCase):
         self.assertIn("target", section)
         for key in ("providerInstanceId", "model", "options"):
             self.assertIn(key, section)
-        for executor, provider in (("claude", "claudeAgent"), ("antigravity", "antigravity"), ("opencode", "opencode")):
+        for executor, provider in (
+            ("claude", "claudeAgent"),
+            ("codex", "codex"),
+            ("antigravity", "antigravity"),
+            ("opencode", "opencode"),
+        ):
             self.assertIn(f"| `{executor}` | `{provider}` |", section)
         self.assertIn("thought_level", section)
+        self.assertIn("reasoningEffort", section)
         self.assertIn("effort", section)
         self.assertIn("review", section)
         example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
         self.assertNotIn("options", example)
-        self.assertIn("t3.targets.<wykonawca>.<tier>", section)
+        self.assertIn("targets.<wykonawca>.<tier>", section)
+        self.assertNotIn("t3.targets", self.card_text)
+        self.assertIn("targets.<wykonawca>.takeover", self.card_text)
         self.assertIn(".ai/project.profile.yaml", section)
+
+    def test_profile_target_and_options_rules_do_not_conflict(self) -> None:
+        """CodeRabbit: options z profilu i z parametru nocy opisane jedną zasadą, bez sprzeczności."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertNotIn("options tylko gdy parametr nocy je podaje", section)
+        self.assertNotIn("a parametr zlecenia nie podaje konkretnego modelu lub opcji", section)
+        example = next(line for line in section.splitlines() if line.startswith("Przykład: `review:"))
+        self.assertIn("bez wpisu w profilu", example)
+        self.assertIn("options: z wpisu profilu albo z parametru nocy", section)
+        self.assertIn("pole podane jawnie w parametrze nocy nadpisuje wpis", section)
+
+    def test_antigravity_effort_option_id_is_thought_level(self) -> None:
+        """CodeRabbit: jeden identyfikator opcji wysiłku Antigravity w całej karcie."""
+        self.assertNotIn("thinking_level", self.card_text)
+        self.assertIn('`id: "thought_level"` (Antigravity)', self.card_text)
+
+    def test_default_instance_rule_covers_profile_entries(self) -> None:
+        """CodeRabbit: reguła domyślnej instancji obejmuje też providerInstanceId z wpisu profilu."""
+        section = self.card_text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+        self.assertIn("`providerInstanceId` z wpisu profilu, a bez wpisu z tabeli", section)
 
     def test_disabled_default_provider_instance_is_needs_human(self) -> None:
         """#500: wyłączona lub brakująca domyślna instancja → needs-human, bez zamiany na inną instancję."""

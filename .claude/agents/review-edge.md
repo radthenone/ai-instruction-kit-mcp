@@ -2,7 +2,8 @@
 name: review-edge
 description: Pedantyczny reviewer. Use for większych zmian — szuka regresji, przypadków brzegowych, brakujących walidacji. Wywołuj jako /kit-ai:review-edge.
 readonly: true
-model: opus
+model: claude-opus-5-5
+effort: medium
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

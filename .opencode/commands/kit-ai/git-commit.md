@@ -1,5 +1,6 @@
 ---
 description: "Stage and create Conventional Commit(s) from local diffs. Use when /kit-ai/git-commit, dirty tree before /kit-ai/git-end. Wywołuj jako /kit-ai/git-commit."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

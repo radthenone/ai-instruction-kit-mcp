@@ -1,5 +1,6 @@
 ---
 description: "Manualny odpowiednik Cursor BugBota — stosuje reguły z BUGBOT.md do bieżącego diffa. Use when brak dostępu do natywnego Cursor BugBot (Claude, Codex, inne klienty), przed push. Wywołuj jako /kit-ai/review-bugbot."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

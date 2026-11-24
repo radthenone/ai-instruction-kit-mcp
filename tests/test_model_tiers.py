@@ -1,4 +1,4 @@
-"""Model tiers agentów (#168): `model-tier:` w template, `models:`/`agents:` w Profilu."""
+"""Model tiers agentów (#168, #515): `model-tier:` w template, `targets:` i `agents:` w Profilu."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import contextlib
 import io
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -18,12 +19,79 @@ from model_tiers import (  # noqa: E402
     apply_models,
     main,
     parse_profile,
+    resolve_target,
     sync_agents,
+    takeover_alias,
     template_tiers,
 )
 
 AGENTS_DIR = KIT_ROOT / "templates" / "shared" / "agents"
 TEMPLATE = {"git-start": "light", "cleanup": "light", "create-task": "standard", "night-run": "heavy"}
+
+FOUR_CLIENTS = """\
+targets:
+  claude:
+    light:
+      providerInstanceId: claudeAgent
+      model: claude-haiku-5-5
+      options: [{ id: effort, value: low }]
+    standard:
+      providerInstanceId: claudeAgent
+      model: claude-sonnet-5-5
+      options: [{ id: effort, value: medium }]
+    heavy:
+      providerInstanceId: claudeAgent
+      model: claude-opus-5-5
+    takeover:
+      providerInstanceId: claudeAgent
+      model: claude-haiku-5-5
+      options: [{ id: effort, value: low }]
+  codex:
+    light:
+      providerInstanceId: codex
+      model: gpt-5.5-mini
+      options: [{ id: reasoningEffort, value: low }]
+    standard:
+      providerInstanceId: codex
+      model: gpt-5.5
+      options: [{ id: reasoningEffort, value: medium }]
+    heavy:
+      providerInstanceId: codex
+      model: gpt-5.5
+      options: [{ id: reasoningEffort, value: high }]
+    takeover:
+      providerInstanceId: codex
+      model: gpt-5.5-mini
+  antigravity:
+    light:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+      options: [{ id: thought_level, value: low }]
+    standard:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+      options: [{ id: thought_level, value: high }]
+    heavy:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+    takeover:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+  opencode:
+    light:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+    standard:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+      options: [{ id: variant, value: high }]
+    heavy:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+    takeover:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+"""
 
 
 class TestTemplates(unittest.TestCase):
@@ -34,6 +102,11 @@ class TestTemplates(unittest.TestCase):
         for name, tier in tiers.items():
             with self.subTest(agent=name):
                 self.assertIn(tier, TIERS)
+
+    def test_profile_template_parses_without_active_targets(self) -> None:
+        """Przykład `targets:` w szablonie Profilu jest zakomentowany — parser nie widzi go jako wpisu."""
+        text = (KIT_ROOT / "templates" / "project.profile.yaml").read_text(encoding="utf-8")
+        self.assertEqual(parse_profile(text), ({}, None))
 
 
 class TestDefaultModelTiers(unittest.TestCase):
@@ -66,58 +139,429 @@ class TestDefaultModelTiers(unittest.TestCase):
         self.assertIn("night-run", agents.get("standard", []))
 
 
-class TestParseProfile(unittest.TestCase):
-    def test_reads_models_and_agents_blocks(self) -> None:
-        text = (
-            "name: app\n"
-            "models:\n"
-            "  claude:\n"
-            "    light: haiku\n"
-            "  opencode:\n"
-            "    light: ollama/llama3:8b  # lokalnie\n"
-            "agents:\n"
-            "  light: git-start, cleanup\n"
-            "  heavy: \"night-run\"\n"
-            "codegen: orval\n"
+class TestParseTargets(unittest.TestCase):
+    def test_reads_four_clients_with_four_tiers(self) -> None:
+        targets, _ = parse_profile(FOUR_CLIENTS)
+        self.assertEqual(set(targets), {"claude", "codex", "antigravity", "opencode"})
+        for client in targets:
+            with self.subTest(client=client):
+                self.assertEqual(set(targets[client]), {"light", "standard", "heavy", "takeover"})
+
+    def test_codex_entry_keeps_provider_model_and_options(self) -> None:
+        targets, _ = parse_profile(FOUR_CLIENTS)
+        self.assertEqual(
+            targets["codex"]["standard"],
+            {
+                "providerInstanceId": "codex",
+                "model": "gpt-5.5",
+                "options": [{"id": "reasoningEffort", "value": "medium"}],
+            },
         )
-        models, agents = parse_profile(text)
-        self.assertEqual(models, {"claude": {"light": "haiku"}, "opencode": {"light": "ollama/llama3:8b"}})
-        self.assertEqual(agents, {"light": ["git-start", "cleanup"], "heavy": ["night-run"]})
+
+    def test_entry_without_options_has_empty_options_list(self) -> None:
+        targets, _ = parse_profile(FOUR_CLIENTS)
+        self.assertEqual(targets["claude"]["heavy"]["options"], [])
+
+    def test_takeover_without_entry_copies_standard_of_same_client(self) -> None:
+        text = "targets:\n  codex:\n    standard:\n      providerInstanceId: codex\n      model: gpt-5.5\n"
+        targets, _ = parse_profile(text)
+        self.assertEqual(targets["codex"]["takeover"], targets["codex"]["standard"])
+
+    def test_takeover_entry_keeps_its_own_full_shape(self) -> None:
+        text = (
+            "targets:\n  codex:\n    standard:\n      providerInstanceId: codex\n      model: gpt-5.5\n"
+            "    takeover:\n      providerInstanceId: codex\n      model: gpt-5.5-mini\n"
+            "      options: [{ id: reasoningEffort, value: low }]\n"
+        )
+        targets, _ = parse_profile(text)
+        self.assertEqual(
+            targets["codex"]["takeover"],
+            {
+                "providerInstanceId": "codex",
+                "model": "gpt-5.5-mini",
+                "options": [{"id": "reasoningEffort", "value": "low"}],
+            },
+        )
+
+    def test_quoted_option_id_and_value_are_read(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n'
+            '      options: [{ id: "effort", value: "low" }]\n'
+            '    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
+
+    def test_duplicate_client_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "  codex:\n    light:\n      providerInstanceId: codex\n"
+            "  claude:\n    heavy:\n      providerInstanceId: claudeAgent\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("zdublowany", str(ctx.exception))
+        self.assertIn("targets.claude", str(ctx.exception))
+
+    def test_duplicate_tier_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "    light:\n      providerInstanceId: claudeAgent\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light", str(ctx.exception))
+
+    def test_duplicate_field_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      model: claude-haiku-5-5\n      model: claude-sonnet-5-5\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light.model", str(ctx.exception))
+
+    def test_duplicate_option_id_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [{ id: effort, value: low }, { id: effort, value: high }]\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("effort", str(ctx.exception))
+
+    def test_empty_quoted_provider_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude:\n    light:\n      providerInstanceId: ''\n")
+        self.assertIn("providerInstanceId", str(ctx.exception))
+
+    def test_empty_quoted_model_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: ""\n'
+            )
+        self.assertIn("bez modelu", str(ctx.exception))
+
+    def test_tab_indentation_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n\tclaude:\n\t\tlight:\n\t\t\tproviderInstanceId: claudeAgent\n")
+        self.assertIn("tabulator", str(ctx.exception))
+
+    def test_two_top_level_targets_blocks_are_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "name: x\n"
+            "targets:\n  codex:\n    light:\n      providerInstanceId: codex\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets:", str(ctx.exception))
+        self.assertIn("zdublowany", str(ctx.exception))
+
+    def test_nested_block_under_scalar_field_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "          model: claude-haiku-5-5\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light.providerInstanceId", str(ctx.exception))
+
+    def test_options_without_comma_between_items_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [{ id: effort, value: low } { id: variant, value: high }]\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("rozdziel przecinkiem", str(ctx.exception))
+
+    def test_options_trailing_comma_is_accepted(self) -> None:
+        targets, _ = parse_profile(
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [{ id: effort, value: low },]\n"
+            "    standard:\n      providerInstanceId: claudeAgent\n      model: m\n"
+        )
+        self.assertEqual(targets["claude"]["light"]["options"], [{"id": "effort", "value": "low"}])
+
+    def test_multiline_options_list_gets_inline_hint(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options: [\n        { id: effort, value: low }\n      ]\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("inline", str(ctx.exception))
+
+    def test_agents_whole_value_in_quotes_is_read(self) -> None:
+        _, agents = parse_profile('agents:\n  light: "git-start,cleanup"\n')
+        assert agents is not None
+        self.assertEqual(agents["light"], ["git-start", "cleanup"])
+
+    def test_client_without_standard_or_takeover_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                "targets:\n  claude:\n    heavy:\n      providerInstanceId: claudeAgent\n      model: claude-opus-5-5\n"
+            )
+        self.assertIn("takeover", str(ctx.exception))
+
+    def test_empty_agents_tier_is_error_but_explicit_list_is_kept(self) -> None:
+        for raw in ('""', '",,,"', ""):
+            with self.subTest(raw=raw), self.assertRaises(ProfileError):
+                parse_profile(f"agents:\n  light: {raw}\n")
+        for raw in ("[]", "[ ]"):
+            with self.subTest(raw=raw):
+                _, agents = parse_profile(f"agents:\n  light: {raw}\n")
+                assert agents is not None
+                self.assertEqual(agents["light"], [])
+
+    def test_empty_client_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude:\n")
+        self.assertIn("targets.claude", str(ctx.exception))
+
+    def test_options_block_list_gets_inline_hint_at_once(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options:\n        - id: effort\n          value: low\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("inline", str(ctx.exception))
+        self.assertNotIn("skalarną", str(ctx.exception))
+
+    def test_sibling_indent_mismatch_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "     model: claude-haiku-5-5\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("rodzeństwo", str(ctx.exception))
+
+    def test_options_with_bad_tail_fails_fast(self) -> None:
+        """Błędny ogon listy opcji nie może zawiesić parsera (regresja: wykładniczy backtracking)."""
+        body = "{ id: effort, value: low }," * 30 + " x"
+        started = time.monotonic()
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                f"targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: [{body}]\n"
+            )
+        self.assertIn("rozdziel przecinkiem", str(ctx.exception))
+        self.assertLess(time.monotonic() - started, 2.0)
+
+    def test_options_whitespace_tail_fails_fast(self) -> None:
+        """Białe znaki po poprawnym wpisie, przed błędnym końcem listy, nie mogą zawiesić parsera (kwadratowy backtracking)."""
+        text = "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: ["
+        started = time.monotonic()
+        with self.assertRaises(ProfileError):
+            parse_profile(text + "{ id: a, value: b }" + " " * 30000 + "x]\n")
+        self.assertLess(time.monotonic() - started, 2.0)
+
+    def test_unclosed_quote_in_option_is_error(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            '      options: [{ id: effort, value: "low }]\n'
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_unclosed_quote_in_model_is_error(self) -> None:
+        text = 'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "claude-haiku-5-5\n'
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_unclosed_quote_in_option_names_options_path(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            '      options: [{ id: effort, value: "low }]\n'
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("targets.claude.light.options", str(ctx.exception))
+
+    def test_quote_inside_quoted_value_is_error(self) -> None:
+        text = 'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a"b"\n'
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_hash_inside_quoted_value_is_kept(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a #b"\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["model"], "a #b")
+
+    def test_unclosed_quote_in_agents_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile('agents:\n  light: "git-start\n')
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_doubled_apostrophe_in_single_quoted_value_is_kept(self) -> None:
+        targets, _ = parse_profile(
+            "targets:\n  claude:\n    light:\n      providerInstanceId: 'Claude d''Alice'\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n"
+        )
+        self.assertEqual(targets["claude"]["light"]["providerInstanceId"], "Claude d'Alice")
+
+    def test_agents_list_items_quotes_are_checked(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile('agents:\n  light: ["git-start", "cleanup]\n')
+        self.assertIn("cytowanie", str(ctx.exception))
+
+    def test_double_quoted_backslash_is_unescaped(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\\\"\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["model"], "a\\")
+
+    def test_escaped_quote_does_not_start_comment(self) -> None:
+        targets, _ = parse_profile(
+            'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\" # c"\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n'
+        )
+        self.assertEqual(targets["claude"]["light"]["model"], 'a" # c')
+
+    def test_unclosed_double_quote_with_trailing_backslash_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "ab\\"\n'
+            )
+        self.assertIn("escape", str(ctx.exception))
+
+    def test_unknown_escape_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: "a\\tb"\n'
+            )
+        self.assertIn("escape", str(ctx.exception))
+
+    def test_empty_agent_name_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile('agents:\n  light: [""]\n')
+        self.assertIn("pust", str(ctx.exception))
+
+    def test_unbalanced_brackets_in_agents_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("agents:\n  light: [a]]\n")
+        self.assertIn("nawias", str(ctx.exception))
+
+    def test_empty_option_id_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                'targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n'
+                '      options: [{ id: "", value: low }]\n'
+            )
+        self.assertIn("pust", str(ctx.exception))
+
+    def test_whole_value_quoted_agents_list_is_split(self) -> None:
+        for text in (
+            'agents:\n  light: "git-start,cleanup"\n',
+            "agents:\n  light: git-start,cleanup\n",
+            'agents:\n  light: ["git-start", "cleanup"]\n',
+        ):
+            with self.subTest(text=text):
+                _, agents = parse_profile(text)
+                self.assertEqual(agents, {"light": ["git-start", "cleanup"]})
 
     def test_missing_blocks_parse_as_empty(self) -> None:
         self.assertEqual(parse_profile("name: app\n"), ({}, None))
 
-    def test_takeover_alias_is_read_next_to_tiers(self) -> None:
-        text = "models:\n  claude:\n    light: haiku\n    takeover: sonnet\n"
-        models, _ = parse_profile(text)
-        self.assertEqual(models, {"claude": {"light": "haiku", "takeover": "sonnet"}})
-
-    def test_takeover_rejects_non_alias_model(self) -> None:
+    def test_unknown_client_is_error_with_allowed_list(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
-            parse_profile("models:\n  claude:\n    takeover: ollama/llama3:8b\n")
-        self.assertIn("models.claude.takeover", str(ctx.exception))
+            parse_profile("targets:\n  gemini:\n    light:\n      providerInstanceId: x\n")
+        self.assertIn("targets.gemini", str(ctx.exception))
+        self.assertIn("claude, codex, antigravity, opencode", str(ctx.exception))
 
-    def test_takeover_is_claude_only(self) -> None:
+    def test_unknown_tier_is_error_with_allowed_list(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
-            parse_profile("models:\n  opencode:\n    takeover: haiku\n")
-        self.assertIn("działa tylko dla klienta `claude`", str(ctx.exception))
+            parse_profile("targets:\n  claude:\n    fast:\n      providerInstanceId: claudeAgent\n")
+        self.assertIn("targets.claude.fast", str(ctx.exception))
+        self.assertIn("light, standard, heavy, takeover", str(ctx.exception))
 
-    def test_empty_takeover_has_same_message_as_empty_tier(self) -> None:
+    def test_entry_without_provider_instance_is_error(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
-            parse_profile("models:\n  claude:\n    takeover:\n")
+            parse_profile("targets:\n  claude:\n    light:\n      model: claude-haiku-5-5\n")
+        self.assertIn("providerInstanceId", str(ctx.exception))
+
+    def test_empty_model_is_error_not_silent(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model:\n")
+        self.assertIn("targets.claude.light.model", str(ctx.exception))
         self.assertIn("bez modelu", str(ctx.exception))
 
+    def test_unknown_field_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(
+                "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      temperature: 0.2\n"
+            )
+        self.assertIn("temperature", str(ctx.exception))
+
+    def test_options_must_be_inline_list(self) -> None:
+        text = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      options:\n        - { id: effort, value: low }\n"
+        )
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile(text)
+        self.assertIn("inline", str(ctx.exception))
+
+    def test_empty_options_list_is_empty(self) -> None:
+        targets, _ = parse_profile(
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      options: []\n    standard:\n      providerInstanceId: claudeAgent\n      model: m\n"
+        )
+        self.assertEqual(targets["claude"]["light"]["options"], [])
+
+    def test_inline_targets_block_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets: {claude: {light: haiku}}\n")
+        self.assertIn("blokiem", str(ctx.exception))
+
+    def test_tier_with_plain_value_instead_of_fields_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude:\n    light: haiku\n")
+        self.assertIn("targets.claude.light", str(ctx.exception))
+
+    def test_client_with_plain_value_instead_of_tiers_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("targets:\n  claude: haiku\n")
+        self.assertIn("targets.claude", str(ctx.exception))
+
+
+class TestRetiredKeys(unittest.TestCase):
+    """Stare klucze `models:` i `t3.targets` są twardym błędem z instrukcją migracji (ADR-0018)."""
+
+    def test_models_key_is_hard_error_with_migration_hint(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("models:\n  claude:\n    light: haiku\n")
+        self.assertIn("models:", str(ctx.exception))
+        self.assertIn("targets:", str(ctx.exception))
+
+    def test_t3_key_is_hard_error_with_migration_hint(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("t3:\n  targets:\n    claude:\n      light: haiku\n")
+        self.assertIn("t3:", str(ctx.exception))
+        self.assertIn("targets:", str(ctx.exception))
+
+    def test_sync_stops_on_models_key_and_keeps_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "project.profile.yaml"
+            original = "models:\n  claude:\n    light: haiku\n"
+            profile.write_text(original, encoding="utf-8")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                code = main(["model_tiers.py", "sync", str(profile), str(AGENTS_DIR)])
+            self.assertEqual(profile.read_text(encoding="utf-8"), original)
+        self.assertEqual(code, 1)
+        self.assertIn("models:", err.getvalue())
+
+
+class TestParseAgents(unittest.TestCase):
     def test_unknown_tier_in_agents_is_error_with_hint(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
             parse_profile("agents:\n  medium: git-start\n")
         message = str(ctx.exception)
         self.assertIn("medium", message)
         self.assertIn("light, standard, heavy", message)
-
-    def test_unknown_tier_in_models_is_error(self) -> None:
-        with self.assertRaises(ProfileError) as ctx:
-            parse_profile("models:\n  claude:\n    fast: haiku\n")
-        self.assertIn("models.claude.fast", str(ctx.exception))
 
     def test_agent_in_two_tiers_is_error_with_hint(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
@@ -127,69 +571,92 @@ class TestParseProfile(unittest.TestCase):
         self.assertIn("light", message)
         self.assertIn("heavy", message)
 
-    def test_empty_model_value_is_error_not_new_client(self) -> None:
-        with self.assertRaises(ProfileError) as ctx:
-            parse_profile("models:\n  claude:\n    light:\n    heavy: opus\n")
-        self.assertIn("models.claude.light", str(ctx.exception))
-
-    def test_tier_at_client_indent_is_error(self) -> None:
-        with self.assertRaises(ProfileError):
-            parse_profile("models:\n  claude:\n  light: haiku\n")
-
     def test_block_list_in_agents_is_error_with_supported_form(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
             parse_profile("agents:\n  light:\n    - cleanup\n")
         self.assertIn("po przecinku", str(ctx.exception))
 
-    def test_flow_map_is_error_with_supported_form(self) -> None:
+    def test_two_top_level_agents_blocks_are_error(self) -> None:
         with self.assertRaises(ProfileError) as ctx:
-            parse_profile("models: {claude: {light: haiku}}\n")
-        self.assertIn("blokiem", str(ctx.exception))
+            parse_profile("agents:\n  light: git-start\nx: 1\nagents:\n  light: cleanup\n")
+        self.assertIn("agents:", str(ctx.exception))
+        self.assertIn("zdublowany", str(ctx.exception))
+
+    def test_duplicate_agents_tier_is_error(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            parse_profile("agents:\n  light: git-start\n  light: cleanup\n")
+        self.assertIn("agents.light", str(ctx.exception))
 
     def test_comment_at_column_zero_inside_block_is_skipped(self) -> None:
         _, agents = parse_profile("agents:\n# moje\n  light: cleanup\nx: 1\n")
         self.assertEqual(agents, {"light": ["cleanup"]})
 
 
-class TestSyncAgents(unittest.TestCase):
-    def test_creates_block_from_template_when_missing(self) -> None:
-        text, report = sync_agents("name: app\n# komentarz\n", TEMPLATE)
-        self.assertTrue(text.startswith("name: app\n# komentarz\n"))
-        _, agents = parse_profile(text)
-        self.assertEqual(
-            agents,
-            {"light": ["cleanup", "git-start"], "standard": ["create-task"], "heavy": ["night-run"]},
-        )
-        self.assertEqual(len(report), 4)
+class TestResolveTarget(unittest.TestCase):
+    TARGETS = {
+        "claude": {
+            "light": {
+                "providerInstanceId": "claudeAgent",
+                "model": "claude-haiku-5-5",
+                "options": [{"id": "effort", "value": "low"}],
+            }
+        }
+    }
 
-    def test_keeps_profile_assignment_over_template(self) -> None:
-        profile = "agents:\n  heavy: git-start\n  light: cleanup\n  standard: create-task\nx: 1\n"
-        text, report = sync_agents(profile, TEMPLATE)
-        agents = parse_profile(text)[1] or {}
-        self.assertEqual(agents["heavy"], ["git-start", "night-run"])
-        self.assertEqual(agents["light"], ["cleanup"])
-        self.assertTrue(text.endswith("x: 1\n"))
-        self.assertEqual(report, ["+ agents.heavy: night-run"])
+    def test_ref_returns_target_object(self) -> None:
+        self.assertEqual(resolve_target({"target": "claude.light"}, self.TARGETS), self.TARGETS["claude"]["light"])
 
-    def test_removes_names_unknown_to_kit_and_reports(self) -> None:
-        profile = "agents:\n  light: git-start,cleanup,ghost\n  standard: create-task\n  heavy: night-run\n"
-        text, report = sync_agents(profile, TEMPLATE)
-        agents = parse_profile(text)[1] or {}
-        self.assertEqual(agents["light"], ["git-start", "cleanup"])
-        self.assertEqual(report, ["- agents.light: ghost (nie ma takiego agenta w kicie)"])
+    def test_ref_with_model_override_keeps_provider_and_options(self) -> None:
+        resolved = resolve_target({"target": "claude.light", "model": "claude-sonnet-5-5"}, self.TARGETS)
+        self.assertEqual(resolved["model"], "claude-sonnet-5-5")
+        self.assertEqual(resolved["providerInstanceId"], "claudeAgent")
+        self.assertEqual(resolved["options"], [{"id": "effort", "value": "low"}])
 
-    def test_in_sync_profile_is_untouched(self) -> None:
-        profile = "agents:\n  light: git-start, cleanup # moje\n  standard: create-task\n  heavy: night-run\n"
-        self.assertEqual(sync_agents(profile, TEMPLATE), (profile, []))
+    def test_ref_with_options_override_keeps_model(self) -> None:
+        resolved = resolve_target({"target": "claude.light", "options": [{"id": "effort", "value": "max"}]}, self.TARGETS)
+        self.assertEqual(resolved["options"], [{"id": "effort", "value": "max"}])
+        self.assertEqual(resolved["model"], "claude-haiku-5-5")
 
-    def test_rewrite_keeps_crlf_line_endings(self) -> None:
-        text, _ = sync_agents("a: 1\r\nagents:\r\n  light: ghost\r\n", TEMPLATE)
-        self.assertNotIn("\n", text.replace("\r\n", ""))
+    def test_override_does_not_change_targets(self) -> None:
+        resolve_target({"target": "claude.light", "model": "claude-sonnet-5-5"}, self.TARGETS)
+        self.assertEqual(self.TARGETS["claude"]["light"]["model"], "claude-haiku-5-5")
 
-    def test_rewrite_after_inner_comment_leaves_no_orphan_lines(self) -> None:
-        text, _ = sync_agents("agents:\n# c\n  light: cleanup\nx: 1\n", TEMPLATE)
-        self.assertEqual(text.count("light:"), 1)
-        self.assertTrue(text.endswith("x: 1\n"))
+    def test_full_entry_is_used_as_is(self) -> None:
+        entry = {"providerInstanceId": "codex", "model": "gpt-5.5", "options": []}
+        self.assertEqual(resolve_target(entry, {}), entry)
+
+    def test_unknown_ref_is_error_naming_the_ref(self) -> None:
+        with self.assertRaises(ProfileError) as ctx:
+            resolve_target({"target": "claude.ultra"}, self.TARGETS)
+        self.assertIn("claude.ultra", str(ctx.exception))
+
+    def test_entry_without_ref_or_provider_is_error(self) -> None:
+        with self.assertRaises(ProfileError):
+            resolve_target({"model": "claude-haiku-5-5"}, self.TARGETS)
+
+
+class TestTakeoverAlias(unittest.TestCase):
+    def test_alias_is_derived_from_claude_model_id(self) -> None:
+        cases = {
+            "claude-haiku-5-5": "haiku",
+            "claude-sonnet-5-5": "sonnet",
+            "claude-opus-5-5": "opus",
+            "claude-fable-5-2": "fable",
+        }
+        for model, alias in cases.items():
+            with self.subTest(model=model):
+                self.assertEqual(takeover_alias(model), alias)
+
+    def test_alias_passes_through(self) -> None:
+        self.assertEqual(takeover_alias("haiku"), "haiku")
+
+    def test_missing_model_means_session_model(self) -> None:
+        self.assertIsNone(takeover_alias(None))
+
+    def test_unknown_model_id_means_session_model(self) -> None:
+        for model in ("gpt-5.5", "ollama/llama3:8b", "claude-unknown-family"):
+            with self.subTest(model=model):
+                self.assertIsNone(takeover_alias(model))
 
 
 class TestApplyModels(unittest.TestCase):
@@ -198,8 +665,13 @@ class TestApplyModels(unittest.TestCase):
         path.write_text(f"---\nname: {name}\ndescription: d\n---\n\nbody\n", encoding="utf-8")
         return path
 
-    def test_inserts_model_for_mapped_tier(self) -> None:
-        profile = "models:\n  claude:\n    light: haiku\nagents:\n  light: git-start\n  heavy: night-run\n"
+    def test_claude_apply_writes_model_and_effort_for_mapped_tier(self) -> None:
+        profile = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      model: claude-haiku-5-5\n      options: [{ id: effort, value: low }]\n"
+            "    standard:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
+            "agents:\n  light: git-start\n  heavy: night-run\n"
+        )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             start, night = self._agent(root, "git-start"), self._agent(root, "night-run")
@@ -207,17 +679,57 @@ class TestApplyModels(unittest.TestCase):
             apply_models("claude", profile, root)
             self.assertEqual(
                 start.read_text(encoding="utf-8"),
-                "---\nname: git-start\ndescription: d\nmodel: haiku\n---\n\nbody\n",
+                "---\nname: git-start\ndescription: d\nmodel: claude-haiku-5-5\neffort: low\n---\n\nbody\n",
             )
             self.assertEqual(night.read_text(encoding="utf-8"), before)
 
-    def test_other_client_mapping_is_ignored(self) -> None:
-        profile = "models:\n  opencode:\n    light: anthropic/claude-haiku-5-5\nagents:\n  light: git-start\n"
+    def test_claude_apply_without_effort_option_writes_only_model(self) -> None:
+        profile = (
+            "targets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+            "      model: claude-haiku-5-5\n"
+            "    standard:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
+            "agents:\n  light: git-start\n"
+        )
         with tempfile.TemporaryDirectory() as tmp:
             start = self._agent(Path(tmp), "git-start")
-            before = start.read_text(encoding="utf-8")
             apply_models("claude", profile, Path(tmp))
-            self.assertEqual(start.read_text(encoding="utf-8"), before)
+            self.assertEqual(
+                start.read_text(encoding="utf-8"),
+                "---\nname: git-start\ndescription: d\nmodel: claude-haiku-5-5\n---\n\nbody\n",
+            )
+
+    def test_opencode_apply_writes_plain_model_without_variant(self) -> None:
+        """OpenCode: `model:` z `targets.opencode`, bez sufiksu, gdy nie ma opcji `variant` (ADR-0018)."""
+        profile = (
+            "targets:\n  opencode:\n    light:\n      providerInstanceId: opencode\n"
+            "      model: anthropic/claude-haiku-5-5\n"
+            "    standard:\n      providerInstanceId: opencode\n      model: anthropic/claude-haiku-5-5\n"
+            "agents:\n  light: git-start\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            start = self._agent(Path(tmp), "git-start")
+            apply_models("opencode", profile, Path(tmp))
+            self.assertEqual(
+                start.read_text(encoding="utf-8"),
+                "---\nname: git-start\ndescription: d\nmodel: anthropic/claude-haiku-5-5\n---\n\nbody\n",
+            )
+
+    def test_opencode_variant_becomes_model_suffix(self) -> None:
+        """OpenCode bierze wariant jako sufiks nazwy modelu: `model: provider/model#variant`."""
+        profile = (
+            "targets:\n  opencode:\n    light:\n      providerInstanceId: opencode\n"
+            "      model: opencode/glm-5.3-flash-free\n"
+            "      options: [{ id: variant, value: high }]\n"
+            "    standard:\n      providerInstanceId: opencode\n      model: opencode/glm-5.3-flash-free\n"
+            "agents:\n  light: git-start\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            start = self._agent(Path(tmp), "git-start")
+            apply_models("opencode", profile, Path(tmp))
+            self.assertEqual(
+                start.read_text(encoding="utf-8"),
+                "---\nname: git-start\ndescription: d\nmodel: opencode/glm-5.3-flash-free#high\n---\n\nbody\n",
+            )
 
 
 if __name__ == "__main__":

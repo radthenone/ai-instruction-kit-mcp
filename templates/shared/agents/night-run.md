@@ -33,8 +33,7 @@ jeden po drugim, aż każde jest **zmergowane** albo ma komentarz **needs-human*
     ticketu, a orkiestrator nie dostaje z nich tur. Sam `@KIT_CMD_PREFIX@night-run` działa w głównej
     sesji (w Claude uruchamiany Skillem, nie Agentem): potrzebuje `CronCreate` i watchdoga.
 <!-- /clients -->
-  - **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera, gdy
-    Profil ma `models.opencode`); brak `model:` → model sesji.
+  - **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera; `targets.opencode`); brak `model:` → model sesji.
   - **klienci bez modelu per agent** (Cursor, Codex, VS Code, Kiro, Kilo, Antigravity) →
     bez zmian: inline albo skill na modelu sesji. Dla klientów bez typu agenta (Codex, VS Code, Antigravity, inline): wczytaj `night-run-ticket` (skill albo prompt klienta) i wykonaj go z parametrami zlecenia.
   - **Model komendy z celu** — tylko jawna forma `<komenda>: model <nazwa>` (np.
@@ -260,7 +259,7 @@ orkiestrator **nie wywołuje żadnych narzędzi** i odpowiada jedną linią, np.
    poprawiasz `## Stan`, jeśli hand-back zmienia krok. W parametrach zlecenia kroki 2–3 w `night-run-ticket` dostają `Wykonawca` z wpisanymi `implementacja: <wykonawca> <model>, <model>; <wykonawca> <model>` albo `@KIT_CMD_PREFIX@headless <EXEC> [FLAGI] "<TREŚĆ>"` lub `brak`, oraz dwiema
    rozstrzygniętymi wartościami: `LIMIT` (`przejmij` / `czekaj`; z tekstu celu `limit:`, brak → `przejmij`)
    i `PRZEJĘCIE` (alias + źródło): (a) tekst celu `przejęcie: <alias>` (tylko ta noc), (b) Profil
-   `models.claude.takeover`, (c) brak → `sesja` (model sesji). Alias z celu spoza `haiku`/`sonnet`/
+   `targets.claude.takeover` (brak wpisu = kopia `standard`): alias z pola `model` (`claude-haiku-*` → `haiku`, analogicznie `sonnet`, `opus`, `fable`; nieznane id → `sesja`), (c) brak → `sesja` (model sesji). Alias z celu spoza `haiku`/`sonnet`/
    `opus`/`fable` → `sesja` z wpisem w raporcie („nieznany alias przejęcia”). Bez `@KIT_CMD_PREFIX@headless` i `implementacja:` pole `Wykonawca` ma wartość `brak`.
 2. **Review.** Przed review — w obu wariantach — nadpisz `## Stan` (krok `review`; przy
    skillach z argumentów także nazwa bieżącego skilla), w tym samym wywołaniu narzędzi co

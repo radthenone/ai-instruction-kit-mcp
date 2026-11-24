@@ -33,11 +33,23 @@ integrations: []
 #   allow:             # wyjątki projektu (allow projektu > deny projektu > lista kita)
 #     - "task lints:backend:ruff:check"
 
-# Model per tier agenta (light / standard / heavy) i klient — README „Model tiers”.
+# Modele agentów i zadań T3 — README „Model tiers”. Jedyne miejsce wyboru modelu (ADR-0018).
 # Bez tego bloku agenci jadą na modelu sesji. Blok `agents:` dopisuje reload.
-# models:
+# Stare `models:` i `t3.targets` są błędem reloadu — przenieś je przez `@KIT_CMD_PREFIX@kit-project-edit`.
+# targets:
 #   claude:
-#     light: haiku
+#     light:
+#       providerInstanceId: claudeAgent
+#       model: claude-haiku-5-5
+#       options: [{ id: effort, value: low }]
+#     takeover:                  # brak wpisu = kopia standard
+#       providerInstanceId: claudeAgent
+#       model: claude-sonnet-5-5
+#   codex:
+#     standard:
+#       providerInstanceId: codex
+#       model: <id modelu z listy providera>
+#       options: [{ id: reasoningEffort, value: medium }]
 
 # Clean Slate w @KIT_CMD_PREFIX@night-run (#502) — model świeżego subagenta po 2. nieudanej rundzie
 # naprawczej. Brak sekcji = model jak dotąd; każde pole opcjonalne.

@@ -926,8 +926,8 @@ bugbot_pristine() {
   CHECK_ONLY=1 copy_bugbot_md "$1" >/dev/null
 }
 
-# `model:` z Profilu (`models.<klient>.<tier>`) dla agentów kita w danym tierze (#168).
-# Bez mapowania pliki zostają jak z template — klient dziedziczy model sesji.
+# `model:` i `effort:` z `targets.claude.<tier>` Profilu dla agentów kita (#168, ADR-0018).
+# Bez wpisu pliki zostają jak z template — agent dziedziczy model sesji.
 apply_model_tiers() {
   [[ "$SKIP_AGENTS" -eq 0 ]] || return 0
   "$PYTHON_BIN" "$KIT_ROOT/scripts/model_tiers.py" apply "$1" "$TARGET/.ai/project.profile.yaml" "$2"

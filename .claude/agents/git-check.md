@@ -1,7 +1,8 @@
 ---
 name: git-check
 description: Sync GitHub issue title/body to actual file diffs. Use when /kit-ai:git-check, issue stale vs branch work. Wywołuj jako /kit-ai:git-check.
-model: haiku
+model: claude-haiku-5-5
+effort: low
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

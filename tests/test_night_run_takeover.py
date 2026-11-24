@@ -36,7 +36,7 @@ class NightRunTakeoverTest(unittest.TestCase):
     def test_takeover_model_source_order(self) -> None:
         chain = self.night.index("## Łańcuch na ticket")
         goal = self.night.index("tekst celu", chain)
-        profile = self.night.index("models.claude.takeover", chain)
+        profile = self.night.index("targets.claude.takeover", chain)
         session = self.night.index("`sesja`", chain)
         self.assertLess(goal, profile)
         self.assertLess(profile, session)
@@ -66,6 +66,10 @@ class NightRunTakeoverTest(unittest.TestCase):
         self.assertIn("jedna pełna ścieżka", self.ticket)
         self.assertNotIn("maks. 2 próby, potem needs-human", self.night)
 
+    def test_ticket_points_opencode_model_to_targets(self) -> None:
+        self.assertNotIn("models.opencode", self.ticket)
+        self.assertIn("`targets.opencode`", self.ticket)
+
     def test_exhausted_chain_without_limit_goes_to_takeover(self) -> None:
         self.assertIn("Wyczerpany łańcuch bez limitu", self.ticket)
         self.assertIn("klasa `HANG` albo `ERROR`", self.ticket)
@@ -74,7 +78,7 @@ class NightRunTakeoverTest(unittest.TestCase):
 class KitProjectEditTakeoverTest(unittest.TestCase):
     def test_kit_project_edit_describes_takeover_key(self) -> None:
         text = (KIT_ROOT / "templates/shared/agents/kit-project-edit.md").read_text(encoding="utf-8")
-        self.assertIn("`models.claude.takeover`", text)
+        self.assertIn("`targets.<klient>.takeover`", text)
         self.assertIn("`haiku` \\| `sonnet` \\| `opus` \\| `fable`", text)
 
 

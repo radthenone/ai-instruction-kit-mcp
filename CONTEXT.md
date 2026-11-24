@@ -89,11 +89,11 @@ A superseded spelling of a Module ID or of a Capability name, still accepted so 
 _Avoid_: synonym, legacy name, shorthand
 
 **Model tier**:
-The model class an agent or a delegated task belongs to: `light`, `standard`, `heavy`, or `takeover` (Claude only). Each tier has at most one Target per Client; `takeover` exists only for Claude. Not a Tier, which is a layer of the product.
+The model class an agent or a delegated task belongs to: `light`, `standard`, `heavy`, or `takeover`. Each tier has at most one Target per Client; `takeover` exists for every Client. Not a Tier, which is a layer of the product.
 _Avoid_: model level, model class
 
 **Target**:
-The `targets.<client>.<model tier>` entry in a Profile, holding `providerInstanceId`, `model` and `options`. Once #515 lands, the only place a model choice is recorded (ADR-0018); until then the Kit also reads the older `models:` and `t3.targets` blocks.
+The `targets.<client>.<model tier>` entry in a Profile, holding `providerInstanceId`, `model` and `options`. The only place a model choice is recorded (ADR-0018); the older `models:` and `t3.targets` blocks are an error.
 _Avoid_: model config, models block, t3 targets
 
 **Model alias**:

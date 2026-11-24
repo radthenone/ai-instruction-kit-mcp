@@ -1,7 +1,8 @@
 ---
 name: git-start
 description: Start pracy git — issue (#N, auto-diff lub --help) + branch Conventional. Use when /kit-ai:git-start, --help, new branch from issue. Wywołuj jako /kit-ai:git-start.
-model: haiku
+model: claude-haiku-5-5
+effort: low
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

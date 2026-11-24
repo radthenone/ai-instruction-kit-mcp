@@ -1,5 +1,6 @@
 ---
 description: "Sync GitHub issue title/body to actual file diffs. Use when /kit-ai/git-check, issue stale vs branch work. Wywołuj jako /kit-ai/git-check."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

@@ -1,7 +1,8 @@
 ---
 name: git-commit
 description: Stage and create Conventional Commit(s) from local diffs. Use when /kit-ai:git-commit, dirty tree before /kit-ai:git-end. Wywołuj jako /kit-ai:git-commit.
-model: haiku
+model: claude-haiku-5-5
+effort: low
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

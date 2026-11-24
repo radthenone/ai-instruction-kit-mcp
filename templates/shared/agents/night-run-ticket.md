@@ -21,7 +21,7 @@ Z kontekstu projektu czytasz tylko część wspólną z `<CTX>` oraz wyłącznie
 
 Komendy kitu uruchamiasz według klienta (`@KIT_CMD_PREFIX@git-*`, `@KIT_CMD_PREFIX@review-*` i inne w krokach), by działały na modelu z frontmattera:
 - **Claude Code:** agent o nazwie komendy jest w `.claude/agents/<nazwa>.md` → narzędzie `Agent` tego typu bez parametru `model` (model bierze się z frontmattera); brak agenta → `Skill`. Komendy `@KIT_CMD_PREFIX@git-*` wykonujesz wewnątrz subagenta ticketu.
-- **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera, gdy Profil ma `models.opencode`); brak `model:` → model sesji.
+- **opencode:** komenda `/<nazwa>` z `.opencode/commands/kit-ai/` (model z frontmattera; `targets.opencode`); brak `model:` → model sesji.
 - **Klienci bez modelu per agent (Cursor, Codex, Antigravity, VS Code, Kiro, Kilo):** inline albo skill na modelu sesji.
 - Jawna forma `<komenda>: model <nazwa>` w parametrach nadpisuje frontmatter komendy tam, gdzie klient ma parametr modelu. Brak agenta/komendy (fallback na Skill albo inline) zapisujesz w hand-backu.
 

@@ -1,7 +1,8 @@
 ---
 name: pr-stats
 description: Inspekcja otwartych PR-ów — tabela stanu CI/checks, analiza ryzyk i konfliktów, rekomendowane akcje i blokery merge. Wywołuj jako /kit-ai:pr-stats.
-model: haiku
+model: claude-haiku-5-5
+effort: low
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

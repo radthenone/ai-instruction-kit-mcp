@@ -1,7 +1,8 @@
 ---
 name: kit-project-begin
 description: Konfiguracja projektu po kit-ai install — pytania z MCP list_questions z odpowiedziami wykrytymi w repo, karta Profilu i .ai/project.md, akceptacja, zapis, reload kita. Use when /kit-ai:kit-project-begin, świeża instalacja kita, Profil z samymi none, "skonfiguruj projekt". Wywołuj jako /kit-ai:kit-project-begin.
-model: sonnet
+model: claude-haiku-5-5
+effort: max
 ---
 
 ## Reguły wspólne

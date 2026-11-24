@@ -995,7 +995,7 @@ class TestTestNamePolicy(_BootstrapTestCase):
 
 
 class TestModelTiers(_BootstrapTestCase):
-    """`models:` / `agents:` w Profilu → `model:` u Claude i opencode (#168)."""
+    """`targets:` / `agents:` w Profilu → `model:` i `effort:` u Claude (#168, #515)."""
 
     def _install(self, workspace: Path, profile_extra: str = "") -> None:
         run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
@@ -1016,29 +1016,52 @@ class TestModelTiers(_BootstrapTestCase):
                 self.assertNotIn("model:", text.split("---")[1], rel)
                 self.assertNotIn("model-tier", text, rel)
 
-    def test_models_mapping_renders_model_for_claude_and_opencode(self) -> None:
+    def test_targets_render_model_and_effort_for_claude_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             workspace.mkdir()
             self._install(
                 workspace,
-                "\nmodels:\n  claude:\n    light: haiku\n  opencode:\n    light: anthropic/claude-haiku-5-5\n",
+                "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
+                "      model: claude-haiku-5-5\n      options: [{ id: effort, value: low }]\n"
+                "    takeover:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
+                "  opencode:\n    light:\n      providerInstanceId: opencode\n"
+                "      model: anthropic/claude-haiku-5-5\n"
+                "    takeover:\n      providerInstanceId: opencode\n      model: anthropic/claude-haiku-5-5\n",
             )
             read = lambda rel: (workspace / rel).read_text(encoding="utf-8")  # noqa: E731
-            self.assertIn("\nmodel: haiku\n---", read(".claude/agents/git-start.md"))
+            self.assertIn("\nmodel: claude-haiku-5-5\neffort: low\n---", read(".claude/agents/git-start.md"))
             self.assertIn(
                 "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/commands/kit-ai/git-start.md")
             )
             self.assertNotIn("model:", read(".claude/skills/kit-ai/skills/git-start/SKILL.md").split("---")[1])
             self.assertNotIn("model:", read(".claude/agents/night-run.md").split("---")[1])
 
+    def test_models_key_stops_bootstrap_with_migration_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+            profile = workspace / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                profile.read_text(encoding="utf-8") + "\nmodels:\n  claude:\n    light: haiku\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(BootstrapError) as ctx:
+                run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
+            self.assertIn("models:", str(ctx.exception))
+            self.assertIn("targets:", str(ctx.exception))
+
     def test_invalid_agents_block_fails_with_reason(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
             workspace.mkdir()
             with self.assertRaises(BootstrapError) as ctx:
-                self._install(workspace, "\nmodels:\n  claude:\n    turbo: haiku\n")
-            self.assertIn("models.claude.turbo", str(ctx.exception))
+                self._install(
+                    workspace,
+                    "\ntargets:\n  claude:\n    turbo:\n      providerInstanceId: claudeAgent\n",
+                )
+            self.assertIn("targets.claude.turbo", str(ctx.exception))
 
 
 class TestOpencodeGuards(_BootstrapTestCase):
@@ -1294,7 +1317,9 @@ class TestHeadlessAgent(_BootstrapTestCase):
             self.assertNotIn("model:", agent.read_text(encoding="utf-8").split("---")[1])
             profile = workspace / ".ai/project.profile.yaml"
             profile.write_text(
-                profile.read_text(encoding="utf-8") + "\nmodels:\n  claude:\n    light: haiku\n",
+                profile.read_text(encoding="utf-8")
+                + "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: haiku\n"
+                "    takeover:\n      providerInstanceId: claudeAgent\n      model: haiku\n",
                 encoding="utf-8",
             )
             self._install(workspace, "claude,opencode")

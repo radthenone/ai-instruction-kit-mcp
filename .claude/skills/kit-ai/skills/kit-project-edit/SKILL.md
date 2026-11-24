@@ -47,7 +47,7 @@ Cały wywiad od zera: /kit-ai:kit-project-begin
    | `codegen` | Profil | `orval` \| `none` \| `graphql` |
    | `clients` | Profil | `all` albo lista z MCP `get_clients` |
    | `language` | Profil | `pl` \| `en` |
-   | Model przejęcia ticketu nocnego (#257) | Profil: `models.claude.takeover` | `haiku` \| `sonnet` \| `opus` \| `fable` (tylko Claude; brak = model sesji) |
+   | Model przejęcia ticketu nocnego (#257, #515) | Profil: `targets.claude.takeover` (zwykła noc, `night-run`) i `targets.<wykonawca>.takeover` (karta T3, pełny wpis); brak = kopia `standard` | id modelu z listy providera; zwykła noc przyjmuje tylko alias `haiku` \| `sonnet` \| `opus` \| `fable` wyprowadzony z id |
    | Pytanie tak/nie (docker, taskfile, ci-cd, …) | Profil `include:` / `patterns:` | Wpisy z linii `Zapis` pytania |
    | Ścieżka Tieru, inna sekcja | `.ai/project.md` | Tekst użytkownika |
    | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (allow projektu > deny projektu > lista kita) |
@@ -73,7 +73,7 @@ Cały wywiad od zera: /kit-ai:kit-project-begin
    web i mobile są `none` — `list_questions` po zmianie). Tier `none` → Stack web/mobile:
    zaproponuj kolejne `/kit-ai:kit-project-edit` na `design-tokens` i `routes-*` z wykryciem
    z `detect:` katalogu.
-3. **Zapis** jednej linii (komentarze i reszta pliku nietknięte) → MCP
+3. **Zapis** zaakceptowanej zmiany: jednej linii albo wszystkich linii tego samego wpisu (np. blok `targets.<klient>.takeover` z kilku linii) wraz z brakującymi kluczami nadrzędnymi (`targets:`, `<klient>:`) w tej samej zmianie; komentarze i reszta pliku nietknięte → MCP
    `reload_workspace(dry_run=True)`; błąd → przywróć oryginał, pokaż błąd. OK →
    `reload_workspace(dry_run=False)`. Zmiana tylko w `.ai/project.md` → bez reloadu
    (serwer czyta overlay na żywo).
