@@ -21,59 +21,76 @@ overlays:
 
 agents:
   light: cleanup,git-check,git-commit,git-end,git-start,headless,issue-stats,pr-stats
-  standard: create-skill,create-task,kit-project-begin,kit-project-edit,review-architecture,review-backend,review-bugbot,review-frontend,review-security,review-tests,review-ui,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend,night-run-ticket
-  heavy: night-run,review-edge
+  standard: create-skill,create-task,kit-project-begin,kit-project-edit,night-run,night-run-ticket,subagent-backend,subagent-frontend,teacher-agent,teacher-architecture,teacher-backend,teacher-frontend
+  heavy: review-architecture,review-backend,review-bugbot,review-edge,review-frontend,review-security,review-tests,review-ui
 
-models:
+night-run:
+  clean-slate:
+    provider: claudeAgent
+    model: claude-opus-5-5
+    effort: high
+
+targets:
   claude:
-    light: haiku
-    standard: sonnet
-    heavy: opus
-    takeover: haiku
-
-t3:
-  targets:
-    claude:
-      light:
-        providerInstanceId: claudeAgent
-        model: claude-haiku-5-5
-        options: [{ id: effort, value: low }]
-      standard:
-        providerInstanceId: claudeAgent
-        model: claude-haiku-5-5
-        options: [{ id: effort, value: max }]
-      heavy:
-        providerInstanceId: claudeAgent
-        model: claude-opus-5-5
-        options: [{ id: effort, value: medium }]
-
-    antigravity:
-      light:
-        providerInstanceId: antigravity
-        model: gemini-3.8-flash
-        options: [{ id: thinking_level, value: low }]
-      standard:
-        providerInstanceId: antigravity
-        model: gemini-3.8-flash
-        options: [{ id: thinking_level, value: high }]
-      heavy:
-        providerInstanceId: antigravity
-        model: claude-opus-4-6-thinking
-        options: [{ id: thinking_level, value: high }]
-
-    opencode:
-      light:
-        providerInstanceId: opencode
-        model: opencode/glm-5.3-flash-free
-        options: [{ id: variant, value: high }]
-      standard:
-        providerInstanceId: opencode
-        model: opencode/deepseek-v4.1-flash-free
-        options: [{ id: variant, value: high }]
-      heavy:
-        providerInstanceId: opencode
-        model: opencode/deepseek-v4.1-flash-free
-        options: [{ id: variant, value: high }]
+    light:
+      providerInstanceId: claudeAgent
+      model: claude-haiku-5-5
+      options: [{ id: effort, value: low }]
+    standard:
+      providerInstanceId: claudeAgent
+      model: claude-haiku-5-5
+      options: [{ id: effort, value: max }]
+    heavy:
+      providerInstanceId: claudeAgent
+      model: claude-opus-5-5
+      options: [{ id: effort, value: medium }]
+    takeover:
+      providerInstanceId: claudeAgent
+      model: claude-haiku-5-5
+      options: [{ id: effort, value: max }]
+  codex:
+    light:
+      providerInstanceId: codex
+      model: gpt-5.6-luna
+      options: [{ id: reasoningEffort, value: low }]
+    standard:
+      providerInstanceId: codex
+      model: gpt-6-luna
+      options: [{ id: reasoningEffort, value: medium }]
+    heavy:
+      providerInstanceId: codex
+      model: gpt-5.6-terra
+      options: [{ id: reasoningEffort, value: high }]
+    takeover:
+      providerInstanceId: codex
+      model: gpt-6-luna
+      options: [{ id: reasoningEffort, value: medium }]
+  antigravity:
+    light:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+      options: [{ id: thought_level, value: low }]
+    standard:
+      providerInstanceId: antigravity
+      model: gemini-3.8-flash
+      options: [{ id: thought_level, value: high }]
+    heavy:
+      providerInstanceId: antigravity
+      model: claude-opus-4-6-thinking
+      options: [{ id: thought_level, value: high }]
+  opencode:
+    light:
+      providerInstanceId: opencode
+      model: opencode/glm-5.3-flash-free
+      options: [{ id: variant, value: high }]
+    standard:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+      options: [{ id: variant, value: high }]
+    heavy:
+      providerInstanceId: opencode
+      model: opencode/deepseek-v4.1-flash-free
+      options: [{ id: variant, value: high }]
 
 worktree:
   copy:

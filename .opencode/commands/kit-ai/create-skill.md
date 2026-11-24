@@ -1,5 +1,6 @@
 ---
 description: "Pomysł na skill → rozstrzygnięcie skill czy agent → ocena na tle repo → karta → issue. Use when /kit-ai/create-skill, 'chcę mieć skill na X', nowy SKILL.md, wiedza którą model ma ładować sam. Nie pisze skilla. Wywołuj jako /kit-ai/create-skill."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

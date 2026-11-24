@@ -1,5 +1,6 @@
 ---
 description: "Start pracy git — issue (#N, auto-diff lub --help) + branch Conventional. Use when /kit-ai/git-start, --help, new branch from issue. Wywołuj jako /kit-ai/git-start."
+model: opencode/glm-5.3-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

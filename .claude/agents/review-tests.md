@@ -2,7 +2,8 @@
 name: review-tests
 description: Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /kit-ai:review-tests.
 readonly: true
-model: sonnet
+model: claude-opus-5-5
+effort: medium
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

@@ -1,7 +1,8 @@
 ---
 name: cleanup
 description: Znajdź i usuń zbędne pliki tymczasowe/testowe stworzone podczas weryfikacji (scratch scripts, ad-hoc testy, tmp dumps), które zostały w repo po zakończeniu pracy. Use when zakończono debugowanie/weryfikację i podejrzewasz śmieci w working tree, przed `/kit-ai:git-commit`. Wywołuj jako /kit-ai:cleanup.
-model: haiku
+model: claude-haiku-5-5
+effort: low
 ---
 
 ## Reguły wspólne

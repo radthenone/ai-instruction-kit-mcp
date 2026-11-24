@@ -1,7 +1,8 @@
 ---
 name: kit-project-edit
 description: Jedna zmiana w konfiguracji projektu bez całego wywiadu — Stack per Tier, codegen, klienci, język albo sekcja .ai/project.md, z podglądem i reloadem; spór z treścią modułu kita zapisany jako odstępstwo w .ai/project.md; albo naprawa zgłoszeń doctora w overlayu i blokach project:rules w BUGBOT.md / project:agents w AGENTS.md. Use when /kit-ai:kit-project-edit, "zmień web na angular", "nie zgadzam się z modułem X", "napraw zgłoszenia doctora". Wywołuj jako /kit-ai:kit-project-edit.
-model: sonnet
+model: claude-haiku-5-5
+effort: max
 ---
 
 ## Reguły wspólne
@@ -46,7 +47,7 @@ Cały wywiad od zera: /kit-ai:kit-project-begin
    | `codegen` | Profil | `orval` \| `none` \| `graphql` |
    | `clients` | Profil | `all` albo lista z MCP `get_clients` |
    | `language` | Profil | `pl` \| `en` |
-   | Model przejęcia ticketu nocnego (#257) | Profil: `models.claude.takeover` | `haiku` \| `sonnet` \| `opus` \| `fable` (tylko Claude; brak = model sesji) |
+   | Model przejęcia ticketu nocnego (#257, #515) | Profil: `targets.<klient>.takeover` (pełny wpis; brak = kopia `standard`) | id modelu z listy providera; Claude Code przyjmuje alias `haiku` \| `sonnet` \| `opus` \| `fable` wyprowadzony z id |
    | Pytanie tak/nie (docker, taskfile, ci-cd, …) | Profil `include:` / `patterns:` | Wpisy z linii `Zapis` pytania |
    | Ścieżka Tieru, inna sekcja | `.ai/project.md` | Tekst użytkownika |
    | `server:` (server-guard: `guard`, `deny`, `allow`) | Profil, sekcja `server` | `guard: auto` albo `off`; `deny`/`allow`: dosłowne wywołania (allow projektu > deny projektu > lista kita) |

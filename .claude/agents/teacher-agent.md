@@ -2,7 +2,8 @@
 name: teacher-agent
 description: Nauczyciel pracy z agentami — skille, izolacja pracy, delegacja, autonomia (/goal vs /loop), pisanie promptów, grillowanie i review. Use when nie wiesz jakim narzędziem ruszyć zadanie, kiedy odpalić subagenta, kiedy worktree, jak sformułować prompt albo jak spiąć komendy tego kitu w jeden flow. Uczy, nie edytuje. Wywołuj jako /kit-ai:teacher-agent.
 readonly: true
-model: sonnet
+model: claude-haiku-5-5
+effort: max
 ---
 
 ## Tryb nauczyciela (obowiązkowy)

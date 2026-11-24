@@ -1,5 +1,6 @@
 ---
 description: "Reviewer architektury monorepo. Use when zmiana dotyka kontraktu API, struktury monorepo lub wzorca capability-provider. Wywołuj jako /kit-ai/review-architecture."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

@@ -1,5 +1,6 @@
 ---
 description: "Weryfikator dowodu — czy testy/komendy faktycznie przechodzą. Nie stylista. Use after „zrobione”. Wywołuj jako /kit-ai/review-tests."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

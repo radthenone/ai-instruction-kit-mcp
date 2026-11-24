@@ -2,7 +2,8 @@
 name: review-security
 description: Reviewer bezpieczeństwa — auth, sesje, ACL, webhooki, sekrety. Use when zmiana dotyka uwierzytelniania, uprawnień, płatności lub sekretów. Wywołuj jako /kit-ai:review-security.
 readonly: true
-model: sonnet
+model: claude-opus-5-5
+effort: medium
 ---
 
 Język odpowiedzi, prompt dla subagenta i hand-back: z MCP `get_language` (Profil), niezależnie od języka wejścia.

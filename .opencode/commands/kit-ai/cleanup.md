@@ -1,5 +1,6 @@
 ---
 description: "Znajdź i usuń zbędne pliki tymczasowe/testowe stworzone podczas weryfikacji (scratch scripts, ad-hoc testy, tmp dumps), które zostały w repo po zakończeniu pracy. Use when zakończono debugowanie/weryfikację i podejrzewasz śmieci w working tree, przed `/kit-ai/git-commit`. Wywołuj jako /kit-ai/cleanup."
+model: opencode/glm-5.3-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS

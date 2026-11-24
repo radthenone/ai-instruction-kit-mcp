@@ -1,7 +1,8 @@
 ---
 name: git-end
 description: Domknięcie pracy — push feature branch + Pull Request (Closes #N). Use after review, /kit-ai:git-end. Wywołuj jako /kit-ai:git-end. (Dawniej git-pr.)
-model: haiku
+model: claude-haiku-5-5
+effort: low
 ---
 
 Język odpowiedzi i hand-backu: z MCP `get_language` (Profil), niezależnie od języka wejścia.

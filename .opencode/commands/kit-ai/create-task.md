@@ -1,5 +1,6 @@
 ---
 description: "Pomysł → ocena na tle repo → karta issue → akceptacja → issue. Use when /kit-ai/create-task, nowy pomysł do zapisania, 'czy warto to robić', issue przed /kit-ai/git-start. Nie zakłada brancha. Wywołuj jako /kit-ai/create-task."
+model: opencode/deepseek-v4.1-flash-free#high
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
