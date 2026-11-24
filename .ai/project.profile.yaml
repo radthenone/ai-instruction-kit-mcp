@@ -68,19 +68,19 @@ targets:
   antigravity:
     light:
       providerInstanceId: antigravity
-      model: gemini-3.8-flash
+      model: gemini-4-hydrogen
       options: [{ id: thought_level, value: low }]
     standard:
       providerInstanceId: antigravity
-      model: gemini-3.8-flash
-      options: [{ id: thought_level, value: high }]
+      model: gemini-4-hydrogen
+      options: [{ id: thought_level, value: medium }]
     heavy:
       providerInstanceId: antigravity
-      model: claude-opus-4-6-thinking
+      model: gemini-4-hydrogen
       options: [{ id: thought_level, value: high }]
     takeover:
       providerInstanceId: antigravity
-      model: gemini-3.8-flash
+      model: gemini-4-hydrogen
       options: [{ id: thought_level, value: high }]
   opencode:
     light:
