@@ -8,7 +8,7 @@ The rule runs for a selected client on every reload, and for a deselected client
 
 `--skip-agents` is the boundary of the command forms. With it, install renders no commands, and reload of a selected client neither renders nor prunes them, so a repo installed that way keeps its command files as they are. A deselected client is pruned as before, `--skip-agents` or not, unless `--keep-unselected-clients` is given.
 
-`/goal` and `/loop` are the exception. They stay flat in `.opencode/command/` while opencode is selected, because the kit-loop plugin implements those two commands under those names. Moving them needs a plugin change, which is a separate decision.
+`/goal` and `/loop` are the exception. They stay flat in `.opencode/command/` while opencode is selected, because the kit-loop plugin implements those two commands under those names. The owner of #533 accepted this exception in a comment on that issue, which is the written change of its criterion. Moving the two commands to the native form needs a plugin change and is a separate issue.
 
 ## Considered Options
 
