@@ -198,7 +198,7 @@ def _profile(workspace: Path) -> dict[str, object]:
 
 
 def clean_slate_config(
-    profile: Mapping[str, object], targets: Mapping[str, Mapping[str, dict]] | None = None
+    profile: Mapping[str, object], targets: dict[str, dict[str, dict]] | None = None
 ) -> dict[str, Any]:
     """Model i opcje Clean Slate z ``night-run.clean-slate`` w Profilu (#502, #546).
 
@@ -236,7 +236,7 @@ def clean_slate_config(
                 res[key] = s
     if "target" in res:
         entry = {key: res[key] for key in ("target", "model", "options") if key in res}
-        resolved = resolve_target(entry, dict(targets or {}))
+        resolved = resolve_target(entry, targets if targets is not None else {})
         return {key: val for key, val in resolved.items() if val}
     return res
 
