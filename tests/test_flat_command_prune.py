@@ -109,6 +109,36 @@ class TestFlatCommandPrune(_BootstrapTestCase):
                 self.assertFalse((app / rel).exists(), rel)
             self.assertTrue((app / ".opencode/command/moja.md").is_file())
 
+    def test_reload_keeps_files_behind_command_dir_symlink_outside_workspace(self) -> None:
+        """`.opencode/command` jako dowiązanie poza workspace — pliki w celu zostają (#566)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            self.assertEqual(_quiet_main("install", str(app), "--clients", "claude,opencode")[0], 0)
+            self._seed_flat(app)
+            outside = Path(tmp) / "outside"
+            outside.mkdir()
+            kit_names = ("git-start.md", "teacher-backend.md")
+            for name in kit_names:
+                (outside / name).write_text("cudzy\n", encoding="utf-8")
+            (outside / "retro.md").write_text(
+                "Klasyfikacja znalezisk z wyniku skanu sesji agentów (`kit-ai retro scan`)\n",
+                encoding="utf-8",
+            )
+            command_dir = app / ".opencode/command"
+            for p in command_dir.iterdir():
+                p.unlink()
+            command_dir.rmdir()
+            command_dir.symlink_to(outside, target_is_directory=True)
+
+            code, out = _quiet_main("reload", str(app))
+
+            self.assertEqual(code, 0, out)
+            for name in (*kit_names, "retro.md"):
+                self.assertTrue((outside / name).is_file(), name)
+            # Pliki w workspace dalej znikają.
+            for rel in KIT_FLAT_CLAUDE:
+                self.assertFalse((app / rel).exists(), rel)
+
     def test_unselected_claude_reload_removes_flat_kit_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / "app"
