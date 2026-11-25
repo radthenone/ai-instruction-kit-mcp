@@ -1,14 +1,14 @@
 ---
-description: "Pętla: /loop [5m] [max=N] <zadanie> — plugin kit-loop powtarza turę (co interwał albo od razu) aż do dowodu końca. /loop stop. Przerwania: Esc, /loop stop, limit 10 iteracji."
+description: "Pętla: /kit-ai/loop [5m] [max=N] <zadanie> — plugin kit-loop powtarza turę (co interwał albo od razu) aż do dowodu końca. /kit-ai/loop stop. Przerwania: Esc, /kit-ai/loop stop, limit 10 iteracji."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 
-# /loop — iteruj aż do dowodu końca
+# /kit-ai/loop — iteruj aż do dowodu końca
 
 Pętlę prowadzi plugin `.opencode/plugins/kit-loop.js`: po każdej turze wysyła
 następną — od razu albo po interwale (`5m`, `30s`, `1h` jako pierwsze słowo).
-Kończy ją `<promise>DONE</promise>` na końcu odpowiedzi, Esc, `/loop stop`
+Kończy ją `<promise>DONE</promise>` na końcu odpowiedzi, Esc, `/kit-ai/loop stop`
 albo limit iteracji (default 10, `max=N`).
 
 ## Start

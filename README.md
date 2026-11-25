@@ -765,7 +765,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
 | Kilo Code | `kilo` | rozszerzenie Kilo Code | `.kilocode/mcp.json` + `.kilocode/workflows/*.md` (`/nazwa`, `$ARGUMENTS` wspierane) |
 | Google Antigravity | `antigravity` | Antigravity IDE / CLI (`agy`) | `.agents/mcp_config.json` + `.agents/skills/<nazwa>/SKILL.md` (agenty jako natywne skille) + `.agents/hooks.json` (guardy kita: git-guard, server-guard, sensitive-files-guard) |
-| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/commands/kit-ai/*.md` (`/kit-ai/nazwa`, `$ARGUMENTS`) + `.opencode/command/{goal,loop}.md` (`/goal`, `/loop`) |
+| opencode | `opencode` | `opencode` CLI | `opencode.json` w root (klucz `mcp`, `type: "local"`, `command` jako tablica) + `.opencode/commands/kit-ai/*.md` (`/kit-ai/nazwa`, `$ARGUMENTS`, w tym `/kit-ai/goal`, `/kit-ai/loop`) |
 
 Wiele klientów naraz: `--clients cursor,claude` albo `--clients all`. Każdy klient dostaje **ten sam** `--language`/`--workspace` — różni się tylko format pliku MCP i ścieżka komend.
 
@@ -946,7 +946,7 @@ Bootstrap to **jednorazowy stempel**, nie sync. Cztery różne zachowania:
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
 | `.claude/agents/`, `.cursor/agents/`, `.claude/skills/kit-ai/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie. `mcp.json`/`config.toml` i stamp dodatkowo **nie są wersjonowane** (ścieżka maszyny) — patrz „`.gitignore` — co z tego wersjonować” |
-| `.claude/commands/<nazwa>.md`, `.opencode/command/<nazwa>.md` (płaskie, sprzed #526 i #527) | **Usuwane po nazwie komendy kita**, także zmienione; pliki o innych nazwach zostają. `/goal` i `/loop` zostają przy wybranym opencode. Przy `--skip-agents` komendy wybranych klientów zostają nietknięte; odznaczony klient sprzątany jak dotąd (ADR-0019) |
+| `.claude/commands/<nazwa>.md`, `.opencode/command/<nazwa>.md` (płaskie, sprzed #526 i #527) | **Usuwane po nazwie komendy kita**, także zmienione; pliki o innych nazwach zostają. Od #567 dotyczy to też `.opencode/command/{goal,loop}.md`. Przy `--skip-agents` komendy wybranych klientów zostają nietknięte; odznaczony klient sprzątany jak dotąd (ADR-0019) |
 | `BUGBOT.md`, `.cursor/BUGBOT.md` | **Renderowane na nowo z szablonu** (sekcje Tierów według Profilu). Blok `<!-- project:rules -->` przechodzi bez zmian — tam wpisuj własne reguły projektu. Plik sprzed wprowadzenia bloku jest migrowany po historii szablonu; niepewna migracja = plik bez zmian + ostrzeżenie |
 | `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
 | `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
@@ -1246,7 +1246,7 @@ Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek k
   OpenCode. Nadpisanie: wpisz `model` w projektowym `opencode.json` — reload go nie rusza. Kopia
   nie śledzi późniejszych zmian globalnego configu; żeby ją odświeżyć, usuń `model` z projektu
   i zrób reload. Inne pola globalnego configu (provider, agent) nie są kopiowane.
-  Do tego `/goal` i `/loop` jak w Claude Code: `templates/opencode/command/{goal,loop}.md` + plugin `.opencode/plugins/kit-loop.js`, który po `session.execution.succeeded` wysyła kolejną turę. Stop: `<promise>DONE</promise>` w odpowiedzi, Esc, `/goal clear` / `/loop stop`, limit tur (goal 25, loop 10, `max=N`); `/loop 5m <zadanie>` powtarza co interwał.
+  Do tego `/kit-ai/goal` i `/kit-ai/loop` — odpowiednik `/goal` i `/loop` z Claude Code: `templates/opencode/commands/kit-ai/{goal,loop}.md` + plugin `.opencode/plugins/kit-loop.js`, który po `session.execution.succeeded` wysyła kolejną turę. Stop: `<promise>DONE</promise>` w odpowiedzi, Esc, `/kit-ai/goal clear` / `/kit-ai/loop stop`, limit tur (goal 25, loop 10, `max=N`); `/kit-ai/loop 5m <zadanie>` powtarza co interwał. Płaskie `/goal`, `/loop` nie uruchamiają pętli (#567).
 
 Formaty VS Code/Kilo/Antigravity/opencode oparte o publiczną dokumentację tych klientów (sierpień 2026) — nie testowane na żywych instalacjach; jeśli coś nie zadziała, zgłoś różnicę i popraw `scripts/render_agent_commands.py`.
 

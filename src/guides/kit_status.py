@@ -24,7 +24,7 @@ _OVERWRITTEN_GLOBS: tuple[str, ...] = (
     "templates/antigravity/hooks.json",
     "templates/cursor/hooks.json",
     "templates/opencode/opencode.json",
-    "templates/opencode/command/*.md",
+    "templates/opencode/commands/kit-ai/*.md",
     "templates/opencode/plugins/*.js",
     "templates/vscode/github/copilot-instructions.md",
     "templates/vscode/github/hooks/*.json",

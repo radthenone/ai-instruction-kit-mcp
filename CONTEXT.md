@@ -161,7 +161,7 @@ The Claude Code plugin `kit-ai`, which Bootstrap writes as a skills directory. E
 _Avoid_: marketplace plugin, skills folder
 
 **Flat command file**:
-The retired form of a Command: `.claude/commands/<name>.md` for Claude and `.opencode/command/<name>.md` for opencode, invoked `/<name>`. Bootstrap writes none. Reload removes those whose names match a Command (ADR-0019). `/goal` and `/loop` stay flat in opencode while it is selected.
+The retired form of a Command: `.claude/commands/<name>.md` for Claude and `.opencode/command/<name>.md` for opencode, invoked `/<name>`. Bootstrap writes none. Reload removes those whose names match a Command (ADR-0019), including opencode's `goal.md` and `loop.md` since #567.
 _Avoid_: legacy command, old command file
 
 ### Agents
