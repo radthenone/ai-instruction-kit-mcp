@@ -16,6 +16,8 @@ from typing import Any
 
 import yaml
 
+# council ładuje scripts/model_tiers.py (wspólny resolver wpisu target z #515)
+from guides.council import ProfileError, parse_profile, resolve_target
 from guides.host_profile import get_host_profile
 from guides.resolver import (
     PROFILE_REL_PATH,
@@ -195,18 +197,26 @@ def _profile(workspace: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
-def clean_slate_config(profile: Mapping[str, object]) -> dict[str, Any]:
+def clean_slate_config(
+    profile: Mapping[str, object], targets: dict[str, dict[str, dict]] | None = None
+) -> dict[str, Any]:
     """Model i opcje Clean Slate z ``night-run.clean-slate`` w Profilu (#502, #546).
 
     Wspiera kształt wpisu ``target`` z #515 (ref ``target: <klient>.<tier>`` z opcjonalnym
     nadpisaniem ``model`` / ``options`` albo pełny wpis ``{providerInstanceId, model, options}``)
-    oraz wsteczną zgodność z ``provider`` / ``model`` / ``effort``.
+    oraz wsteczną zgodność z ``provider`` / ``model`` / ``effort``. Ref przechodzi przez
+    ``resolve_target`` (jak w council), więc wynik ma ``providerInstanceId`` / ``model`` /
+    ``options``, a ``model`` / ``options`` z sekcji wygrywają z wpisem w ``targets``.
 
     Args:
         profile: Wczytany Profil projektu.
+        targets: Wynik ``parse_profile`` (klucz ``targets``); brak = pusty.
 
     Returns:
         dict: Niepuste pola konfiguracji; brak albo zły typ sekcji → ``{}``.
+
+    Raises:
+        ProfileError: Ref ``target`` bez wpisu w ``targets`` (komunikat z nazwą refu).
     """
     night = profile.get("night-run")
     section = night.get("clean-slate") if isinstance(night, dict) else None
@@ -224,6 +234,10 @@ def clean_slate_config(profile: Mapping[str, object]) -> dict[str, Any]:
             s = str(val).strip()
             if s:
                 res[key] = s
+    if "target" in res:
+        entry = {key: res[key] for key in ("target", "model", "options") if key in res}
+        resolved = resolve_target(entry, targets if targets is not None else {})
+        return {key: val for key, val in resolved.items() if val}
     return res
 
 
@@ -237,21 +251,30 @@ def render_night_ctx(workspace: Path, *, host: str | None = None) -> str:
     except OSError:
         overlay_text = ""
     profile = _profile(workspace)
+    profile_path = workspace / PROFILE_REL_PATH
     language = normalize_language(str(profile.get("language", "pl")))
     name = str(profile.get("name") or workspace.name)
     base, base_reason = base_branch(workspace, overlay_text)
     gates, gate_source = quick_gates(workspace, overlay_text)
     gate_text = ", ".join(f"`{gate}`" for gate in gates)
-    clean_slate = clean_slate_config(profile)
-    clean_slate_lines = (
-        [
-            "- Clean Slate: "
-            + ", ".join(f"{key} `{value}`" for key, value in clean_slate.items())
-            + " — źródło: Profil"
-        ]
-        if clean_slate
-        else []
-    )
+    try:
+        try:
+            clean_slate = clean_slate_config(profile)
+        except ProfileError:
+            # Blok targets czytamy tylko dla refu, żeby błąd w nim nie psuł nagłówka bez Clean Slate.
+            clean_slate = clean_slate_config(profile, parse_profile(profile_path.read_text(encoding="utf-8"))[0])
+    except (OSError, ProfileError) as err:
+        clean_slate_lines = [f"- Clean Slate: błąd Profilu — {err}"]
+    else:
+        clean_slate_lines = (
+            [
+                "- Clean Slate: "
+                + ", ".join(f"{key} `{value}`" for key, value in clean_slate.items())
+                + " — źródło: Profil"
+            ]
+            if clean_slate
+            else []
+        )
     return "\n".join(
         [
             f"# Kontekst nocy — {name}",

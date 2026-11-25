@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from guides.council import ProfileError
 from guides.night_ctx import clean_slate_config, render_night_ctx
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,10 +49,57 @@ class TestCleanSlateProfile(unittest.TestCase):
                 }
             }
         }
+        targets = {
+            "claude": {
+                "heavy": {
+                    "providerInstanceId": "claudeAgent",
+                    "model": "claude-opus-5-5",
+                    "options": [{"id": "effort", "value": "medium"}],
+                }
+            }
+        }
         self.assertEqual(
-            clean_slate_config(profile),
-            {"target": "claude.heavy", "options": [{"id": "effort", "value": "high"}]},
+            clean_slate_config(profile, targets),
+            {
+                "providerInstanceId": "claudeAgent",
+                "model": "claude-opus-5-5",
+                "options": [{"id": "effort", "value": "high"}],
+            },
         )
+
+    def test_target_ref_model_override_wins(self) -> None:
+        profile = {"night-run": {"clean-slate": {"target": "claude.heavy", "model": "claude-fable-5-2"}}}
+        targets = {
+            "claude": {"heavy": {"providerInstanceId": "claudeAgent", "model": "claude-opus-5-5", "options": []}}
+        }
+        self.assertEqual(
+            clean_slate_config(profile, targets),
+            {"providerInstanceId": "claudeAgent", "model": "claude-fable-5-2"},
+        )
+
+    def test_unknown_target_ref_raises_with_ref_name(self) -> None:
+        profile = {"night-run": {"clean-slate": {"target": "codex.heavy"}}}
+        with self.assertRaisesRegex(ProfileError, "codex.heavy"):
+            clean_slate_config(profile, {"claude": {}})
+
+    def test_ctx_header_resolves_target_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".ai").mkdir()
+            profile = root / ".ai" / "project.profile.yaml"
+            profile.write_text(
+                "name: demo\nlanguage: pl\ntargets:\n  claude:\n    standard:\n"
+                "      providerInstanceId: claudeAgent\n      model: claude-opus-5-5\n"
+                "night-run:\n  clean-slate:\n    target: claude.standard\n",
+                encoding="utf-8",
+            )
+            out = render_night_ctx(root, host="local")
+            self.assertIn("providerInstanceId `claudeAgent`, model `claude-opus-5-5`", out)
+            profile.write_text(
+                "name: demo\nlanguage: pl\nnight-run:\n  clean-slate:\n    target: codex.heavy\n",
+                encoding="utf-8",
+            )
+            self.assertIn("- Clean Slate: błąd Profilu", render_night_ctx(root, host="local"))
 
     def test_missing_or_malformed_section_is_empty(self) -> None:
         for profile in ({}, {"night-run": None}, {"night-run": {"clean-slate": "opus"}}, {"night-run": []}):
