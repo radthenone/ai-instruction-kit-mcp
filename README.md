@@ -585,7 +585,7 @@ agents:                  # synchronizuje reload
 | opencode | tak | `.opencode/commands/kit-ai/<agent>.md` | `provider/model` (`#<variant>` gdy jest `variant`) | `targets.opencode.light.model: anthropic/claude-haiku-5-5` |
 | Cursor, Codex, VS Code, Kiro, Kilo, Antigravity | nie — pole pomijane | — | — | — |
 
-Komendy `/nazwa` Claude (`.claude/commands/`) zostają bez `model:` — działają w sesji głównej.
+Komendy Claude (`/kit-ai:<nazwa>`, plugin w `.claude/skills/kit-ai/`) zostają bez `model:` — działają w sesji głównej.
 
 ### Katalog pytań o projekt (`list_questions`)
 
@@ -759,7 +759,7 @@ Wspólne dla wszystkich: `git clone` / masz kita lokalnie → uruchom `bootstrap
 | Klient | `--clients` | Wymaga poza kitem | Extra config po bootstrapie |
 | --- | --- | --- | --- |
 | Cursor | `cursor` | Cursor IDE | Ustaw `--from` w `.cursor/mcp.json` jeśli nie `uvx`-owalny git remote. Hooki (`gate-*`) działają od razu — wymagają `bash` w PATH (Windows: Git Bash) |
-| Claude Code | `claude` | `claude` CLI albo desktop app | `.mcp.json` w root — Claude Code czyta go automatycznie po `cd` do repo. `.claude/commands/*.md` = prawdziwe `/nazwa`, `.claude/agents/*.md` = subagenty (Task tool) |
+| Claude Code | `claude` | `claude` CLI albo desktop app | `.mcp.json` w root — Claude Code czyta go automatycznie po `cd` do repo. `.claude/skills/kit-ai/` = plugin z komendami `/kit-ai:<nazwa>`, `.claude/agents/*.md` = subagenty (Task tool) |
 | Codex CLI | `codex` | `codex` CLI | `.codex/config.toml` wymaga absolutnej ścieżki w `--workspace` (brak `${workspaceFolder}`) — bootstrap wypełnia sam z `TARGET` |
 | GitHub Copilot (VS Code) | `vscode` (alias `copilot`) | VS Code + rozszerzenie GitHub Copilot Chat | `.vscode/mcp.json` (`servers`, nie `mcpServers`) + `.github/prompts/*.prompt.md` (Copilot Chat `/nazwa`) + `.github/copilot-instructions.md` + `.github/hooks/rtk-rewrite.json` (`rtk hook copilot` — jedyny klient bez trybu globalnego rtk, więc hook idzie z kita) + `.github/hooks/kit-guards.json` (guardy kita: git-guard, server-guard, sensitive-files-guard). Wymaga `node` w PATH i w VS Code ustawienia `chat.promptFiles: true` (część wersji ma to domyślnie) |
 | Kiro | `kiro` | Kiro IDE | `.kiro/settings/mcp.json` + `.kiro/steering/instruction-kit.md` + `.kiro/agents/` — format agentów kopiowany 1:1, **niezweryfikowany na żywym Kiro** |
@@ -945,7 +945,8 @@ Bootstrap to **jednorazowy stempel**, nie sync. Cztery różne zachowania:
 
 | Co | Przy ponownym `bootstrap-project.sh` |
 | --- | --- |
-| `.claude/agents/`, `.cursor/agents/`, `.claude/commands/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie. `mcp.json`/`config.toml` i stamp dodatkowo **nie są wersjonowane** (ścieżka maszyny) — patrz „`.gitignore` — co z tego wersjonować” |
+| `.claude/agents/`, `.cursor/agents/`, `.claude/skills/kit-ai/`, `mcp.json`/`config.toml` | **Zawsze nadpisane** świeżą kopią z kita — traktuj jak wygenerowany kod, nie edytuj ręcznie. `mcp.json`/`config.toml` i stamp dodatkowo **nie są wersjonowane** (ścieżka maszyny) — patrz „`.gitignore` — co z tego wersjonować” |
+| `.claude/commands/<nazwa>.md`, `.opencode/command/<nazwa>.md` (płaskie, sprzed #526 i #527) | **Usuwane po nazwie komendy kita**, także zmienione; pliki o innych nazwach zostają. `/goal` i `/loop` zostają przy wybranym opencode. Przy `--skip-agents` komendy wybranych klientów zostają nietknięte; odznaczony klient sprzątany jak dotąd (ADR-0019) |
 | `BUGBOT.md`, `.cursor/BUGBOT.md` | **Renderowane na nowo z szablonu** (sekcje Tierów według Profilu). Blok `<!-- project:rules -->` przechodzi bez zmian — tam wpisuj własne reguły projektu. Plik sprzed wprowadzenia bloku jest migrowany po historii szablonu; niepewna migracja = plik bez zmian + ostrzeżenie |
 | `AGENTS.md`, `.ai/project.md` | Kopiowane **tylko jeśli brak** — bootstrap nigdy więcej ich nie tyka, update ręczny. `check_kit_status` wypisuje je w osobnej sekcji „wymagają ręcznego przeniesienia", żeby nie obiecywać nadpisania, którego nie zrobi |
 | `modules/*.md` (treść instrukcji) | **W ogóle nie kopiowane** — MCP czyta je z `--kit-root` przy każdym `get_bundle`/`get_overlay`. Aktualne bez re-bootstrapu **pod warunkiem**, że serwer wie, gdzie jest klon — patrz niżej |
@@ -1229,7 +1230,7 @@ Wynik (tabela + rekomendacja modelu domyślnego) trafia do issue pomiaru; zmiana
 Bootstrap (`--clients`) kopiuje/renderuje shared agents do natywnych ścieżek każdego klienta. Format i mechanizm różnią się per klient:
 
 - **Cursor**: `.cursor/agents/` — natywne slash commands, działa 1:1.
-- **Claude Code**: `.claude/agents/` (subagenty, wywołanie przez Task/Agent tool) **oraz** `.claude/commands/` (prawdziwe slash commands `/kit-ai:git-start` itd. — `$ARGUMENTS` wstrzyknięty automatycznie przy kopiowaniu).
+- **Claude Code**: `.claude/agents/` (subagenty, wywołanie przez Task/Agent tool) **oraz** `.claude/skills/kit-ai/` (plugin `kit-ai`: prawdziwe slash commands `/kit-ai:git-start` itd. — `$ARGUMENTS` wstrzyknięty automatycznie przy renderze).
 - **Codex**: agenty instalowane jako natywne skille w `.codex/skills/<nazwa>/` (renderowane z `templates/shared/agents/*.md` przez `scripts/install_shared_skills.py`). Custom prompts (`.codex/agents/*.toml`) zostały wycofane w Codex CLI — Codex sam ładuje SKILL.md, gdy `description` pasuje do sytuacji.
 - **Kiro**: `.kiro/agents/` — kopiowane 1:1, format niezweryfikowany na żywym Kiro.
 - **VS Code/Copilot**: `scripts/render_agent_commands.py vscode` → `.github/prompts/*.prompt.md` (wywołanie `/nazwa` w Copilot Chat).

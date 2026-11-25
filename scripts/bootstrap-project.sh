@@ -292,6 +292,10 @@ prune_legacy_opencode_commands() {
       kit_rm ".opencode/command/$(basename "$name").md"
     done
   fi
+  # Skill sprzed zmiany nazwy (`retro` → `kit-retro`, #422) znika tylko z markerem kita.
+  if [[ -d "$TARGET/.opencode/command" ]]; then
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed opencode "$TARGET/.opencode/command"
+  fi
 }
 
 prune_client() {
@@ -349,8 +353,12 @@ prune_client() {
       rmdir "$TARGET/.agents" 2>/dev/null || true
       ;;
   esac
+  # Płaskie komendy kita sprzątamy też dla odznaczonego klienta (#533), jak dla Claude.
   if [[ "$id" == "claude" ]]; then
     prune_legacy_claude_commands
+  fi
+  if [[ "$id" == "opencode" ]]; then
+    prune_legacy_opencode_commands
   fi
   if [[ "$id" == "claude" && -f "$TARGET/.claude/settings.json" ]]; then
     "$PYTHON_BIN" "$KIT_ROOT/scripts/claude_settings.py" prune "$TARGET/.claude/settings.json"
