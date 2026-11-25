@@ -6,8 +6,9 @@ normalizowane: ścieżki tymczasowego Workspace'u i kita zastępowane znacznikam
 ``### Mapowanie komend kita`` w bloku ``kit:brief`` w AGENTS.md — ona zmienia się razem z
 mapowaniem klientów i nie jest pilnowana tym testem.
 
-Zamierzoną zmianę wyniku zatwierdza się przez ``KIT_UPDATE_SNAPSHOT=1`` i commit pliku
-``tests/fixtures/reload_snapshot.json`` razem z kodem, który ją zmienił.
+Zamierzoną zmianę wyniku zatwierdza się lokalnie przez ``KIT_UPDATE_SNAPSHOT=1`` i commit pliku
+``tests/fixtures/reload_snapshot.json`` razem z kodem, który ją zmienił. Na CI tryb zapisu
+kończy się błędem, nie pominięciem.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from _shell import is_ci
 from test_bootstrap import KIT_ROOT, _BootstrapTestCase
 
 from guides import cli
@@ -84,6 +86,8 @@ class TestReloadSnapshot(_BootstrapTestCase):
         self.addCleanup(env_patch.stop)
 
     def test_install_and_reload_match_approved_snapshot(self) -> None:
+        if os.environ.get("KIT_UPDATE_SNAPSHOT") == "1" and is_ci():
+            self.fail("KIT_UPDATE_SNAPSHOT=1 na CI: zapisz snapshot lokalnie i commituj.")
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / "app"
             self.assertEqual(_quiet_main("install", str(app), "--clients", "all")[0], 0)
