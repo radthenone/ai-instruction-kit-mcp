@@ -21,6 +21,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from test_bootstrap import KIT_ROOT, _BootstrapTestCase
 
@@ -43,7 +44,7 @@ def _normalise(data: bytes, app: Path, rel: str) -> bytes:
     if rel == "AGENTS.md":
         data = MAPPING_TABLE.sub(b"", data)
     for root, mark in ((app, b"<WORKSPACE>"), (app.resolve(), b"<WORKSPACE>"), (KIT_ROOT, b"<KIT>")):
-        for variant in {str(root), root.as_posix()}:
+        for variant in {str(root), root.as_posix(), json.dumps(str(root))[1:-1]}:
             data = data.replace(variant.encode("utf-8"), mark)
     return data
 
@@ -73,6 +74,14 @@ def _diff(expected: dict[str, str], actual: dict[str, str]) -> list[str]:
 
 class TestReloadSnapshot(_BootstrapTestCase):
     """Install i reload wszystkich klientów dają wynik zgodny z zatwierdzonym snapshotem."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Snapshot powstał na VPS: tam sync-local dopisuje `UV_NO_SYNC=1` (#334). Na CI host to
+        # local (`CI`), więc bez przypięcia różniła się tylko `.claude/settings.local.json`.
+        env_patch = mock.patch.dict(os.environ, {"KIT_HOST_PROFILE": "vps"})
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
 
     def test_install_and_reload_match_approved_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

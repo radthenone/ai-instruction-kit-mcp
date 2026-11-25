@@ -48,7 +48,12 @@ BASH_SUITES: tuple[str, ...] = (
 
 # Skrypty `python` z własnym `main()` zamiast `TestCase` — uruchamiane jako podproces,
 # żeby nie zależeć od tego, czy ich moduł da się bezpiecznie zaimportować.
-STANDALONE_PY_SUITES: tuple[str, ...] = ()
+# Wyjątek (#533): te dwa dziedziczą po `_BootstrapTestCase`, więc `_defines_test_case` ich
+# nie widzi; discover zbiera je też sam.
+STANDALONE_PY_SUITES: tuple[str, ...] = (
+    "test_flat_command_prune.py",
+    "test_reload_snapshot.py",
+)
 
 # Ten moduł sam jest oparty na TestCase, więc nie może być swoją własną suitą.
 _SELF = Path(__file__).name
