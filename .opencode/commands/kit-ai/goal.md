@@ -13,6 +13,7 @@ użytkownik nie przerwie (Esc, `/kit-ai/goal clear`) albo nie minie limit tur.
 ## Sterowanie (najpierw sprawdź argumenty)
 
 - Puste albo `status` → pokaż blok GOAL (cel, tura, status) i nic nie rób.
+- `help` / `--help` / `-h` → pokaż składnię z opisu komendy i nic nie rób.
 - `clear` / `pause` → „Cel wyczyszczony.” — plugin już zatrzymał pętlę. Koniec.
 - Inaczej → nowy cel: wypisz blok GOAL i od razu zacznij pracę (nie pytaj).
 

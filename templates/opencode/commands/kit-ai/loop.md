@@ -14,6 +14,7 @@ albo limit iteracji (default 10, `max=N`).
 ## Start
 
 - `stop` → „Pętla zatrzymana.” — plugin już ją zatrzymał. Koniec.
+- `help` / `--help` / `-h` → pokaż składnię z opisu komendy i nic nie rób.
 - Inaczej z argumentów (bez interwału i `max=N`) wywiedź **zadanie** i
   **warunek końca** (jeden, sprawdzalny). Przy interwale warunek jest opcjonalny
   (np. „sprawdzaj CI co 5 min”); bez interwału i bez warunku przyjmij

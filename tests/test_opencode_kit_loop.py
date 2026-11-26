@@ -86,6 +86,11 @@ for (const name of ["goal", "loop"]) {
 }
 assert.equal(prompts.length, 0)
 
+// pomoc nie uzbraja pętli
+for (const cmd of ["goal", "loop"]) for (const flag of ["--help", "-h", "help"]) await run(cmd, flag)
+await idle()
+assert.equal(prompts.length, 0)
+
 // /kit-ai/goal-setting to nie /kit-ai/goal
 await say("/kit-ai/goal-setting ustaw coś")
 await idle()

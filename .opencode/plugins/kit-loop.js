@@ -60,7 +60,8 @@ function detectCommand(text) {
 
 function handleCommand(sessionID, command, raw) {
   const verb = (raw.trim().split(/\s+/)[0] ?? "").toLowerCase()
-  if (verb === "" || verb === "status") return
+  // Pomoc nie uzbraja pętli — inaczej `--help` zostałby celem i poleciałyby kolejne tury.
+  if (["", "status", "help", "--help", "-h"].includes(verb)) return
   if (["clear", "stop", "pause"].includes(verb)) return stopLoop(sessionID, `/kit-ai/${command} ${verb}`)
   stopLoop(sessionID, "nowy cel")
   loops.set(sessionID, parseArgs(command, raw))
