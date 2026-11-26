@@ -228,11 +228,22 @@ kit_files() {
   rm -rf "$sandbox"
 }
 
+# Czy katalog (ścieżka względem $TARGET) po rozwiązaniu dowiązań i junctionów leży
+# w $TARGET (#566). `pwd -P` rozwiązuje też junction w Git Bash. Brak katalogu = nie.
+dir_in_target() {
+  local real root
+  real="$(cd -P "$TARGET/$1" 2>/dev/null && pwd -P)" || return 1
+  root="$(cd -P "$TARGET" && pwd -P)"
+  [[ "$real" == "$root" || "$real" == "$root"/* ]]
+}
+
 # Usuń jeden plik kita (ścieżka względem $TARGET) i puste katalogi nad nim, aż do $TARGET.
 # Cudzy plik w tym samym katalogu blokuje rmdir, więc katalog zostaje razem z nim.
+# Katalog nadrzędny wskazujący poza workspace (dowiązanie, junction) — nic nie kasujemy.
 kit_rm() {
   local rel="$1" dir
   [[ -e "$TARGET/$rel" || -L "$TARGET/$rel" ]] || return 0
+  dir_in_target "$(dirname "$rel")" || return 0
   rm -f "$TARGET/$rel"
   echo "  - $rel"
   dir="$(dirname "$rel")"
@@ -294,7 +305,7 @@ prune_legacy_opencode_commands() {
   fi
   # Skill sprzed zmiany nazwy (`retro` → `kit-retro`, #422) znika tylko z markerem kita.
   if [[ -d "$TARGET/.opencode/command" ]]; then
-    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed opencode "$TARGET/.opencode/command"
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed opencode "$TARGET/.opencode/command" "$TARGET"
   fi
 }
 
@@ -324,7 +335,7 @@ prune_client() {
     opencode) skills_dir=".opencode/commands/kit-ai" ;;
   esac
   if [[ -d "$TARGET/$skills_dir" ]]; then
-    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed "$id" "$TARGET/$skills_dir"
+    "$PYTHON_BIN" "$KIT_ROOT/scripts/install_shared_skills.py" prune-renamed "$id" "$TARGET/$skills_dir" "$TARGET"
     rmdir "$TARGET/$skills_dir" 2>/dev/null && rmdir "$TARGET/$(dirname "$skills_dir")" 2>/dev/null || true
   fi
   # Pozostałości starszych wersji kita, których dzisiejsza instalacja już nie kładzie.

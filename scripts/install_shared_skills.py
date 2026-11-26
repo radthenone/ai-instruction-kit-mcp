@@ -4,10 +4,11 @@ Zainstaluj templates/shared/skills/*/SKILL.md do katalogu klienta.
 
 Użycie:
     install_shared_skills.py CLIENT SRC_DIR DEST_DIR
-    install_shared_skills.py prune-renamed CLIENT DEST_DIR
+    install_shared_skills.py prune-renamed CLIENT DEST_DIR [ROOT]
 
 `prune-renamed` kasuje u odznaczonego klienta kitowe skille spod nazw sprzed zmiany
-(`RENAMED_SKILLS`) — lista plików kita do prune zna już tylko nowe nazwy.
+(`RENAMED_SKILLS`) — lista plików kita do prune zna już tylko nowe nazwy. Z ROOT
+(workspace) nic nie kasuje, gdy DEST_DIR po rozwiązaniu dowiązań leży poza ROOT.
 
 Cztery klienty czytają skille natywnie (`<nazwa>/SKILL.md` w katalogu skilli) —
 dla nich instalacja to kopia całego katalogu razem z `scripts/`, `references/`
@@ -238,17 +239,20 @@ def _renamed_suffix(client: str) -> str | None:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 4:
-        print(__doc__, file=sys.stderr)
-        return 1
-    if argv[1] == "prune-renamed":
+    if argv[1:2] == ["prune-renamed"] and len(argv) in (4, 5):
         client, dest_dir = argv[2], Path(argv[3])
         if client not in NATIVE_CLIENTS and client not in DEGRADED_CLIENTS:
             print(f"Nieznany klient: {client}", file=sys.stderr)
             return 1
+        # Katalog nadrzędny jako dowiązanie/junction poza workspace — nie kasujemy w celu (#566).
+        if len(argv) == 5 and not dest_dir.resolve().is_relative_to(Path(argv[4]).resolve()):
+            return 0
         for skill_name in RENAMED_SKILLS:
             remove_renamed(skill_name, dest_dir, _renamed_suffix(client))
         return 0
+    if len(argv) != 4 or argv[1] == "prune-renamed":
+        print(__doc__, file=sys.stderr)
+        return 1
     client, src_dir, dest_dir = argv[1], Path(argv[2]), Path(argv[3])
 
     if client not in NATIVE_CLIENTS and client not in DEGRADED_CLIENTS:
