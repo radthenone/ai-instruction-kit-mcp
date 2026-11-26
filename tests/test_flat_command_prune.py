@@ -21,10 +21,16 @@ from guides import cli
 
 # Nazwa z agentów kita (`git-start`) i nazwa z listy dawnych komend (`review-backend`).
 KIT_FLAT_CLAUDE = (".claude/commands/git-start.md", ".claude/commands/review-backend.md")
-KIT_FLAT_OPENCODE = (".opencode/command/git-start.md", ".opencode/command/teacher-backend.md")
+KIT_FLAT_OPENCODE = (
+    ".opencode/command/git-start.md",
+    ".opencode/command/teacher-backend.md",
+    # `/goal` i `/loop` od #567 są w `.opencode/commands/kit-ai/` — płaskie znikają jak reszta.
+    ".opencode/command/goal.md",
+    ".opencode/command/loop.md",
+)
 FOREIGN_FLAT = (".claude/commands/moja.md", ".opencode/command/moja.md")
-# `/goal` i `/loop` zostają w `.opencode/command/` — plugin kit-loop.js czyta te nazwy.
-OPENCODE_KEPT = (".opencode/command/goal.md", ".opencode/command/loop.md")
+# Forma natywna `/kit-ai/goal`, `/kit-ai/loop` (#567) — plugin kit-loop.js czyta te nazwy.
+OPENCODE_KEPT = (".opencode/commands/kit-ai/goal.md", ".opencode/commands/kit-ai/loop.md")
 
 
 def _quiet_main(*argv: str) -> tuple[int, str]:

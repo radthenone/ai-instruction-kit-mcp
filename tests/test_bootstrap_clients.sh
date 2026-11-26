@@ -44,8 +44,9 @@ echo "OK  --clients all"
 test -f "$TMP/opencode/opencode.json"
 test -f "$TMP/opencode/.opencode/commands/kit-ai/cleanup.md"
 grep -q '"--clients", "opencode"' "$TMP/opencode/opencode.json"
-test -f "$TMP/opencode/.opencode/command/goal.md"
-test -f "$TMP/opencode/.opencode/command/loop.md"
+test -f "$TMP/opencode/.opencode/commands/kit-ai/goal.md"
+test -f "$TMP/opencode/.opencode/commands/kit-ai/loop.md"
+test ! -e "$TMP/opencode/.opencode/command"
 test -f "$TMP/opencode/.opencode/plugins/kit-loop.js"
 # Guardy kita (#166): plugin + adapter + guardy z jednego źródła.
 test -f "$TMP/opencode/.opencode/plugins/kit-guards.js"
@@ -53,7 +54,7 @@ for g in invoke-hook.js git-guard.mjs sensitive-files-guard.mjs; do
   cmp -s "$ROOT/templates/shared/guards/$g" "$TMP/opencode/.opencode/hooks/$g" || { echo "FAIL .opencode/hooks/$g" >&2; exit 1; }
 done
 test ! -e "$TMP/opencode/.opencode/hooks/bash-guard.mjs"
-echo "OK  --clients opencode (+ rendered commands, /goal /loop + plugin, guardy)"
+echo "OK  --clients opencode (+ rendered commands, /kit-ai/goal /kit-ai/loop + plugin, guardy)"
 
 "$BOOT" "$TMP/codex" --clients codex --from "$ROOT" >/dev/null
 test -f "$TMP/codex/.codex/config.toml"

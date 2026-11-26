@@ -1,18 +1,19 @@
 ---
-description: "Trwały cel sesji: /goal [max=N] <cel> — plugin kit-loop wznawia pracę turami aż do dowodu końca. /goal status|clear. Przerwania: Esc, /goal clear, limit 25 tur."
+description: "Trwały cel sesji: /kit-ai/goal [max=N] <cel> — plugin kit-loop wznawia pracę turami aż do dowodu końca. /kit-ai/goal status|clear. Przerwania: Esc, /kit-ai/goal clear, limit 25 tur."
 ---
 
 Argumenty użytkownika (surowy tekst po komendzie): $ARGUMENTS
 
-# /goal — cel sesji z pętlą
+# /kit-ai/goal — cel sesji z pętlą
 
 Pętlę prowadzi plugin `.opencode/plugins/kit-loop.js`: po każdej Twojej turze
 wysyła kolejną, dopóki nie zakończysz odpowiedzi linią `<promise>DONE</promise>`,
-użytkownik nie przerwie (Esc, `/goal clear`) albo nie minie limit tur.
+użytkownik nie przerwie (Esc, `/kit-ai/goal clear`) albo nie minie limit tur.
 
 ## Sterowanie (najpierw sprawdź argumenty)
 
 - Puste albo `status` → pokaż blok GOAL (cel, tura, status) i nic nie rób.
+- `help` / `--help` / `-h` → pokaż składnię z opisu komendy i nic nie rób.
 - `clear` / `pause` → „Cel wyczyszczony.” — plugin już zatrzymał pętlę. Koniec.
 - Inaczej → nowy cel: wypisz blok GOAL i od razu zacznij pracę (nie pytaj).
 

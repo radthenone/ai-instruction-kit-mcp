@@ -553,7 +553,7 @@ def _command_names(workspace: Path, clients: set[str], *, is_kit: bool) -> set[s
             "templates/shared/agents/*.md",
             "templates/shared/skills/*/SKILL.md",
             "templates/cursor/skills/*/SKILL.md",
-            "templates/opencode/command/*.md",
+            "templates/opencode/commands/kit-ai/*.md",
         ]
     names = {
         _command_name(path)

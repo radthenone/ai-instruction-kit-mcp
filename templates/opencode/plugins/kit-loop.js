@@ -1,10 +1,11 @@
-// Pętla /goal i /loop dla opencode V2 — odpowiednik tych komend z Claude Code.
+// Pętla /kit-ai/goal i /kit-ai/loop dla opencode V2 — odpowiednik /goal i /loop z Claude Code.
+// Komendy leżą w `.opencode/commands/kit-ai/` (forma natywna, ADR-0019, #567).
 // Sam markdown komendy kończy się z końcem tury; ten plugin budzi sesję na
 // `session.execution.succeeded` i wysyła kolejną turę, dopóki cel nie jest osiągnięty.
 // V2 nie emituje `session.idle` przez `ctx.event.subscribe` (sprawdzone na 2.0.18).
 //
-// Przerwania: Esc (`session.execution.interrupted`), błąd tury (`.failed`), `/goal clear`,
-// `/loop stop`, `<promise>DONE</promise>` jako ostatnia linia, limit tur (`max=N`).
+// Przerwania: Esc (`session.execution.interrupted`), błąd tury (`.failed`), `/kit-ai/goal clear`,
+// `/kit-ai/loop stop`, `<promise>DONE</promise>` jako ostatnia linia, limit tur (`max=N`).
 // Stan tylko w pamięci — restart opencode kasuje aktywne pętle.
 
 // Bez importu @opencode/plugin — Plugin.define() to tylko identyczność,
@@ -17,7 +18,7 @@ const UNIT = { s: 1e3, m: 6e4, h: 36e5 }
 
 const loops = new Map() // sessionID -> { kind, task, turn, max, everyMs, timer }
 
-// `/loop [5m] [max=N] <zadanie>`, `/goal [max=N] <cel>` — kolejność flag dowolna.
+// `/kit-ai/loop [5m] [max=N] <zadanie>`, `/kit-ai/goal [max=N] <cel>` — kolejność flag dowolna.
 function parseArgs(kind, raw) {
   let max = LIMIT[kind]
   let everyMs = 0
@@ -34,21 +35,22 @@ function parseArgs(kind, raw) {
 }
 
 const nextPrompt = (s) =>
-  `[/${s.kind} tura ${s.turn}/${s.max}] Kontynuuj: ${s.task}\n` +
+  `[/kit-ai/${s.kind} tura ${s.turn}/${s.max}] Kontynuuj: ${s.task}\n` +
   `Zrób kolejny krok i zweryfikuj go dowodem (kod wyjścia, testy, zawartość pliku). ` +
   `Gdy warunek końca jest spełniony dowodem, zakończ odpowiedź dokładnie linią ${DONE}.`
 
-// Wykryj wywołanie /goal lub /loop w tekście promptu.
-// Działa dla surowej formy (`/goal <args>`) i dla rozwiniętego markdowna
-// (`# /goal ...` + linia `Argumenty użytkownika ...: <args>`).
+// Wykryj wywołanie /kit-ai/goal lub /kit-ai/loop w tekście promptu.
+// Działa dla surowej formy (`/kit-ai/goal <args>`) i dla rozwiniętego markdowna
+// (`# /kit-ai/goal ...` + linia `Argumenty użytkownika ...: <args>`).
+// Płaskie `/goal`, `/loop` nie uzbrajają pętli — bez aliasu starej formy (ADR-0019).
 function detectCommand(text) {
-  // `opencode run "/goal …"` oddaje tekst w cudzysłowach.
+  // `opencode run "/kit-ai/goal …"` oddaje tekst w cudzysłowach.
   const trimmed = text.trim().replace(/^"([\s\S]*)"$/, "$1")
-  // `(?:\s|$)` zamiast `\b` — `/goal-setting` to nie `/goal`.
-  let m = /^\/(goal|loop)(?:\s|$)([\s\S]*)$/.exec(trimmed)
+  // `(?:\s|$)` zamiast `\b` — `/kit-ai/goal-setting` to nie `/kit-ai/goal`.
+  let m = /^\/kit-ai\/(goal|loop)(?:\s|$)([\s\S]*)$/.exec(trimmed)
   if (m) return { command: m[1], raw: m[2].trim() }
   // Rozwinięty markdown komendy — pierwsza linia nagłówka + linia z argumentami.
-  m = /^#\s*\/(goal|loop)\b/m.exec(text)
+  m = /^#\s*\/kit-ai\/(goal|loop)(?:\s|$)/m.exec(text)
   if (m) {
     const argsLine = /^Argumenty użytkownika.*?:[ \t]*(.*)$/m.exec(text)
     return { command: m[1], raw: (argsLine?.[1] ?? "").replace(/\$ARGUMENTS/g, "").trim() }
@@ -58,8 +60,9 @@ function detectCommand(text) {
 
 function handleCommand(sessionID, command, raw) {
   const verb = (raw.trim().split(/\s+/)[0] ?? "").toLowerCase()
-  if (verb === "" || verb === "status") return
-  if (["clear", "stop", "pause"].includes(verb)) return stopLoop(sessionID, `/${command} ${verb}`)
+  // Pomoc nie uzbraja pętli — inaczej `--help` zostałby celem i poleciałyby kolejne tury.
+  if (["", "status", "help", "--help", "-h"].includes(verb)) return
+  if (["clear", "stop", "pause"].includes(verb)) return stopLoop(sessionID, `/kit-ai/${command} ${verb}`)
   stopLoop(sessionID, "nowy cel")
   loops.set(sessionID, parseArgs(command, raw))
 }
@@ -69,7 +72,7 @@ function stopLoop(id, why) {
   if (!s) return
   clearTimeout(s.timer)
   loops.delete(id)
-  console.log(`[kit-loop] /${s.kind} zatrzymany: ${why} (tura: ${s.turn})`)
+  console.log(`[kit-loop] /kit-ai/${s.kind} zatrzymany: ${why} (tura: ${s.turn})`)
 }
 
 export default {

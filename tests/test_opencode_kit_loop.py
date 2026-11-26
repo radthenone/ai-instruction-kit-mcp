@@ -1,4 +1,4 @@
-"""Plugin opencode V2 /goal /loop: fake ctx w Node, symulacja promptów i zdarzeń sesji."""
+"""Plugin opencode V2 /kit-ai/goal /kit-ai/loop: fake ctx w Node, symulacja promptów i zdarzeń sesji."""
 
 from __future__ import annotations
 
@@ -42,18 +42,18 @@ const ctx = {
 const dispose = await mod.default.setup(ctx)
 const tick = () => new Promise((r) => setTimeout(r, 5))
 const say = async (text) => { await onPrompt({ sessionID: "s", prompt: { text } }); await tick() }
-const run = (command, args) => say(`/${command} ${args}`)
+const run = (command, args) => say(`/kit-ai/${command} ${args}`)
 const idle = async () => { queue.push({ type: "session.execution.succeeded", data: { sessionID: "s" } }); wake?.(); await tick() }
 
 // goal: wznawia do limitu max=N, potem stop
 await run("goal", "max=2 zielone testy")
 await idle(); await idle(); await idle(); await idle()
 assert.equal(prompts.length, 2)
-assert.match(prompts[0], /\\[\\/goal tura 1\\/2\\] Kontynuuj: zielone testy/)
+assert.match(prompts[0], /\\[\\/kit-ai\\/goal tura 1\\/2\\] Kontynuuj: zielone testy/)
 
-// `opencode run "/goal …"` — tekst w cudzysłowach też uzbraja pętlę
+// `opencode run "/kit-ai/goal …"` — tekst w cudzysłowach też uzbraja pętlę
 prompts.length = 0
-await say('"/goal max=1 z run"')
+await say('"/kit-ai/goal max=1 z run"')
 await idle(); await idle()
 assert.equal(prompts.length, 1)
 assert.match(prompts[0], /Kontynuuj: z run/)
@@ -64,24 +64,35 @@ await say("napraw bug")
 await idle()
 assert.equal(prompts.length, 0)
 
-// rozwinięty markdown komendy (tak opencode wysyła /goal) też uzbraja pętlę
-const md = readFileSync(new URL("../command/goal.md", pathToFileURL(process.argv[1])), "utf8")
+// płaskie `/goal`, `/loop` sprzed #567 nie uzbrajają pętli (bez aliasu, ADR-0019)
+await say("/goal max=1 stara forma")
+await say("/loop max=1 stara forma")
+await idle()
+assert.equal(prompts.length, 0)
+
+// rozwinięty markdown komendy (tak opencode wysyła /kit-ai/goal) też uzbraja pętlę
+const md = readFileSync(new URL("../commands/kit-ai/goal.md", pathToFileURL(process.argv[1])), "utf8")
 await say(md.replace("$ARGUMENTS", "max=1 z markdowna"))
 await idle(); await idle()
 assert.equal(prompts.length, 1)
-assert.match(prompts[0], /\\[\\/goal tura 1\\/1\\] Kontynuuj: z markdowna/)
+assert.match(prompts[0], /\\[\\/kit-ai\\/goal tura 1\\/1\\] Kontynuuj: z markdowna/)
 
-// puste argumenty w markdownie (samo /goal, /loop) = status, nie uzbraja pętli
+// puste argumenty w markdownie (samo /kit-ai/goal, /kit-ai/loop) = status, nie uzbraja pętli
 prompts.length = 0
 for (const name of ["goal", "loop"]) {
-  const text = readFileSync(new URL(`../command/${name}.md`, pathToFileURL(process.argv[1])), "utf8")
+  const text = readFileSync(new URL(`../commands/kit-ai/${name}.md`, pathToFileURL(process.argv[1])), "utf8")
   await say(text.replace("$ARGUMENTS", ""))
   await idle()
 }
 assert.equal(prompts.length, 0)
 
-// /goal-setting to nie /goal
-await say("/goal-setting ustaw coś")
+// pomoc nie uzbraja pętli
+for (const cmd of ["goal", "loop"]) for (const flag of ["--help", "-h", "help"]) await run(cmd, flag)
+await idle()
+assert.equal(prompts.length, 0)
+
+// /kit-ai/goal-setting to nie /kit-ai/goal
+await say("/kit-ai/goal-setting ustaw coś")
 await idle()
 assert.equal(prompts.length, 0)
 
@@ -120,7 +131,7 @@ queue.push({ type: "session.idle", data: { sessionID: "s" } }); wake?.(); await 
 assert.equal(prompts.length, 0)
 await run("loop", "stop")
 
-// /loop stop kończy pętlę; bez komendy idle nic nie robi
+// /kit-ai/loop stop kończy pętlę; bez komendy idle nic nie robi
 reply = { type: "assistant", content: [{ type: "text", text: "krok" }] }
 await run("loop", "zadanie")
 await run("loop", "stop")
@@ -163,9 +174,9 @@ class KitLoopPluginTest(unittest.TestCase):
 
 class LoopCommandTest(unittest.TestCase):
     def test_loop_never_waits_for_user(self) -> None:
-        # Plugin uzbraja pętlę dla każdego /loop poza stop — pytanie i czekanie
+        # Plugin uzbraja pętlę dla każdego /kit-ai/loop poza stop — pytanie i czekanie
         # na odpowiedź przegrywa z kolejną turą „Kontynuuj”.
-        text = (PLUGIN.parents[1] / "command/loop.md").read_text(encoding="utf-8")
+        text = (PLUGIN.parents[1] / "commands/kit-ai/loop.md").read_text(encoding="utf-8")
         self.assertNotIn("czekaj", text)
 
 

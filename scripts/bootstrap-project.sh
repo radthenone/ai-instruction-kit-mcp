@@ -288,10 +288,13 @@ prune_legacy_claude_commands() {
 
 # Komendy kita spod starej ścieżki OpenCode (#527): przed #527 agentów, skille i
 # /kit-ai:headless renderowaliśmy do `.opencode/command/<nazwa>.md` (wywołanie `/<nazwa>`).
-# Teraz to `.opencode/commands/kit-ai/<nazwa>.md` (`/kit-ai/<nazwa>`), a `.opencode/command/`
-# zostaje tylko dla `/goal` i `/loop` — te przenosimy osobno, więc ich tu nie ruszamy.
+# Teraz to `.opencode/commands/kit-ai/<nazwa>.md` (`/kit-ai/<nazwa>`). Od #567 także
+# `/goal` i `/loop` (`/kit-ai/goal`, `/kit-ai/loop`), więc ich płaskie pliki też znikają.
 prune_legacy_opencode_commands() {
   local name
+  for name in goal loop; do
+    kit_rm ".opencode/command/${name}.md"
+  done
   for name in "$ALL_AGENTS"/*.md; do
     kit_rm ".opencode/command/$(basename "$name")"
   done
@@ -1365,12 +1368,11 @@ install_opencode() {
   render_agent_commands opencode "$TARGET/.opencode/commands/kit-ai"
   apply_model_tiers opencode "$TARGET/.opencode/commands/kit-ai"
   copy_shared_skills opencode "$TARGET/.opencode/commands/kit-ai"
-  # /goal i /loop zostają w `.opencode/command/` (wywołanie `/goal`, `/loop`) — plugin
-  # kit-loop.js nasłuchuje tych form, a komendy współdzielone idą pod prefiks kit-ai.
-  mkdir -p "$TARGET/.opencode/command" "$TARGET/.opencode/plugins"
-  cp "$KIT_ROOT/templates/opencode/command/"*.md "$TARGET/.opencode/command/"
+  # /kit-ai/goal i /kit-ai/loop (#567) — pętlę prowadzi plugin kit-loop.js, który rozpoznaje te formy.
+  mkdir -p "$TARGET/.opencode/commands/kit-ai" "$TARGET/.opencode/plugins"
+  cp "$KIT_ROOT/templates/opencode/commands/kit-ai/"*.md "$TARGET/.opencode/commands/kit-ai/"
   cp "$KIT_ROOT/templates/opencode/plugins/kit-loop.js" "$TARGET/.opencode/plugins/kit-loop.js"
-  echo "  + .opencode/commands/kit-ai/ (komendy kitu) + .opencode/command/{goal,loop}.md + .opencode/plugins/kit-loop.js"
+  echo "  + .opencode/commands/kit-ai/ (komendy kitu, w tym goal i loop) + .opencode/plugins/kit-loop.js"
   # Guardy kita (git-guard, sensitive-files-guard) przed każdym narzędziem — plugin woła
   # adapter `invoke-hook.js --to opencode`, deny działa także przy `allow` w permission.
   install_guards "$TARGET/.opencode/hooks" opencode
