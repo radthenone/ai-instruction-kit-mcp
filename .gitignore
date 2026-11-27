@@ -186,3 +186,6 @@ skills-lock.json
 
 # Cache lokalnych uruchomień testów (scripts/test_changed.py)
 .cache/
+
+# Zbudowana strona dokumentacji (website/zensical.toml → site_dir)
+/website/site/
