@@ -4,6 +4,8 @@ Po `kit-ai install` projekt ma już pliki, ale nie ma jeszcze Profilu z wyborami
 
 ## `/kit-ai:kit-project-begin`
 
+Komenda podana w formie Claude Code. W innych klientach inny przedrostek, zob. [Przegląd komend](../komendy/przeglad.md).
+
 ```text
 /kit-ai:kit-project-begin          # wywiad: pytania o stack, tiery, codegen, ścieżki
 /kit-ai:kit-project-begin --yes    # zaakceptuj propozycje wykryte w repo

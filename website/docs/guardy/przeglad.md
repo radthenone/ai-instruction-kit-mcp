@@ -7,7 +7,7 @@
 - **Zero `ask`** ([ADR-0006](https://github.com/radthenone/ai-instruction-kit-mcp/blob/master/docs/adr/0006-guards-never-ask.md)). Guard nigdy nie pyta człowieka. W trybie automatycznym `ask` blokowałby jak prompt, więc bramka, która pyta, nie byłaby automatyczna. Model dostaje powód odmowy i sam wybiera bezpieczną alternatywę.
 - **Fail-closed**: padnięty guard albo nieczytelny payload daje `deny`. Wyjątek: w Copilocie timeout hooka przepuszcza wywołanie.
 - **Poza repo** pilnowane są tylko katalogi systemowe i sekrety. Resztę pilnuje natywna zgoda klienta.
-- **Git odzyska wszystko w repo**, więc zwykła praca w repo nie jest blokowana.
+- **Zwykła praca w repo nie jest blokowana**, także `rm -rf` w repo. Git odzyska tylko pliki śledzone i zacommitowane. Nieśledzone pliki i niezacommitowane zmiany po takim usunięciu przepadają.
 
 ## Które guardy działają u którego klienta
 

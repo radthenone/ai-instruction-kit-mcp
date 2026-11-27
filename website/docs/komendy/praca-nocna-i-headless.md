@@ -70,7 +70,7 @@ Z dowolnego klienta kitu (hosta) zlecasz zadanie innemu klientowi, uruchomionemu
 | Flaga | Znaczenie |
 |---|---|
 | `--model <id>` | model wykonawcy w jego formacie, np. `haiku` albo `anthropic/claude-haiku-5-5` |
-| `--timeout <min>` | twardy limit, domyślnie 60. Po nim drzewo procesów jest zabijane (kod `124`) |
+| `--timeout <min>` | jawny twardy limit, bez przedłużania. Po nim drzewo procesów jest zabijane (kod `124`). Bez flagi termin to 60 min, przedłużany przy postępie do 120 min |
 | `--heartbeat <min>` | co ile minut linia stanu w logu, domyślnie 10 |
 | `--ctx <katalog>` | katalog nocy, podawany przez `night-run` |
 

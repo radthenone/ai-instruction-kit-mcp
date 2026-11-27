@@ -18,7 +18,7 @@ Narzędzie MCP `check_kit_status` porównuje commit kita zapisany przy bootstrap
 | Co | Przy `kit-ai reload` |
 |---|---|
 | agenci, komendy, skille, hooki klientów | **zawsze nadpisane** świeżą kopią. Traktuj jak wygenerowany kod |
-| konfiguracje MCP (`.mcp.json`, `.codex/config.toml`, …) | nadpisane, ale scalane: Twoje serwery zostają |
+| konfiguracje MCP (`.mcp.json`, `.codex/config.toml`, …) | scalane: podmieniany jest tylko wpis kita, Twoje serwery zostają. Wyjątek: pliku, którego nie da się sparsować (np. JSON z komentarzami w `.vscode/mcp.json`), kit nie scala. Oryginał trafia do `<plik>.bak`, a aktywny plik dostaje szablon kita, więc Twoje serwery przenieś z `.bak` ręcznie |
 | `BUGBOT.md` | renderowany z szablonu. Blok `<!-- project:rules -->` przechodzi bez zmian |
 | `AGENTS.md`, `.ai/project.md` | kopiowane **tylko gdy ich brak**. Zmiany kita w tych plikach przenosisz ręcznie |
 | `modules/*.md` (treść instrukcji) | **nie są kopiowane**. MCP czyta je z klona kita przy każdym `get_bundle` |
@@ -42,4 +42,4 @@ Objaw nieaktualnego cache: edytujesz `modules/…`, restartujesz klienta, a `get
 
 ## Migracja z `project-guides`
 
-Serwer MCP nazywał się `project-guides`, teraz nazywa się `kit-ai-mcp`. Ponowne `kit-ai install` albo `kit-ai reload` podmienia wpis kita w konfiguracji klienta i usuwa stary wpis. Cudzych serwerów nie rusza. Nazwy narzędzi zmieniają się na `mcp__kit-ai-mcp__…`, więc zaktualizuj też uprawnienia w `.claude/settings.local.json`, jeśli tam je masz.
+Serwer MCP nazywał się `project-guides`, teraz nazywa się `kit-ai-mcp`. Ponowne `kit-ai install` albo `kit-ai reload` podmienia wpis kita w konfiguracji klienta i usuwa stary wpis: klucz JSON `project-guides` oraz tabelę TOML `[mcp_servers.project-guides]` z podtabelami. Wpis zapisany ręcznie inaczej (tabela inline `project-guides = { … }` albo klucz z kropkami) usuń sam. Cudzych serwerów nie rusza. Nazwy narzędzi zmieniają się na `mcp__kit-ai-mcp__…`, więc zaktualizuj też uprawnienia w `.claude/settings.local.json`, jeśli tam je masz.

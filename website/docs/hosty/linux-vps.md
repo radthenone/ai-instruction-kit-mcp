@@ -20,10 +20,19 @@ VPS wykrywany jest automatycznie: Linux, bez CI, bez WSL, z małymi zasobami. Sp
 
 Gdy heurystyka się pomyli, wymuś profil **na tej maszynie**:
 
-```bash title="~/.profile albo ~/.bashrc"
-export KIT_HOST_PROFILE=vps     # VPS, którego heurystyka nie rozpoznała
-export KIT_HOST_PROFILE=local   # PC, który heurystyka uznała za VPS
+Na VPS, którego heurystyka nie rozpoznała:
+
+```bash title="~/.profile albo ~/.bashrc (VPS)"
+export KIT_HOST_PROFILE=vps
 ```
+
+Na PC, który heurystyka uznała za VPS:
+
+```bash title="~/.profile albo ~/.bashrc (PC)"
+export KIT_HOST_PROFILE=local
+```
+
+Ustaw tylko jedną z tych wartości. Druga linia nadpisałaby pierwszą.
 
 Nie wpisuj tego do repo. Profil w repo jest wspólny dla wszystkich maszyn.
 

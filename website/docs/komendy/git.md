@@ -17,7 +17,7 @@ Ręczny odpowiednik:
 
 ```bash title="Git Bash · bash"
 gh issue create --title "Add cart coupon" --body "…"
-gh issue develop 42 --name feat/42-add-cart-coupon --base dev --checkout
+gh issue develop <N> --name feat/<N>-add-cart-coupon --base dev --checkout   # <N> = numer z gh issue create
 ```
 
 Branch możesz też założyć w UI GitHuba: Issue, Development, **Create a branch**. Nazwij go wtedy spójnie z `typ/N-slug`.
@@ -57,7 +57,7 @@ gh pr create --base dev --title "feat: add cart coupon" --body "Closes #42"
 Czego `git-end` **nie** robi:
 
 - nie merguje PR,
-- nie zamyka issue od razu. Issue zamknie się po merge dzięki `Closes #N`.
+- nie zamyka issue od razu. `Closes #N` zamyka issue po merge, ale tylko do gałęzi domyślnej repo. Gdy PR idzie do `dev`, a domyślna jest `master`, issue zamknie się dopiero z PR `dev` → `master` z `Closes #N`, albo zamykasz je ręcznie.
 
 Gdy drzewo jest brudne, najpierw uruchom `git-commit`.
 

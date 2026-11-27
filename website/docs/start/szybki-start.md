@@ -14,7 +14,7 @@ Bez `@` instalujesz gałąź domyślną (`master`). Nowsze, jeszcze nie wydane z
 
 ## 2. Konfiguracja
 
-Zrestartuj IDE albo CLI, a potem w kliencie AI:
+Zrestartuj IDE albo CLI, a potem w kliencie AI. Komenda podana w formie Claude Code. W innych klientach inny przedrostek, zob. [Przegląd komend](../komendy/przeglad.md).
 
 ```text
 /kit-ai:kit-project-begin      # pierwszy raz: pytania o stack, karta Profilu i .ai/project.md

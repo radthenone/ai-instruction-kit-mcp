@@ -59,3 +59,23 @@ Wspólna detekcja hosta `vps` albo `local` dla hooków JS. Używa jej server-gua
 - **Antigravity**: `.agents/hooks.json` z nazwanym hookiem `kit-guards`. Plik jest wspólny z użytkownikiem, więc kit scala tylko swój klucz.
 - **Codex**: `.codex/hooks.json`. Bootstrap nadpisuje ten plik, więc własne wpisy dopisz po każdym reloadzie.
 - **OpenCode**: plugin `.opencode/plugins/kit-guards.js`. Awaria guarda albo timeout 10 sekund oznacza `deny`.
+
+## Antigravity: szczegóły
+
+| Klient | Wywołanie | Kontrakt |
+|---|---|---|
+| Antigravity | `node -e "<launcher>" <guard>.mjs --to antigravity` | launcher szuka `hooks/invoke-hook.js` albo `.agents/hooks/invoke-hook.js` od katalogu roboczego w górę. Brak pliku daje `deny` z powodem. Wyjście: `{ decision, reason }` |
+
+Komenda hooka startuje z katalogu zależnego od hosta (w worktree T3 i adapterze ACP nie musi to być `.agents/`), dlatego launcher szuka adaptera sam. W worktree `.agents/hooks*` musi istnieć: przy zacommitowanych hookach robi to git, w pozostałych repo `worktree.copy` z Profilu.
+
+Matchery w `.agents/hooks.json` (nazwany hook `kit-guards`, PreToolUse):
+
+| Matcher | Guardy |
+|---|---|
+| `run_command` | git-guard i server-guard |
+| `call_mcp_tool\|^mcp_` | server-guard |
+| `^(view_file\|write_to_file\|replace_file_content\|multi_replace_file_content\|edit_file)$` | sensitive-files-guard |
+
+Adapter sprowadza narzędzia runtime do nazw, które znają guardy. Brak pola, którego guard potrzebuje, daje `deny`. Sprawdzone na `agy` 1.3.0: `allow` nie omija polityki uprawnień Antigravity, a `deny` działa też z `--dangerously-skip-permissions`.
+
+Znana luka: `grep_search`, `find_by_name` i `list_dir` nie są mapowane, więc sensitive-files-guard ich nie widzi. Tak samo `view_file_outline` i `view_code_item`, których argumentów nie dało się podejrzeć w `agy` 1.3.0. Matcher plikowy jest zakotwiczony `^(...)$`, więc ich nie łapie.

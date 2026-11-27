@@ -15,6 +15,27 @@ Bootstrap zapisuje do repo aplikacji pliki zgodne z Profilem. Część z nich po
 
 Treści modułów kit nie kopiuje. Czyta je serwer MCP.
 
+## Skrypt bootstrapu wprost
+
+`kit-ai install` i `reload` wołają `scripts/bootstrap-project.sh`. Niskopoziomowo, z klona kita:
+
+```bash title="Git Bash · bash"
+./scripts/bootstrap-project.sh /sciezka/do/projektu \
+  --from /m/projects/ai-instruction-kit-mcp \
+  --clients claude --language pl
+```
+
+| Flaga | Efekt |
+|---|---|
+| `--clients LISTA` | klienci, domyślnie `all` |
+| `--language pl\|en` | język prozy |
+| `--with-overlay` | skopiuj `templates/project.md` do `.ai/project.md`, jeśli go brak |
+| `--with-plugins` | best-effort: `npx skills add mattpocock/skills` i wypisanie komend Superpowers i Autopilot |
+| `--keep-unselected-clients` | nie sprzątaj plików klientów spoza `--clients` |
+| `--remove` | usuń pliki kita (to samo co `kit-ai remove`) |
+
+Flagi `--preset`, `--profile`, `--with-profile` i `--codegen` zostały usunięte. Skrypt odmawia i odsyła do `kit-ai reload`. Bez klona kita to samo robi narzędzie MCP `bootstrap_workspace`.
+
 ## Wersjonowane czy nie
 
 Zasada: **konfiguracja AI jest częścią repo.** Hooki bezpieczeństwa, agenci i komendy mają działać u każdego, kto sklonuje projekt.
@@ -45,10 +66,14 @@ Typowy `.gitignore` ma `.claude/` wpisane hurtem. Wtedy hooki i komendy nigdy ni
 
 ## Repo zbootstrapowane wcześniej
 
-Pliki MCP mogą być już w indeksie, a sam wpis w `.gitignore` ich nie odśledzi. Bootstrap wykrywa to i wypisuje komendę. Pliki zostają na dysku:
+Pliki MCP mogą być już w indeksie, a sam wpis w `.gitignore` ich nie odśledzi. Bootstrap wykrywa to i wypisuje komendę. Pliki zostają na dysku. `--ignore-unmatch` pomija pliki klientów, których nie masz.
+
+Zanim usuniesz plik z indeksu, sprawdź, czy nie trzyma ustawień wspólnych dla zespołu (np. `opencode.json` z modelami i providerami). Po commicie znikną one z nowych klonów. Przenieś je najpierw do dokumentacji projektu albo do `.ai/project.md`, a każda maszyna odtworzy swój plik przez `kit-ai reload`.
 
 ```bash title="Git Bash · bash"
-git -C "$APP" rm --cached .mcp.json .vscode/mcp.json .codex/config.toml .ai/.kit-bootstrap.json
+git -C "$APP" rm --cached --ignore-unmatch .mcp.json .cursor/mcp.json .vscode/mcp.json \
+  .codex/config.toml .kiro/settings/mcp.json .kilocode/mcp.json .agents/mcp_config.json \
+  opencode.json .ai/.kit-bootstrap.json
 ```
 
 ## Bloki chronione

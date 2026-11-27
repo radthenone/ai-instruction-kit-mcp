@@ -1327,12 +1327,11 @@ class TestCli(unittest.TestCase):
         self.assertEqual(out, "doctor: błąd RuntimeError: boom")
 
 
-class TestReadmeVerification(unittest.TestCase):
-    """#268: sekcja „Weryfikacja” README opisuje zachowanie doctora."""
+class TestDoctorDocs(unittest.TestCase):
+    """#268, #576: strona „Doctor” w dokumentacji opisuje zachowanie doctora."""
 
-    def test_verification_section_covers_doctor_behaviour(self) -> None:
-        text = (KIT_ROOT / "README.md").read_text(encoding="utf-8")
-        section = text.split("### 3. Weryfikacja", 1)[1].split("\n### ", 1)[0]
+    def test_doctor_page_covers_doctor_behaviour(self) -> None:
+        section = (KIT_ROOT / "website" / "docs" / "diagnostyka" / "doctor.md").read_text(encoding="utf-8")
 
         for needle in (
             "`stale-path`",

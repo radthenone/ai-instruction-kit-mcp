@@ -16,7 +16,7 @@ cd /m/projects/moja-appka        # repo aplikacji; na Linux: ~/projects/moja-app
 kit-ai install
 ```
 
-Potem w kliencie AI uruchom `/kit-ai:kit-project-begin`. Trzy kroki cyklu życia: [Szybki start](start/szybki-start.md).
+Potem w kliencie AI uruchom `/kit-ai:kit-project-begin` (Claude Code; w OpenCode `/kit-ai/kit-project-begin`, w VS Code `/kit-project-begin`). Trzy kroki cyklu życia: [Szybki start](start/szybki-start.md).
 
 ## Mapa dokumentacji
 

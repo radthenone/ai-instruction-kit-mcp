@@ -52,3 +52,15 @@ Procedury issue i PR (`git-*`, `create-task`, `night-run`) używają `gh`. Bez `
 ## Co zrobić po aktualizacji kita?
 
 `uv tool upgrade guides-mcp`, potem `kit-ai reload` w każdym projekcie. Zob. [Aktualizacja](../start/aktualizacja.md).
+
+## Czego kit świadomie nie robi?
+
+To nie są błędy. Sprawdź obejście:
+
+| Brak | Obejście |
+|---|---|
+| `--tag` / facety wariantów (zaprojektowane, nie w CLI) | różnice trzymaj w `.ai/project.md`, dopóki wariant nie wróci w 2–3 projektach |
+| `--profile`, `--preset`, `--codegen` (usunięte) | Profil zawsze w `.ai/project.profile.yaml`, migracja przez `kit-ai reload` |
+| `/compact` poza Cursorem | Claude Code ma wbudowane `/compact`, kit go nie nadpisuje |
+| auto-instalacja Superpowers i Autopilot | wymaga interaktywnego kroku w kliencie. `--with-plugins` wypisze komendy |
+| hook `pre-push` | guardy są w hookach klientów. Istniejący `git-hooks/pre-push` zostaje nietknięty |

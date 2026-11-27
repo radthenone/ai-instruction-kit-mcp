@@ -1,6 +1,6 @@
 # Jak działa kit
 
-Kit to **centralne repo instrukcji** i **serwer MCP**. Projekt zapisuje swoje wybory w Profilu i dodaje Overlay. Agenci czytają gotowe Bundle na żywo. Treść instrukcji nie jest kopiowana do projektu, więc nie może się zestarzeć.
+Kit to **centralne repo instrukcji** i **serwer MCP**. Projekt zapisuje swoje wybory w Profilu i dodaje Overlay. Agenci czytają gotowe Bundle na żywo. Treść modułów nie jest kopiowana do projektu, więc nie może się zestarzeć. Agenci, komendy i skille są kopiowane przy bootstrapie, więc po aktualizacji kita wymagają `kit-ai reload`.
 
 ## Trzy poziomy
 

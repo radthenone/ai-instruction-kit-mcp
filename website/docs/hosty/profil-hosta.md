@@ -18,7 +18,7 @@ Automatycznie, bez nazw hostów. Profil `vps` dostaje maszyna, która spełnia w
 - małe zasoby: CPU ≤ 2, RAM ≤ 8 GB, brak swapu,
 - sygnał serwerowy: wirtualizacja (`systemd-detect-virt`) albo brak desktopu.
 
-CI zawsze dostaje `local`, bo pełna weryfikacja należy do CI.
+CI dostaje `local`, bo pełna weryfikacja należy do CI. Wyjątek: wymuszenie `KIT_HOST_PROFILE=vps` ma pierwszeństwo przed wykrywaniem CI.
 
 ## Sprawdzenie
 

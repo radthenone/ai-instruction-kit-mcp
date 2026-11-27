@@ -16,7 +16,7 @@
  *
  * Polityka zna tylko allow/deny (ADR 0006). Dopasowanie po tokenach od początku
  * segmentu — `server.allow` > `server.deny` > allow kita > deny kita. Szczegóły tabeli:
- * README „Server guard (VPS)”.
+ * dokumentacja kita „Server guard” (https://radthenone.github.io/ai-instruction-kit-mcp/hosty/server-guard/).
  *
  * Domyślna lista deny jest WBUDOWANA (fallback bez JSON-a) i RENDEROWANA do
  * `server-guard.json` przez `kit-ai reload` (lista kita + rozwinięte wrappery

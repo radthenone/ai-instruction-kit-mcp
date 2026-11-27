@@ -4,6 +4,8 @@ Kit ma testy `unittest` w `tests/` oraz suity powłoki. Pełna suita trwa kilkan
 
 ## Lokalnie
 
+W świeżym klonie najpierw `uv sync`. Polecenia z `--no-sync` nie instalują zależności, więc bez niego dostaniesz błąd importu, np. `yaml`.
+
 ```bash title="Git Bash · bash"
 uv run python -m unittest discover -s tests -p test_bootstrap.py   # jeden moduł
 uv run --no-sync python scripts/test_changed.py                     # moduły powiązane ze zmianami

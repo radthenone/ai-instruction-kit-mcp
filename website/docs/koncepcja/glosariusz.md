@@ -10,7 +10,7 @@ Nazwy z tej strony są używane w kodzie, docstringach i review. Pogrubione term
 - **Manifest**: rejestr modułów i reguł, które zamieniają wybory z Profilu na Module ID.
 - **Overlay**: instrukcje prawdziwe dla jednego repo (ścieżki, porty, nazwy zadań). Dołączany do Bundle, nigdy w nim nie scalany. Dostarczany przez `get_overlay`.
 - **Brief**: krótka orientacja, którą agent czyta przed pracą w Workspace.
-- **Brief Rules**: kilka reguł, które każdy agent musi znać przed pierwszą akcją. Jedyny tekst kita kopiowany do Workspace.
+- **Brief Rules**: kilka reguł, które każdy agent musi znać przed pierwszą akcją. Jedyna treść modułów kita kopiowana do Workspace. Szablony agentów, komend i skilli bootstrap kopiuje osobno.
 - **Host**: maszyna, na której działa agent. Klasyfikowana jako `vps` albo `local`.
 - **Carrier**: miejsce, w którym Brief Rules docierają do agenta: hook języka (tylko Claude), instrukcje MCP, sekcja `AGENTS.md`.
 

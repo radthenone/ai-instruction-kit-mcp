@@ -19,11 +19,11 @@ kit-ai retro scan --since 2026-11-01    # sesje od daty albo z ostatnich Nd
 kit-ai retro report                     # propozycje z wielu repo (co najmniej 3 sesje albo 2 repo)
 ```
 
-Wyniki leżą w cache poza projektem: `~/.cache/kit-ai/retro/<repo>/`. Skan nie zmienia repo.
+Wyniki leżą w cache poza projektem: `$XDG_CACHE_HOME/kit-ai/retro/<repo>/`, a bez tej zmiennej `~/.cache/kit-ai/retro/<repo>/`. Skan nie zmienia repo.
 
 ## Automatyczny skan
 
-W Claude Code hook `retro-session-end` uruchamia skan po zakończeniu każdej sesji. Działa w tle i nigdy nie blokuje zamknięcia sesji.
+W Claude Code hook `retro-session-end` uruchamia skan po zakończeniu każdej sesji. Skan biegnie synchronicznie, więc może opóźnić zamknięcie sesji. Jego błąd nie blokuje zamknięcia, bo hook zawsze kończy się kodem 0.
 
 ## Klasyfikacja: `/kit-ai:kit-retro`
 
