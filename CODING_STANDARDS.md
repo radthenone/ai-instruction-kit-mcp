@@ -9,4 +9,4 @@ w źródłach, nie tutaj.
 3. **`BUGBOT.md`** — reguły review, w tym blok `project:rules`
 4. **`docs/adr/`** — decyzje architektoniczne wiążące dla zmian
 5. **`CONTEXT.md`** — słownik domeny — nazwy pojęć i ich znaczenie
-6. **MCP `project-guides`** — `get_bundle` (Stack i Tiery) oraz `get_overlay` (overlay projektu)
+6. **MCP `kit-ai-mcp`** — `get_bundle` (Stack i Tiery) oraz `get_overlay` (overlay projektu)

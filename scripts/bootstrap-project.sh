@@ -481,9 +481,11 @@ if Path(from_src).is_dir():
 
 # Istniejący plik należy do użytkownika (własne serwery, modele, providerzy) i jest
 # w .gitignore, więc nadpisanie go ginie bez śladu. Podmieniamy tylko wpis kita
-# `project-guides`, resztę zostawiamy. Pliku, którego nie umiemy sparsować (JSONC
+# `kit-ai-mcp`, resztę zostawiamy. Pliku, którego nie umiemy sparsować (JSONC
 # z komentarzami, uszkodzony JSON/TOML), nie scalamy: oryginał idzie do `.bak`.
-KIT_SERVER = "project-guides"
+KIT_SERVER = "kit-ai-mcp"
+# Nazwa sprzed zmiany; przy scalaniu ją usuwamy, inaczej zostają dwa wpisy kita.
+LEGACY_KIT_SERVERS = ("project-guides",)
 
 
 def merge_json(old_text: str) -> str:
@@ -496,7 +498,10 @@ def merge_json(old_text: str) -> str:
     for k, v in new.items():
         if k != key:
             merged.setdefault(k, v)
-    merged.setdefault(key, {})[KIT_SERVER] = new[key][KIT_SERVER]
+    servers = merged.setdefault(key, {})
+    for legacy in LEGACY_KIT_SERVERS:
+        servers.pop(legacy, None)
+    servers[KIT_SERVER] = new[key][KIT_SERVER]
     if merged == old:
         return old_text
     return json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
@@ -505,8 +510,8 @@ def merge_json(old_text: str) -> str:
 TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
 
 
-def toml_kit_span(lines: list[str]) -> tuple[int, int] | None:
-    """Zakres linii tabeli `[mcp_servers.project-guides]` (z podtabelami) albo None."""
+def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int] | None:
+    """Zakres linii tabeli `[mcp_servers.<server>]` (z podtabelami) albo None."""
     start = None
     end = len(lines)
     for i, line in enumerate(lines):
@@ -514,7 +519,7 @@ def toml_kit_span(lines: list[str]) -> tuple[int, int] | None:
         if not m:
             continue
         name = re.sub(r"""\s*\.\s*""", ".", m.group(1)).replace('"', "").replace("'", "")
-        is_kit = name == f"mcp_servers.{KIT_SERVER}" or name.startswith(f"mcp_servers.{KIT_SERVER}.")
+        is_kit = name == f"mcp_servers.{server}" or name.startswith(f"mcp_servers.{server}.")
         if start is None and is_kit:
             start = i
         elif start is not None and not is_kit:
@@ -542,6 +547,10 @@ def merge_toml(old_text: str) -> str:
     s, e = toml_kit_span(new_lines)
     kit_block = new_lines[s:e]
     old_lines = old_text.splitlines(keepends=True)
+    for legacy in LEGACY_KIT_SERVERS:
+        legacy_span = toml_kit_span(old_lines, legacy)
+        if legacy_span:
+            old_lines = old_lines[: legacy_span[0]] + old_lines[legacy_span[1] :]
     span = toml_kit_span(old_lines)
     if span is None:
         if old_lines and not old_lines[-1].endswith("\n"):

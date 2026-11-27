@@ -27,7 +27,7 @@ SCHEMA_VERSION = 1
 KEY_LIMIT = 200
 EVIDENCE_LIMIT = 240
 REPEAT_THRESHOLD = 3
-OVERLAY_TOOL = "mcp__project-guides__get_overlay"
+OVERLAY_TOOL = "mcp__kit-ai-mcp__get_overlay"
 EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 KIT_CODE_PATH = re.compile(r"(?:^|/)(?:src|tests|templates|modules)/")
 

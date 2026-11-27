@@ -6,7 +6,7 @@ inclusion: always
 
 Przestrzegaj `AGENTS.md` w root repo.
 
-Przed pracą: MCP `project-guides` → `get_bundle` + `get_overlay` (+ `get_language` / `get_clients`).
+Przed pracą: MCP `kit-ai-mcp` → `get_bundle` + `get_overlay` (+ `get_language` / `get_clients`).
 
 Odpowiedzi w języku `language` z Profilu niezależnie od języka wejścia (prompty, skille, wyniki narzędzi, powiadomienia, hand-backi).
 

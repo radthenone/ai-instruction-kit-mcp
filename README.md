@@ -442,7 +442,7 @@ Nie mieszaj: nazwa produktu ≠ Stack; porty ≠ tag.
 ```json
 {
   "mcpServers": {
-    "project-guides": {
+    "kit-ai-mcp": {
       "command": "uvx",
       "args": [
         "--from", "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
@@ -479,7 +479,7 @@ przepisze `mcp.json`. Bootstrap zapisuje tylko `--language` i `--clients` (z Pro
 
 ### Brief projektu i instrukcje MCP ([ADR-0010](docs/adr/0010-brief-as-artifact.md))
 
-Serwer MCP `project-guides` przy starcie/handshake'u przekazuje klientowi **instrukcje serwera** (`build_instructions`), które niosą **Brief projektu** oraz zwięzłą mapę narzędzi MCP. Ten sam brief trafia przy `kit-ai reload` do bloku `<!-- kit:brief -->` w `AGENTS.md` (czytanego m.in. przez Claude Code przez import `@AGENTS.md`).
+Serwer MCP `kit-ai-mcp` przy starcie/handshake'u przekazuje klientowi **instrukcje serwera** (`build_instructions`), które niosą **Brief projektu** oraz zwięzłą mapę narzędzi MCP. Ten sam brief trafia przy `kit-ai reload` do bloku `<!-- kit:brief -->` w `AGENTS.md` (czytanego m.in. przez Claude Code przez import `@AGENTS.md`).
 
 - **Zawartość Briefu:** metadane projektu (nazwa i Profil, znormalizowany język, Tiery, codegen, klienci, bundle i moduły, baza i komendy wyciągnięte z overlayu) oraz wskaźnik do `get_overlay()`. Wykryty Host (`vps`/`local`) dokleja tylko serwer MCP w instrukcjach — blok w `AGENTS.md` go nie ma, żeby plik nie starzał się między maszynami.
 - **Overlay nie jest wklejany:** cała treść pliku `.ai/project.md` **nigdy nie jest wklejana** do briefu ani instrukcji MCP (aby nie duplikować pliku i nie starzeć się po lokalnych edycjach). Unikalne fakty repozytorium agent pobiera na żądanie przez MCP tool `get_overlay()`, a reguła nakazuje wywołanie `get_overlay()` przed pierwszą edycją kodu.
@@ -700,7 +700,7 @@ na plik by nie wystarczył.
 
 ### Bootstrap bez klona kita — narzędzie MCP `bootstrap_workspace`
 
-Jeśli projekt ma już podłączony serwer MCP `project-guides`, kita nie trzeba klonować ani ręcznie odpalać skryptu — serwer ma szablony pod ręką i uruchamia ten sam `bootstrap-project.sh` u siebie. Poproś agenta o wywołanie narzędzia:
+Jeśli projekt ma już podłączony serwer MCP `kit-ai-mcp`, kita nie trzeba klonować ani ręcznie odpalać skryptu — serwer ma szablony pod ręką i uruchamia ten sam `bootstrap-project.sh` u siebie. Poproś agenta o wywołanie narzędzia:
 
 ```text
 bootstrap_workspace()                          # dry run — tylko lista plików
@@ -1826,7 +1826,7 @@ Trzy warstwy — nie bundluj Matt/Superpowers w `guides-mcp`:
 
 | Warstwa   | Przykłady                                                 | Gdzie                                     | Rola                         |
 | --------- | --------------------------------------------------------- | ----------------------------------------- | ---------------------------- |
-| Fundament | Context7, `project-guides`, `/kit-ai:review-*`, `/kit-ai:git-*`, Cursor `/compact` | MCP + agents/skills z bootstrap | stack, git, skrót czatu (Cursor) |
+| Fundament | Context7, `kit-ai-mcp`, `/kit-ai:review-*`, `/kit-ai:git-*`, Cursor `/compact` | MCP + agents/skills z bootstrap | stack, git, skrót czatu (Cursor) |
 | Proces    | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` | `/grill-me`, `/tdd`          |
 | Meta      | superpowers, caveman, Autopilot                                      | user / plugin Cursor                      | worktree, finishing, CI loop |
 
@@ -1850,7 +1850,7 @@ krok pomijany bez błędu.
 | `docs/agents/triage-labels.md` | ziarno `triage-labels.md` + nazwy etykiet z kita (te same co `ensure_labels`) |
 | `docs/agents/domain.md` | ziarno `domain.md` + układ kita: single-context (`CONTEXT.md` + `docs/adr/`), multi-context gdy w root jest `CONTEXT-MAP.md` |
 | blok `## Agent skills` w `AGENTS.md` | format setupu Matta; aktualizacja w miejscu, reszta pliku bez zmian |
-| `CODING_STANDARDS.md` | indeks źródeł standardów w kolejności ważności: `AGENTS.md`, `.ai/project.md`, `BUGBOT.md` (z `project:rules`), `docs/adr/`, `CONTEXT.md`, MCP `project-guides` — tylko pozycje istniejące w repo |
+| `CODING_STANDARDS.md` | indeks źródeł standardów w kolejności ważności: `AGENTS.md`, `.ai/project.md`, `BUGBOT.md` (z `project:rules`), `docs/adr/`, `CONTEXT.md`, MCP `kit-ai-mcp` — tylko pozycje istniejące w repo |
 
 `CODING_STANDARDS.md` to sam indeks (bez kopii reguł), odświeżany przy każdym reloadzie.
 Czytają go agenci `/kit-ai:review-*` kita **oraz** `/code-review` i `retro` Matta — dlatego nazwa
@@ -1863,6 +1863,6 @@ Context7 (docs Django/Expo): globalnie `npx ctx7 setup --cursor`.
 
 ## Subagenty — szczegóły
 
-Każdy plik agentów jest **cienkim wrapperem**: przy starcie woła `get_bundle` / `get_overlay` z MCP `project-guides`. Wiedza merytoryczna żyje w `modules/`.
+Każdy plik agentów jest **cienkim wrapperem**: przy starcie woła `get_bundle` / `get_overlay` z MCP `kit-ai-mcp`. Wiedza merytoryczna żyje w `modules/`.
 
 Praca w dwóch oknach: `/kit-ai:subagent-backend` ↔ `/kit-ai:subagent-frontend` — sekcja „Raport do przekazania” na końcu odpowiedzi.

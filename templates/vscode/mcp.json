@@ -1,6 +1,6 @@
 {
   "servers": {
-    "project-guides": {
+    "kit-ai-mcp": {
       "type": "stdio",
       "command": "uvx",
       "args": [

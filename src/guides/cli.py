@@ -54,7 +54,7 @@ from guides.issue_stats import run_issue_stats
 from guides.pr_stats import run_pr_stats
 
 DEFAULT_GIT_SOURCE = "git+https://github.com/radthenone/ai-instruction-kit-mcp.git"
-SERVER_NAME = "project-guides"
+SERVER_NAME = "kit-ai-mcp"
 
 # Gdzie Bootstrap kładzie konfigurację MCP każdego klienta.
 CLIENT_MCP_FILES: dict[str, str] = {

@@ -271,7 +271,7 @@ class TestCodingStandards(unittest.TestCase):
             self.assertIn("`AGENTS.md`", text)
             for absent in (".ai/project.md", "`BUGBOT.md`", "`docs/adr/`", "`CONTEXT.md`"):
                 self.assertNotIn(absent, text)
-            self.assertIn("project-guides", text)
+            self.assertIn("kit-ai-mcp", text)
 
             (workspace / ".ai").mkdir()
             (workspace / ".ai" / "project.md").write_text("overlay\n", encoding="utf-8")
@@ -287,7 +287,7 @@ class TestCodingStandards(unittest.TestCase):
                 text.index("`BUGBOT.md`"),
                 text.index("`docs/adr/`"),
                 text.index("`CONTEXT.md`"),
-                text.index("project-guides"),
+                text.index("kit-ai-mcp"),
             ]
             self.assertEqual(order, sorted(order))
 

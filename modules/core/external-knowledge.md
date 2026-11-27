@@ -13,7 +13,7 @@ Repo-first **nie oznacza** odpowiadania wyłącznie z pamięci modelu. Gdy temat
 ## Kolejność źródeł
 
 1. **Projekt** — overlay (`.ai/project.md`), kod, lockfile.
-2. **Instruction-kit** — bundle z MCP `project-guides`.
+2. **Instruction-kit** — bundle z MCP `kit-ai-mcp`.
 3. **Lokalne repo paczek** — jeśli ścieżki podane w overlay projektu.
 4. **Oficjalna dokumentacja** — z wersją z lockfile.
 5. **Repozytorium / release notes** pakietu na GitHubie.
@@ -28,13 +28,13 @@ Przykład: „use context7 — Django 5.2 middleware”.
 
 ## Meta-skills i pluginy (poza instruction-kit)
 
-Instruction-kit dostarcza **Waszą** architekturę (moduły + MCP `project-guides`). Nie bundluje Matt/Superpowers.
+Instruction-kit dostarcza **Waszą** architekturę (moduły + MCP `kit-ai-mcp`). Nie bundluje Matt/Superpowers.
 
 ### Trzy warstwy
 
 | Warstwa | Narzędzie | Montaż | Odpowiada za |
 |---------|-----------|--------|----------------|
-| Fundament | ten kit (`project-guides`, `@KIT_CMD_PREFIX@review-*`) | `.cursor/mcp.json`, agents z bootstrap | stack, overlay, review przed push |
+| Fundament | ten kit (`kit-ai-mcp`, `@KIT_CMD_PREFIX@review-*`) | `.cursor/mcp.json`, agents z bootstrap | stack, overlay, review przed push |
 | Proces | [mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills@latest add mattpocock/skills` (+ Cursor) | `/grill-me`, `/tdd`, PRD |
 | Meta | superpowers, caveman, … | user / plugin Cursor | brainstorm, debug, finishing |
 

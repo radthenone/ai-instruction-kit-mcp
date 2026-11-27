@@ -272,7 +272,7 @@ def coding_standards(workspace: Path) -> str:
         sources.append(("CONTEXT.md", "słownik domeny — nazwy pojęć i ich znaczenie"))
     sources.append(
         (
-            "MCP `project-guides`",
+            "MCP `kit-ai-mcp`",
             "`get_bundle` (Stack i Tiery) oraz `get_overlay` (overlay projektu)",
         )
     )

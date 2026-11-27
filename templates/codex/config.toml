@@ -3,7 +3,7 @@
 # Stack wybierasz w `.ai/project.profile.yaml` (Tiery backend/web/mobile).
 # --clients: metadane (all | cursor | claude | …); bundle bez zmian — get_clients.
 
-[mcp_servers.project-guides]
+[mcp_servers.kit-ai-mcp]
 command = "uvx"
 args = [
   "--from", "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",

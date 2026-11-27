@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "project-guides": {
+    "kit-ai-mcp": {
       "command": "uvx",
       "args": [
         "--from", "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",

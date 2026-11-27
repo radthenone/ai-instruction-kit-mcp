@@ -505,7 +505,8 @@ class TestUserConfigMerge(_BootstrapTestCase):
                 path = workspace / rel
                 data = json.loads(path.read_text(encoding="utf-8"))
                 data[key]["mine"] = mine
-                data[key]["project-guides"] = {"command": "stale"}
+                data[key]["kit-ai-mcp"] = {"command": "stale"}
+                data[key]["project-guides"] = {"command": "legacy"}
                 data.update(extra)
                 path.write_text(json.dumps(data), encoding="utf-8")
 
@@ -515,7 +516,8 @@ class TestUserConfigMerge(_BootstrapTestCase):
                 with self.subTest(config=rel):
                     data = json.loads((workspace / rel).read_text(encoding="utf-8"))
                     self.assertEqual(data[key]["mine"], mine)
-                    self.assertNotEqual(data[key]["project-guides"], {"command": "stale"})
+                    self.assertNotEqual(data[key]["kit-ai-mcp"], {"command": "stale"})
+                    self.assertNotIn("project-guides", data[key])
                     for k, v in extra.items():
                         self.assertEqual(data[k], v)
                     self.assertFalse((workspace / (rel + ".bak")).exists())
@@ -537,7 +539,23 @@ class TestUserConfigMerge(_BootstrapTestCase):
             self.assertIn(mine, text)
             self.assertIn('"guides-mcp"', text)
             self.assertNotIn('"stale"', text)
-            self.assertEqual(text.count("[mcp_servers.project-guides]"), 1)
+            self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
+
+    def test_codex_toml_drops_legacy_kit_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            legacy = '\n[mcp_servers.project-guides]\ncommand = "old"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertNotIn('"old"', text)
+            self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
 
     def test_unchanged_config_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -565,7 +583,7 @@ class TestUserConfigMerge(_BootstrapTestCase):
             out = self._run(workspace, "opencode")
 
             self.assertEqual((workspace / "opencode.json.bak").read_text(encoding="utf-8"), original)
-            self.assertIn("project-guides", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
+            self.assertIn("kit-ai-mcp", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
             self.assertIn("opencode.json.bak", out)
             # Backup ma tę samą treść co config, łącznie z tokenami — nie może wejść do gita.
             self.assertIn("/opencode.json.bak\n", (workspace / ".gitignore").read_text(encoding="utf-8"))
