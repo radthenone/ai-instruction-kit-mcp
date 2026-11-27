@@ -178,6 +178,10 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("`Review rate limited` to pauza, nie brak review", t3)
         self.assertIn("Limit mierzy orkiestrator od odpowiedzi `Review triggered.`", t3)
         self.assertNotIn("Limit mierzy orkiestrator od wejścia w czekanie.", t3)
+        self.assertIn("orkiestrator uzbraja jednorazowe wybudzenie", t3)
+        self.assertIn("budzi orkiestratora na koniec pauzy po `Review rate limited`", t3)
+        self.assertIn("`files exceed the limit` (raport „review pominięte: limit plików”) nie blokuje merge", self.night_run_ticket)
+        self.assertIn("Błąd odczytu (niezerowy kod `gh api`) to nie brak komunikatu", self.git_end)
 
 
 if __name__ == "__main__":
