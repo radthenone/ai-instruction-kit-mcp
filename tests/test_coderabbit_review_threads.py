@@ -150,5 +150,26 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("bramka fail-closed", self.night_run_ticket)
         self.assertIn("orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo wątków”", self.night_run_ticket)
 
+    def test_git_end_triggers_review_when_auto_review_is_off(self) -> None:
+        """git-end wyzwala review bota komendami, gdy repo nie dostaje auto review (#578)."""
+        self.assertIn("**Wyzwalacz review bota (repo bez auto review):**", self.git_end)
+        self.assertIn("does not receive automatic reviews", self.git_end)
+        self.assertIn('gh pr comment "$PR_NUMBER" --body "@coderabbitai full review"', self.git_end)
+        self.assertIn('gh pr comment "$PR_NUMBER" --body "@coderabbitai review"', self.git_end)
+        self.assertIn("Review rate limited", self.git_end)
+        self.assertIn("files exceed the limit", self.git_end)
+        trigger_pos = self.git_end.index("Wyzwalacz review bota")
+        self.assertLess(self.git_end.index("**Gate na integrację:**"), trigger_pos)
+        self.assertLess(trigger_pos, self.git_end.index("**Pobranie wątków (GraphQL):**"))
+
+    def test_night_run_sends_incremental_review_after_round_push(self) -> None:
+        """night-run-ticket i karta T3 wysyłają `@coderabbitai review` po pushu rundy (#578)."""
+        t3 = (KIT_ROOT / "templates" / "shared" / "night-run" / "t3.md").read_text(encoding="utf-8")
+        for text in (self.night_run_ticket, t3):
+            self.assertIn("`@coderabbitai review`", text)
+            self.assertIn("Wyzwalacz review bota", text)
+        self.assertIn("`@coderabbitai full review`", t3)
+
+
 if __name__ == "__main__":
     unittest.main()

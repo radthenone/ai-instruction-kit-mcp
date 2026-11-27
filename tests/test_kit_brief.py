@@ -164,6 +164,29 @@ class TestKitBrief(unittest.TestCase):
         self.assertNotIn("| `kiro` |", brief)
         self.assertNotIn("| `kilo` |", brief)
 
+    def test_coderabbit_trigger_rule_only_with_integration(self) -> None:
+        """Reguła wyzwalacza CodeRabbit trafia do kit:brief tylko z `coderabbit` w integrations (#578)."""
+        from guides.resolver import render_project_brief
+
+        def brief(integrations: tuple[str, ...]) -> str:
+            return render_project_brief(
+                name="test-app",
+                language="pl",
+                codegen="none",
+                tiers={"backend": "none", "web": "none", "mobile": "none"},
+                clients="claude",
+                profile_path=Path("/tmp/.ai/project.profile.yaml"),
+                workspace_root=Path("/tmp"),
+                overlay_content="# Overlay\n\nbase: dev\n",
+                bundle_names=(),
+                module_ids=(),
+                integrations=integrations,
+            )
+
+        self.assertIn("`@coderabbitai full review`", brief(("orca", "coderabbit")))
+        self.assertNotIn("@coderabbitai", brief(("orca",)))
+        self.assertNotIn("@coderabbitai", brief(()))
+
     def test_agents_and_bugbot_have_no_bare_kit_slash_commands(self) -> None:
         """AGENTS.md i BUGBOT.md nie zawierają gołych /<nazwa kita> poza tabelą mapowania (#532)."""
         import re
