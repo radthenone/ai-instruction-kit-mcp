@@ -576,8 +576,8 @@ def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int]
 
 def merge_toml(old_text: str) -> str:
     # ponytail: tekstowa podmiana tabeli; wpis kita zapisany inaczej (dotted key, inline
-    # table) da duplikat — łapie go walidacja wyniku niżej, na Pythonie < 3.11 nie ma
-    # `tomllib`, więc wtedy bez walidacji.
+    # table) da duplikat — łapie go walidacja wyniku niżej. Bez `tomllib` (< 3.11)
+    # nie ma bezpiecznika semantycznego, więc przy wpisie kita lub legacy przerywamy (fail-closed).
     try:
         import tomllib
     except ImportError:
@@ -588,6 +588,11 @@ def merge_toml(old_text: str) -> str:
     s, e = toml_kit_span(new_lines)
     kit_block = new_lines[s:e]
     old_lines = old_text.splitlines(keepends=True)
+    if tomllib is None and any(
+        toml_kit_span(old_lines, name) is not None
+        for name in (KIT_SERVER, *LEGACY_KIT_SERVERS)
+    ):
+        raise ValueError("do bezpiecznego scalania potrzebny jest Python 3.11+")
     for legacy in LEGACY_KIT_SERVERS:
         # Do skutku: podtabela legacy oddzielona cudzą tabelą to osobny zakres.
         while legacy_span := toml_kit_span(old_lines, legacy):
@@ -622,8 +627,9 @@ if dest.is_file():
     except Exception as exc:
         backup = dest.with_name(dest.name + ".bak")
         backup.write_text(old_text, encoding="utf-8", newline="\n")
+        reason = f"{exc.__class__.__name__}: {exc}" if str(exc) else exc.__class__.__name__
         print(
-            f"  ! {dest.name}: nie da się scalić ({exc.__class__.__name__}) — oryginał w "
+            f"  ! {dest.name}: nie da się scalić ({reason}) — oryginał w "
             f"{backup.name}, przenieś swoje wpisy ręcznie"
         )
     else:

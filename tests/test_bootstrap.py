@@ -661,6 +661,49 @@ class TestUserConfigMerge(_BootstrapTestCase):
 
             self.assertIn(helper, path.read_text(encoding="utf-8"))
 
+    def test_codex_toml_without_tomllib_falls_back_to_bak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_pkg = Path(tmp) / "fake_py"
+            fake_pkg.mkdir()
+            (fake_pkg / "tomllib.py").write_text('raise ImportError("no tomllib")\n', encoding="utf-8")
+            prev_pp = os.environ.get("PYTHONPATH")
+            pythonpath = f"{fake_pkg}{os.pathsep}{prev_pp}" if prev_pp else str(fake_pkg)
+
+            with mock.patch.dict(os.environ, {"PYTHONPATH": pythonpath}):
+                for server_name in ("project-guides", "kit-ai-mcp"):
+                    with self.subTest(server_name=server_name):
+                        workspace = Path(tmp) / f"app-{server_name}"
+                        workspace.mkdir()
+                        codex_dir = workspace / ".codex"
+                        codex_dir.mkdir()
+                        original = (
+                            f'[mcp_servers.{server_name}]\ncommand = "old"\n\n'
+                            '[mcp_servers.mine]\ncommand = "x"\n'
+                        )
+                        (codex_dir / "config.toml").write_text(original, encoding="utf-8")
+
+                        out = self._run(workspace, "codex")
+
+                        backup = codex_dir / "config.toml.bak"
+                        self.assertTrue(backup.is_file())
+                        self.assertEqual(backup.read_text(encoding="utf-8"), original)
+                        self.assertIn("config.toml.bak", out)
+                        self.assertIn("3.11+", out)
+
+                # Konfig bez wpisu kita ani legacy nadal dopisuje tabelę bez .bak.
+                clean_ws = Path(tmp) / "app-foreign-only"
+                clean_ws.mkdir()
+                (clean_ws / ".codex").mkdir()
+                foreign_cfg = '[mcp_servers.mine]\ncommand = "x"\n'
+                (clean_ws / ".codex" / "config.toml").write_text(foreign_cfg, encoding="utf-8")
+
+                self._run(clean_ws, "codex")
+
+                self.assertFalse((clean_ws / ".codex" / "config.toml.bak").exists())
+                merged = (clean_ws / ".codex" / "config.toml").read_text(encoding="utf-8")
+                self.assertIn(foreign_cfg, merged)
+                self.assertIn("[mcp_servers.kit-ai-mcp]", merged)
+
     def test_unchanged_config_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
