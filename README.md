@@ -781,6 +781,7 @@ Po bootstrapie zawsze: **zrestartuj IDE/CLI** (MCP i komendy ładują się przy 
 | `--profile` / `--preset` / `--codegen` | Usunięte (serwer je ignoruje, bootstrap odmawia) | Profil zawsze `.ai/project.profile.yaml` w `--workspace`; migracja przez `kit-ai reload` |
 | `/compact` poza Cursorem | Nie istnieje dla Claude/Codex/inne | To alias Cursor UI Summarize; Claude Code ma **wbudowane** `/compact` — nie koliduj, nie kopiuj |
 | Natywna weryfikacja formatu VS Code/Kilo/Antigravity/opencode | Oparta o dokumentację (sierpień 2026), **nie testowana na żywych klientach** | Jeśli `/nazwa` nie działa w Twoim kliencie, zgłoś i popraw `scripts/render_agent_commands.py` |
+| Komendy `/kit-ai:*` w menu `/` side chatu T3 Code | Raz (2026-11-24) menu ich nie podpowiadało, choć Claude Code w side chacie ładował wszystkie (plugin `kit-ai@skills-dir`). Później się nie odtworzyło (#559) | Wpisz pełną nazwę ręcznie, np. `/kit-ai:create-task --help` — T3 przekaże ją jako komendę. Albo otwórz side chat ponownie |
 | Auto-instalacja Superpowers/Autopilot | Niemożliwa ze skryptu (marketplace pluginów Claude/Cursor, wymaga interaktywnego `/plugin install`) | `--with-plugins` wypisze dokładne komendy/kroki, patrz niżej |
 
 ## Pluginy zewnętrzne — schemat użycia (4 warstwy)
