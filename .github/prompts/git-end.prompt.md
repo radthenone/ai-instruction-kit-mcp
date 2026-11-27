@@ -178,6 +178,23 @@ Właścicielem procedury obsługi wątków i zapytań GraphQL jest `git-end` (te
 Wątki sprawdzasz **tylko wtedy, gdy `coderabbit` jest na liście `integrations:` w Profilu** (`.ai/project.profile.yaml` / MCP `get_bundle`).
 Jeśli brak `coderabbit` w `integrations:` — krok wątków bota jest pominięty (bez integracji krok pominięty).
 
+**Wyzwalacz review bota (repo bez auto review):**
+Publiczne repo z mniej niż 10 gwiazdkami na darmowym tierze CodeRabbit nie dostaje automatycznych review, więc review wywołuje agent. Komendy działają mimo wyłączonego auto review.
+- Warunek: tylko gdy `coderabbit` jest w `integrations:` (bez integracji krok pominięty). Zaraz po `gh pr create`, przed `gh pr checks --watch` (albo na istniejącym PR bez review bota) odczytaj komentarze bota; czekaj na pierwszy komentarz bota maks. 3 min. Trigger jest potrzebny, gdy komentarz bota zawiera `does not receive automatic reviews`. Bez tego komunikatu (auto review działa) niczego nie wysyłasz, żeby nie dublować review. Sygnałem jest komentarz bota, nie stan checka `CodeRabbit`: `skipped` bywa też pauzą po serii commitów, gdy review i tak jest.
+```bash
+PR_NUMBER=$(gh pr view --json number -q .number)
+REPO_OWNER=$(gh repo view --json owner -q .owner.login)
+REPO_NAME=$(gh repo view --json name -q .name)
+BOT_COMMENTS=$(gh api --paginate "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments" \
+  --jq '.[] | select(.user.login == "coderabbitai[bot]") | .body') && READ_OK=1 || READ_OK=0
+[ "$READ_OK" = 1 ] && printf '%s' "$BOT_COMMENTS" | grep -q "does not receive automatic reviews"  # trigger, gdy 0
+```
+Błąd odczytu (niezerowy kod `gh api`) to nie brak komunikatu: ponów odczyt raz, a przy kolejnym błędzie odnotuj go w raporcie i wyślij trigger (podwójne review kosztuje mniej niż brak review). Trigger pomijasz tylko po udanym odczycie bez komunikatu.
+- Pierwszy trigger na PR: `gh pr comment "$PR_NUMBER" --body "@coderabbitai full review"`. Po każdym kolejnym pushu rundy naprawczej na tym PR: `gh pr comment "$PR_NUMBER" --body "@coderabbitai review"` (przyrostowo, od ostatniego review). Komenda jest jedyną treścią komentarza. Stan trybu ręcznego trzyma sam PR: trigger po pushu wysyłasz, gdy na PR jest już komentarz `@coderabbitai full review` (sprawdź komentarze PR, także po wznowieniu sesji), bo bot podmienia swój komentarz walkthrough i komunikat o braku auto review nie zawsze jest widoczny. W `night-run` trigger po pushu rundy wysyła `git-end` razem z pushem; subagent ticketu go nie powtarza.
+- `Review rate limited` w odpowiedzi bota nie jest rundą ani brakiem review: pauza. Odczekaj czas z komunikatu (`@coderabbitai rate limit` podaje termin) i wyślij tę samą komendę ponownie. Limit pauzy to łącznie 60 min od pierwszej odpowiedzi `Review rate limited` dla tego head, niezależnie od liczby ponowień. W trakcie pauzy limit 10–15 min na review nie biegnie i nie podejmujesz decyzji o braku review; liczysz go od odpowiedzi `Review triggered.`. Po 60 min pauzy → reguła „Brak review po limicie” (niżej).
+- `files exceed the limit` (limit plików na review) → odnotuj w raporcie „review pominięte: limit plików” i przejdź dalej bez blokady, także przy R ≥ 1. Ponownej komendy nie wysyłasz.
+- Limit czasu czekania na review („Pobranie wątków”) liczysz od wysłania komendy, a przy pauzie po limicie od odpowiedzi `Review triggered.`.
+
 **Pobranie wątków (GraphQL):**
 Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit dla bieżącego head commita PR (po zielonych checks, a przy `Host: local` bez checks po przejściu bramek szybkich).
 Czekanie na review bota ma limit czasu (wzorzec „Praca w tle”, maks. 10–15 min). Sygnałem review bota dla bieżącego head commita jest obecność ukończonej recenzji bota dla tego commita (`reviews.nodes.commit.oid == headRefOid` z autorem `coderabbitai` lub `coderabbitai[bot]`). Uwzględniaj treść (`body`) tylko tych recenzji bota, których `commit.oid == headRefOid`. Po upływie limitu czasu (brak review bota dla bieżącego head): nadal pobierz otwarte wątki bota z GraphQL (poniżej) i obsłuż je jak w rundach. Dalej stosuj regułę „Brak review po limicie” w „Rundy wątków” (poniżej).
@@ -261,7 +278,7 @@ mutation($threadId: ID!) {
 - Kontrola limitu, także po wznowieniu: przed każdą rundą naprawczą (przed pushem) sprawdź `R >= 6` (R z `## Stan`, sprzed zwiększenia; brak linii dla #<N> → R z prompta). Jeśli `R >= 6` przed zwiększeniem licznika, nie zapisuj R+1 i zastosuj „Priorytet przy R = 6” (poniżej).
 - Przed każdym pushem naprawczym, także gdy w jednym wywołaniu jest ich więcej, odczytaj `coderabbit-rundy: #<N> <R>` z `## Stan` CTX (R = wartość odczytana przed tą rundą; brak linii dla #<N> → R z prompta), zapisz `coderabbit-rundy: #<N> <R+1>` (zastąp istniejącą linię dla #<N>, jedna linia w `## Stan`) i dopiero potem push i zmianę wątków. To jedyny zapis licznika w tym cyklu: obsługa odpowiedzi i wątków przestarzałych go nie powtarza. Przerwanie po zapisie zawyża licznik o jeden, nigdy go nie zaniża. Zapis tylko w procedurze night-run, gdy prompt niesie ścieżkę `<CTX>`. Bez `<CTX>` licznika nie zapisujesz: kontrolę limitu prowadź z R z prompta i rund wykonanych w tym wywołaniu, a wartość zwróć w raporcie.
 - W rundzie obsługujesz **wszystkie otwarte wątki naraz**:
-  - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, zapis licznika `coderabbit-rundy: #<N> <R+1>` w `## Stan`, jeden push (każdy push to nowe CI i ponowne review bota); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do puli 6 rund po pushu.
+  - gdy w rundzie powstały poprawki w kodzie: jeden commit z poprawkami i testami, zapis licznika `coderabbit-rundy: #<N> <R+1>` w `## Stan`, jeden push (każdy push to nowe CI i ponowne review bota; gdy PR dostał trigger, po pushu wysyłasz `@coderabbitai review` wg „Wyzwalacz review bota”); po udanym pushu rozwiązujesz wątki z poprawkami w kodzie mutacją `resolveReviewThread`, a przed pobraniem wątków do kolejnej rundy czekasz na zielone checks i review bota dla nowego head commita PR. Czerwone CI po pushu rundy wlicza się do puli 6 rund po pushu.
   - gdy wszystkie wątki obsłużono odpowiedziami z uzasadnieniem (brak zmian w kodzie): pomijasz commit i push (brak nowego pusha nie zużywa rundy pushowej ani licznika R).
 - **Bezpiecznik Minor/nit:** gdy po review zostały wyłącznie uwagi Minor/nit bez wpływu na działanie aplikacji — nie uruchamiasz nowej rundy ani pusha: odpowiadasz w wątku z uzasadnieniem, rozwiązujesz wątek mutacją `resolveReviewThread`, a PR jest gotowy do merge bez nowej rundy (bez zwiększania licznika R).
 - Zero otwartych wątków i brak uwag actionable w treści review bota na bieżący head → koniec rund i przejście do kroku powrotu / merge.
@@ -328,7 +345,7 @@ Raport oddajesz **wyłącznie po uzyskaniu końcowego stanu checks** (zielone ch
 - Closes: #N
 - Checks: … (końcowy stan z `gh pr checks`: pass / fail / brak checks po timeout)
 - Etykieta / tablica: … (albo „brak dopasowania” / „brak scope project”)
-- Rundy CodeRabbit: … (0–6 albo „pominięto — brak coderabbit w integrations”)
+- Rundy CodeRabbit: … (0–6 albo „pominięto — brak coderabbit w integrations”; trigger: `full review` / `review` ×K / brak, gdy auto review działa)
 - IDE teraz na: … (branch powrotu jeśli był zapisany, inaczej nadal branch feature)
 - Dalej: Autopilot → merge gdy green
 ```

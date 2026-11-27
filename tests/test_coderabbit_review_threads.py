@@ -150,5 +150,39 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn("bramka fail-closed", self.night_run_ticket)
         self.assertIn("orkiestrator dopisuje wtedy do promptu ticketu linię „merge mimo wątków”", self.night_run_ticket)
 
+    def test_git_end_triggers_review_when_auto_review_is_off(self) -> None:
+        """git-end wyzwala review bota komendami, gdy repo nie dostaje auto review (#578)."""
+        self.assertIn("**Wyzwalacz review bota (repo bez auto review):**", self.git_end)
+        self.assertIn("does not receive automatic reviews", self.git_end)
+        self.assertIn('gh pr comment "$PR_NUMBER" --body "@coderabbitai full review"', self.git_end)
+        self.assertIn('gh pr comment "$PR_NUMBER" --body "@coderabbitai review"', self.git_end)
+        self.assertIn("Review rate limited", self.git_end)
+        self.assertIn("files exceed the limit", self.git_end)
+        trigger = self.git_end.split("**Wyzwalacz review bota", 1)[1].split("**Pobranie wątków", 1)[0]
+        self.assertIn("tylko gdy `coderabbit` jest w `integrations:`", trigger)
+        self.assertIn("nie stan checka `CodeRabbit`", trigger)
+        self.assertIn("gdy na PR jest już komentarz `@coderabbitai full review`", trigger)
+        self.assertIn("łącznie 60 min od pierwszej odpowiedzi `Review rate limited`", trigger)
+        self.assertIn("subagent ticketu go nie powtarza", trigger)
+        trigger_pos = self.git_end.index("Wyzwalacz review bota")
+        self.assertLess(self.git_end.index("**Gate na integrację:**"), trigger_pos)
+        self.assertLess(trigger_pos, self.git_end.index("**Pobranie wątków (GraphQL):**"))
+
+    def test_night_run_sends_incremental_review_after_round_push(self) -> None:
+        """night-run-ticket i karta T3 wysyłają `@coderabbitai review` po pushu rundy (#578)."""
+        t3 = (KIT_ROOT / "templates" / "shared" / "night-run" / "t3.md").read_text(encoding="utf-8")
+        for text in (self.night_run_ticket, t3):
+            self.assertIn("`@coderabbitai review`", text)
+            self.assertIn("Wyzwalacz review bota", text)
+        self.assertIn("`@coderabbitai full review`", t3)
+        self.assertIn("`Review rate limited` to pauza, nie brak review", t3)
+        self.assertIn("Limit mierzy orkiestrator od odpowiedzi `Review triggered.`", t3)
+        self.assertNotIn("Limit mierzy orkiestrator od wejścia w czekanie.", t3)
+        self.assertIn("orkiestrator uzbraja jednorazowe wybudzenie", t3)
+        self.assertIn("budzi orkiestratora na koniec pauzy po `Review rate limited`", t3)
+        self.assertIn("`files exceed the limit` (raport „review pominięte: limit plików”) nie blokuje merge", self.night_run_ticket)
+        self.assertIn("Błąd odczytu (niezerowy kod `gh api`) to nie brak komunikatu", self.git_end)
+
+
 if __name__ == "__main__":
     unittest.main()

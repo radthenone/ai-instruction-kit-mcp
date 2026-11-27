@@ -426,6 +426,14 @@ def _render_command_mapping(client_ids: Sequence[str]) -> list[str]:
     ]
 
 
+# Reguła dla PR-ów spoza `git-end` (np. utworzonych narzędziem T3), #578.
+CODERABBIT_TRIGGER_RULE_PL = (
+    "- **CodeRabbit:** PR utworzony poza `git-end`, a bot pisze `does not receive automatic reviews` "
+    "→ komentarz `@coderabbitai full review`, po każdym pushu poprawki `@coderabbitai review` "
+    "(reguły w `git-end`, krok 4: „Wyzwalacz review bota”)."
+)
+
+
 def render_project_brief(
     *,
     name: str,
@@ -441,6 +449,7 @@ def render_project_brief(
     codegraph_content: str | None = None,
     client: str | None = None,
     codegraph_clients: object = None,
+    integrations: Sequence[str] = (),
 ) -> str:
     """
     Zrenderuj brief projektu z Profilu i overlayu — jedno źródło dla pliku i MCP.
@@ -465,6 +474,8 @@ def render_project_brief(
         codegraph_content: Treść modułu ``core:tooling-codegraph`` albo ``None``;
             trafia do briefu tylko, gdy ``clients:`` obejmuje ``claude``
             (Cursor ma własną regułę ``.cursor/rules/codegraph.mdc``).
+        integrations: Znane integracje z Profilu; ``coderabbit`` dodaje regułę
+            wyzwalacza review bota dla PR-ów spoza ``git-end`` (#578).
 
     Returns:
         str: Treść bloku briefu (bez znaczników ``kit:brief``).
@@ -533,6 +544,7 @@ def render_project_brief(
             f"- **Komendy:** {commands_line}",
             f"- **Bundle:** {', '.join(f'`{bundle}`' for bundle in bundle_names)}",
             f"- **Moduły ({len(visible_modules)}):** {modules_line}",
+            *([CODERABBIT_TRIGGER_RULE_PL] if "coderabbit" in integrations else []),
             *_render_command_mapping(client_ids),
             *codegraph_section,
         ]
@@ -1256,6 +1268,7 @@ def resolve_profile(
         codegraph_content=codegraph_content,
         client=client,
         codegraph_clients=profile_data.get("codegraph_clients"),
+        integrations=parsed_integrations.integrations,
     )
 
     index_lines = []

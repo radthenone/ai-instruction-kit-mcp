@@ -160,7 +160,7 @@ const agyQuotaText = (bin) => {
 }
 
 // Tabela wykonawców: klient → binarki (pierwsza znaleziona w PATH) i argumenty.
-// Nowy wykonawca = nowy wiersz; tylko klienci z guardami kita (patrz README /headless).
+// Nowy wykonawca = nowy wiersz; tylko klienci z guardami kita (patrz dokumentacja kita „Praca nocna i headless”).
 const EXECUTORS = {
   claude: {
     bins: ["claude"],
