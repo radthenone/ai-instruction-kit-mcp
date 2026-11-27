@@ -319,12 +319,17 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertIn(KIT_MARKER, content_en)
 
 
-    def test_render_coderabbit_language_round_trip_when_target_is_template(self) -> None:
-        """W repo kita szablonem jest sam plik celu: pl -> en -> pl musi wrócić do pl-PL."""
+    def test_render_coderabbit_language_round_trip_from_templates(self) -> None:
+        """Render w repo kita bierze szablon z templates/: pl -> en -> pl wraca do pl-PL."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
+            templates_dir = root / "templates"
+            templates_dir.mkdir()
+            (templates_dir / ".coderabbit.yaml").write_text(
+                f'{KIT_MARKER}\nlanguage: "{{{{language}}}}"\nreviews: {{}}\n',
+                encoding="utf-8",
+            )
             target = root / ".coderabbit.yaml"
-            target.write_text(f'{KIT_MARKER}\nlanguage: "pl-PL"\nreviews: {{}}\n', encoding="utf-8")
             render_integrations(root, root, integrations=["coderabbit"], language="en")
             self.assertIn('language: "en-US"', target.read_text(encoding="utf-8"))
             render_integrations(root, root, integrations=["coderabbit"], language="pl")
@@ -333,15 +338,20 @@ class TestIntegrationsRender(unittest.TestCase):
             self.assertNotIn("en-US", content)
 
 
-    def test_remove_keeps_template_when_workspace_is_kit_root(self) -> None:
-        """--remove w repo kita nie kasuje pliku, który jest szablonem integracji."""
+    def test_remove_deletes_root_copy_and_keeps_templates_source(self) -> None:
+        """--remove w repo kita usuwa kopię w root, ale nie rusza szablonu w templates/."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
+            templates_dir = root / "templates"
+            templates_dir.mkdir()
+            template = templates_dir / ".coderabbit.yaml"
+            template.write_text(f'{KIT_MARKER}\nlanguage: "{{{{language}}}}"\n', encoding="utf-8")
             target = root / ".coderabbit.yaml"
             target.write_text(f'{KIT_MARKER}\nlanguage: "pl-PL"\n', encoding="utf-8")
             removed = render_integrations(root, root, remove=True)
-            self.assertNotIn(".coderabbit.yaml", removed)
-            self.assertTrue(target.is_file())
+            self.assertIn(".coderabbit.yaml", removed)
+            self.assertFalse(target.exists())
+            self.assertTrue(template.is_file())
 
 
 class TestProfileHasIntegration(unittest.TestCase):
@@ -607,15 +617,15 @@ KIT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestOrcaTemplate(unittest.TestCase):
-    """Szablon orca.yaml w templates/ to źródło dla konsumentów: wheel nie pakuje pliku z Kit Root (#456)."""
+    """Szablon orca.yaml w templates/ to jedyne źródło dla konsumentów (#456, #581)."""
 
-    def test_orca_template_is_kit_marked_and_matches_kit_root_copy(self) -> None:
-        """Szablon ma marker kita i jest identyczny z plikiem orca.yaml w Kit Root."""
+    def test_orca_template_is_kit_marked_and_root_copy_is_absent(self) -> None:
+        """Szablon w templates/ ma marker kita i poprawny YAML; root repo nie ma orca.yaml."""
         import yaml
 
         template = KIT_ROOT / "templates" / "orca.yaml"
         self.assertTrue(template.is_file(), f"Brak szablonu {template}")
-        self.assertEqual(template.read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
+        self.assertFalse((KIT_ROOT / "orca.yaml").exists(), "orca.yaml nie powinien istnieć w root repo kita")
         content = template.read_text(encoding="utf-8")
         self.assertIn(KIT_MARKER, content)
         self.assertEqual(yaml.safe_load(content)["scripts"]["setup"], "node .ai/worktree.mjs sync .")
@@ -633,7 +643,10 @@ class TestOrcaTemplate(unittest.TestCase):
             created = render_integrations(workspace, kit_root, integrations=["orca"])
 
             self.assertEqual(created, ["orca.yaml"])
-            self.assertEqual((workspace / "orca.yaml").read_bytes(), (KIT_ROOT / "orca.yaml").read_bytes())
+            self.assertEqual(
+                (workspace / "orca.yaml").read_bytes(),
+                (KIT_ROOT / "templates" / "orca.yaml").read_bytes(),
+            )
 
 
 class TestIntegrationOwnershipOnReload(unittest.TestCase):
@@ -778,8 +791,8 @@ class TestIntegrationSafetyEdges(unittest.TestCase):
             self.assertEqual(created, ["orca.yaml"])
             self.assertIn(".coderabbit.yaml", buf.getvalue())
 
-    def test_self_render_does_not_overwrite_root_orca_yaml(self) -> None:
-        """W repo kita reload nie zastępuje lokalnie zmienionego orca.yaml kopią z templates/."""
+    def test_self_render_uses_templates_for_root_orca_yaml(self) -> None:
+        """W repo kita reload zawsze renderuje orca.yaml z szablonu w templates/."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             kit = Path(tmp_dir) / "kit"
             (kit / "templates").mkdir(parents=True)
@@ -790,7 +803,7 @@ class TestIntegrationSafetyEdges(unittest.TestCase):
 
             render_integrations(kit, kit, integrations=["orca"])
 
-            self.assertIn("local-setup", (kit / "orca.yaml").read_text(encoding="utf-8"))
+            self.assertIn("template-setup", (kit / "orca.yaml").read_text(encoding="utf-8"))
 
     def test_render_does_not_follow_dangling_symlink(self) -> None:
         """Dowiązanie symboliczne w miejscu orca.yaml nie kieruje zapisu poza repo."""
@@ -808,15 +821,17 @@ class TestIntegrationSafetyEdges(unittest.TestCase):
 
             self.assertFalse(outside.exists())
 
-    def test_dry_run_keeps_kit_source_protected_like_real_reload(self) -> None:
-        """Dry-run w repo kita nie planuje usunięcia orca.yaml, którego prawdziwy reload nie usunie."""
+    def test_dry_run_in_kit_repo_removes_unlisted_kit_orca_and_keeps_template(self) -> None:
+        """Dry-run w repo kita usuwa kopię orca.yaml spoza Profilu, ale nie rusza templates/orca.yaml."""
         import os
         from unittest import mock
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             kit = root / "kit"
-            kit.mkdir()
+            (kit / "templates").mkdir(parents=True)
+            template = kit / "templates" / "orca.yaml"
+            template.write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
             (kit / "orca.yaml").write_text(f"{KIT_MARKER}\nscripts: {{}}\n", encoding="utf-8")
             sandbox = root / "sandbox"
             sandbox.mkdir()
@@ -826,7 +841,8 @@ class TestIntegrationSafetyEdges(unittest.TestCase):
             with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(kit)}):
                 render_integrations(sandbox, kit, profile_data=profile)
 
-            self.assertTrue((sandbox / "orca.yaml").is_file())
+            self.assertFalse((sandbox / "orca.yaml").exists())
+            self.assertTrue(template.is_file())
 
     def test_dry_run_plans_removal_of_consumer_file(self) -> None:
         """Dry-run w zwykłym repo konsumenta planuje usunięcie orca.yaml, bo prawdziwy reload go usunie."""
@@ -908,8 +924,8 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
 
             self.assertTrue((workspace / "orca.yaml").is_file())
 
-    def test_dry_run_in_kit_repo_uses_same_source_as_real_reload(self) -> None:
-        """Dry-run w repo kita wybiera ten sam szablon co realny reload: plik korzenia, nie kopia z templates/."""
+    def test_dry_run_in_kit_repo_uses_templates_source(self) -> None:
+        """Dry-run w repo kita zawsze używa szablonu z templates/, ignorując ewentualny plik w root."""
         import os
         from unittest import mock
 
@@ -928,7 +944,7 @@ class TestIntegrationLinksAndDuplicateKeys(unittest.TestCase):
             with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(kit)}):
                 render_integrations(sandbox, kit, integrations=["orca"])
 
-            self.assertIn("local-setup", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
+            self.assertIn("template-setup", (sandbox / "orca.yaml").read_text(encoding="utf-8"))
 
     def test_dry_run_keeps_real_symlink_unplanned(self) -> None:
         """Dowiązanie w prawdziwym Workspace nie jest nadpisywane ani kasowane w planie, także gdy sandbox ma kopię."""
@@ -1241,25 +1257,15 @@ class TestCodeRabbitIntegration(unittest.TestCase):
             self.assertEqual(cr_file.read_text(encoding="utf-8"), "language: \"en-US\"\ncustom_config: true\n")
             self.assertIn(".coderabbit.yaml", buf.getvalue())
 
-    def test_root_coderabbit_matches_rendered_template(self) -> None:
-        """Plik .coderabbit.yaml w root repo kita jest identyczny z wynikiem renderu szablonu (#490)."""
-        root_cr = KIT_ROOT / ".coderabbit.yaml"
-        self.assertTrue(root_cr.is_file(), f"Brak pliku .coderabbit.yaml w root {KIT_ROOT}")
+    def test_root_coderabbit_is_absent_and_profile_uses_t3code_only(self) -> None:
+        """Root repo kita nie ma .coderabbit.yaml, a jego profil ma tylko t3code i thought_level=medium (#581)."""
+        import yaml
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            ws = Path(tmp_dir) / "workspace"
-            ws.mkdir()
-            profile = ws / ".ai" / "project.profile.yaml"
-            profile.parent.mkdir(parents=True)
-            profile.write_text("name: kit\nlanguage: pl\nintegrations:\n  - coderabbit\n", encoding="utf-8")
-
-            created = render_integrations(ws, KIT_ROOT, profile_data=profile)
-            self.assertIn(".coderabbit.yaml", created)
-
-            rendered_content = (ws / ".coderabbit.yaml").read_bytes()
-            root_content = root_cr.read_bytes()
-            self.assertEqual(
-                root_content,
-                rendered_content,
-                "Plik .coderabbit.yaml w root repo kita różni się od renderu szablonu templates/.coderabbit.yaml (np. brak końcowego \\n)",
-            )
+        self.assertFalse(
+            (KIT_ROOT / ".coderabbit.yaml").exists(),
+            f"Plik .coderabbit.yaml nie powinien istnieć w root {KIT_ROOT}",
+        )
+        profile = yaml.safe_load((KIT_ROOT / ".ai" / "project.profile.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(profile.get("integrations"), ["t3code"])
+        takeover_opts = profile["targets"]["antigravity"]["takeover"]["options"]
+        self.assertEqual(takeover_opts, [{"id": "thought_level", "value": "medium"}])

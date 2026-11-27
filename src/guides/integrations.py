@@ -91,9 +91,6 @@ def _remove_kit_files(workspace_root: Path, kit_root: Path, names: list[str]) ->
         info = INTEGRATIONS_MAP[name]
         target = workspace_root / info.target_file
         real_target = real_workspace / info.target_file
-        if _resolves_to(real_target, kit_root / info.template_name):
-            # Repo kita: plik celu jest szablonem integracji, nie usuwamy go (także w planie dry-run).
-            continue
         if real_target.is_symlink() or target.is_symlink():
             # Dowiązanie nie jest plikiem kita, nawet gdy wskazuje na oznaczony plik (review #518).
             print(
@@ -138,26 +135,6 @@ def _real_workspace(workspace_root: Path) -> Path:
     """
     env_workspace = os.environ.get("KIT_WORKSPACE")
     return Path(env_workspace) if env_workspace else workspace_root
-
-
-def _resolves_to(path: Path, other: Path) -> bool:
-    """
-    Czy ``path`` i ``other`` wskazują to samo miejsce.
-
-    Cykliczne dowiązanie nie jest zgodnością: w Pythonie 3.11 i 3.12 ``resolve()`` rzuca
-    ``RuntimeError``, więc błąd rozwiązania liczymy jako brak zgodności.
-
-    Args:
-        path: Ścieżka do sprawdzenia (może być dowiązaniem).
-        other: Ścieżka odniesienia.
-
-    Returns:
-        bool: True, gdy rozwiązane ścieżki są równe; False także przy błędzie rozwiązania.
-    """
-    try:
-        return path.resolve() == other.resolve()
-    except (OSError, RuntimeError):
-        return False
 
 
 def _ambiguous_profile_node(node: object, seen: set[int]) -> bool:
@@ -530,17 +507,10 @@ def render_integrations(
             continue
         target = workspace_root / info.target_file
         real_target = _real_workspace(workspace_root) / info.target_file
-        root_source = kit_root / info.template_name
-        dist_candidates = [
+        template_candidates = [
             kit_root / "templates" / info.template_name,
             kit_root / "templates" / "shared" / info.template_name,
         ]
-        # Repo kita: źródłem jest plik korzenia, nie kopia dystrybucyjna z templates/ (review #518).
-        # Wybór liczymy na prawdziwym Workspace, żeby dry-run planował to, co zrobi realny reload.
-        if _resolves_to(real_target, root_source):
-            template_candidates = [root_source, *dist_candidates]
-        else:
-            template_candidates = [*dist_candidates, root_source]
         template_path = next((p for p in template_candidates if p.is_file()), None)
         if template_path is None:
             print(f"brak szablonu dla {name}", file=sys.stderr)
@@ -550,7 +520,7 @@ def render_integrations(
         if name == "coderabbit":
             lang_code = coderabbit_language(resolved_lang)
             content = content.replace("{{language}}", lang_code)
-            # Dowolna wartość language (nie tylko pl-PL): w repo kita szablonem jest sam plik celu.
+            # Dowolna wartość language (nie tylko pl-PL) na wypadek szablonu z wpisanym kodem.
             content = re.sub(r'(?m)^language:\s*"[^"]*"', f'language: "{lang_code}"', content)
 
         if target.is_symlink() or real_target.is_symlink():

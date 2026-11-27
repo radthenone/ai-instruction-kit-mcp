@@ -11,7 +11,7 @@ mobile: none
 
 codegen: none
 codegraph_clients: [claude, codex, antigravity, opencode]
-integrations: [orca, coderabbit, t3code]
+integrations: [t3code]
 
 server:
   guard: auto
@@ -81,7 +81,7 @@ targets:
     takeover:
       providerInstanceId: antigravity
       model: gemini-4-hydrogen
-      options: [{ id: thought_level, value: high }]
+      options: [{ id: thought_level, value: medium }]
   opencode:
     light:
       providerInstanceId: opencode
