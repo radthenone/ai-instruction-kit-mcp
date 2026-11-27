@@ -563,6 +563,22 @@ class TestUserConfigMerge(_BootstrapTestCase):
             self.assertIn('[mcp_servers.mine]\ncommand = "x"\n', text)
             self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
 
+    def test_codex_toml_keeps_legacy_header_inside_multiline_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            mine = (
+                '\n[mcp_servers.mine.env]\nEXAMPLE = """\n'
+                '[mcp_servers.project-guides]\ncommand = "example"\n[other]\n"""\n'
+            )
+            path.write_text(path.read_text(encoding="utf-8") + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            self.assertIn(mine, path.read_text(encoding="utf-8"))
+
     def test_unchanged_config_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"

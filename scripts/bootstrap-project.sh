@@ -514,8 +514,14 @@ def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int]
     """Zakres linii tabeli `[mcp_servers.<server>]` (z podtabelami) albo None."""
     start = None
     end = len(lines)
+    quote = None  # otwarty ciąg wielowierszowy: nagłówek w jego treści to dane, nie tabela
     for i, line in enumerate(lines):
-        m = TOML_HEADER.match(line)
+        m = TOML_HEADER.match(line) if quote is None else None
+        # shortcut: liczy ograniczniki w linii, bez escape'ów \""" w ciągu; wystarcza dla konfiguracji MCP.
+        for q in ('"""', "'''"):
+            if quote in (None, q) and line.count(q) % 2 == 1:
+                quote = None if quote == q else q
+                break
         if not m:
             continue
         name = re.sub(r"""\s*\.\s*""", ".", m.group(1)).replace('"', "").replace("'", "")
