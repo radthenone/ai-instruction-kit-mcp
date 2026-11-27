@@ -180,7 +180,7 @@ Jeśli brak `coderabbit` w `integrations:` — krok wątków bota jest pominięt
 
 **Wyzwalacz review bota (repo bez auto review):**
 Publiczne repo z mniej niż 10 gwiazdkami na darmowym tierze CodeRabbit nie dostaje automatycznych review, więc review wywołuje agent. Komendy działają mimo wyłączonego auto review.
-- Warunek: zaraz po `gh pr create`, przed `gh pr checks --watch` (albo na istniejącym PR bez review bota) odczytaj komentarze bota; czekaj na pierwszy komentarz bota maks. 3 min. Trigger jest potrzebny, gdy komentarz bota zawiera `does not receive automatic reviews`. Bez tego komunikatu (auto review działa) niczego nie wysyłasz, żeby nie dublować review.
+- Warunek: tylko gdy `coderabbit` jest w `integrations:` (bez integracji krok pominięty). Zaraz po `gh pr create`, przed `gh pr checks --watch` (albo na istniejącym PR bez review bota) odczytaj komentarze bota; czekaj na pierwszy komentarz bota maks. 3 min. Trigger jest potrzebny, gdy komentarz bota zawiera `does not receive automatic reviews`. Bez tego komunikatu (auto review działa) niczego nie wysyłasz, żeby nie dublować review. Sygnałem jest komentarz bota, nie stan checka `CodeRabbit`: `skipped` bywa też pauzą po serii commitów, gdy review i tak jest.
 ```bash
 PR_NUMBER=$(gh pr view --json number -q .number)
 REPO_OWNER=$(gh repo view --json owner -q .owner.login)
@@ -189,10 +189,10 @@ gh api --paginate "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments" \
   --jq '.[] | select(.user.login == "coderabbitai[bot]") | .body' \
   | grep -q "does not receive automatic reviews"
 ```
-- Pierwszy trigger na PR: `gh pr comment "$PR_NUMBER" --body "@coderabbitai full review"`. Po każdym kolejnym pushu rundy naprawczej na tym PR: `gh pr comment "$PR_NUMBER" --body "@coderabbitai review"` (przyrostowo, od ostatniego review). Komenda jest jedyną treścią komentarza. Bot zastępuje swój komentarz walkthrough, więc po pierwszym triggerze warunku nie sprawdzasz ponownie: trigger po pushu obowiązuje do końca PR.
-- `Review rate limited` w odpowiedzi bota nie jest rundą ani brakiem review: odczekaj czas z komunikatu (maks. 60 min; `@coderabbitai rate limit` podaje termin) i wyślij tę samą komendę ponownie. Dłużej → reguła „Brak review po limicie” (niżej).
+- Pierwszy trigger na PR: `gh pr comment "$PR_NUMBER" --body "@coderabbitai full review"`. Po każdym kolejnym pushu rundy naprawczej na tym PR: `gh pr comment "$PR_NUMBER" --body "@coderabbitai review"` (przyrostowo, od ostatniego review). Komenda jest jedyną treścią komentarza. Stan trybu ręcznego trzyma sam PR: trigger po pushu wysyłasz, gdy na PR jest już komentarz `@coderabbitai full review` (sprawdź komentarze PR, także po wznowieniu sesji), bo bot podmienia swój komentarz walkthrough i komunikat o braku auto review nie zawsze jest widoczny. W `night-run` trigger po pushu rundy wysyła `git-end` razem z pushem; subagent ticketu go nie powtarza.
+- `Review rate limited` w odpowiedzi bota nie jest rundą ani brakiem review: pauza. Odczekaj czas z komunikatu (`@coderabbitai rate limit` podaje termin) i wyślij tę samą komendę ponownie. Limit pauzy to łącznie 60 min od pierwszej odpowiedzi `Review rate limited` dla tego head, niezależnie od liczby ponowień. W trakcie pauzy limit 10–15 min na review nie biegnie i nie podejmujesz decyzji o braku review; liczysz go od odpowiedzi `Review triggered.`. Po 60 min pauzy → reguła „Brak review po limicie” (niżej).
 - `files exceed the limit` (limit plików na review) → odnotuj w raporcie „review pominięte: limit plików” i przejdź dalej bez blokady, także przy R ≥ 1. Ponownej komendy nie wysyłasz.
-- Limit czasu czekania na review („Pobranie wątków”) liczysz od wysłania komendy.
+- Limit czasu czekania na review („Pobranie wątków”) liczysz od wysłania komendy, a przy pauzie po limicie od odpowiedzi `Review triggered.`.
 
 **Pobranie wątków (GraphQL):**
 Gdy `coderabbit` jest w `integrations:`, poczekaj na review bota CodeRabbit dla bieżącego head commita PR (po zielonych checks, a przy `Host: local` bez checks po przejściu bramek szybkich).

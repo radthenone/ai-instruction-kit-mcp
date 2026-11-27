@@ -158,6 +158,12 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
         self.assertIn('gh pr comment "$PR_NUMBER" --body "@coderabbitai review"', self.git_end)
         self.assertIn("Review rate limited", self.git_end)
         self.assertIn("files exceed the limit", self.git_end)
+        trigger = self.git_end.split("**Wyzwalacz review bota", 1)[1].split("**Pobranie wątków", 1)[0]
+        self.assertIn("tylko gdy `coderabbit` jest w `integrations:`", trigger)
+        self.assertIn("nie stan checka `CodeRabbit`", trigger)
+        self.assertIn("gdy na PR jest już komentarz `@coderabbitai full review`", trigger)
+        self.assertIn("łącznie 60 min od pierwszej odpowiedzi `Review rate limited`", trigger)
+        self.assertIn("subagent ticketu go nie powtarza", trigger)
         trigger_pos = self.git_end.index("Wyzwalacz review bota")
         self.assertLess(self.git_end.index("**Gate na integrację:**"), trigger_pos)
         self.assertLess(trigger_pos, self.git_end.index("**Pobranie wątków (GraphQL):**"))
@@ -169,6 +175,7 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
             self.assertIn("`@coderabbitai review`", text)
             self.assertIn("Wyzwalacz review bota", text)
         self.assertIn("`@coderabbitai full review`", t3)
+        self.assertIn("`Review rate limited` to pauza, nie brak review", t3)
 
 
 if __name__ == "__main__":
