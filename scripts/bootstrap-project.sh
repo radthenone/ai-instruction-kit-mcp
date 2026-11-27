@@ -508,6 +508,7 @@ def merge_json(old_text: str) -> str:
 
 
 TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+TOML_KEY = re.compile(r'"(?:[^"\\]|\\.)*"|' + r"'[^']*'|[^.\s]+")
 
 
 def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int] | None:
@@ -524,8 +525,9 @@ def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int]
                 break
         if not m:
             continue
-        name = re.sub(r"""\s*\.\s*""", ".", m.group(1)).replace('"', "").replace("'", "")
-        is_kit = name == f"mcp_servers.{server}" or name.startswith(f"mcp_servers.{server}.")
+        # Klucze z kropkami dzielone z poszanowaniem cudzysłowów: `"project-guides.helper"` to jeden klucz.
+        keys = [k[1:-1] if k[:1] in "\"'" else k for k in TOML_KEY.findall(m.group(1))]
+        is_kit = keys[:2] == ["mcp_servers", server]
         if start is None and is_kit:
             start = i
         elif start is not None and not is_kit:

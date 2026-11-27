@@ -579,6 +579,19 @@ class TestUserConfigMerge(_BootstrapTestCase):
 
             self.assertIn(mine, path.read_text(encoding="utf-8"))
 
+    def test_codex_toml_keeps_quoted_server_with_legacy_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            helper = '\n[mcp_servers."project-guides.helper"]\ncommand = "helper"\n'
+            path.write_text(path.read_text(encoding="utf-8") + helper, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            self.assertIn(helper, path.read_text(encoding="utf-8"))
+
     def test_unchanged_config_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
