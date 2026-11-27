@@ -72,10 +72,12 @@ Matchery w `.agents/hooks.json` (nazwany hook `kit-guards`, PreToolUse):
 
 | Matcher | Guardy |
 |---|---|
-| `run_command` | git-guard i server-guard |
+| `run_command` | git-guard i server-guard (bez sensitive-files-guard, zob. niżej) |
 | `call_mcp_tool\|^mcp_` | server-guard |
 | `^(view_file\|write_to_file\|replace_file_content\|multi_replace_file_content\|edit_file)$` | sensitive-files-guard |
 
 Adapter sprowadza narzędzia runtime do nazw, które znają guardy. Brak pola, którego guard potrzebuje, daje `deny`. Sprawdzone na `agy` 1.3.0: `allow` nie omija polityki uprawnień Antigravity, a `deny` działa też z `--dangerously-skip-permissions`.
+
+**Znana luka: komendy powłoki.** `run_command` nie przechodzi przez sensitive-files-guard, więc odczyt sekretu komendą powłoki (np. `cat .env`) **nie jest blokowany** w Antigravity. To świadomy zakres: sensitive-files-guard pilnuje w Antigravity tylko narzędzi plikowych. Pozostali klienci blokują też oczywisty odczyt sekretu przez Bash.
 
 Znana luka: `grep_search`, `find_by_name` i `list_dir` nie są mapowane, więc sensitive-files-guard ich nie widzi. Tak samo `view_file_outline` i `view_code_item`, których argumentów nie dało się podejrzeć w `agy` 1.3.0. Matcher plikowy jest zakotwiczony `^(...)$`, więc ich nie łapie.

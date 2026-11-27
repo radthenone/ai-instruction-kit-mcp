@@ -14,7 +14,7 @@
 | Guard | Co robi | Claude | Cursor | OpenCode | Codex | Copilot | Antigravity |
 |---|---|---|---|---|---|---|---|
 | `git-guard` | destrukcyjne komendy git, push na chronione gałęzie | tak | tak | tak | tak | tak | tak |
-| `sensitive-files-guard` | odczyt i zapis sekretów, ręczna edycja lockfile | tak | tak | tak | tak | tak | tak |
+| `sensitive-files-guard` | odczyt i zapis sekretów, ręczna edycja lockfile | tak | tak | tak | tak | tak | tylko narzędzia plikowe |
 | `server-guard` | ciężkie komendy na VPS | tak | tak | tak | tak | tak | tak |
 | `bash-guard` | blokuje `pwsh`, `powershell`, `cmd` w Bashu (Windows) | tak | | | | | |
 | `linters-guard` | lint po edycji, wynik wraca do modelu | tak | | | | | |

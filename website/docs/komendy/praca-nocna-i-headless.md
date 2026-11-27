@@ -82,7 +82,7 @@ Push i PR robi host przez `git-end`, po review commitów.
 
 Bez `--timeout` termin to 60 minut. Co 10 minut wrapper sprawdza postęp: nowe bajty wyjścia, zmianę `HEAD` albo `git status`, wzrost CPU procesów potomnych. Jeśli był postęp, termin przedłuża się o 10 minut, najwyżej do 120 minut. Brak postępu przy terminie kończy się zrzutem procesów i klasą `HANG`.
 
-Jawny `--timeout` to twardy limit bez przedłużania.
+Jawny `--timeout` to twardy limit bez przedłużania. Limit dotyczy jednej próby. Po `LIMIT` (kod `75`) albo `HANG` wrapper może uruchomić kolejny model albo zastępcę z nowym limitem, więc całe wywołanie może trwać dłużej. Kod i klasa wyniku pochodzą wtedy z ostatniej próby.
 
 ### Pętla
 

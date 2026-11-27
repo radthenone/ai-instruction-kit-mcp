@@ -71,6 +71,7 @@ Pliki MCP mogą być już w indeksie, a sam wpis w `.gitignore` ich nie odśledz
 Zanim usuniesz plik z indeksu, sprawdź, czy nie trzyma ustawień wspólnych dla zespołu (np. `opencode.json` z modelami i providerami). Po commicie znikną one z nowych klonów. Przenieś je najpierw do dokumentacji projektu albo do `.ai/project.md`, a każda maszyna odtworzy swój plik przez `kit-ai reload`.
 
 ```bash title="Git Bash · bash"
+APP=/m/projects/moja-appka      # ścieżka repo aplikacji, ustaw przed komendą
 git -C "$APP" rm --cached --ignore-unmatch .mcp.json .cursor/mcp.json .vscode/mcp.json \
   .codex/config.toml .kiro/settings/mcp.json .kilocode/mcp.json .agents/mcp_config.json \
   opencode.json .ai/.kit-bootstrap.json

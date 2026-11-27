@@ -63,6 +63,8 @@ Przyczyna: `AGENTS.md` albo `BUGBOT.md` był zmieniany ręcznie, więc kit nie w
 
 Rozwiązanie: przenieś własne reguły do bloku `project:rules` (w `BUGBOT.md`) albo `project:agents` (w `AGENTS.md`). Propozycja jest w polu `value`. Tekstowy raport go nie pokazuje: uruchom `kit-ai doctor --json` i znajdź w `findings` wpis z `kind: uncertain-migration`.
 
+Gdy kit działa z pakietu (bez historii gita szablonu), migracji nie da się dopasować i doctor nie tworzy tego wpisu. Plik zostaje bez zmian. Porównaj go wtedy ręcznie z szablonem kita (`templates/cursor/BUGBOT.md`, `templates/AGENTS.md`) i przenieś własne linie do bloku projektu, a potem uruchom `kit-ai reload`.
+
 ## Nie wiem, co kit zmieni
 
 Użyj dry run:
