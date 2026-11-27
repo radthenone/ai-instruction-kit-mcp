@@ -300,11 +300,11 @@ def parse_profile(text: str) -> tuple[dict[str, dict[str, dict]], dict[str, list
     if retired:
         raise ProfileError(
             f"Profil: `{retired.group(1)}:` nie jest już czytany — przenieś wpisy do bloku `targets:` "
-            "(README „Model tiers”), np. przez komendę kit-project-edit."
+            "(dokumentacja kita „Modele agentów” (https://github.com/radthenone/ai-instruction-kit-mcp/blob/dev/website/docs/konfiguracja/modele-agentow.md)), np. przez komendę kit-project-edit."
         )
     for key in ("targets", "agents"):
         if re.search(rf"^{key}:[ \t]*[^\s#]", text, re.MULTILINE):
-            raise ProfileError(f"Profil: `{key}:` zapisz blokiem z wcięciami (jak w README), nie w jednej linii.")
+            raise ProfileError(f"Profil: `{key}:` zapisz blokiem z wcięciami (jak w dokumentacji kita „Modele agentów”), nie w jednej linii.")
         if len(re.findall(rf"^{key}:", text, re.MULTILINE)) > 1:
             raise ProfileError(f"Profil: blok `{key}:` jest zdublowany na najwyższym poziomie — zostaw jeden.")
     lines = text.splitlines(keepends=True)

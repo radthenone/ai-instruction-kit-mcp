@@ -505,7 +505,8 @@ class TestUserConfigMerge(_BootstrapTestCase):
                 path = workspace / rel
                 data = json.loads(path.read_text(encoding="utf-8"))
                 data[key]["mine"] = mine
-                data[key]["project-guides"] = {"command": "stale"}
+                data[key]["kit-ai-mcp"] = {"command": "stale"}
+                data[key]["project-guides"] = {"command": "legacy"}
                 data.update(extra)
                 path.write_text(json.dumps(data), encoding="utf-8")
 
@@ -515,7 +516,8 @@ class TestUserConfigMerge(_BootstrapTestCase):
                 with self.subTest(config=rel):
                     data = json.loads((workspace / rel).read_text(encoding="utf-8"))
                     self.assertEqual(data[key]["mine"], mine)
-                    self.assertNotEqual(data[key]["project-guides"], {"command": "stale"})
+                    self.assertNotEqual(data[key]["kit-ai-mcp"], {"command": "stale"})
+                    self.assertNotIn("project-guides", data[key])
                     for k, v in extra.items():
                         self.assertEqual(data[k], v)
                     self.assertFalse((workspace / (rel + ".bak")).exists())
@@ -537,7 +539,127 @@ class TestUserConfigMerge(_BootstrapTestCase):
             self.assertIn(mine, text)
             self.assertIn('"guides-mcp"', text)
             self.assertNotIn('"stale"', text)
-            self.assertEqual(text.count("[mcp_servers.project-guides]"), 1)
+            self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
+
+    def test_codex_toml_drops_legacy_kit_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # Podtabela legacy oddzielona cudzą tabelą to drugi zakres do usunięcia.
+            legacy = (
+                '\n[mcp_servers.project-guides]\ncommand = "old"\n'
+                '\n[mcp_servers.mine]\ncommand = "x"\n'
+                '\n[mcp_servers.project-guides.env]\nKEY = "old"\n'
+            )
+            path.write_text(path.read_text(encoding="utf-8") + legacy, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertNotIn('"old"', text)
+            self.assertIn('[mcp_servers.mine]\ncommand = "x"\n', text)
+            self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
+
+    def test_codex_toml_keeps_legacy_header_inside_multiline_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            mine = (
+                '\n[mcp_servers.mine.env]\nEXAMPLE = """\n'
+                '[mcp_servers.project-guides]\ncommand = "example"\n[other]\n"""\n'
+            )
+            path.write_text(path.read_text(encoding="utf-8") + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            self.assertIn(mine, path.read_text(encoding="utf-8"))
+
+    def test_codex_toml_comment_delimiter_does_not_hide_next_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            legacy = '\n[mcp_servers.project-guides]\ncommand = "old"\n# """\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertIn(mine, text)
+
+    def test_codex_toml_escaped_backslash_closes_multiline_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # `\\` przed `"""` to jeden ukośnik w wartości, więc ogranicznik zamyka ciąg.
+            legacy = '\n[mcp_servers.project-guides]\ncommand = """path\\\\"""\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertIn(mine, text)
+
+    def test_codex_toml_extra_closing_quotes_end_multiline_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # `""""` = cudzysłów w wartości + ogranicznik zamykający.
+            legacy = '\n[mcp_servers.project-guides]\nargs = ["""old"""", """next"""]\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertIn(mine, text)
+
+    def test_codex_toml_unsafe_merge_falls_back_to_bak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # Wiersz `[1, 2]` w wielowierszowej tablicy wygląda jak nagłówek tabeli. Skaner liniowy
+            # ucina tabelę legacy w złym miejscu; bezpiecznik ma odłożyć oryginał, nie zgubić `mine`.
+            legacy = '\n[mcp_servers.project-guides]\nargs = [\n  [1, 2]\n]\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            original = path.read_text(encoding="utf-8") + legacy + mine
+            path.write_text(original, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            backup = workspace / ".codex" / "config.toml.bak"
+            self.assertTrue(backup.is_file())
+            self.assertIn(mine, backup.read_text(encoding="utf-8"))
+
+    def test_codex_toml_keeps_quoted_server_with_legacy_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            helper = '\n[mcp_servers."project-guides.helper"]\ncommand = "helper"\n'
+            path.write_text(path.read_text(encoding="utf-8") + helper, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            self.assertIn(helper, path.read_text(encoding="utf-8"))
 
     def test_unchanged_config_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -565,7 +687,7 @@ class TestUserConfigMerge(_BootstrapTestCase):
             out = self._run(workspace, "opencode")
 
             self.assertEqual((workspace / "opencode.json.bak").read_text(encoding="utf-8"), original)
-            self.assertIn("project-guides", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
+            self.assertIn("kit-ai-mcp", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
             self.assertIn("opencode.json.bak", out)
             # Backup ma tę samą treść co config, łącznie z tokenami — nie może wejść do gita.
             self.assertIn("/opencode.json.bak\n", (workspace / ".gitignore").read_text(encoding="utf-8"))

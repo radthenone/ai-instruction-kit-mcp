@@ -18,7 +18,7 @@ Stosuj instrukcje w tej kolejności:
 
 1. Bezpośrednie polecenie użytkownika.
 2. Overlay projektu (`.ai/project.md`) — unikalne dla tego repo.
-3. Bundle z instruction-kit (MCP `project-guides`).
+3. Bundle z instruction-kit (MCP `kit-ai-mcp`).
 4. Lokalny `AGENTS.md` (cienki bootstrap).
 5. Reguły Cursor (bootstrap `use-guides.mdc`).
 

@@ -13,7 +13,7 @@ Najpierw repo + MCP kita, potem diagnoza, potem plan, na końcu kod.
 
 | Warstwa | Narzędzie | Rola |
 |---------|-----------|------|
-| Fundament | MCP `project-guides`, `@KIT_CMD_PREFIX@review-*`, overlay | prawda o stacku i review |
+| Fundament | MCP `kit-ai-mcp`, `@KIT_CMD_PREFIX@review-*`, overlay | prawda o stacku i review |
 | Proces | mattpocock (`/grill-me`, `/tdd`) | bramki przed/w trakcie feature |
 | Meta | superpowers | brainstorm, debug, finishing |
 

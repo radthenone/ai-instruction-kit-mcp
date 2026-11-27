@@ -53,8 +53,8 @@ np. `@KIT_CMD_PREFIX@kit-project-edit "w VPS lekkie to…"`. Overlay ma pierwsze
 ## Twardy guard: server-guard
 
 Tekst powyżej to domyślne zachowanie agenta. Twardą blokadę egzekwuje
-**server-guard** (`templates/shared/guards/server-guard.mjs`, szczegóły: README
-„Server guard (VPS)" i ADR 0009): na VPS odrzuca kontenery, instalację paczek
+**server-guard** (`templates/shared/guards/server-guard.mjs`, szczegóły: dokumentacja kita
+„Server guard" i ADR 0009): na VPS odrzuca kontenery, instalację paczek
 w każdym ekosystemie (uv, pip, npm/bun/pnpm/yarn, cargo, go, apt, corepack),
 pobieranie przez launchery (`npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `uvx`),
 buildy produkcyjne (także `nuxt`, `astro`, `tsup`, `webpack`, `cargo build`),

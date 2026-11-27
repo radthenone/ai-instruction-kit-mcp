@@ -39,7 +39,7 @@ from guides.clients import KNOWN_CLIENTS
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 BRIEF_SENTINEL = "E2E-BRIEF-SENTINEL-306"
-SERVER_NAME = "project-guides"
+SERVER_NAME = "kit-ai-mcp"
 BRIEF_ISSUE = "#307 — brief projektu nie jest jeszcze wpisywany do AGENTS.md"
 
 # Kanał konfiguracji MCP per klient: plik + ścieżka do wpisu serwera.

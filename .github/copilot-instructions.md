@@ -1,9 +1,9 @@
 # Copilot project instructions (from instruction-kit).
-# Canonical prose: repo AGENTS.md + MCP project-guides (`get_bundle` / `get_overlay` / `get_clients`).
+# Canonical prose: repo AGENTS.md + MCP kit-ai-mcp (`get_bundle` / `get_overlay` / `get_clients`).
 
 Follow AGENTS.md in the repository root.
 
-Before feature work: use MCP `project-guides` → `get_bundle` for the area you touch, and `get_overlay` for this repo.
+Before feature work: use MCP `kit-ai-mcp` → `get_bundle` for the area you touch, and `get_overlay` for this repo.
 
 Git: protected `main` / `master` / `dev` — work on a feature branch, push, then PR. Prefer Conventional Commits.
 

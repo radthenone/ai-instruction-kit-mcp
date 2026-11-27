@@ -373,11 +373,11 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class AntigravityReadmeTest(unittest.TestCase):
-    """README opisuje to, co faktycznie leży w `.agents/hooks.json` (#201)."""
+class AntigravityDocsTest(unittest.TestCase):
+    """Dokumentacja guardów opisuje to, co faktycznie leży w `.agents/hooks.json` (#201, #576)."""
 
     def setUp(self) -> None:
-        self.readme = (KIT_ROOT / "README.md").read_text(encoding="utf-8")
+        self.readme = (KIT_ROOT / "website" / "docs" / "guardy" / "pozostale.md").read_text(encoding="utf-8")
 
     def test_adapter_row_uses_cwd_independent_launcher(self) -> None:
         row = next(line for line in self.readme.splitlines() if line.startswith("| Antigravity | `node "))

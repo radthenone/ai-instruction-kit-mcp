@@ -271,7 +271,7 @@ class TestCodingStandards(unittest.TestCase):
             self.assertIn("`AGENTS.md`", text)
             for absent in (".ai/project.md", "`BUGBOT.md`", "`docs/adr/`", "`CONTEXT.md`"):
                 self.assertNotIn(absent, text)
-            self.assertIn("project-guides", text)
+            self.assertIn("kit-ai-mcp", text)
 
             (workspace / ".ai").mkdir()
             (workspace / ".ai" / "project.md").write_text("overlay\n", encoding="utf-8")
@@ -287,7 +287,7 @@ class TestCodingStandards(unittest.TestCase):
                 text.index("`BUGBOT.md`"),
                 text.index("`docs/adr/`"),
                 text.index("`CONTEXT.md`"),
-                text.index("project-guides"),
+                text.index("kit-ai-mcp"),
             ]
             self.assertEqual(order, sorted(order))
 
@@ -330,6 +330,18 @@ class TestRemove(unittest.TestCase):
             self.assertFalse((workspace / "docs/agents").exists())
             self.assertFalse((workspace / CODING_STANDARDS_REL).exists())
             self.assertEqual(_read(workspace / "AGENTS.md"), "# App\n\nReguły projektu.\n")
+
+    def test_removes_pristine_index_rendered_before_server_rename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            sync(workspace, KIT_ROOT)
+            standards = workspace / CODING_STANDARDS_REL
+            legacy = _read(standards).replace("MCP `kit-ai-mcp`", "MCP `project-guides`")
+            standards.write_text(legacy, encoding="utf-8", newline="\n")
+
+            remove(workspace, KIT_ROOT)
+
+            self.assertFalse(standards.exists())
 
 
 class TestReviewAgents(unittest.TestCase):

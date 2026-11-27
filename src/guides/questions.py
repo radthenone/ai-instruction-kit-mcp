@@ -92,7 +92,7 @@ def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
             "Nie pytaj o nią w wywiadzie — brak sekcji to `guard: auto` i lista kita. Zapisz "
             "ją w `.ai/project.profile.yaml` tylko na życzenie użytkownika: `guard: auto` albo "
             "`off`, `deny` / `allow` jako listy dosłownych wywołań (allow projektu > deny projektu). "
-            "Schemat i propozycje: README „Server guard (VPS)”.",
+            "Schemat i propozycje: dokumentacja kita „Server guard” (https://github.com/radthenone/ai-instruction-kit-mcp/blob/dev/website/docs/hosty/server-guard.md).",
             "",
             "## Sekcja `worktree:` (Managed Worktree)",
             "",
@@ -100,7 +100,7 @@ def render_catalog(manifest: Manifest, values: dict[str, str]) -> str:
             "domyślne kopiowanie plików maszynowych (.env, konfiguracje MCP) i automatyczny overlay venv. "
             "Zapisz ją w `.ai/project.profile.yaml` tylko na życzenie użytkownika: `copy` (dodatkowe pliki), "
             "`link` (zasoby tylko do odczytu), `setup` (komendy po utworzeniu), `venv` (`auto` | `overlay` | `none`). "
-            "Szczegóły: README „Git worktree (.ai/worktree.mjs)”.",
+            "Szczegóły: dokumentacja kita „Managed Worktree” (https://github.com/radthenone/ai-instruction-kit-mcp/blob/dev/website/docs/koncepcja/managed-worktree.md).",
             "",
             "## Układ katalogów",
             "",

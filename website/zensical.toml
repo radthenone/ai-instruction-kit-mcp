@@ -1,0 +1,87 @@
+# Strona dokumentacji kita (Zensical). Treść: docs/, wygląd: docs/stylesheets/kit.css.
+# Ten katalog nie jest źródłem żadnej kopii w projektach — kopiowanie idzie z templates/.
+[project]
+site_name = "kit-ai"
+site_description = "instruction-kit: reguły pracy z agentami AI w repo i serwer MCP kit-ai-mcp"
+site_url = "https://radthenone.github.io/ai-instruction-kit-mcp/"
+extra_css = ["stylesheets/kit.css"]
+nav = [
+  { "Start" = [
+    "index.md",
+    "start/szybki-start.md",
+    "start/instalacja.md",
+    "start/pierwsza-konfiguracja.md",
+    "start/aktualizacja.md",
+    "start/narzedzia-zewnetrzne.md",
+  ] },
+  { "Koncepcja" = [
+    "koncepcja/jak-dziala-kit.md",
+    "koncepcja/warstwy-ai.md",
+    "koncepcja/przeplyw-zmiany.md",
+    "koncepcja/managed-worktree.md",
+    "koncepcja/glosariusz.md",
+    "koncepcja/decyzje-adr.md",
+  ] },
+  { "Konfiguracja" = [
+    "konfiguracja/profil.md",
+    "konfiguracja/tiery-i-stacki.md",
+    "konfiguracja/overlay.md",
+    "konfiguracja/moduly-i-bundle.md",
+    "konfiguracja/sloty-i-decyzje.md",
+    "konfiguracja/klienci.md",
+    "konfiguracja/jezyk-i-codegen.md",
+    "konfiguracja/modele-agentow.md",
+    "konfiguracja/pliki-w-projekcie.md",
+  ] },
+  { "Hosty" = [
+    "hosty/profil-hosta.md",
+    "hosty/windows.md",
+    "hosty/linux-vps.md",
+    "hosty/server-guard.md",
+  ] },
+  { "Komendy" = [
+    "komendy/przeglad.md",
+    "komendy/git.md",
+    "komendy/review.md",
+    "komendy/zadania-i-konfiguracja.md",
+    "komendy/praca-nocna-i-headless.md",
+    "komendy/nauka-subagenty-narzedzia.md",
+  ] },
+  { "MCP" = [
+    "mcp/narzedzia.md",
+    "mcp/konfiguracja-serwera.md",
+  ] },
+  { "Guardy" = [
+    "guardy/przeglad.md",
+    "guardy/pozostale.md",
+  ] },
+  { "Diagnostyka" = [
+    "diagnostyka/doctor.md",
+    "diagnostyka/retro.md",
+    "diagnostyka/rozwiazywanie-problemow.md",
+    "diagnostyka/faq.md",
+  ] },
+  { "Dla autorów kita" = [
+    "autorzy/architektura.md",
+    "autorzy/dodawanie-modulu-i-agenta.md",
+    "autorzy/testy-i-ci.md",
+  ] },
+]
+
+[project.theme]
+language = "pl"
+features = [
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "content.code.copy",
+  "content.tabs.link",
+  "search.highlight",
+  "toc.follow",
+]
+
+# Jedna paleta, ciemna. Kolory i okna kodu w docs/stylesheets/kit.css.
+[[project.theme.palette]]
+scheme = "slate"
+primary = "custom"
+accent = "custom"
