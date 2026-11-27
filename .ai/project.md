@@ -21,8 +21,9 @@ Brak — repo nie ma pary backend + klient. Źródło prawdy: `codegen:` w
 
 ## Komendy
 
-- Testy: `uv run python -m unittest discover -s tests` (pełna suita ~15–20 min przez suity bash)
+- Testy lokalne i dla review: `uv run --no-sync python scripts/test_changed.py` + konkretne moduły `uv run python -m unittest tests.<moduł>`
 - Szybko: `uv run python -m unittest tests.test_resolver tests.test_manifest_mappings tests.test_mcp_compat`
+- Pełna suita: **NIE uruchamiać `unittest discover -s tests` lokalnie ani podczas review** (trwa ~15–20 min przez suity bash — pełną suitę weryfikuje wyłącznie CI na PR).
 
 Brak Taskfile i Dockera.
 

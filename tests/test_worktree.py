@@ -838,9 +838,9 @@ class TestOrcaWorktreeConfig(unittest.TestCase):
     """Testy konfiguracji orca.yaml dla worktree w Orce (#450)."""
 
     def test_orca_yaml_runs_worktree_sync(self) -> None:
-        """orca.yaml istnieje w korzeniu repo i wywołuje sync (bez add, ADR-0014)."""
-        orca_yaml = KIT_ROOT / "orca.yaml"
-        self.assertTrue(orca_yaml.is_file(), "Brak pliku orca.yaml w korzeniu repozytorium")
+        """Szablon templates/orca.yaml istnieje i wywołuje sync (bez add, ADR-0014)."""
+        orca_yaml = KIT_ROOT / "templates" / "orca.yaml"
+        self.assertTrue(orca_yaml.is_file(), "Brak szablonu templates/orca.yaml w repozytorium")
 
         content = yaml.safe_load(orca_yaml.read_text(encoding="utf-8"))
         self.assertIsInstance(content, dict)
