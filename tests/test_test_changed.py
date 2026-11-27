@@ -5,15 +5,12 @@ Issue #419.
 
 from __future__ import annotations
 
-import io
-import os
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest import mock
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT_ROOT / "scripts"))
@@ -48,7 +45,6 @@ class TestTestChangedContract(unittest.TestCase):
             self.assertIn(core_mod, selected)
         self.assertTrue(any("server_guard" in r for r in reasons))
 
-        # Sprawdzenie wywołania CLI --dry-run
         proc = subprocess.run(
             [sys.executable, str(KIT_ROOT / "scripts" / "test_changed.py"), "--dry-run", "src/guides/server_guard.py"],
             cwd=str(KIT_ROOT),
@@ -60,6 +56,21 @@ class TestTestChangedContract(unittest.TestCase):
         self.assertIn("test_guards", proc.stdout)
         self.assertIn("test_resolver", proc.stdout)
 
+    def test_bootstrap_maps_all_split_modules(self) -> None:
+        """Zmiana w ``src/guides/bootstrap.py`` wybiera wszystkie podzielone moduły ``test_bootstrap*``."""
+        selected, is_all, _ = test_changed.resolve_test_targets(
+            ["src/guides/bootstrap.py"], root=KIT_ROOT
+        )
+        self.assertFalse(is_all)
+        for mod in (
+            "test_bootstrap",
+            "test_bootstrap_agents",
+            "test_bootstrap_core",
+            "test_bootstrap_docs",
+            "test_bootstrap_integrations",
+        ):
+            self.assertIn(mod, selected)
+
     def test_mapping_for_templates_and_scripts(self) -> None:
         """
         Mapa wybiera oczekiwane moduły dla:
@@ -69,36 +80,32 @@ class TestTestChangedContract(unittest.TestCase):
         - LICENSE (sam rdzeń)
         - pliku bez trafień grep (ostrzeżenie + --all)
         """
-        # 1. templates/shared/guards/server-guard.mjs
         mods_guards, is_all_guards, _ = test_changed.resolve_test_targets(
             ["templates/shared/guards/server-guard.mjs"], root=KIT_ROOT
         )
         self.assertFalse(is_all_guards)
         self.assertIn("test_guards", mods_guards)
 
-        # 2. scripts/bootstrap-project.sh
         mods_boot, is_all_boot, _ = test_changed.resolve_test_targets(
             ["scripts/bootstrap-project.sh"], root=KIT_ROOT
         )
         self.assertFalse(is_all_boot)
-        self.assertTrue("test_bootstrap" in mods_boot or "test_bootstrap_clients.sh" in mods_boot)
+        self.assertIn("test_bootstrap", mods_boot)
+        self.assertIn("test_bootstrap_core", mods_boot)
+        self.assertIn("test_bootstrap_clients.sh", mods_boot)
 
-        # 3. README.md -> fallback grep, bez --all
         mods_readme, is_all_readme, _ = test_changed.resolve_test_targets(
             ["README.md"], root=KIT_ROOT
         )
         self.assertFalse(is_all_readme)
         self.assertTrue(len(mods_readme) > len(test_changed.FAST_CORE))
 
-        # 4. LICENSE -> sam rdzeń
         mods_license, is_all_license, _ = test_changed.resolve_test_targets(
             ["LICENSE"], root=KIT_ROOT
         )
         self.assertFalse(is_all_license)
         self.assertEqual(set(mods_license), set(test_changed.FAST_CORE))
 
-        # 5. Plik bez trafień grep -> ostrzeżenie + --all
-        # Nazwa dynamiczna zapobiega trafieniu literału w tests/test_test_changed.py
         dummy_name = f"unmatched_file_{int(time.time() * 1000)}.xyz"
         mods_unknown, is_all_unknown, reasons_unknown = test_changed.resolve_test_targets(
             [dummy_name], root=KIT_ROOT
@@ -139,7 +146,6 @@ class TestTestChangedContract(unittest.TestCase):
         self.assertFalse(is_all)
         self.assertEqual(selected, list(test_changed.FAST_CORE))
 
-        # Brakujący plik nietestowy w tests/ nie jest traktowany jako usunięty plik testu
         mods_helper, reason_helper = test_changed.resolve_modules_for_file("tests/_nonexistent_fixture.py", root=KIT_ROOT)
         self.assertNotIn("usunięty plik testu", reason_helper)
 
@@ -155,7 +161,6 @@ class TestTestChangedContract(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmp_dir:
             log_path = Path(tmp_dir) / "test.log"
-            # Skrypt który wypisuje linię a potem śpi w nieskończoność
             sleep_code = "import sys, time; sys.stdout.write('test_frozen_start\\n'); sys.stdout.flush(); time.sleep(60)"
             cmd = [sys.executable, "-c", sleep_code]
 
