@@ -331,6 +331,18 @@ class TestRemove(unittest.TestCase):
             self.assertFalse((workspace / CODING_STANDARDS_REL).exists())
             self.assertEqual(_read(workspace / "AGENTS.md"), "# App\n\nReguły projektu.\n")
 
+    def test_removes_pristine_index_rendered_before_server_rename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = _workspace(tmp)
+            sync(workspace, KIT_ROOT)
+            standards = workspace / CODING_STANDARDS_REL
+            legacy = _read(standards).replace("MCP `kit-ai-mcp`", "MCP `project-guides`")
+            standards.write_text(legacy, encoding="utf-8", newline="\n")
+
+            remove(workspace, KIT_ROOT)
+
+            self.assertFalse(standards.exists())
+
 
 class TestReviewAgents(unittest.TestCase):
     """`/review-*` biorą źródła standardów z jednego indeksu, nie z wyliczanki w każdym agencie."""

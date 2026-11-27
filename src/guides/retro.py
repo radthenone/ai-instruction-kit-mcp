@@ -27,7 +27,8 @@ SCHEMA_VERSION = 1
 KEY_LIMIT = 200
 EVIDENCE_LIMIT = 240
 REPEAT_THRESHOLD = 3
-OVERLAY_TOOL = "mcp__kit-ai-mcp__get_overlay"
+# Druga nazwa to serwer sprzed zmiany nazwy (#576): starsze zapisy sesji też się liczą.
+OVERLAY_TOOLS = frozenset({"mcp__kit-ai-mcp__get_overlay", "mcp__project-guides__get_overlay"})
 EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 KIT_CODE_PATH = re.compile(r"(?:^|/)(?:src|tests|templates|modules)/")
 
@@ -250,7 +251,7 @@ def _on_tool_use(block: dict, scan: _Scan, state: _FileState) -> None:
     tool_input = raw_input if isinstance(raw_input, dict) else {}
     if tool_id:
         scan.tool_uses[tool_id] = (name, tool_input)
-    if name == OVERLAY_TOOL:
+    if name in OVERLAY_TOOLS:
         state.overlay_seen = True
     path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
     if name in EDIT_TOOLS and path and KIT_CODE_PATH.search(path) and not state.overlay_seen:

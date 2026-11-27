@@ -548,8 +548,8 @@ def merge_toml(old_text: str) -> str:
     kit_block = new_lines[s:e]
     old_lines = old_text.splitlines(keepends=True)
     for legacy in LEGACY_KIT_SERVERS:
-        legacy_span = toml_kit_span(old_lines, legacy)
-        if legacy_span:
+        # Do skutku: podtabela legacy oddzielona cudzą tabelą to osobny zakres.
+        while legacy_span := toml_kit_span(old_lines, legacy):
             old_lines = old_lines[: legacy_span[0]] + old_lines[legacy_span[1] :]
     span = toml_kit_span(old_lines)
     if span is None:
@@ -1405,8 +1405,8 @@ install_plugins() {
        /plugin marketplace add obra/superpowers-marketplace
        /plugin install superpowers@superpowers-marketplace
   -> Autopilot (Cursor) — ręcznie w Cursor: Settings → Extensions/Skills → Autopilot.
-  Te trzy to zewnętrzne ekosystemy pluginów (Claude/Cursor), nie ten kit — zob. README
-  "Skills / pluginy zewnętrzne".
+  Te trzy to zewnętrzne ekosystemy pluginów (Claude/Cursor), nie ten kit — zob. dokumentację kita
+  „Narzędzia zewnętrzne”.
 EOF
 }
 

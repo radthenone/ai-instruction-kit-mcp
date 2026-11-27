@@ -399,7 +399,10 @@ def remove(workspace: Path, kit_root: Path) -> list[Change]:
 
     standards = workspace / CODING_STANDARDS_REL
     if standards.is_file():
-        if _read(standards) == coding_standards(workspace):
+        rendered = coding_standards(workspace)
+        # Render sprzed zmiany nazwy serwera (#576) też jest nietknięty.
+        legacy = rendered.replace("MCP `kit-ai-mcp`", "MCP `project-guides`")
+        if _read(standards) in (rendered, legacy):
             standards.unlink()
             changes.append(Change(CODING_STANDARDS_REL, "removed"))
         else:

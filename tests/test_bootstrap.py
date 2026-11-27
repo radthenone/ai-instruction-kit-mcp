@@ -547,7 +547,12 @@ class TestUserConfigMerge(_BootstrapTestCase):
             workspace.mkdir()
             self._run(workspace, "codex")
             path = workspace / ".codex" / "config.toml"
-            legacy = '\n[mcp_servers.project-guides]\ncommand = "old"\n'
+            # Podtabela legacy oddzielona cudzą tabelą to drugi zakres do usunięcia.
+            legacy = (
+                '\n[mcp_servers.project-guides]\ncommand = "old"\n'
+                '\n[mcp_servers.mine]\ncommand = "x"\n'
+                '\n[mcp_servers.project-guides.env]\nKEY = "old"\n'
+            )
             path.write_text(path.read_text(encoding="utf-8") + legacy, encoding="utf-8")
 
             self._run(workspace, "codex")
@@ -555,6 +560,7 @@ class TestUserConfigMerge(_BootstrapTestCase):
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("project-guides", text)
             self.assertNotIn('"old"', text)
+            self.assertIn('[mcp_servers.mine]\ncommand = "x"\n', text)
             self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
 
     def test_unchanged_config_is_not_rewritten(self) -> None:

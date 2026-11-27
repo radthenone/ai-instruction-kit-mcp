@@ -203,6 +203,13 @@ class SignalTests(unittest.TestCase):
         )
         self.assertNotIn("mcp_compliance", self._kinds(parsed))
 
+    def test_overlay_read_under_legacy_server_name_clears_mcp_compliance(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t0", "mcp__project-guides__get_overlay", {})),
+            _assistant("m2", _tool_use("t1", "Edit", {"file_path": "src/guides/x.py"})),
+        )
+        self.assertNotIn("mcp_compliance", self._kinds(parsed))
+
     def test_edit_outside_kit_code_paths_is_not_flagged(self) -> None:
         parsed = self._parse(_assistant("m1", _tool_use("t1", "Edit", {"file_path": "docs/adr/0016.md"})))
         self.assertNotIn("mcp_compliance", self._kinds(parsed))
