@@ -16,6 +16,12 @@ if [[ -f Taskfile.yml ]] || [[ -f taskfile.yml ]]; then
       task test:backend-local-unit 2>/dev/null || task test:backend-local 2>/dev/null || true
     fi
   fi
+elif [[ -f scripts/test_changed.py ]] && command -v uv >/dev/null 2>&1; then
+  echo "pre-push: uv run --no-sync python scripts/test_changed.py"
+  uv run --no-sync python scripts/test_changed.py
+elif [[ -f scripts/test_changed.py ]] && command -v python3 >/dev/null 2>&1; then
+  echo "pre-push: python3 scripts/test_changed.py"
+  python3 scripts/test_changed.py
 elif [[ -d tests ]] && command -v python3 >/dev/null 2>&1; then
   echo "pre-push: python -m unittest discover -s tests"
   python3 -m unittest discover -s tests -q
