@@ -185,7 +185,7 @@ class SignalTests(unittest.TestCase):
         sub3_path = _write_jsonl(
             self.root / SESSION / "subagents" / "agent-3.jsonl",
             [
-                _assistant("s3_1", _tool_use("t3_1", "mcp__project-guides__get_overlay", {})),
+                _assistant("s3_1", _tool_use("t3_1", "mcp__kit-ai-mcp__get_overlay", {})),
                 _assistant("s3_2", _tool_use("t3_2", "Edit", {"file_path": "src/guides/z.py"})),
             ],
         )
@@ -197,6 +197,13 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(len(fingerprints), 2)
 
     def test_overlay_read_before_edit_clears_mcp_compliance(self) -> None:
+        parsed = self._parse(
+            _assistant("m1", _tool_use("t0", "mcp__kit-ai-mcp__get_overlay", {})),
+            _assistant("m2", _tool_use("t1", "Edit", {"file_path": "src/guides/x.py"})),
+        )
+        self.assertNotIn("mcp_compliance", self._kinds(parsed))
+
+    def test_overlay_read_under_legacy_server_name_clears_mcp_compliance(self) -> None:
         parsed = self._parse(
             _assistant("m1", _tool_use("t0", "mcp__project-guides__get_overlay", {})),
             _assistant("m2", _tool_use("t1", "Edit", {"file_path": "src/guides/x.py"})),
@@ -270,7 +277,7 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(len(keys), 2)
 
     def test_guard_deny_on_mcp_tool_with_hyphen_is_recognized(self) -> None:
-        deny = "PreToolUse:mcp__project-guides__get_bundle hook error: server-guard: zablokowane"
+        deny = "PreToolUse:mcp__kit-ai-mcp__get_bundle hook error: server-guard: zablokowane"
         parsed = self._parse(_tool_result("t1", deny, is_error=True))
         self.assertEqual(self._kinds(parsed), ["guard_deny"])
 
@@ -646,7 +653,7 @@ class HelperTests(unittest.TestCase):
             ).stdout.strip()
             work = Path(tmp) / "repo"
             work.mkdir()
-            config = {"mcpServers": {"project-guides": {"command": "uv", "args": ["run", "--kit-root", str(kit)]}}}
+            config = {"mcpServers": {"kit-ai-mcp": {"command": "uv", "args": ["run", "--kit-root", str(kit)]}}}
             (work / ".mcp.json").write_text(json.dumps(config), encoding="utf-8")
             self.assertEqual(retro.kit_sha(work), expected)
 
@@ -654,7 +661,7 @@ class HelperTests(unittest.TestCase):
     def test_kit_sha_prefers_ref_pinned_in_uvx_from(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = "git+https://github.com/o/ai-instruction-kit-mcp.git@v1.2.3"
-            config = {"mcpServers": {"project-guides": {"command": "uvx", "args": ["--from", source, "guides-mcp"]}}}
+            config = {"mcpServers": {"kit-ai-mcp": {"command": "uvx", "args": ["--from", source, "guides-mcp"]}}}
             (Path(tmp) / ".mcp.json").write_text(json.dumps(config), encoding="utf-8")
             self.assertEqual(retro.kit_sha(Path(tmp)), "v1.2.3")
 

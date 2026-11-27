@@ -55,7 +55,7 @@ _STATIC_INSTRUCTIONS = (
     "jedyne narzędzia zapisujące, domyślnie dry_run=True."
 )
 
-mcp = FastMCP("project-guides", instructions=_STATIC_INSTRUCTIONS)
+mcp = FastMCP("kit-ai-mcp", instructions=_STATIC_INSTRUCTIONS)
 
 _kit_root: Path | None = None
 _workspace_root: Path | None = None
@@ -95,7 +95,7 @@ def build_instructions(resolved: ResolvedProfile) -> str:
     current_host = get_host_profile()
     return "\n".join(
         [
-            f"# project-guides — {resolved.name}",
+            f"# kit-ai-mcp — {resolved.name}",
             "",
             resolved.project_brief.strip(),
             "",

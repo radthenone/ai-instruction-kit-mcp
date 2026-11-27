@@ -4,7 +4,7 @@
 
 | Zadanie | Źródło |
 |---------|--------|
-| Backend / frontend / arch / infra | MCP `project-guides` → `get_bundle` |
+| Backend / frontend / arch / infra | MCP `kit-ai-mcp` → `get_bundle` |
 | Porty, Taskfile, Docker | MCP `get_overlay` / `.ai/project.md` |
 | codegen | MCP `get_codegen` / `codegen:` w `.ai/project.profile.yaml` |
 | Docs bibliotek | Context7 (user MCP) |

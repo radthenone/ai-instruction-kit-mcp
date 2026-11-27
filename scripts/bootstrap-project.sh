@@ -481,9 +481,11 @@ if Path(from_src).is_dir():
 
 # Istniejący plik należy do użytkownika (własne serwery, modele, providerzy) i jest
 # w .gitignore, więc nadpisanie go ginie bez śladu. Podmieniamy tylko wpis kita
-# `project-guides`, resztę zostawiamy. Pliku, którego nie umiemy sparsować (JSONC
+# `kit-ai-mcp`, resztę zostawiamy. Pliku, którego nie umiemy sparsować (JSONC
 # z komentarzami, uszkodzony JSON/TOML), nie scalamy: oryginał idzie do `.bak`.
-KIT_SERVER = "project-guides"
+KIT_SERVER = "kit-ai-mcp"
+# Nazwa sprzed zmiany; przy scalaniu ją usuwamy, inaczej zostają dwa wpisy kita.
+LEGACY_KIT_SERVERS = ("project-guides",)
 
 
 def merge_json(old_text: str) -> str:
@@ -496,25 +498,69 @@ def merge_json(old_text: str) -> str:
     for k, v in new.items():
         if k != key:
             merged.setdefault(k, v)
-    merged.setdefault(key, {})[KIT_SERVER] = new[key][KIT_SERVER]
+    servers = merged.setdefault(key, {})
+    for legacy in LEGACY_KIT_SERVERS:
+        servers.pop(legacy, None)
+    servers[KIT_SERVER] = new[key][KIT_SERVER]
     if merged == old:
         return old_text
     return json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
 
 
 TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+TOML_KEY = re.compile(r'"(?:[^"\\]|\\.)*"|' + r"'[^']*'|[^.\s]+")
 
 
-def toml_kit_span(lines: list[str]) -> tuple[int, int] | None:
-    """Zakres linii tabeli `[mcp_servers.project-guides]` (z podtabelami) albo None."""
+def toml_open_quote(line: str, quote: str | None) -> str | None:
+    """Ogranicznik ciągu wielowierszowego otwartego po tej linii albo None.
+
+    Skanuje linię jak lekser TOML: `#` poza ciągiem kończy linię (komentarz),
+    zwykłe ciągi w cudzysłowach są pomijane, a ogranicznik poprzedzony backslashem
+    w ciągu podstawowym nie zamyka go.
+    """
+    i = 0
+    while i < len(line):
+        if quote:
+            j = line.find(quote, i)
+            if j < 0:
+                return quote
+            slashes = len(line[i:j]) - len(line[i:j].rstrip("\\"))
+            if quote == '"""' and slashes % 2 == 1:  # nieparzyste \ przed """ = escape
+                i = j + 1
+                continue
+            # Zamknięcie może mieć 3–5 cudzysłowów: dodatkowe (max 2) należą do wartości.
+            run = len(line[j:]) - len(line[j:].lstrip(quote[0]))
+            i, quote = j + min(run, 5), None
+            continue
+        c = line[i]
+        if c == "#":
+            return None
+        if line.startswith('"""', i) or line.startswith("'''", i):
+            quote, i = line[i:i + 3], i + 3
+            continue
+        if c in "\"'":
+            j = i + 1
+            while j < len(line) and line[j] != c:
+                j += 2 if c == '"' and line[j] == "\\" else 1
+            i = j + 1
+            continue
+        i += 1
+    return quote
+
+
+def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int] | None:
+    """Zakres linii tabeli `[mcp_servers.<server>]` (z podtabelami) albo None."""
     start = None
     end = len(lines)
+    quote = None  # otwarty ciąg wielowierszowy: nagłówek w jego treści to dane, nie tabela
     for i, line in enumerate(lines):
-        m = TOML_HEADER.match(line)
+        m = TOML_HEADER.match(line) if quote is None else None
+        quote = toml_open_quote(line, quote)
         if not m:
             continue
-        name = re.sub(r"""\s*\.\s*""", ".", m.group(1)).replace('"', "").replace("'", "")
-        is_kit = name == f"mcp_servers.{KIT_SERVER}" or name.startswith(f"mcp_servers.{KIT_SERVER}.")
+        # Klucze z kropkami dzielone z poszanowaniem cudzysłowów: `"project-guides.helper"` to jeden klucz.
+        keys = [k[1:-1] if k[:1] in "\"'" else k for k in TOML_KEY.findall(m.group(1))]
+        is_kit = keys[:2] == ["mcp_servers", server]
         if start is None and is_kit:
             start = i
         elif start is not None and not is_kit:
@@ -542,6 +588,10 @@ def merge_toml(old_text: str) -> str:
     s, e = toml_kit_span(new_lines)
     kit_block = new_lines[s:e]
     old_lines = old_text.splitlines(keepends=True)
+    for legacy in LEGACY_KIT_SERVERS:
+        # Do skutku: podtabela legacy oddzielona cudzą tabelą to osobny zakres.
+        while legacy_span := toml_kit_span(old_lines, legacy):
+            old_lines = old_lines[: legacy_span[0]] + old_lines[legacy_span[1] :]
     span = toml_kit_span(old_lines)
     if span is None:
         if old_lines and not old_lines[-1].endswith("\n"):
@@ -552,7 +602,16 @@ def merge_toml(old_text: str) -> str:
         merged = old_lines[: span[0]] + kit_block + old_lines[span[1] :]
     result = "".join(merged)
     if tomllib:
-        tomllib.loads(result)
+        # Bezpiecznik niezależny od skanera linii: poza wpisami kita (nowym i legacy)
+        # dane muszą zostać identyczne. Inaczej błąd -> oryginał do .bak, bez cichej utraty.
+        def foreign(data: dict) -> dict:
+            servers = dict(data.get("mcp_servers", {}))
+            for name in (KIT_SERVER, *LEGACY_KIT_SERVERS):
+                servers.pop(name, None)
+            return {**data, "mcp_servers": servers}
+
+        if foreign(tomllib.loads(old_text)) != foreign(tomllib.loads(result)):
+            raise ValueError("scalanie zmieniłoby wpisy spoza kita")
     return result
 
 
@@ -1396,8 +1455,8 @@ install_plugins() {
        /plugin marketplace add obra/superpowers-marketplace
        /plugin install superpowers@superpowers-marketplace
   -> Autopilot (Cursor) — ręcznie w Cursor: Settings → Extensions/Skills → Autopilot.
-  Te trzy to zewnętrzne ekosystemy pluginów (Claude/Cursor), nie ten kit — zob. README
-  "Skills / pluginy zewnętrzne".
+  Te trzy to zewnętrzne ekosystemy pluginów (Claude/Cursor), nie ten kit — zob. dokumentację kita
+  „Narzędzia zewnętrzne”.
 EOF
 }
 

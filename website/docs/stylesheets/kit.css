@@ -1,0 +1,175 @@
+/* kit-ai: szarość przechodząca w czerń. Akcenty: zielony (tekst, linki, H2) i pomarańczowy (H1, aktywna pozycja). */
+
+:root {
+  --kit-green: #4ade80;
+  --kit-orange: #fb923c;
+  --kit-ink: #e5e7eb;
+  --kit-muted: #9ca3af;
+  --kit-window: #0b0d10;
+  --kit-window-bar: #1a1d22;
+  --kit-line: #2a2f36;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--kit-green);
+  --md-primary-fg-color--light: #86efac;
+  --md-primary-fg-color--dark: #16a34a;
+  --md-accent-fg-color: var(--kit-orange);
+  --md-accent-fg-color--transparent: rgba(251, 146, 60, 0.12);
+  --md-default-bg-color: #101216;
+  --md-default-fg-color: var(--kit-ink);
+  --md-default-fg-color--light: var(--kit-muted);
+  --md-code-bg-color: var(--kit-window);
+  --md-code-fg-color: var(--kit-ink);
+}
+
+/* Tło strony: szarość u góry, w dół coraz ciemniej, aż do czerni. */
+[data-md-color-scheme="slate"] .md-main {
+  background: linear-gradient(180deg, #23272e 0%, #111317 38%, #050506 100%);
+}
+
+/* Nagłówki i linki. */
+.md-typeset h1 {
+  color: var(--kit-orange);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.md-typeset h2,
+.md-typeset h3 {
+  color: var(--kit-green);
+}
+.md-typeset a {
+  color: var(--kit-green);
+}
+.md-typeset a:hover {
+  color: var(--kit-orange);
+}
+.md-typeset table:not([class]) th {
+  color: var(--kit-green);
+}
+.md-nav__link--active {
+  color: var(--kit-orange) !important;
+}
+.md-typeset .tabbed-labels > label.tabbed-selected {
+  color: var(--kit-orange);
+}
+.md-typeset .admonition,
+.md-typeset details {
+  border-color: var(--kit-orange);
+  border-radius: 12px;
+  background-color: rgba(251, 146, 60, 0.06);
+}
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background-color: rgba(251, 146, 60, 0.12);
+}
+.md-typeset .admonition-title::before,
+.md-typeset summary::before {
+  background-color: var(--kit-orange);
+}
+
+/* Kod w linii. */
+.md-typeset :not(pre) > code {
+  color: var(--kit-green);
+  background: rgba(74, 222, 128, 0.08);
+  border-radius: 6px;
+}
+
+/* Bloki kodu jako okna: pasek tytułu, trzy kropki, tytuł z title="...". */
+.md-typeset .highlight {
+  position: relative;
+  margin: 1.2em 0;
+  padding-top: 2.4rem;
+  border: 1px solid var(--kit-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--kit-window);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.8);
+}
+.md-typeset .highlight::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2.4rem;
+  background: var(--kit-window-bar);
+  border-bottom: 1px solid var(--kit-line);
+}
+.md-typeset .highlight::after {
+  content: "";
+  position: absolute;
+  top: 0.9rem;
+  left: 1rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--kit-orange);
+  box-shadow: 1rem 0 0 #3f4650, 2rem 0 0 #3f4650;
+}
+.md-typeset .highlight .filename {
+  position: absolute;
+  top: 0.7rem;
+  left: 4.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--kit-muted);
+}
+.md-typeset .highlight pre {
+  margin: 0;
+}
+
+/* Strona główna. */
+.kit-hero {
+  max-width: 46rem;
+  padding: 2.5rem 0 1.5rem;
+}
+.kit-eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--kit-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.kit-hero h1 {
+  margin: 0 0 0.6rem;
+  font-size: 3.6rem;
+}
+.kit-lead {
+  margin: 0 0 1.5rem;
+  color: var(--kit-ink);
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+.kit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.kit-btn {
+  display: inline-block;
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--kit-green);
+  border-radius: 999px;
+  color: var(--kit-green) !important;
+  font-weight: 600;
+  text-decoration: none;
+}
+.kit-btn:hover {
+  border-color: var(--kit-orange);
+  color: var(--kit-orange) !important;
+}
+.kit-btn--primary {
+  background: var(--kit-green);
+  color: #052e16 !important;
+}
+.kit-btn--primary:hover {
+  background: var(--kit-orange);
+  color: #431407 !important;
+}
+.md-typeset .kit-btn {
+  text-decoration: none;
+}
