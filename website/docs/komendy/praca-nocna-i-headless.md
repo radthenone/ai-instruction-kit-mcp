@@ -86,7 +86,7 @@ Jawny `--timeout` to twardy limit bez przedłużania. Limit dotyczy jednej prób
 
 ### Pętla
 
-Gdy to samo wywołanie narzędzia powtarza się 5 razy przy niezmienionym repo, wrapper zabija drzewo procesów przed limitem. Raport dostaje wpis `## pętla: <N>× <linia>`.
+Gdy to samo wywołanie narzędzia powtarza się 5 razy przy niezmienionym repo, wrapper zabija drzewo procesów przed limitem. Raport dostaje wpis `## pętla: <N>× <linia>`. Nie dotyczy wykonawcy `claude`: `claude -p` drukuje tylko finalny tekst, bez wywołań narzędzi, więc wykrywanie pętli jest dla niego wyłączone, a próba trwa do terminu albo `--timeout`.
 
 ### Klasy wyniku
 
