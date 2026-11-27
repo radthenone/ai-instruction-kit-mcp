@@ -176,6 +176,8 @@ class TestCodeRabbitReviewThreads(unittest.TestCase):
             self.assertIn("Wyzwalacz review bota", text)
         self.assertIn("`@coderabbitai full review`", t3)
         self.assertIn("`Review rate limited` to pauza, nie brak review", t3)
+        self.assertIn("Limit mierzy orkiestrator od odpowiedzi `Review triggered.`", t3)
+        self.assertNotIn("Limit mierzy orkiestrator od wejścia w czekanie.", t3)
 
 
 if __name__ == "__main__":
