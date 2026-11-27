@@ -595,6 +595,23 @@ class TestUserConfigMerge(_BootstrapTestCase):
             self.assertNotIn("project-guides", text)
             self.assertIn(mine, text)
 
+    def test_codex_toml_escaped_backslash_closes_multiline_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # `\\` przed `"""` to jeden ukośnik w wartości, więc ogranicznik zamyka ciąg.
+            legacy = '\n[mcp_servers.project-guides]\ncommand = """path\\\\"""\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertIn(mine, text)
+
     def test_codex_toml_keeps_quoted_server_with_legacy_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"

@@ -524,7 +524,8 @@ def toml_open_quote(line: str, quote: str | None) -> str | None:
             j = line.find(quote, i)
             if j < 0:
                 return quote
-            if quote == '"""' and line[j - 1:j] == "\\":
+            slashes = len(line[i:j]) - len(line[i:j].rstrip("\\"))
+            if quote == '"""' and slashes % 2 == 1:  # nieparzyste \ przed """ = escape
                 i = j + 1
                 continue
             i, quote = j + 3, None
