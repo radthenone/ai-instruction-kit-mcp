@@ -528,7 +528,9 @@ def toml_open_quote(line: str, quote: str | None) -> str | None:
             if quote == '"""' and slashes % 2 == 1:  # nieparzyste \ przed """ = escape
                 i = j + 1
                 continue
-            i, quote = j + 3, None
+            # Zamknięcie może mieć 3–5 cudzysłowów: dodatkowe (max 2) należą do wartości.
+            run = len(line[j:]) - len(line[j:].lstrip(quote[0]))
+            i, quote = j + min(run, 5), None
             continue
         c = line[i]
         if c == "#":
@@ -600,7 +602,16 @@ def merge_toml(old_text: str) -> str:
         merged = old_lines[: span[0]] + kit_block + old_lines[span[1] :]
     result = "".join(merged)
     if tomllib:
-        tomllib.loads(result)
+        # Bezpiecznik niezależny od skanera linii: poza wpisami kita (nowym i legacy)
+        # dane muszą zostać identyczne. Inaczej błąd -> oryginał do .bak, bez cichej utraty.
+        def foreign(data: dict) -> dict:
+            servers = dict(data.get("mcp_servers", {}))
+            for name in (KIT_SERVER, *LEGACY_KIT_SERVERS):
+                servers.pop(name, None)
+            return {**data, "mcp_servers": servers}
+
+        if foreign(tomllib.loads(old_text)) != foreign(tomllib.loads(result)):
+            raise ValueError("scalanie zmieniłoby wpisy spoza kita")
     return result
 
 

@@ -612,6 +612,42 @@ class TestUserConfigMerge(_BootstrapTestCase):
             self.assertNotIn("project-guides", text)
             self.assertIn(mine, text)
 
+    def test_codex_toml_extra_closing_quotes_end_multiline_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # `""""` = cudzysłów w wartości + ogranicznik zamykający.
+            legacy = '\n[mcp_servers.project-guides]\nargs = ["""old"""", """next"""]\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertIn(mine, text)
+
+    def test_codex_toml_unsafe_merge_falls_back_to_bak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            # Wiersz `[1, 2]` w wielowierszowej tablicy wygląda jak nagłówek tabeli. Skaner liniowy
+            # ucina tabelę legacy w złym miejscu; bezpiecznik ma odłożyć oryginał, nie zgubić `mine`.
+            legacy = '\n[mcp_servers.project-guides]\nargs = [\n  [1, 2]\n]\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            original = path.read_text(encoding="utf-8") + legacy + mine
+            path.write_text(original, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            backup = workspace / ".codex" / "config.toml.bak"
+            self.assertTrue(backup.is_file())
+            self.assertIn(mine, backup.read_text(encoding="utf-8"))
+
     def test_codex_toml_keeps_quoted_server_with_legacy_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
