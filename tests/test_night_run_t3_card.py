@@ -383,7 +383,7 @@ class TestNightRunT3CardContract(unittest.TestCase):
     def test_null_review_decision_follows_git_end_by_round(self) -> None:
         """#542, #546: limit mierzy orkiestrator, po nim decyzja wg git-end; runda 1 odnotowuje brak review, R ≥ 1 (w tym R = 6) → needs-human."""
         card = " ".join(self.card_text.split())
-        self.assertIn("Limit mierzy orkiestrator od wejścia w czekanie", card)
+        self.assertIn("Limit mierzy orkiestrator od odpowiedzi `Review triggered.` (bez triggera: od wejścia w czekanie)", card)
         self.assertIn("Po upływie limitu nie czekasz dalej i podejmujesz decyzję od razu", card)
         self.assertIn("runda 1 (R = 0): bez otwartych wątków bota odnotuj brak review bota w raporcie i przejdź dalej", card)
         self.assertIn("kolejne rundy (R ≥ 1, w tym R = 6)", card)
