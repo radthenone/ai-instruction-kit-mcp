@@ -75,6 +75,7 @@ gh api graphql -f id=<threadId> -f query='
 mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'
 ```
 
+- repo bez auto review (komentarz bota `does not receive automatic reviews`): po `gh pr create` sesja ticketu wysyła `@coderabbitai full review`, a po każdym pushu poprawki `@coderabbitai review`, wg „Wyzwalacz review bota” w `git-end`; bez triggera `watch_pull_request` nie dostanie review;
 - `reviewThreads` filtruj po `isResolved: false` i autorze `coderabbitai`; `id` wątku idzie do `resolveReviewThread(input:{threadId:$id})`;
 - uwaga niezaadresowana albo odrzucona → wątek zostaje otwarty, z odpowiedzią w wątku (powód), nie zamykany po cichu;
 - przed pushem poprawki odczytaj pełną treść wszystkich wcześniejszych review CodeRabbit ze wszystkich stron endpointu reviews (potok ze wszystkich stron jw., bez filtra `commit_id`: `set -o pipefail; gh api --paginate --slurp repos/<owner>/<repo>/pulls/<N>/reviews | jq 'flatten | map(select(.user.login == "coderabbitai[bot]"))'`) i uwagi wymagające działania przekaż sesji ticketu razem z uwagami z wątków;
