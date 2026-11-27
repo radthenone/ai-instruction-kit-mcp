@@ -511,6 +511,40 @@ TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
 TOML_KEY = re.compile(r'"(?:[^"\\]|\\.)*"|' + r"'[^']*'|[^.\s]+")
 
 
+def toml_open_quote(line: str, quote: str | None) -> str | None:
+    """Ogranicznik ciągu wielowierszowego otwartego po tej linii albo None.
+
+    Skanuje linię jak lekser TOML: `#` poza ciągiem kończy linię (komentarz),
+    zwykłe ciągi w cudzysłowach są pomijane, a ogranicznik poprzedzony backslashem
+    w ciągu podstawowym nie zamyka go.
+    """
+    i = 0
+    while i < len(line):
+        if quote:
+            j = line.find(quote, i)
+            if j < 0:
+                return quote
+            if quote == '"""' and line[j - 1:j] == "\\":
+                i = j + 1
+                continue
+            i, quote = j + 3, None
+            continue
+        c = line[i]
+        if c == "#":
+            return None
+        if line.startswith('"""', i) or line.startswith("'''", i):
+            quote, i = line[i:i + 3], i + 3
+            continue
+        if c in "\"'":
+            j = i + 1
+            while j < len(line) and line[j] != c:
+                j += 2 if c == '"' and line[j] == "\\" else 1
+            i = j + 1
+            continue
+        i += 1
+    return quote
+
+
 def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int] | None:
     """Zakres linii tabeli `[mcp_servers.<server>]` (z podtabelami) albo None."""
     start = None
@@ -518,11 +552,7 @@ def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int]
     quote = None  # otwarty ciąg wielowierszowy: nagłówek w jego treści to dane, nie tabela
     for i, line in enumerate(lines):
         m = TOML_HEADER.match(line) if quote is None else None
-        # shortcut: liczy ograniczniki w linii, bez escape'ów \""" w ciągu; wystarcza dla konfiguracji MCP.
-        for q in ('"""', "'''"):
-            if quote in (None, q) and line.count(q) % 2 == 1:
-                quote = None if quote == q else q
-                break
+        quote = toml_open_quote(line, quote)
         if not m:
             continue
         # Klucze z kropkami dzielone z poszanowaniem cudzysłowów: `"project-guides.helper"` to jeden klucz.

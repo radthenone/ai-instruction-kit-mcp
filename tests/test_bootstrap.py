@@ -579,6 +579,22 @@ class TestUserConfigMerge(_BootstrapTestCase):
 
             self.assertIn(mine, path.read_text(encoding="utf-8"))
 
+    def test_codex_toml_comment_delimiter_does_not_hide_next_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            self._run(workspace, "codex")
+            path = workspace / ".codex" / "config.toml"
+            legacy = '\n[mcp_servers.project-guides]\ncommand = "old"\n# """\n'
+            mine = '[mcp_servers.mine]\ncommand = "x"\n'
+            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
+
+            self._run(workspace, "codex")
+
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("project-guides", text)
+            self.assertIn(mine, text)
+
     def test_codex_toml_keeps_quoted_server_with_legacy_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
