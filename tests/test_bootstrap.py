@@ -422,6 +422,7 @@ class TestGitignoreSectionUnit(unittest.TestCase):
             self.assertIn("node_modules/", second)
             self.assertIn(".claude/settings.local.json", second)
             self.assertIn(".agents/skills/", second)
+            self.assertIn("/opencode.json.bak\n", second)
 
     def test_gitignore_allows_kit_skills_by_name_only(self) -> None:
         """Whitelist wymienia skille kita po nazwie — nie używa ``!.claude/skills/**``."""

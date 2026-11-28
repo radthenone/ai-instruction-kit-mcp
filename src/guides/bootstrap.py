@@ -583,10 +583,10 @@ def render_gitignore_section(
         skill_allow(".cursor/skills", shared_skills_dir, cursor_skills_dir),
     )
     rendered_machine = "\n".join(
-        f"/{line}\n/{line}.bak"
-        if line.endswith((".json", ".toml")) and "kit-bootstrap" not in line
-        else "/" + line
-        for line in machine_files
+        f"/{rel}\n/{rel}.bak"
+        if rel.endswith((".json", ".toml")) and "kit-bootstrap" not in rel
+        else "/" + rel
+        for rel in (line.lstrip("/") for line in machine_files)
     )
     body = body.replace("@KIT_MACHINE_FILES@", rendered_machine)
     return f"{begin}\n{body}\n{end}\n"
