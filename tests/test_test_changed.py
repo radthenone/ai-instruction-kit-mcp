@@ -60,6 +60,21 @@ class TestTestChangedContract(unittest.TestCase):
         self.assertIn("test_guards", proc.stdout)
         self.assertIn("test_resolver", proc.stdout)
 
+    def test_bootstrap_maps_all_split_modules(self) -> None:
+        """Zmiana w ``src/guides/bootstrap.py`` wybiera wszystkie podzielone moduły ``test_bootstrap*``."""
+        selected, is_all, _ = test_changed.resolve_test_targets(
+            ["src/guides/bootstrap.py"], root=KIT_ROOT
+        )
+        self.assertFalse(is_all)
+        for mod in (
+            "test_bootstrap",
+            "test_bootstrap_agents",
+            "test_bootstrap_core",
+            "test_bootstrap_docs",
+            "test_bootstrap_integrations",
+        ):
+            self.assertIn(mod, selected)
+
     def test_mapping_for_templates_and_scripts(self) -> None:
         """
         Mapa wybiera oczekiwane moduły dla:
@@ -81,7 +96,9 @@ class TestTestChangedContract(unittest.TestCase):
             ["scripts/bootstrap-project.sh"], root=KIT_ROOT
         )
         self.assertFalse(is_all_boot)
-        self.assertTrue("test_bootstrap" in mods_boot or "test_bootstrap_clients.sh" in mods_boot)
+        self.assertIn("test_bootstrap", mods_boot)
+        self.assertIn("test_bootstrap_core", mods_boot)
+        self.assertIn("test_bootstrap_clients.sh", mods_boot)
 
         # 3. README.md -> fallback grep, bez --all
         mods_readme, is_all_readme, _ = test_changed.resolve_test_targets(

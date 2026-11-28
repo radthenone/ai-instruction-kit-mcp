@@ -398,244 +398,28 @@ prune_unselected_clients() {
 fill_mcp() {
   local src="$1" dest="$2" workspace_repl="${3:-}"
   mkdir -p "$(dirname "$dest")"
-  FROM_SRC="$FROM_SRC" LANGUAGE="$LANGUAGE" \
+  KIT_ROOT="$KIT_ROOT" FROM_SRC="$FROM_SRC" LANGUAGE="$LANGUAGE" \
   CLIENTS_ARG="$CLIENTS_ARG" \
   WORKSPACE_REPL="$workspace_repl" SRC="$src" DEST="$dest" "$PYTHON_BIN" - <<'PY'
-from __future__ import annotations
-
-import json
 import os
-import re
+import sys
 from pathlib import Path
 
-src = Path(os.environ["SRC"])
-dest = Path(os.environ["DEST"])
-text = src.read_text(encoding="utf-8")
-text = text.replace(
-    "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
-    os.environ["FROM_SRC"],
+src_dir = Path(os.environ["KIT_ROOT"]) / "src"
+if src_dir.is_dir():
+    sys.path.insert(0, str(src_dir))
+from guides.bootstrap import sync_mcp_file
+
+warning = sync_mcp_file(
+    Path(os.environ["SRC"]),
+    Path(os.environ["DEST"]),
+    from_src=os.environ["FROM_SRC"],
+    language=os.environ["LANGUAGE"],
+    clients_arg=os.environ["CLIENTS_ARG"],
+    workspace_repl=os.environ.get("WORKSPACE_REPL", ""),
 )
-text = re.sub(
-    r'("--language",\s*")[^"]*(")',
-    rf'\g<1>{os.environ["LANGUAGE"]}\2',
-    text,
-)
-text = re.sub(
-    r'("--clients",\s*")[^"]*(")',
-    rf'\g<1>{os.environ["CLIENTS_ARG"]}\2',
-    text,
-)
-text = re.sub(
-    r'("--workspace",\s*")[^"]*(")',
-    lambda m: m.group(0)
-    if not os.environ.get("WORKSPACE_REPL")
-    else f'{m.group(1)}{os.environ["WORKSPACE_REPL"]}{m.group(2)}',
-    text,
-)
-if os.environ.get("WORKSPACE_REPL"):
-    # Codex placeholder path
-    text = text.replace("/ABSOLUTNA/SCIEZKA/DO/PROJEKTU", os.environ["WORKSPACE_REPL"])
-
-# Zrodlo lokalne: `uv run --project`, nie `uvx --from`.
-#
-# `uvx --from <katalog>` nie czyta kita z tego katalogu w czasie dzialania. uv buduje
-# kolo, w ktorym `manifest.yaml` i `modules/` laduja jako `guides/_data`
-# (force-include w pyproject.toml), i cache'uje je pod WERSJE pakietu. Wersja nie rosnie
-# przy zwyklej edycji modulu ani kodu serwera, wiec klient dostaje kopie sprzed builda —
-# poprawiasz modul, restartujesz IDE, a `get_bundle` zwraca stara tresc. Bez bledu.
-# Do tego `find_kit_root` woli `_data` od repo, wiec `check_kit_status` traci historie
-# gita i nie ma czego porownac ze stampem.
-#
-# `uv run --project <katalog>` instaluje pakiet z ukladem `src/` jako editable: `_data`
-# w ogole nie powstaje, kod i moduly czytane sa wprost z klonu. Jedna zmiana naprawia
-# jednoczesnie zamrozone moduly i zamrozony kod serwera. `--project` (w odroznieniu od
-# `--directory`) nie zmienia katalogu roboczego procesu serwera.
-#
-# `--kit-root` dokladamy mimo to — nie jest juz konieczny, ale nazywa klon wprost, wiec
-# konfiguracja mowi wprost, skad kit jest czytany, zamiast polegac na wnioskowaniu.
-#
-# Przy zrodle zdalnym (`git+https://…`) nic nie zmieniamy: klonu nie ma, `uvx` jest
-# poprawnym wyborem, a `_data` z kola to jedyna i aktualna kopia.
-from_src = os.environ["FROM_SRC"]
-if Path(from_src).is_dir():
-    # `uvx` występuje w szablonie raz — jako komenda (JSON `"command": "uvx"`,
-    # TOML `command = "uvx"`, opencode jako pierwszy element tablicy `command`).
-    text = text.replace('"uvx"', '"uv"', 1)
-    # `--from X` i `run --project X` znaczą to samo dla obu poleceń: "weź pakiet stąd".
-    text = re.sub(
-        r'"--from",(\s*)"' + re.escape(from_src) + r'"',
-        lambda m: f'"run", "--project",{m.group(1)}"{from_src}"',
-        text,
-        count=1,
-    )
-    if "--kit-root" not in text:
-        # Wciecie i styl (JSON vs TOML, spacje po przecinku) biora sie z dopasowanej
-        # linii, wiec wynik wyglada jak reszta pliku, ktorykolwiek klient go dostaje.
-        text = re.sub(
-            r'(^([ \t]*)"--clients",[^\n]*\n)',
-            lambda m: f'{m.group(1)}{m.group(2)}"--kit-root", "{from_src}",\n',
-            text,
-            count=1,
-            flags=re.MULTILINE,
-        )
-
-# Istniejący plik należy do użytkownika (własne serwery, modele, providerzy) i jest
-# w .gitignore, więc nadpisanie go ginie bez śladu. Podmieniamy tylko wpis kita
-# `kit-ai-mcp`, resztę zostawiamy. Pliku, którego nie umiemy sparsować (JSONC
-# z komentarzami, uszkodzony JSON/TOML), nie scalamy: oryginał idzie do `.bak`.
-KIT_SERVER = "kit-ai-mcp"
-# Nazwa sprzed zmiany; przy scalaniu ją usuwamy, inaczej zostają dwa wpisy kita.
-LEGACY_KIT_SERVERS = ("project-guides",)
-
-
-def merge_json(old_text: str) -> str:
-    old = json.loads(old_text)
-    new = json.loads(text)
-    key = next(k for k in ("mcpServers", "servers", "mcp") if k in new)
-    if not isinstance(old, dict) or not isinstance(old.get(key, {}), dict):
-        raise ValueError(f"`{key}` nie jest obiektem")
-    merged = json.loads(json.dumps(old))
-    for k, v in new.items():
-        if k != key:
-            merged.setdefault(k, v)
-    servers = merged.setdefault(key, {})
-    for legacy in LEGACY_KIT_SERVERS:
-        servers.pop(legacy, None)
-    servers[KIT_SERVER] = new[key][KIT_SERVER]
-    if merged == old:
-        return old_text
-    return json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
-
-
-TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
-TOML_KEY = re.compile(r'"(?:[^"\\]|\\.)*"|' + r"'[^']*'|[^.\s]+")
-
-
-def toml_open_quote(line: str, quote: str | None) -> str | None:
-    """Ogranicznik ciągu wielowierszowego otwartego po tej linii albo None.
-
-    Skanuje linię jak lekser TOML: `#` poza ciągiem kończy linię (komentarz),
-    zwykłe ciągi w cudzysłowach są pomijane, a ogranicznik poprzedzony backslashem
-    w ciągu podstawowym nie zamyka go.
-    """
-    i = 0
-    while i < len(line):
-        if quote:
-            j = line.find(quote, i)
-            if j < 0:
-                return quote
-            slashes = len(line[i:j]) - len(line[i:j].rstrip("\\"))
-            if quote == '"""' and slashes % 2 == 1:  # nieparzyste \ przed """ = escape
-                i = j + 1
-                continue
-            # Zamknięcie może mieć 3–5 cudzysłowów: dodatkowe (max 2) należą do wartości.
-            run = len(line[j:]) - len(line[j:].lstrip(quote[0]))
-            i, quote = j + min(run, 5), None
-            continue
-        c = line[i]
-        if c == "#":
-            return None
-        if line.startswith('"""', i) or line.startswith("'''", i):
-            quote, i = line[i:i + 3], i + 3
-            continue
-        if c in "\"'":
-            j = i + 1
-            while j < len(line) and line[j] != c:
-                j += 2 if c == '"' and line[j] == "\\" else 1
-            i = j + 1
-            continue
-        i += 1
-    return quote
-
-
-def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int] | None:
-    """Zakres linii tabeli `[mcp_servers.<server>]` (z podtabelami) albo None."""
-    start = None
-    end = len(lines)
-    quote = None  # otwarty ciąg wielowierszowy: nagłówek w jego treści to dane, nie tabela
-    for i, line in enumerate(lines):
-        m = TOML_HEADER.match(line) if quote is None else None
-        quote = toml_open_quote(line, quote)
-        if not m:
-            continue
-        # Klucze z kropkami dzielone z poszanowaniem cudzysłowów: `"project-guides.helper"` to jeden klucz.
-        keys = [k[1:-1] if k[:1] in "\"'" else k for k in TOML_KEY.findall(m.group(1))]
-        is_kit = keys[:2] == ["mcp_servers", server]
-        if start is None and is_kit:
-            start = i
-        elif start is not None and not is_kit:
-            end = i
-            break
-    if start is None:
-        return None
-    # Komentarze i puste linie tuż przed następną tabelą należą do niej, nie do kita.
-    while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
-        end -= 1
-    return start, end
-
-
-def merge_toml(old_text: str) -> str:
-    # ponytail: tekstowa podmiana tabeli; wpis kita zapisany inaczej (dotted key, inline
-    # table) da duplikat — łapie go walidacja wyniku niżej. Bez `tomllib` (< 3.11)
-    # nie ma bezpiecznika semantycznego, więc przy wpisie kita lub legacy przerywamy (fail-closed).
-    try:
-        import tomllib
-    except ImportError:
-        tomllib = None
-    if tomllib:
-        tomllib.loads(old_text)
-    new_lines = text.splitlines(keepends=True)
-    s, e = toml_kit_span(new_lines)
-    kit_block = new_lines[s:e]
-    old_lines = old_text.splitlines(keepends=True)
-    if tomllib is None and any(
-        toml_kit_span(old_lines, name) is not None
-        for name in (KIT_SERVER, *LEGACY_KIT_SERVERS)
-    ):
-        raise ValueError("do bezpiecznego scalania potrzebny jest Python 3.11+")
-    for legacy in LEGACY_KIT_SERVERS:
-        # Do skutku: podtabela legacy oddzielona cudzą tabelą to osobny zakres.
-        while legacy_span := toml_kit_span(old_lines, legacy):
-            old_lines = old_lines[: legacy_span[0]] + old_lines[legacy_span[1] :]
-    span = toml_kit_span(old_lines)
-    if span is None:
-        if old_lines and not old_lines[-1].endswith("\n"):
-            old_lines[-1] += "\n"
-        sep = ["\n"] if old_lines and old_lines[-1].strip() else []
-        merged = old_lines + sep + kit_block
-    else:
-        merged = old_lines[: span[0]] + kit_block + old_lines[span[1] :]
-    result = "".join(merged)
-    if tomllib:
-        # Bezpiecznik niezależny od skanera linii: poza wpisami kita (nowym i legacy)
-        # dane muszą zostać identyczne. Inaczej błąd -> oryginał do .bak, bez cichej utraty.
-        def foreign(data: dict) -> dict:
-            servers = dict(data.get("mcp_servers", {}))
-            for name in (KIT_SERVER, *LEGACY_KIT_SERVERS):
-                servers.pop(name, None)
-            return {**data, "mcp_servers": servers}
-
-        if foreign(tomllib.loads(old_text)) != foreign(tomllib.loads(result)):
-            raise ValueError("scalanie zmieniłoby wpisy spoza kita")
-    return result
-
-
-if dest.is_file():
-    old_text = dest.read_text(encoding="utf-8")
-    try:
-        text = merge_toml(old_text) if dest.suffix == ".toml" else merge_json(old_text)
-    except Exception as exc:
-        backup = dest.with_name(dest.name + ".bak")
-        backup.write_text(old_text, encoding="utf-8", newline="\n")
-        reason = f"{exc.__class__.__name__}: {exc}" if str(exc) else exc.__class__.__name__
-        print(
-            f"  ! {dest.name}: nie da się scalić ({reason}) — oryginał w "
-            f"{backup.name}, przenieś swoje wpisy ręcznie"
-        )
-    else:
-        if text == old_text:
-            raise SystemExit(0)
-dest.write_text(text, encoding="utf-8", newline="\n")
+if warning:
+    print(warning)
 PY
 }
 
@@ -675,79 +459,30 @@ sync_gitignore_section() {
   local template="$KIT_ROOT/templates/gitignore-kit.txt"
   [[ -f "$template" ]] || return 0
 
-  BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
+  KIT_ROOT="$KIT_ROOT" BEGIN_MARK="$GITIGNORE_BEGIN" END_MARK="$GITIGNORE_END" \
   SHARED_SKILLS="$SHARED_SKILLS" SHARED_AGENTS="$SHARED_AGENTS" CURSOR_SKILLS="$KIT_ROOT/templates/cursor/skills" \
   MACHINE_FILES="$(printf '%s\n' "${MACHINE_FILES[@]#/}")" \
   TEMPLATE="$template" DEST="$target_file" "$PYTHON_BIN" - <<'PY'
 import os
+import sys
 from pathlib import Path
 
-begin = os.environ["BEGIN_MARK"]
-end = os.environ["END_MARK"]
-dest = Path(os.environ["DEST"])
-body = Path(os.environ["TEMPLATE"]).read_text(encoding="utf-8").strip("\n")
+src_dir = Path(os.environ["KIT_ROOT"]) / "src"
+if src_dir.is_dir():
+    sys.path.insert(0, str(src_dir))
+from guides.bootstrap import sync_gitignore_file
 
-
-def skill_allow(dest_prefix: str, *source_dirs: str, names: tuple[str, ...] = ()) -> str:
-    """Wyjątki `!` dla skilli kita — po nazwie, żeby nie wciągnąć cudzych.
-
-    Katalog skilli u konsumenta miesza dwa źródła: te z kita (pliki) i dowiązania do
-    `.agents/skills/` z `npx skills add` (ignorowane). Wersjonujemy tylko pierwsze.
-    ``names`` dokłada nazwy spoza katalogów (agenty są plikami `*.md`).
-    """
-    collected: list[str] = list(names)
-    for source in source_dirs:
-        root = Path(source)
-        if not root.is_dir():
-            continue
-        collected.extend(sorted(p.name for p in root.iterdir() if p.is_dir()))
-    lines: list[str] = []
-    for name in sorted(set(collected)):
-        lines.append(f"!{dest_prefix}/{name}/")
-        lines.append(f"!{dest_prefix}/{name}/**")
-    return "\n".join(lines) if lines else f"# (kit nie dostarcza skilli dla {dest_prefix})"
-
-
-shared = os.environ["SHARED_SKILLS"]
-# Agenty tego przebiegu (po filtrze Tierów) trafiają do .agents/skills/ jako skille Antigravity.
-agent_names = tuple(sorted(p.stem for p in Path(os.environ["SHARED_AGENTS"]).glob("*.md")))
-body = body.replace(
-    "@KIT_SKILLS_AGENTS@",
-    skill_allow(".agents/skills", shared, names=agent_names),
+action = sync_gitignore_file(
+    dest=Path(os.environ["DEST"]),
+    template_path=Path(os.environ["TEMPLATE"]),
+    shared_skills_dir=os.environ["SHARED_SKILLS"],
+    shared_agents_dir=os.environ["SHARED_AGENTS"],
+    cursor_skills_dir=os.environ["CURSOR_SKILLS"],
+    machine_files=os.environ["MACHINE_FILES"].splitlines(),
+    begin=os.environ["BEGIN_MARK"],
+    end=os.environ["END_MARK"],
 )
-body = body.replace("@KIT_SKILLS_CLAUDE@", skill_allow(".claude/skills", shared))
-body = body.replace(
-    "@KIT_SKILLS_CURSOR@",
-    skill_allow(".cursor/skills", shared, os.environ["CURSOR_SKILLS"]),
-)
-# Wiodący `/` doklejamy dopiero tutaj: w env Git Bash (MSYS) zamieniłby pierwszą
-# linię `/.mcp.json` na `C:/Program Files/Git/.mcp.json`.
-# Do tego `.bak`, które `fill_mcp` zostawia przy nieparsowalnym konfigu — ta sama treść,
-# często z tokenami w `env` serwerów MCP.
-machine_files = "\n".join(
-    f"/{line}\n/{line}.bak" if line.endswith((".json", ".toml")) and "kit-bootstrap" not in line
-    else "/" + line
-    for line in os.environ["MACHINE_FILES"].splitlines()
-)
-body = body.replace("@KIT_MACHINE_FILES@", machine_files)
-
-section = f"{begin}\n{body}\n{end}\n"
-
-existing = dest.read_text(encoding="utf-8") if dest.is_file() else ""
-
-if begin in existing and end in existing:
-    head, _, rest = existing.partition(begin)
-    _, _, tail = rest.partition(end)
-    updated = f"{head}{section}{tail.lstrip(chr(10))}"
-    action = "zaktualizowano"
-else:
-    prefix = existing if not existing or existing.endswith("\n") else existing + "\n"
-    separator = "\n" if prefix.strip() else ""
-    updated = f"{prefix}{separator}{section}"
-    action = "dodano"
-
-if updated != existing:
-    dest.write_text(updated, encoding="utf-8", newline="\n")
+if action:
     print(f"  + .gitignore ({action} sekcję instruction-kit)")
 PY
 }
@@ -771,29 +506,19 @@ warn_tracked_machine_files() {
 # Bez PyYAML (bootstrap leci na systemowym Pythonie) — Profil ma płaskie klucze Tierów.
 # Legacy `stacks:` liczy się do Tierów tak jak w resolverze (`_filled_tiers`).
 profile_tiers() {
-  "$PYTHON_BIN" - "$TARGET/.ai/project.profile.yaml" <<'PY'
-import re
+  KIT_ROOT="$KIT_ROOT" "$PYTHON_BIN" - "$TARGET/.ai/project.profile.yaml" <<'PY'
+import os
 import sys
 from pathlib import Path
 
+src_dir = Path(os.environ["KIT_ROOT"]) / "src"
+if src_dir.is_dir():
+    sys.path.insert(0, str(src_dir))
+from guides.bootstrap import detect_profile_tiers
+
 path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8") if path.is_file() else ""
-empty = {"", "none", "null", "~", "false", "0", "no"}
-filled = set()
-for tier in ("backend", "web", "mobile"):
-    match = re.search(rf"^{tier}:[ \t]*['\"]?([^'\"\s#]*)", text, re.MULTILINE)
-    if match and match.group(1).lower() not in empty:
-        filled.add(tier)
-legacy = re.search(r"^stacks:[ \t]*\n((?:[ \t]+\S.*\n?)*)", text, re.MULTILINE)
-for name, value in re.findall(r"^[ \t]+([\w-]+):[ \t]*(.*)$", legacy.group(1) if legacy else "", re.MULTILINE):
-    if value.strip().strip("'\"").lower() in empty:
-        continue
-    if name == "django-drf":
-        filled.add("backend")
-    elif name == "expo-router":
-        filled.update({"web", "mobile"})
-tags = (["backend"] if "backend" in filled else []) + (["client"] if filled & {"web", "mobile"} else [])
-print(" ".join(tags))
+profile_text = path.read_text(encoding="utf-8") if path.is_file() else ""
+print(" ".join(detect_profile_tiers(profile_text)))
 PY
 }
 
@@ -805,48 +530,29 @@ PY
 # agentów (do sprzątnięcia z poprzedniego Bootstrapu).
 stage_shared_agents() {
   local dest="$1"
-  SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" HEADLESS="$HEADLESS" \
+  KIT_ROOT="$KIT_ROOT" SRC="$SHARED_AGENTS" DEST="$dest" TIERS="$PROFILE_TIERS" HEADLESS="$HEADLESS" \
     CLIENTS="${CLIENTS_LIST[*]}" "$PYTHON_BIN" - <<'PY'
 import os
-import re
+import sys
 from pathlib import Path
 
-chosen = set(os.environ["TIERS"].split())
-clients = set(os.environ["CLIENTS"].split())
-BLOCK = re.compile(r"<!-- clients: ([\w ,-]+) -->\n(.*?)<!-- /clients -->\n?", re.DOTALL)
+src_dir = Path(os.environ["KIT_ROOT"]) / "src"
+if src_dir.is_dir():
+    sys.path.insert(0, str(src_dir))
+from guides.bootstrap import stage_shared_agents
 
-
-def gate(match: re.Match) -> str:
-    names = {name.strip() for name in match.group(1).split(",")}
-    return match.group(2) if names & clients else ""
-
-
-dest = Path(os.environ["DEST"])
-for src in sorted(Path(os.environ["SRC"]).glob("*.md")):
-    # /kit-ai:headless ma sens dopiero przy dwóch klientach z trybem headless (#169).
-    if src.stem == "headless" and os.environ["HEADLESS"] != "1":
-        print(src.stem)
-        continue
-    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
-    end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
-    tier = next(
-        (line.partition(":")[2].strip() for line in lines[1:end] if line.startswith("tier:")),
-        None,
+try:
+    skipped = stage_shared_agents(
+        src_dir=Path(os.environ["SRC"]),
+        dest_dir=Path(os.environ["DEST"]),
+        tiers=set(os.environ["TIERS"].split()),
+        clients=set(os.environ["CLIENTS"].split()),
+        headless_enabled=os.environ["HEADLESS"] == "1",
     )
-    if tier and tier not in chosen:
-        print(src.stem)
-        continue
-    # `model-tier:` czyta tylko model_tiers.py, `classification:` guides.agent_classes
-    # (oba z template) — klienci ich nie znają.
-    kept = [
-        line for i, line in enumerate(lines)
-        if not (0 < i < end and line.startswith(("tier:", "model-tier:", "classification:")))
-    ]
-    text = BLOCK.sub(gate, "".join(kept))
-    # Literówka w znaczniku nie może po cichu wypuścić treści bloku do innych klientów.
-    if "<!-- clients" in text or "<!-- /clients" in text:
-        raise SystemExit(f"{src.name}: niedomknięty albo zagnieżdżony blok <!-- clients: … -->")
-    (dest / src.name).write_text(text, encoding="utf-8", newline="\n")
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
+for name in skipped:
+    print(name)
 PY
 }
 
@@ -1371,52 +1077,20 @@ install_antigravity() {
 # `opencode.jsonc`, ostatni z `model` wygrywa. Własny `model` projektu wygrywa; brak
 # configu, pola albo nieczytelny plik = brak pola, bez błędu.
 inherit_opencode_model() {
-  DEST="$TARGET/opencode.json" "$PYTHON_BIN" - <<'PY'
-import json
+  KIT_ROOT="$KIT_ROOT" DEST="$TARGET/opencode.json" "$PYTHON_BIN" - <<'PY'
 import os
-import re
+import sys
 from pathlib import Path
 
-dest = Path(os.environ["DEST"])
-STRING = r'("(?:\\.|[^"\\])*")'
+src_dir = Path(os.environ["KIT_ROOT"]) / "src"
+if src_dir.is_dir():
+    sys.path.insert(0, str(src_dir))
+from guides.bootstrap import inherit_opencode_model
 
-
-def load_jsonc(text: str):
-    # Komentarze `//` i `/* */` oraz przecinki końcowe — poza stringami.
-    text = re.sub(STRING + r"|//[^\n]*|/\*.*?\*/", lambda m: m.group(1) or "", text, flags=re.S)
-    text = re.sub(STRING + r"|,(\s*[}\]])", lambda m: m.group(1) or m.group(2), text)
-    return json.loads(text)
-
-
-try:
-    text = dest.read_text(encoding="utf-8")
-    project = json.loads(text)
-except (OSError, ValueError):
-    raise SystemExit(0)
-if not isinstance(project, dict) or "model" in project:
-    raise SystemExit(0)
-config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
-model, source = None, None
-for name in ("config.json", "opencode.json", "opencode.jsonc"):
-    try:
-        value = load_jsonc((config_dir / name).read_text(encoding="utf-8-sig")).get("model")
-    except (OSError, ValueError, AttributeError):
-        continue
-    if isinstance(value, str) and value:
-        model, source = value, config_dir / name
-if model is None:
-    raise SystemExit(0)
-# Wstawka zamiast json.dumps — układ pliku z fill_mcp (tablice w linii) zostaje.
-line = f'  "model": {json.dumps(model, ensure_ascii=False)},\n'
-updated = re.sub(r"\A\{[ \t]*\n", lambda m: m.group(0) + line, text, count=1)
-try:
-    ok = json.loads(updated).get("model") == model
-except ValueError:
-    ok = False
-if not ok:
-    updated = json.dumps({"model": model, **project}, indent=2, ensure_ascii=False) + "\n"
-dest.write_text(updated, encoding="utf-8", newline="\n")
-print(f"  + opencode.json: model {model} (z {source})")
+inherited = inherit_opencode_model(Path(os.environ["DEST"]))
+if inherited is not None:
+    model, source = inherited
+    print(f"  + opencode.json: model {model} (z {source})")
 PY
 }
 

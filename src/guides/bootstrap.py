@@ -1,14 +1,14 @@
 """Wykonanie ``scripts/bootstrap-project.sh`` z poziomu serwera MCP.
 
 Skrypt bash zostaje **jedynym źródłem prawdy** o tym, co bootstrap gdzie kładzie.
-Ten moduł tylko go uruchamia (Windows: Git Bash, ta sama logika co
-``templates/shared/guards/invoke-hook.js``) i — dla trybu dry-run — robi to
-w sandboxie, żeby plan zmian pochodził z faktycznego przebiegu skryptu, a nie
-z drugiej, rozjeżdżającej się listy ścieżek w Pythonie.
+Ten moduł trzyma też czyste funkcje scalania konfiguracji i doboru agentów
+(wywoływane przez ``scripts/bootstrap-project.sh``), dzięki czemu można je
+testować bezpośrednio w Pythonie bez uruchamiania podprocesu basha.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -17,11 +17,23 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from guides import __version__
 from guides.kit_status import installed_kit_commit
 
 SCRIPT_REL_PATH = "scripts/bootstrap-project.sh"
+
+KIT_SERVER = "kit-ai-mcp"
+LEGACY_KIT_SERVERS: tuple[str, ...] = ("project-guides",)
+
+GITIGNORE_BEGIN = "# >>> instruction-kit >>>"
+GITIGNORE_END = "# <<< instruction-kit <<<"
+
+_TOML_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+_TOML_KEY = re.compile(r'"(?:[^"\\]|\\.)*"|' + r"'[^']*'|[^.\s]+")
+_CLIENT_BLOCK = re.compile(r"<!-- clients: ([\w ,-]+) -->\n(.*?)<!-- /clients -->\n?", re.DOTALL)
+_JSON_STRING = r'("(?:\\.|[^"\\])*")'
 
 # Powierzchnia repo aplikacji, którą bootstrap czyta lub zapisuje. Sandbox dry-runu
 # dostaje kopię dokładnie tych ścieżek — dzięki temu „nie nadpisuj jeśli istnieje"
@@ -312,3 +324,429 @@ def plan_bootstrap(*, workspace_root: Path, **kwargs) -> BootstrapPlan:
             same = produced == current
             (plan.unchanged if same else plan.modified).append(rel)
         return plan
+
+
+def render_mcp_template(
+    template_text: str,
+    *,
+    from_src: str,
+    language: str,
+    clients_arg: str,
+    workspace_repl: str = "",
+) -> str:
+    """Podstaw zmienne środowiska i źródła kita w szablonie konfiguracji MCP."""
+    text = template_text.replace(
+        "git+https://github.com/radthenone/ai-instruction-kit-mcp.git",
+        from_src,
+    )
+    text = re.sub(
+        r'("--language",\s*")[^"]*(")',
+        rf"\g<1>{language}\2",
+        text,
+    )
+    text = re.sub(
+        r'("--clients",\s*")[^"]*(")',
+        rf"\g<1>{clients_arg}\2",
+        text,
+    )
+    text = re.sub(
+        r'("--workspace",\s*")[^"]*(")',
+        lambda m: m.group(0)
+        if not workspace_repl
+        else f"{m.group(1)}{workspace_repl}{m.group(2)}",
+        text,
+    )
+    if workspace_repl:
+        text = text.replace("/ABSOLUTNA/SCIEZKA/DO/PROJEKTU", workspace_repl)
+
+    if Path(from_src).is_dir():
+        text = text.replace('"uvx"', '"uv"', 1)
+        text = re.sub(
+            r'"--from",(\s*)"' + re.escape(from_src) + r'"',
+            lambda m: f'"run", "--project",{m.group(1)}"{from_src}"',
+            text,
+            count=1,
+        )
+        if "--kit-root" not in text:
+            text = re.sub(
+                r'(^([ \t]*)"--clients",[^\n]*\n)',
+                lambda m: f'{m.group(1)}{m.group(2)}"--kit-root", "{from_src}",\n',
+                text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+    return text
+
+
+def merge_json_config(old_text: str, new_text: str) -> str:
+    """Scal nowy wpis serwera MCP kita z istniejącym plikiem JSON użytkownika."""
+    old = json.loads(old_text)
+    new = json.loads(new_text)
+    key = next(k for k in ("mcpServers", "servers", "mcp") if k in new)
+    if not isinstance(old, dict) or not isinstance(old.get(key, {}), dict):
+        raise ValueError(f"`{key}` nie jest obiektem")
+    merged = json.loads(json.dumps(old))
+    for k, v in new.items():
+        if k != key:
+            merged.setdefault(k, v)
+    servers = merged.setdefault(key, {})
+    for legacy in LEGACY_KIT_SERVERS:
+        servers.pop(legacy, None)
+    servers[KIT_SERVER] = new[key][KIT_SERVER]
+    if merged == old:
+        return old_text
+    return json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
+
+
+def toml_open_quote(line: str, quote: str | None) -> str | None:
+    """Ogranicznik ciągu wielowierszowego TOML otwartego po tej linii albo None."""
+    i = 0
+    while i < len(line):
+        if quote:
+            j = line.find(quote, i)
+            if j < 0:
+                return quote
+            slashes = len(line[i:j]) - len(line[i:j].rstrip("\\"))
+            if quote == '"""' and slashes % 2 == 1:
+                i = j + 1
+                continue
+            run = len(line[j:]) - len(line[j:].lstrip(quote[0]))
+            i, quote = j + min(run, 5), None
+            continue
+        c = line[i]
+        if c == "#":
+            return None
+        if line.startswith('"""', i) or line.startswith("'''", i):
+            quote, i = line[i : i + 3], i + 3
+            continue
+        if c in "\"'":
+            j = i + 1
+            while j < len(line) and line[j] != c:
+                j += 2 if c == '"' and line[j] == "\\" else 1
+            i = j + 1
+            continue
+        i += 1
+    return quote
+
+
+def toml_kit_span(lines: list[str], server: str = KIT_SERVER) -> tuple[int, int] | None:
+    """Zakres linii tabeli ``[mcp_servers.<server>]`` (z podtabelami) albo None."""
+    start = None
+    end = len(lines)
+    quote = None
+    for i, line in enumerate(lines):
+        m = _TOML_HEADER.match(line) if quote is None else None
+        quote = toml_open_quote(line, quote)
+        if not m:
+            continue
+        keys = [k[1:-1] if k[:1] in "\"'" else k for k in _TOML_KEY.findall(m.group(1))]
+        is_kit = keys[:2] == ["mcp_servers", server]
+        if start is None and is_kit:
+            start = i
+        elif start is not None and not is_kit:
+            end = i
+            break
+    if start is None:
+        return None
+    while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
+        end -= 1
+    return start, end
+
+
+def merge_toml_config(old_text: str, new_text: str) -> str:
+    """Scal sekcję ``[mcp_servers.kit-ai-mcp]`` z istniejącym ``config.toml`` (fail-closed bez tomllib)."""
+    tomllib: Any
+    try:
+        import tomllib as _tomllib
+
+        tomllib = _tomllib
+    except ImportError:
+        tomllib = None
+    if tomllib:
+        tomllib.loads(old_text)
+    new_lines = new_text.splitlines(keepends=True)
+    span_new = toml_kit_span(new_lines)
+    if span_new is None:
+        raise ValueError("szablon TOML nie zawiera sekcji kita")
+    kit_block = new_lines[span_new[0] : span_new[1]]
+    old_lines = old_text.splitlines(keepends=True)
+    if tomllib is None and any(
+        toml_kit_span(old_lines, name) is not None
+        for name in (KIT_SERVER, *LEGACY_KIT_SERVERS)
+    ):
+        raise ValueError("do bezpiecznego scalania potrzebny jest Python 3.11+")
+    for legacy in LEGACY_KIT_SERVERS:
+        while legacy_span := toml_kit_span(old_lines, legacy):
+            old_lines = old_lines[: legacy_span[0]] + old_lines[legacy_span[1] :]
+    span = toml_kit_span(old_lines)
+    if span is None:
+        if old_lines and not old_lines[-1].endswith("\n"):
+            old_lines[-1] += "\n"
+        sep = ["\n"] if old_lines and old_lines[-1].strip() else []
+        merged = old_lines + sep + kit_block
+    else:
+        merged = old_lines[: span[0]] + kit_block + old_lines[span[1] :]
+    result = "".join(merged)
+    if tomllib:
+        def foreign(data: dict[str, Any]) -> dict[str, Any]:
+            servers = dict(data.get("mcp_servers", {}))
+            for name in (KIT_SERVER, *LEGACY_KIT_SERVERS):
+                servers.pop(name, None)
+            return {**data, "mcp_servers": servers}
+
+        if foreign(tomllib.loads(old_text)) != foreign(tomllib.loads(result)):
+            raise ValueError("scalanie zmieniłoby wpisy spoza kita")
+    return result
+
+
+def sync_mcp_file(
+    src: Path,
+    dest: Path,
+    *,
+    from_src: str,
+    language: str,
+    clients_arg: str,
+    workspace_repl: str = "",
+) -> str | None:
+    """Wyrenderuj i zapisz konfig MCP w ``dest``, scalając z istniejącym albo tworząc ``.bak``."""
+    text = render_mcp_template(
+        src.read_text(encoding="utf-8"),
+        from_src=from_src,
+        language=language,
+        clients_arg=clients_arg,
+        workspace_repl=workspace_repl,
+    )
+    warning: str | None = None
+    if dest.is_file():
+        old_text = dest.read_text(encoding="utf-8")
+        try:
+            text = (
+                merge_toml_config(old_text, text)
+                if dest.suffix == ".toml"
+                else merge_json_config(old_text, text)
+            )
+        except Exception as exc:
+            backup = dest.with_name(dest.name + ".bak")
+            backup.write_text(old_text, encoding="utf-8", newline="\n")
+            reason = f"{exc.__class__.__name__}: {exc}" if str(exc) else exc.__class__.__name__
+            warning = (
+                f"  ! {dest.name}: nie da się scalić ({reason}) — oryginał w "
+                f"{backup.name}, przenieś swoje wpisy ręcznie"
+            )
+        else:
+            if text == old_text:
+                return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text, encoding="utf-8", newline="\n")
+    return warning
+
+
+def skill_allow(
+    dest_prefix: str,
+    *source_dirs: Path | str,
+    names: tuple[str, ...] = (),
+) -> str:
+    """Zbuduj reguły ``!`` dla skilli kita w ``.gitignore`` po nazwie katalogu lub agenta."""
+    collected: list[str] = list(names)
+    for source in source_dirs:
+        root = Path(source)
+        if not root.is_dir():
+            continue
+        collected.extend(sorted(p.name for p in root.iterdir() if p.is_dir()))
+    lines: list[str] = []
+    for name in sorted(set(collected)):
+        lines.append(f"!{dest_prefix}/{name}/")
+        lines.append(f"!{dest_prefix}/{name}/**")
+    return "\n".join(lines) if lines else f"# (kit nie dostarcza skilli dla {dest_prefix})"
+
+
+def render_gitignore_section(
+    *,
+    template_text: str,
+    shared_skills_dir: Path | str,
+    shared_agents_dir: Path | str,
+    cursor_skills_dir: Path | str,
+    machine_files: tuple[str, ...] | list[str],
+    begin: str = GITIGNORE_BEGIN,
+    end: str = GITIGNORE_END,
+) -> str:
+    """Wyrenderuj pełną sekcję ``instruction-kit`` dla ``.gitignore``."""
+    body = template_text.strip("\n")
+    agent_names = tuple(sorted(p.stem for p in Path(shared_agents_dir).glob("*.md")))
+    body = body.replace(
+        "@KIT_SKILLS_AGENTS@",
+        skill_allow(".agents/skills", shared_skills_dir, names=agent_names),
+    )
+    body = body.replace("@KIT_SKILLS_CLAUDE@", skill_allow(".claude/skills", shared_skills_dir))
+    body = body.replace(
+        "@KIT_SKILLS_CURSOR@",
+        skill_allow(".cursor/skills", shared_skills_dir, cursor_skills_dir),
+    )
+    rendered_machine = "\n".join(
+        f"/{rel}\n/{rel}.bak"
+        if rel.endswith((".json", ".toml")) and "kit-bootstrap" not in rel
+        else "/" + rel
+        for rel in (line.lstrip("/") for line in machine_files)
+    )
+    body = body.replace("@KIT_MACHINE_FILES@", rendered_machine)
+    return f"{begin}\n{body}\n{end}\n"
+
+
+def merge_gitignore_text(
+    existing: str,
+    section: str,
+    *,
+    begin: str = GITIGNORE_BEGIN,
+    end: str = GITIGNORE_END,
+) -> tuple[str, str]:
+    """Wstaw albo podmień sekcję kita w treści ``.gitignore``; zwraca ``(nowa_treść, akcja)``."""
+    if begin in existing and end in existing:
+        head, _, rest = existing.partition(begin)
+        _, _, tail = rest.partition(end)
+        return f"{head}{section}{tail.lstrip(chr(10))}", "zaktualizowano"
+    prefix = existing if not existing or existing.endswith("\n") else existing + "\n"
+    separator = "\n" if prefix.strip() else ""
+    return f"{prefix}{separator}{section}", "dodano"
+
+
+def sync_gitignore_file(
+    *,
+    dest: Path,
+    template_path: Path,
+    shared_skills_dir: Path | str,
+    shared_agents_dir: Path | str,
+    cursor_skills_dir: Path | str,
+    machine_files: tuple[str, ...] | list[str],
+    begin: str = GITIGNORE_BEGIN,
+    end: str = GITIGNORE_END,
+) -> str | None:
+    """Zapisz sekcję kita do ``dest`` tylko przy zmianie; zwraca akcję albo None."""
+    section = render_gitignore_section(
+        template_text=template_path.read_text(encoding="utf-8"),
+        shared_skills_dir=shared_skills_dir,
+        shared_agents_dir=shared_agents_dir,
+        cursor_skills_dir=cursor_skills_dir,
+        machine_files=machine_files,
+        begin=begin,
+        end=end,
+    )
+    existing = dest.read_text(encoding="utf-8") if dest.is_file() else ""
+    updated, action = merge_gitignore_text(existing, section, begin=begin, end=end)
+    if updated == existing:
+        return None
+    dest.write_text(updated, encoding="utf-8", newline="\n")
+    return action
+
+
+def detect_profile_tiers(profile_text: str) -> list[str]:
+    """Wykryj aktywne znaczniki tierów (``backend``, ``client``) z treści Profilu."""
+    empty = {"", "none", "null", "~", "false", "0", "no"}
+    filled: set[str] = set()
+    for tier in ("backend", "web", "mobile"):
+        match = re.search(rf"^{tier}:[ \t]*['\"]?([^'\"\s#]*)", profile_text, re.MULTILINE)
+        if match and match.group(1).lower() not in empty:
+            filled.add(tier)
+    legacy = re.search(r"^stacks:[ \t]*\n((?:[ \t]+\S.*\n?)*)", profile_text, re.MULTILINE)
+    for name, value in re.findall(
+        r"^[ \t]+([\w-]+):[ \t]*(.*)$",
+        legacy.group(1) if legacy else "",
+        re.MULTILINE,
+    ):
+        if value.strip().strip("'\"").lower() in empty:
+            continue
+        if name == "django-drf":
+            filled.add("backend")
+        elif name == "expo-router":
+            filled.update({"web", "mobile"})
+    tags: list[str] = []
+    if "backend" in filled:
+        tags.append("backend")
+    if filled & {"web", "mobile"}:
+        tags.append("client")
+    return tags
+
+
+def stage_shared_agents(
+    *,
+    src_dir: Path,
+    dest_dir: Path,
+    tiers: set[str],
+    clients: set[str],
+    headless_enabled: bool,
+) -> list[str]:
+    """Przefiltruj agentów według tierów/klientów do ``dest_dir`` i zwróć pominięte nazwy."""
+    def gate(match: re.Match[str]) -> str:
+        names = {name.strip() for name in match.group(1).split(",")}
+        return match.group(2) if names & clients else ""
+
+    skipped: list[str] = []
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for src in sorted(src_dir.glob("*.md")):
+        if src.stem == "headless" and not headless_enabled:
+            skipped.append(src.stem)
+            continue
+        lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+        tier = next(
+            (line.partition(":")[2].strip() for line in lines[1:end] if line.startswith("tier:")),
+            None,
+        )
+        if tier and tier not in tiers:
+            skipped.append(src.stem)
+            continue
+        kept = [
+            line
+            for i, line in enumerate(lines)
+            if not (0 < i < end and line.startswith(("tier:", "model-tier:", "classification:")))
+        ]
+        text = _CLIENT_BLOCK.sub(gate, "".join(kept))
+        if "<!-- clients" in text or "<!-- /clients" in text:
+            raise ValueError(f"{src.name}: niedomknięty albo zagnieżdżony blok <!-- clients: … -->")
+        (dest_dir / src.name).write_text(text, encoding="utf-8", newline="\n")
+    return skipped
+
+
+def load_jsonc(text: str) -> Any:
+    """Sparsuj JSONC (komentarze ``//`` i ``/* */`` oraz końcowe przecinki poza stringami)."""
+    stripped = re.sub(_JSON_STRING + r"|//[^\n]*|/\*.*?\*/", lambda m: m.group(1) or "", text, flags=re.S)
+    stripped = re.sub(_JSON_STRING + r"|,(\s*[}\]])", lambda m: m.group(1) or m.group(2), stripped)
+    return json.loads(stripped)
+
+
+def inherit_opencode_model(
+    dest: Path,
+    *,
+    config_dir: Path | None = None,
+) -> tuple[str, Path] | None:
+    """Odziedzicz ``model`` z globalnego configu OpenCode, jeśli projektowy go nie ma."""
+    try:
+        text = dest.read_text(encoding="utf-8")
+        project = json.loads(text)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(project, dict) or "model" in project:
+        return None
+    if config_dir is None:
+        config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+    model: str | None = None
+    source: Path | None = None
+    for name in ("config.json", "opencode.json", "opencode.jsonc"):
+        try:
+            loaded = load_jsonc((config_dir / name).read_text(encoding="utf-8-sig"))
+            value = loaded.get("model") if isinstance(loaded, dict) else None
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(value, str) and value:
+            model, source = value, config_dir / name
+    if model is None or source is None:
+        return None
+    line = f'  "model": {json.dumps(model, ensure_ascii=False)},\n'
+    updated = re.sub(r"\A\{[ \t]*\n", lambda m: m.group(0) + line, text, count=1)
+    try:
+        ok = json.loads(updated).get("model") == model
+    except ValueError:
+        ok = False
+    if not ok:
+        updated = json.dumps({"model": model, **project}, indent=2, ensure_ascii=False) + "\n"
+    dest.write_text(updated, encoding="utf-8", newline="\n")
+    return model, source

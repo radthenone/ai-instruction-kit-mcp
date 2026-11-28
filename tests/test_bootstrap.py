@@ -1,9 +1,9 @@
-"""Testy bootstrap_workspace — instalacja plików kita z poziomu serwera MCP.
+"""Szybkie testy jednostkowe bootstrapa oraz wspólna baza testów E2E.
 
-Suita odpala **prawdziwy** ``scripts/bootstrap-project.sh`` (na kopii w katalogu
-tymczasowym), bo cała wartość tego narzędzia polega na tym, że skrypt zostaje
-jedynym źródłem prawdy o rozkładzie plików. Bez basha: skip lokalnie, błąd na CI —
-ta sama polityka co w `test_shell_suites`.
+Testy w tym module wywołują bezpośrednio funkcje z ``guides.bootstrap`` w pamięci
+(scalanie ``codex.toml``, JSON, sekcja ``.gitignore``, dobór agentów i dziedziczenie
+modelu OpenCode) bez uruchamiania ``scripts/bootstrap-project.sh`` przez basha.
+Suity integracyjne powłoki są rozbite na ``tests/test_bootstrap_*.py``.
 """
 
 from __future__ import annotations
@@ -18,16 +18,39 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import yaml
-
 from _shell import is_ci, resolve_bash
 
 from guides import server
-from guides.bootstrap import BootstrapError, build_args, find_bash, plan_bootstrap, run_bootstrap
-from guides.bugbot_md import extract_brief, extract_brief_rules, extract_rules, is_pristine
+from guides.bootstrap import (
+    detect_profile_tiers,
+    find_bash,
+    inherit_opencode_model,
+    load_jsonc,
+    merge_gitignore_text,
+    merge_json_config,
+    merge_toml_config,
+    render_gitignore_section,
+    render_mcp_template,
+    stage_shared_agents,
+    sync_gitignore_file,
+    sync_mcp_file,
+)
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 KIT_SKILLS_TEMPLATE = (KIT_ROOT / "templates" / "gitignore-kit.txt").read_text(encoding="utf-8")
+
+_MACHINE_FILES = (
+    ".mcp.json",
+    ".cursor/mcp.json",
+    ".vscode/mcp.json",
+    ".codex/config.toml",
+    ".kiro/settings/mcp.json",
+    ".kilocode/mcp.json",
+    ".agents/mcp_config.json",
+    "opencode.json",
+    ".ai/.kit-bootstrap.json",
+    ".ai/.kit-doctor.json",
+)
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:
@@ -40,7 +63,7 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 
 
 class _BootstrapTestCase(unittest.TestCase):
-    """Wspólny strażnik dostępności basha."""
+    """Wspólny strażnik dostępności basha dla suit integracyjnych ``test_bootstrap_*``."""
 
     # Render starej wersji szablonu BUGBOT.md — bez bloku `project:rules`.
     OLD_TEMPLATE = """# Bugbot — reguły projektu
@@ -102,7 +125,9 @@ Intro (stara wersja szablonu).
         return root
 
 
-class TestFindBash(_BootstrapTestCase):
+class TestFindBash(unittest.TestCase):
+    """Wykrywanie interpretera bash w Pythonie."""
+
     def test_find_bash_points_at_existing_interpreter(self) -> None:
         """Na Windows to ma być konkretny bash.exe, nie samo słowo `bash`."""
         bash = find_bash()
@@ -111,1024 +136,485 @@ class TestFindBash(_BootstrapTestCase):
             self.assertTrue(Path(bash).is_file())
 
 
-class TestDryRun(_BootstrapTestCase):
-    def test_dry_run_does_not_touch_workspace(self) -> None:
-        """Plan powstaje z przebiegu w sandboxie — repo aplikacji zostaje nietknięte."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            (workspace / "README.md").write_text("app\n", encoding="utf-8")
+class TestJsonConfigMergeUnit(unittest.TestCase):
+    """Scalanie konfiguracji JSON klientów MCP bez uruchamiania basha (#160)."""
 
-            before = _snapshot(workspace)
-            plan = plan_bootstrap(
-                workspace_root=workspace,
-                kit_root=KIT_ROOT,
-                clients="claude",
-            )
-            self.assertEqual(_snapshot(workspace), before)
-
-            self.assertIn(".claude/hooks/git-guard.mjs", plan.created)
-            self.assertIn(".claude/settings.json", plan.created)
-            self.assertIn(".ai/.kit-bootstrap.json", plan.created)
-            self.assertEqual(plan.modified, [])
-            self.assertEqual(plan.deleted, [])
-
-    def test_dry_run_reports_deletions_from_client_pruning(self) -> None:
-        """Sprzątanie klientów spoza --clients też widać w planie, zanim skasuje."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / ".cursor" / "hooks").mkdir(parents=True)
-            (workspace / ".cursor" / "mcp.json").write_text("{}\n", encoding="utf-8")
-
-            before = _snapshot(workspace)
-            plan = plan_bootstrap(
-                workspace_root=workspace,
-                kit_root=KIT_ROOT,
-                clients="claude",
-            )
-            self.assertEqual(_snapshot(workspace), before)
-            self.assertIn(".cursor/mcp.json", plan.deleted)
-
-    def test_dry_run_skips_headless_runs(self) -> None:
-        """Logi i worktree runów /headless (#183) nie są kopiowane do sandboxu planu."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            run = workspace / ".ai" / "headless-runs" / "r1"
-            run.mkdir(parents=True)
-            (run / "headless.log").write_text("log\n", encoding="utf-8")
-
-            plan = plan_bootstrap(workspace_root=workspace, kit_root=KIT_ROOT, clients="claude")
-            listed = plan.created + plan.modified + plan.deleted + plan.unchanged
-            self.assertFalse([rel for rel in listed if "headless-runs" in rel], listed)
-
-    def test_dry_run_does_not_list_existing_claude_md_as_created(self) -> None:
-        """Bootstrap tworzy `CLAUDE.md` tylko gdy brak — istniejący nie jest „Nowy” (#279)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            (workspace / "CLAUDE.md").write_text("@AGENTS.md\n# własne\n", encoding="utf-8")
-
-            plan = plan_bootstrap(workspace_root=workspace, kit_root=KIT_ROOT, clients="claude")
-            self.assertNotIn("CLAUDE.md", plan.created)
-            self.assertNotIn("CLAUDE.md", plan.modified)
-
-    def test_dry_run_right_after_real_run_reports_no_changes(self) -> None:
-        """Dry-run zaraz po prawdziwym reloadzie nie ma nic do zrobienia (#279)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / "docs" / "adr").mkdir(parents=True)
-            (workspace / "docs" / "adr" / "0001-x.md").write_text("# x\n", encoding="utf-8")
-            (workspace / "CONTEXT.md").write_text("# Słownik\n", encoding="utf-8")
-            (workspace / "web").mkdir()
-            (workspace / "web" / "package.json").write_text(
-                json.dumps({"scripts": {"build": "next build"}}), encoding="utf-8"
-            )
-            (workspace / "Taskfile.yml").write_text(
-                "version: '3'\ntasks:\n  test:\n    cmds:\n      - pytest -n auto\n",
-                encoding="utf-8",
-            )
-
-            run_bootstrap(kit_root=KIT_ROOT, target=workspace)
-            plan = plan_bootstrap(workspace_root=workspace, kit_root=KIT_ROOT)
-
-            self.assertEqual(plan.created, [])
-            self.assertEqual(plan.modified, [])
-            self.assertEqual(plan.deleted, [])
-
-
-class TestOrcaIntegration(_BootstrapTestCase):
-    """Wpis `orca` w Profilu: bootstrap tworzy orca.yaml, `--remove` usuwa wyrenderowany plik (#456)."""
-
-    def _add_orca_to_profile(self, workspace: Path) -> None:
-        profile = workspace / ".ai" / "project.profile.yaml"
-        text = profile.read_text(encoding="utf-8")
-        self.assertIn("integrations: []", text)
-        profile.write_text(text.replace("integrations: []", "integrations:\n  - orca"), encoding="utf-8")
-
-    def test_orca_yaml_rendered_only_when_listed_in_profile(self) -> None:
-        """orca.yaml powstaje tylko przy wpisie `orca` w Profilu; bez wpisu bootstrap go nie tworzy."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            self.assertFalse((workspace / "orca.yaml").exists())
-
-            self._add_orca_to_profile(workspace)
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-
-            self.assertIn("node .ai/worktree.mjs sync .", (workspace / "orca.yaml").read_text(encoding="utf-8"))
-
-    def test_remove_deletes_orca_yaml_rendered_by_kit(self) -> None:
-        """`--remove` usuwa orca.yaml wyrenderowany przez kit."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            self._add_orca_to_profile(workspace)
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            self.assertTrue((workspace / "orca.yaml").is_file())
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, remove=True)
-
-            self.assertFalse((workspace / "orca.yaml").exists())
-
-
-class TestRealRun(_BootstrapTestCase):
-    def test_run_installs_hooks_settings_and_stamp(self) -> None:
-        """Kryterium ukończenia z issue #31 — hooki, PreToolUse i stamp na dysku."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-
-            self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
-            self.assertTrue((workspace / ".ai" / ".kit-bootstrap.json").is_file())
-            # Karta T3 tylko przy `t3code` w Profilu (#514); domyślny Profil jej nie ma.
-            self.assertFalse((workspace / ".ai" / "night-run-t3.md").exists())
-            settings = (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
-            self.assertIn("PreToolUse", settings)
-
-    def test_inherited_kit_workspace_does_not_leak_into_real_run(self) -> None:
-        """`KIT_WORKSPACE` z otoczenia nie przekierowuje prawdziwego reloadu (#279)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            other = Path(tmp) / "other"
-            other.mkdir()
-
-            with mock.patch.dict(os.environ, {"KIT_WORKSPACE": str(other)}):
-                run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="codex,opencode")
-
-            for rel in (".codex/config.toml", "opencode.json"):
-                with self.subTest(config=rel):
-                    text = (workspace / rel).read_text(encoding="utf-8")
-                    self.assertNotIn(other.as_posix(), text)
-                    self.assertIn(workspace.resolve().as_posix(), text)
-
-    def test_local_source_uses_uv_run_not_uvx(self) -> None:
-        """Lokalny klon: `uv run --project` czyta kod i moduły z dysku.
-
-        `uvx --from <katalog>` cache'uje koło pod wersję pakietu, więc edycja modułu
-        (albo kodu serwera) nie dociera do klienta, dopóki wersja nie wzrośnie.
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-
-            run_bootstrap(
-                target=workspace,
-                kit_root=KIT_ROOT,
-                clients="claude,codex,vscode,opencode",
-                from_src=str(KIT_ROOT),
-            )
-
-            for rel in (
-                ".mcp.json",
-                ".codex/config.toml",
-                ".vscode/mcp.json",
-                "opencode.json",
-            ):
-                with self.subTest(config=rel):
-                    text = (workspace / rel).read_text(encoding="utf-8")
-                    self.assertIn('"uv"', text)
-                    self.assertNotIn('"uvx"', text)
-                    self.assertIn('"run", "--project"', text)
-                    self.assertNotIn("--codegen", text)
-                    self.assertNotIn('"--from"', text)
-                    self.assertIn("--kit-root", text)
-
-    def test_remote_source_keeps_uvx(self) -> None:
-        """Przy źródle zdalnym klonu nie ma — `uvx` jest poprawny, a `--kit-root` wskazywałby w pustkę."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-
-            run_bootstrap(
-                target=workspace,
-                kit_root=KIT_ROOT,
-                clients="claude",
-                from_src="git+https://example.com/kit.git",
-            )
-
-            text = (workspace / ".mcp.json").read_text(encoding="utf-8")
-            self.assertIn('"uvx"', text)
-            self.assertIn('"--from"', text)
-            self.assertNotIn("--kit-root", text)
-
-    def test_gitattributes_installed_only_when_missing(self) -> None:
-        """Brak pliku → szablon z LF; własny plik projektu zostaje nietknięty."""
-        with tempfile.TemporaryDirectory() as tmp:
-            fresh = Path(tmp) / "fresh"
-            fresh.mkdir()
-            run_bootstrap(target=fresh, kit_root=KIT_ROOT, clients="claude")
-            self.assertIn("* text=auto eol=lf", (fresh / ".gitattributes").read_text(encoding="utf-8"))
-
-            own = Path(tmp) / "own"
-            own.mkdir()
-            (own / ".gitattributes").write_bytes(b"*.png binary\n")
-            run_bootstrap(target=own, kit_root=KIT_ROOT, clients="claude")
-            self.assertEqual((own / ".gitattributes").read_bytes(), b"*.png binary\n")
-
-    def test_gitignore_section_is_added_and_idempotent(self) -> None:
-        """Sekcja kita wchodzi raz, nie duplikuje się i nie depcze reguł projektu."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            gitignore = workspace / ".gitignore"
-            gitignore.write_text("node_modules/\n.env\n", encoding="utf-8")
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            first = gitignore.read_text(encoding="utf-8")
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            second = gitignore.read_text(encoding="utf-8")
-
-            self.assertEqual(first, second, "druga instalacja zmieniła .gitignore")
-            self.assertEqual(second.count("# >>> instruction-kit >>>"), 1)
-            self.assertIn("node_modules/", second)
-            self.assertIn(".claude/settings.local.json", second)
-            self.assertIn(".agents/skills/", second)
-
-    def test_gitignore_allows_kit_skills_by_name_only(self) -> None:
-        """Katalog skilli miesza pliki kita z dowiązaniami do ignorowanego `.agents/skills/`.
-
-        Whitelist musi wymieniać skille kita po nazwie — `!.claude/skills/**` wciągnąłby
-        też te dowiązania, a w repo byłyby linkami donikąd (ze ścieżką absolutną maszyny).
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            gitignore = (workspace / ".gitignore").read_text(encoding="utf-8")
-
-            self.assertIn(".claude/skills/*", gitignore)
-            self.assertNotIn("!.claude/skills/**", gitignore)
-            self.assertIn("@KIT_SKILLS_CLAUDE@", KIT_SKILLS_TEMPLATE)
-            self.assertNotIn("@KIT_SKILLS_CLAUDE@", gitignore)
-
-            for name in sorted(
-                p.name for p in (KIT_ROOT / "templates" / "shared" / "skills").iterdir()
-                if p.is_dir()
-            ):
-                with self.subTest(skill=name):
-                    self.assertIn(f"!.claude/skills/{name}/", gitignore)
-
-    # Konfigi MCP, które bootstrap renderuje ze ścieżką maszyny (`uv run --project`,
-    # `--kit-root`, absolutny `--workspace`) — po jednym na klienta.
-    MCP_CONFIGS = (
-        ".mcp.json",
-        ".cursor/mcp.json",
-        ".vscode/mcp.json",
-        ".codex/config.toml",
-        ".kiro/settings/mcp.json",
-        ".kilocode/mcp.json",
-        ".agents/mcp_config.json",
-        "opencode.json",
-    )
-
-    @staticmethod
-    def _git(cwd: Path, *args: str) -> str:
-        result = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
+    def _render(self, template_rel: str, clients_arg: str) -> str:
+        src = KIT_ROOT / template_rel
+        return render_mcp_template(
+            src.read_text(encoding="utf-8"),
+            from_src=str(KIT_ROOT),
+            language="pl",
+            clients_arg=clients_arg,
+            workspace_repl="/tmp/app",
         )
-        return result.stdout.strip()
-
-    def _git_repo(self, workspace: Path) -> None:
-        workspace.mkdir()
-        self._git(workspace, "init", "-q")
-        self._git(workspace, "config", "user.email", "test@test.local")
-        self._git(workspace, "config", "user.name", "test")
-
-    def test_gitignore_keeps_machine_specific_files_out_of_git(self) -> None:
-        """Konfigi MCP i stamp są per maszyna — bootstrap renderuje w nich ścieżkę klona.
-
-        Zacommitowane z jednej maszyny psują serwer MCP na każdej innej (issue #69:
-        `uv run --directory M:/…` na Linuksie → CONNECTION_CLOSED). Reszta konfiguracji
-        AI (hooki, agenci, skille, settings.json) ma zostać wersjonowana jak dotąd.
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            self._git_repo(workspace)
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="all")
-
-            for rel in (*self.MCP_CONFIGS, ".ai/.kit-bootstrap.json"):
-                with self.subTest(ignored=rel):
-                    self.assertTrue(
-                        (workspace / rel).is_file(), f"{rel} nie został wygenerowany"
-                    )
-                    self.assertEqual(
-                        self._git(workspace, "check-ignore", rel), rel, f"{rel} nie jest ignorowany"
-                    )
-
-            for rel in (
-                ".ai/project.md",
-                ".claude/settings.json",
-                ".claude/hooks/git-guard.mjs",
-                ".codex/skills/skill-authoring/SKILL.md",
-                ".cursor/hooks.json",
-                ".github/copilot-instructions.md",
-                ".agents/hooks/git-guard.mjs",
-                ".agents/hooks.json",
-            ):
-                with self.subTest(versioned=rel):
-                    self.assertEqual(
-                        self._git(workspace, "check-ignore", rel), "", f"{rel} jest ignorowany"
-                    )
-
-    def test_bootstrap_warns_about_tracked_mcp_configs(self) -> None:
-        """Wpis w .gitignore nie odśledza pliku, który już siedzi w indeksie.
-
-        Repo zbootstrapowane przed #69 mają konfigi MCP zacommitowane — bootstrap ma to
-        wykryć i podać gotową komendę, ale nie ruszać indeksu gita za użytkownika.
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            self._git_repo(workspace)
-            (workspace / ".vscode").mkdir()
-            (workspace / ".mcp.json").write_text("{}\n", encoding="utf-8")
-            (workspace / ".vscode" / "mcp.json").write_text("{}\n", encoding="utf-8")
-            self._git(workspace, "add", ".mcp.json", ".vscode/mcp.json")
-            self._git(workspace, "commit", "-q", "-m", "old bootstrap")
-
-            out = run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,vscode")
-
-            self.assertIn(" rm --cached .mcp.json .vscode/mcp.json", out)
-            self.assertEqual(
-                self._git(workspace, "ls-files", ".mcp.json"), ".mcp.json",
-                "bootstrap sam odśledził plik — to decyzja użytkownika",
-            )
-
-    def test_bootstrap_is_quiet_when_nothing_machine_specific_is_tracked(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            self._git_repo(workspace)
-
-            out = run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-
-            self.assertNotIn("git rm --cached", out)
-
-    def test_missing_script_is_an_error(self) -> None:
-        """Kit bez skryptu bootstrapu — jasny błąd zamiast cichego nic."""
-        with tempfile.TemporaryDirectory() as tmp:
-            fake_kit = Path(tmp) / "kit"
-            fake_kit.mkdir()
-            with self.assertRaises(BootstrapError) as ctx:
-                run_bootstrap(target=Path(tmp) / "app", kit_root=fake_kit)
-            self.assertIn("bootstrap-project.sh", str(ctx.exception))
-
-
-BACKEND_AGENTS = {"review-backend", "teacher-backend", "subagent-backend"}
-CLIENT_AGENTS = {"review-frontend", "teacher-frontend", "subagent-frontend", "review-ui"}
-
-
-class TestUserConfigMerge(_BootstrapTestCase):
-    """Reload podmienia tylko wpis kita w configach klientów, nie cały plik (#160)."""
-
-    def _run(self, workspace: Path, clients: str) -> str:
-        return run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients)
 
     def test_json_configs_keep_user_servers_and_keys(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "claude,vscode,opencode")
-
-            mine = {"command": "my-server"}
-            edits = {
-                ".mcp.json": ("mcpServers", {}),
-                ".vscode/mcp.json": ("servers", {"inputs": []}),
-                "opencode.json": ("mcp", {"model": "anthropic/claude-x"}),
-            }
-            for rel, (key, extra) in edits.items():
-                path = workspace / rel
-                data = json.loads(path.read_text(encoding="utf-8"))
+        """Reload podmienia tylko wpis kita, zachowuje serwery i klucze użytkownika."""
+        mine = {"command": "my-server"}
+        cases = {
+            "templates/claude/mcp.json": ("mcpServers", {}),
+            "templates/vscode/mcp.json": ("servers", {"inputs": []}),
+            "templates/opencode/opencode.json": ("mcp", {"model": "anthropic/claude-x"}),
+        }
+        for template_rel, (key, extra) in cases.items():
+            with self.subTest(template=template_rel):
+                new_text = self._render(template_rel, "claude,vscode,opencode")
+                data = json.loads(new_text)
                 data[key]["mine"] = mine
                 data[key]["kit-ai-mcp"] = {"command": "stale"}
                 data[key]["project-guides"] = {"command": "legacy"}
                 data.update(extra)
-                path.write_text(json.dumps(data), encoding="utf-8")
 
-            self._run(workspace, "claude,vscode,opencode")
+                merged = json.loads(merge_json_config(json.dumps(data), new_text))
+                self.assertEqual(merged[key]["mine"], mine)
+                self.assertNotEqual(merged[key]["kit-ai-mcp"], {"command": "stale"})
+                self.assertNotIn("project-guides", merged[key])
+                for k, v in extra.items():
+                    self.assertEqual(merged[k], v)
 
-            for rel, (key, extra) in edits.items():
-                with self.subTest(config=rel):
-                    data = json.loads((workspace / rel).read_text(encoding="utf-8"))
-                    self.assertEqual(data[key]["mine"], mine)
-                    self.assertNotEqual(data[key]["kit-ai-mcp"], {"command": "stale"})
-                    self.assertNotIn("project-guides", data[key])
-                    for k, v in extra.items():
-                        self.assertEqual(data[k], v)
-                    self.assertFalse((workspace / (rel + ".bak")).exists())
+    def test_unchanged_config_is_not_rewritten(self) -> None:
+        """Niezmieniony plik JSON nie jest nadpisywany (zachowane formatowanie i mtime)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            dest = workspace / ".mcp.json"
+            src = KIT_ROOT / "templates/claude/mcp.json"
+
+            sync_mcp_file(
+                src,
+                dest,
+                from_src=str(KIT_ROOT),
+                language="pl",
+                clients_arg="claude",
+            )
+            data = json.loads(dest.read_text(encoding="utf-8"))
+            data["mcpServers"]["mine"] = {"command": "x"}
+            custom_text = json.dumps(data, indent=4)
+            dest.write_text(custom_text, encoding="utf-8")
+
+            warning = sync_mcp_file(
+                src,
+                dest,
+                from_src=str(KIT_ROOT),
+                language="pl",
+                clients_arg="claude",
+            )
+            self.assertIsNone(warning)
+            self.assertEqual(dest.read_text(encoding="utf-8"), custom_text)
+
+    def test_unparseable_config_goes_to_bak(self) -> None:
+        """Nieparsowalny JSONC trafia do ``.bak``, a wynikowy plik ma świeży wpis kita."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "app"
+            workspace.mkdir()
+            dest = workspace / "opencode.json"
+            original = '{\n  // komentarz JSONC\n  "mcp": {}\n}\n'
+            dest.write_text(original, encoding="utf-8")
+
+            warning = sync_mcp_file(
+                KIT_ROOT / "templates/opencode/opencode.json",
+                dest,
+                from_src=str(KIT_ROOT),
+                language="pl",
+                clients_arg="opencode",
+                workspace_repl=workspace.as_posix(),
+            )
+
+            self.assertIsNotNone(warning)
+            assert warning is not None
+            self.assertIn("opencode.json.bak", warning)
+            self.assertEqual((workspace / "opencode.json.bak").read_text(encoding="utf-8"), original)
+            self.assertIn("kit-ai-mcp", json.loads(dest.read_text(encoding="utf-8"))["mcp"])
+
+
+class TestCodexTomlMergeUnit(unittest.TestCase):
+    """Przypadki brzegowe scalania ``.codex/config.toml`` w pamięci (#160, #580)."""
+
+    def _base_toml(self) -> str:
+        return render_mcp_template(
+            (KIT_ROOT / "templates/codex/config.toml").read_text(encoding="utf-8"),
+            from_src=str(KIT_ROOT),
+            language="pl",
+            clients_arg="codex",
+            workspace_repl="/tmp/app",
+        )
 
     def test_codex_toml_keeps_user_tables(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            text = path.read_text(encoding="utf-8").replace('"guides-mcp"', '"stale"')
-            mine = '# mój serwer\n[mcp_servers.mine]\ncommand = "x"\n'
-            path.write_text('model = "o3"\n\n' + text + "\n" + mine, encoding="utf-8")
+        """Własne pola i tabele użytkownika zostają, wpis kita jest podmieniany."""
+        base = self._base_toml()
+        stale = base.replace('"guides-mcp"', '"stale"')
+        mine = '# mój serwer\n[mcp_servers.mine]\ncommand = "x"\n'
+        old_text = 'model = "o3"\n\n' + stale + "\n" + mine
 
-            self._run(workspace, "codex")
-
-            text = path.read_text(encoding="utf-8")
-            self.assertIn('model = "o3"', text)
-            self.assertIn(mine, text)
-            self.assertIn('"guides-mcp"', text)
-            self.assertNotIn('"stale"', text)
-            self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
+        merged = merge_toml_config(old_text, base)
+        self.assertIn('model = "o3"', merged)
+        self.assertIn(mine, merged)
+        self.assertIn('"guides-mcp"', merged)
+        self.assertNotIn('"stale"', merged)
+        self.assertEqual(merged.count("[mcp_servers.kit-ai-mcp]"), 1)
 
     def test_codex_toml_drops_legacy_kit_table(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            # Podtabela legacy oddzielona cudzą tabelą to drugi zakres do usunięcia.
-            legacy = (
-                '\n[mcp_servers.project-guides]\ncommand = "old"\n'
-                '\n[mcp_servers.mine]\ncommand = "x"\n'
-                '\n[mcp_servers.project-guides.env]\nKEY = "old"\n'
-            )
-            path.write_text(path.read_text(encoding="utf-8") + legacy, encoding="utf-8")
-
-            self._run(workspace, "codex")
-
-            text = path.read_text(encoding="utf-8")
-            self.assertNotIn("project-guides", text)
-            self.assertNotIn('"old"', text)
-            self.assertIn('[mcp_servers.mine]\ncommand = "x"\n', text)
-            self.assertEqual(text.count("[mcp_servers.kit-ai-mcp]"), 1)
+        """Podtabela legacy oddzielona cudzą tabelą zostaje w całości usunięta."""
+        base = self._base_toml()
+        legacy = (
+            '\n[mcp_servers.project-guides]\ncommand = "old"\n'
+            '\n[mcp_servers.mine]\ncommand = "x"\n'
+            '\n[mcp_servers.project-guides.env]\nKEY = "old"\n'
+        )
+        merged = merge_toml_config(base + legacy, base)
+        self.assertNotIn("project-guides", merged)
+        self.assertNotIn('"old"', merged)
+        self.assertIn('[mcp_servers.mine]\ncommand = "x"\n', merged)
+        self.assertEqual(merged.count("[mcp_servers.kit-ai-mcp]"), 1)
 
     def test_codex_toml_keeps_legacy_header_inside_multiline_string(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            mine = (
-                '\n[mcp_servers.mine.env]\nEXAMPLE = """\n'
-                '[mcp_servers.project-guides]\ncommand = "example"\n[other]\n"""\n'
-            )
-            path.write_text(path.read_text(encoding="utf-8") + mine, encoding="utf-8")
-
-            self._run(workspace, "codex")
-
-            self.assertIn(mine, path.read_text(encoding="utf-8"))
+        """Nagłówek tabeli legacy wewnątrz ciągu wielowierszowego nie jest traktowany jako tabela."""
+        base = self._base_toml()
+        mine = (
+            '\n[mcp_servers.mine.env]\nEXAMPLE = """\n'
+            '[mcp_servers.project-guides]\ncommand = "example"\n[other]\n"""\n'
+        )
+        merged = merge_toml_config(base + mine, base)
+        self.assertIn(mine, merged)
 
     def test_codex_toml_comment_delimiter_does_not_hide_next_table(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            legacy = '\n[mcp_servers.project-guides]\ncommand = "old"\n# """\n'
-            mine = '[mcp_servers.mine]\ncommand = "x"\n'
-            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
-
-            self._run(workspace, "codex")
-
-            text = path.read_text(encoding="utf-8")
-            self.assertNotIn("project-guides", text)
-            self.assertIn(mine, text)
+        """Ogranicznik ciągu w komentarzu TOML nie otwiera ciągu wielowierszowego."""
+        base = self._base_toml()
+        legacy = '\n[mcp_servers.project-guides]\ncommand = "old"\n# """\n'
+        mine = '[mcp_servers.mine]\ncommand = "x"\n'
+        merged = merge_toml_config(base + legacy + mine, base)
+        self.assertNotIn("project-guides", merged)
+        self.assertIn(mine, merged)
 
     def test_codex_toml_escaped_backslash_closes_multiline_string(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            # `\\` przed `"""` to jeden ukośnik w wartości, więc ogranicznik zamyka ciąg.
-            legacy = '\n[mcp_servers.project-guides]\ncommand = """path\\\\"""\n'
-            mine = '[mcp_servers.mine]\ncommand = "x"\n'
-            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
-
-            self._run(workspace, "codex")
-
-            text = path.read_text(encoding="utf-8")
-            self.assertNotIn("project-guides", text)
-            self.assertIn(mine, text)
+        """Parzyste ukośniki przed ``\"\"\"`` pozwalają na zamknięcie ciągu wielowierszowego."""
+        base = self._base_toml()
+        legacy = '\n[mcp_servers.project-guides]\ncommand = """path\\\\"""\n'
+        mine = '[mcp_servers.mine]\ncommand = "x"\n'
+        merged = merge_toml_config(base + legacy + mine, base)
+        self.assertNotIn("project-guides", merged)
+        self.assertIn(mine, merged)
 
     def test_codex_toml_extra_closing_quotes_end_multiline_string(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            # `""""` = cudzysłów w wartości + ogranicznik zamykający.
-            legacy = '\n[mcp_servers.project-guides]\nargs = ["""old"""", """next"""]\n'
-            mine = '[mcp_servers.mine]\ncommand = "x"\n'
-            path.write_text(path.read_text(encoding="utf-8") + legacy + mine, encoding="utf-8")
-
-            self._run(workspace, "codex")
-
-            text = path.read_text(encoding="utf-8")
-            self.assertNotIn("project-guides", text)
-            self.assertIn(mine, text)
+        """Dodatkowe cudzysłowy na końcu ``\"\"\"\"`` zamykają ciąg wielowierszowy."""
+        base = self._base_toml()
+        legacy = '\n[mcp_servers.project-guides]\nargs = ["""old"""", """next"""]\n'
+        mine = '[mcp_servers.mine]\ncommand = "x"\n'
+        merged = merge_toml_config(base + legacy + mine, base)
+        self.assertNotIn("project-guides", merged)
+        self.assertIn(mine, merged)
 
     def test_codex_toml_unsafe_merge_falls_back_to_bak(self) -> None:
+        """Niezgodność danych poza kitem po scalaniu odkłada oryginał do ``.bak``."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            # Wiersz `[1, 2]` w wielowierszowej tablicy wygląda jak nagłówek tabeli. Skaner liniowy
-            # ucina tabelę legacy w złym miejscu; bezpiecznik ma odłożyć oryginał, nie zgubić `mine`.
+            codex_dir = workspace / ".codex"
+            codex_dir.mkdir(parents=True)
+            path = codex_dir / "config.toml"
+            base = self._base_toml()
             legacy = '\n[mcp_servers.project-guides]\nargs = [\n  [1, 2]\n]\n'
             mine = '[mcp_servers.mine]\ncommand = "x"\n'
-            original = path.read_text(encoding="utf-8") + legacy + mine
-            path.write_text(original, encoding="utf-8")
+            path.write_text(base + legacy + mine, encoding="utf-8")
 
-            self._run(workspace, "codex")
+            warning = sync_mcp_file(
+                KIT_ROOT / "templates/codex/config.toml",
+                path,
+                from_src=str(KIT_ROOT),
+                language="pl",
+                clients_arg="codex",
+                workspace_repl=workspace.as_posix(),
+            )
 
-            backup = workspace / ".codex" / "config.toml.bak"
+            self.assertIsNotNone(warning)
+            backup = codex_dir / "config.toml.bak"
             self.assertTrue(backup.is_file())
             self.assertIn(mine, backup.read_text(encoding="utf-8"))
 
     def test_codex_toml_keeps_quoted_server_with_legacy_prefix(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "codex")
-            path = workspace / ".codex" / "config.toml"
-            helper = '\n[mcp_servers."project-guides.helper"]\ncommand = "helper"\n'
-            path.write_text(path.read_text(encoding="utf-8") + helper, encoding="utf-8")
-
-            self._run(workspace, "codex")
-
-            self.assertIn(helper, path.read_text(encoding="utf-8"))
+        """Tabela o nazwie z prefiksem legacy w cudzysłowie nie jest usuwana."""
+        base = self._base_toml()
+        helper = '\n[mcp_servers."project-guides.helper"]\ncommand = "helper"\n'
+        merged = merge_toml_config(base + helper, base)
+        self.assertIn(helper, merged)
 
     def test_codex_toml_without_tomllib_falls_back_to_bak(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            fake_pkg = Path(tmp) / "fake_py"
-            fake_pkg.mkdir()
-            (fake_pkg / "tomllib.py").write_text('raise ImportError("no tomllib")\n', encoding="utf-8")
-            prev_pp = os.environ.get("PYTHONPATH")
-            pythonpath = f"{fake_pkg}{os.pathsep}{prev_pp}" if prev_pp else str(fake_pkg)
-
-            with mock.patch.dict(os.environ, {"PYTHONPATH": pythonpath}):
+        """Brak ``tomllib`` przy obecnej tabeli kita/legacy przerywa scalanie i robi ``.bak`` (#580)."""
+        with mock.patch.dict(sys.modules, {"tomllib": None}):
+            with tempfile.TemporaryDirectory() as tmp:
                 for server_name in ("project-guides", "kit-ai-mcp"):
                     with self.subTest(server_name=server_name):
                         workspace = Path(tmp) / f"app-{server_name}"
-                        workspace.mkdir()
                         codex_dir = workspace / ".codex"
-                        codex_dir.mkdir()
+                        codex_dir.mkdir(parents=True)
                         original = (
                             f'[mcp_servers.{server_name}]\ncommand = "old"\n\n'
                             '[mcp_servers.mine]\ncommand = "x"\n'
                         )
                         (codex_dir / "config.toml").write_text(original, encoding="utf-8")
 
-                        out = self._run(workspace, "codex")
+                        warning = sync_mcp_file(
+                            KIT_ROOT / "templates/codex/config.toml",
+                            codex_dir / "config.toml",
+                            from_src=str(KIT_ROOT),
+                            language="pl",
+                            clients_arg="codex",
+                            workspace_repl=workspace.as_posix(),
+                        )
 
+                        self.assertIsNotNone(warning)
+                        assert warning is not None
                         backup = codex_dir / "config.toml.bak"
                         self.assertTrue(backup.is_file())
                         self.assertEqual(backup.read_text(encoding="utf-8"), original)
-                        self.assertIn("config.toml.bak", out)
-                        self.assertIn("3.11+", out)
+                        self.assertIn("config.toml.bak", warning)
+                        self.assertIn("3.11+", warning)
 
-                # Konfig bez wpisu kita ani legacy nadal dopisuje tabelę bez .bak.
                 clean_ws = Path(tmp) / "app-foreign-only"
-                clean_ws.mkdir()
-                (clean_ws / ".codex").mkdir()
+                (clean_ws / ".codex").mkdir(parents=True)
                 foreign_cfg = '[mcp_servers.mine]\ncommand = "x"\n'
                 (clean_ws / ".codex" / "config.toml").write_text(foreign_cfg, encoding="utf-8")
 
-                self._run(clean_ws, "codex")
+                warning = sync_mcp_file(
+                    KIT_ROOT / "templates/codex/config.toml",
+                    clean_ws / ".codex" / "config.toml",
+                    from_src=str(KIT_ROOT),
+                    language="pl",
+                    clients_arg="codex",
+                    workspace_repl=clean_ws.as_posix(),
+                )
 
+                self.assertIsNone(warning)
                 self.assertFalse((clean_ws / ".codex" / "config.toml.bak").exists())
                 merged = (clean_ws / ".codex" / "config.toml").read_text(encoding="utf-8")
                 self.assertIn(foreign_cfg, merged)
                 self.assertIn("[mcp_servers.kit-ai-mcp]", merged)
 
-    def test_unchanged_config_is_not_rewritten(self) -> None:
+
+class TestGitignoreSectionUnit(unittest.TestCase):
+    """Renderowanie i idempotentne scalanie sekcji ``.gitignore`` w Pythonie."""
+
+    def test_gitignore_section_is_added_and_idempotent(self) -> None:
+        """Sekcja kita wchodzi raz, nie duplikuje się i zachowuje reguły projektu."""
         with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._run(workspace, "claude")
-            path = workspace / ".mcp.json"
-            data = json.loads(path.read_text(encoding="utf-8"))
-            data["mcpServers"]["mine"] = {"command": "x"}
-            text = json.dumps(data, indent=4)
-            path.write_text(text, encoding="utf-8")
+            dest = Path(tmp) / ".gitignore"
+            dest.write_text("node_modules/\n.env\n", encoding="utf-8")
 
-            self._run(workspace, "claude")
+            def sync() -> str | None:
+                return sync_gitignore_file(
+                    dest=dest,
+                    template_path=KIT_ROOT / "templates" / "gitignore-kit.txt",
+                    shared_skills_dir=KIT_ROOT / "templates" / "shared" / "skills",
+                    shared_agents_dir=KIT_ROOT / "templates" / "shared" / "agents",
+                    cursor_skills_dir=KIT_ROOT / "templates" / "cursor" / "skills",
+                    machine_files=_MACHINE_FILES,
+                )
 
-            self.assertEqual(path.read_text(encoding="utf-8"), text)
+            first_action = sync()
+            first = dest.read_text(encoding="utf-8")
+            second_action = sync()
+            second = dest.read_text(encoding="utf-8")
 
-    def test_unparseable_config_goes_to_bak(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            original = '{\n  // komentarz JSONC\n  "mcp": {}\n}\n'
-            (workspace / "opencode.json").write_text(original, encoding="utf-8")
-            (workspace / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+            self.assertEqual(first_action, "dodano")
+            self.assertIsNone(second_action)
+            self.assertEqual(first, second)
+            self.assertEqual(second.count("# >>> instruction-kit >>>"), 1)
+            self.assertIn("node_modules/", second)
+            self.assertIn(".claude/settings.local.json", second)
+            self.assertIn(".agents/skills/", second)
+            self.assertIn("/opencode.json.bak\n", second)
 
-            out = self._run(workspace, "opencode")
-
-            self.assertEqual((workspace / "opencode.json.bak").read_text(encoding="utf-8"), original)
-            self.assertIn("kit-ai-mcp", json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))["mcp"])
-            self.assertIn("opencode.json.bak", out)
-            # Backup ma tę samą treść co config, łącznie z tokenami — nie może wejść do gita.
-            self.assertIn("/opencode.json.bak\n", (workspace / ".gitignore").read_text(encoding="utf-8"))
-
-
-class TestTierAgents(_BootstrapTestCase):
-    """Agenci Stacku tylko dla wybranych Tierów; treść bez Stacka na sztywno."""
-
-    def _bootstrap(self, workspace: Path, backend: str, web: str, mobile: str) -> set[str]:
-        (workspace / ".ai").mkdir(parents=True, exist_ok=True)
-        (workspace / ".ai" / "project.profile.yaml").write_text(
-            f"name: t\nbackend: {backend}\nweb: {web}\nmobile: {mobile}\n", encoding="utf-8"
+    def test_gitignore_allows_kit_skills_by_name_only(self) -> None:
+        """Whitelist wymienia skille kita po nazwie — nie używa ``!.claude/skills/**``."""
+        rendered = render_gitignore_section(
+            template_text=KIT_SKILLS_TEMPLATE,
+            shared_skills_dir=KIT_ROOT / "templates" / "shared" / "skills",
+            shared_agents_dir=KIT_ROOT / "templates" / "shared" / "agents",
+            cursor_skills_dir=KIT_ROOT / "templates" / "cursor" / "skills",
+            machine_files=_MACHINE_FILES,
         )
-        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex,opencode")
-        return {p.stem for p in (workspace / ".claude" / "agents").glob("*.md")}
 
-    def test_agents_follow_tiers(self) -> None:
-        cases = {
-            ("none", "none", "none"): set(),
-            ("fastapi", "none", "none"): BACKEND_AGENTS,
-            ("none", "react", "none"): CLIENT_AGENTS,
-            ("none", "none", "expo"): CLIENT_AGENTS,
-            ("django", "react", "none"): BACKEND_AGENTS | CLIENT_AGENTS,
-        }
-        for tiers, expected in cases.items():
-            with self.subTest(tiers=tiers), tempfile.TemporaryDirectory() as tmp:
-                workspace = Path(tmp) / "app"
-                installed = self._bootstrap(workspace, *tiers)
-                self.assertEqual(installed & (BACKEND_AGENTS | CLIENT_AGENTS), expected)
-                self.assertIn("review-architecture", installed)
-                self.assertIn("teacher-architecture", installed)
-                codex = {p.name for p in (workspace / ".codex" / "skills").iterdir()}
-                self.assertEqual(codex & (BACKEND_AGENTS | CLIENT_AGENTS), expected)
-                bugbot = (workspace / "BUGBOT.md").read_text(encoding="utf-8")
-                self.assertEqual("## Backend" in bugbot, "fastapi" in tiers or "django" in tiers)
-                self.assertNotIn("<!-- tier:", bugbot)
+        self.assertIn(".claude/skills/*", rendered)
+        self.assertNotIn("!.claude/skills/**", rendered)
+        self.assertIn("@KIT_SKILLS_CLAUDE@", KIT_SKILLS_TEMPLATE)
+        self.assertNotIn("@KIT_SKILLS_CLAUDE@", rendered)
 
-    def test_tier_set_to_none_removes_its_agents(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
-            self.assertNotIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
-            self.assertEqual(self._bootstrap(workspace, "django", "none", "none") & BACKEND_AGENTS, BACKEND_AGENTS)
-            # Nietknięty BUGBOT.md podąża za Tierami (install zawsze zaczyna od `none`).
-            self.assertIn("## Backend", (workspace / "BUGBOT.md").read_text(encoding="utf-8"))
-            self.assertEqual(self._bootstrap(workspace, "none", "none", "none") & BACKEND_AGENTS, set())
-            for rel in (".claude/skills/kit-ai/skills/review-backend/SKILL.md", ".codex/skills/review-backend",
-                        ".opencode/commands/kit-ai/review-backend.md"):
-                self.assertFalse((workspace / rel).exists(), rel)
+        for name in sorted(
+            p.name for p in (KIT_ROOT / "templates" / "shared" / "skills").iterdir() if p.is_dir()
+        ):
+            with self.subTest(skill=name):
+                self.assertIn(f"!.claude/skills/{name}/", rendered)
 
-    def test_installed_descriptions_name_no_stack(self) -> None:
-        """Opis agenta nie zakłada Django/Expo — Stack przychodzi z Bundle'a."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            self._bootstrap(workspace, "fastapi", "react", "expo")
-            for agent in (workspace / ".claude" / "agents").glob("*.md"):
-                text = agent.read_text(encoding="utf-8")
-                description = next(l for l in text.splitlines() if l.startswith("description:"))
-                with self.subTest(agent=agent.name):
-                    self.assertNotRegex(description, "Django|DRF|Expo")
-                    self.assertNotIn("\ntier:", text)
+    def test_gitignore_appends_when_end_marker_missing(self) -> None:
+        """Brak markera końcowego nie kasuje reguł użytkownika po markerze początkowym."""
+        existing = "# >>> instruction-kit >>>\ncustom_rule/\n"
+        updated, action = merge_gitignore_text(existing, "# >>> instruction-kit >>>\nkit\n# <<< instruction-kit <<<\n")
+        self.assertEqual(action, "dodano")
+        self.assertIn("custom_rule/", updated)
 
 
-class TestBugbotProjectRules(_BootstrapTestCase):
-    """BUGBOT.md odświeża się z szablonu, a blok ``project:rules`` zostaje (#240)."""
+class TestAgentSelectionUnit(unittest.TestCase):
+    """Dobór tierów z Profilu i filtrowanie agentów w pamięci."""
 
-    def test_block_survives_reload_and_rest_is_refreshed(self) -> None:
-        """Blok reguł projektu wraca bajt w bajt, reszta pliku jest z szablonu."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,cursor")
-            template = (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(
-                encoding="utf-8"
-            )
-            hint = extract_rules(template)
-            assert hint is not None
-            rules = "\n- Reguła projektu A\n- Reguła projektu B\n"
-            for rel in ("BUGBOT.md", ".cursor/BUGBOT.md"):
-                path = workspace / rel
-                text = path.read_text(encoding="utf-8")
-                self.assertIn(hint, text)
-                # Zmiana poza blokiem też ma zniknąć przy reloadzie.
-                text = text.replace(hint, rules).replace(
-                    "- Preferuj minimalny diff", "- moja zmiana kita"
-                )
-                path.write_text(text, encoding="utf-8", newline="\n")
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,cursor")
-
-            for rel in ("BUGBOT.md", ".cursor/BUGBOT.md"):
-                text = (workspace / rel).read_text(encoding="utf-8")
-                self.assertEqual(extract_rules(text), rules, rel)
-                self.assertIn("- Preferuj minimalny diff", text, rel)
-                self.assertNotIn("moja zmiana kita", text, rel)
-
-    def test_migration_moves_added_rules_into_block(self) -> None:
-        """Stary render + 2 dopisane reguły → bieżący szablon z regułami w bloku."""
-        with tempfile.TemporaryDirectory() as tmp:
-            kit = self._kit_with_history(Path(tmp) / "kit")
-            workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=kit, clients="claude,cursor")
-
-            dest = workspace / "BUGBOT.md"
-            for path in (dest, workspace / ".cursor" / "BUGBOT.md"):
-                old = path.read_text(encoding="utf-8")
-                self.assertNotIn("project:rules", old)
-                path.write_text(
-                    old + "\n- Reguła projektu A\n- Reguła projektu B\n",
-                    encoding="utf-8",
-                    newline="\n",
-                )
-
-            (kit / "templates" / "cursor" / "BUGBOT.md").write_text(
-                (KIT_ROOT / "templates" / "cursor" / "BUGBOT.md").read_text(encoding="utf-8"),
-                encoding="utf-8",
-                newline="\n",
-            )
-            self._git(kit, "commit", "-q", "-am", "current template")
-
-            out = run_bootstrap(target=workspace, kit_root=kit, clients="claude,cursor")
-
-            for path in (dest, workspace / ".cursor" / "BUGBOT.md"):
-                text = path.read_text(encoding="utf-8")
-                self.assertEqual(
-                    extract_rules(text), "\n- Reguła projektu A\n- Reguła projektu B\n"
-                )
-                self.assertIn("## Ogólne", text)
-                self.assertNotIn("stara reguła kita", text)
-            self.assertIn("Reguła projektu A", out)
-            self.assertIn("Reguła projektu B", out)
-            # Kopia natywnego BugBota też raportuje przeniesione linie (#240).
-            self.assertIn("  ~ BUGBOT.md: reguły", out)
-            self.assertIn("  ~ .cursor/BUGBOT.md: reguły", out)
-
-
-class TestAgentsProjectBlock(_BootstrapTestCase):
-    """AGENTS.md: część kita odświeżana przy reloadzie, blok ``project:agents`` zostaje (#269)."""
-
-    OLD_AGENTS = "# AGENTS.md\n\nHooki: `.claude/hooks/gate-push.sh`.\n"
-
-    def _kit_with_old_agents(self, root: Path) -> Path:
-        """Kopia kita: commit ze starym ``templates/AGENTS.md``, potem bieżący szablon."""
-        kit = self._kit_with_history(root)
-        template = kit / "templates" / "AGENTS.md"
-        template.write_text(self.OLD_AGENTS, encoding="utf-8", newline="\n")
-        self._git(kit, "commit", "-q", "-am", "old agents")
-        return kit
-
-    def _restore_current(self, kit: Path) -> None:
-        shutil.copy2(KIT_ROOT / "templates" / "AGENTS.md", kit / "templates" / "AGENTS.md")
-        self._git(kit, "commit", "-q", "-am", "current agents")
-
-    def test_untouched_old_agents_is_replaced(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            kit = self._kit_with_old_agents(Path(tmp) / "kit")
-            workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
-            self.assertEqual((workspace / "AGENTS.md").read_text(encoding="utf-8"), self.OLD_AGENTS)
-            self._restore_current(kit)
-
-            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
-
-            text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
-            template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
-            # Brief jest generowany z Profilu, więc plik nie jest bajt w bajt szablonem;
-            # część kitowa i blok projektu muszą się zgadzać (brief normalizuje is_pristine).
-            self.assertTrue(is_pristine(text, template, "agents"))
-            self.assertNotEqual(extract_brief(text), extract_brief(template))
-
-    def test_own_lines_move_into_block(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            kit = self._kit_with_old_agents(Path(tmp) / "kit")
-            workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=kit, clients="claude")
-            agents = workspace / "AGENTS.md"
-            agents.write_text(
-                self.OLD_AGENTS + "\n- Nasza reguła projektu\n", encoding="utf-8", newline="\n"
-            )
-            self._restore_current(kit)
-
-            out = run_bootstrap(target=workspace, kit_root=kit, clients="claude")
-
-            text = agents.read_text(encoding="utf-8")
-            self.assertEqual(extract_rules(text, "agents"), "\n- Nasza reguła projektu\n")
-            self.assertNotIn("gate-push.sh", text)
-            self.assertIn("  ~ AGENTS.md: reguły", out)
-
-    def test_block_survives_reload_and_kit_part_is_refreshed(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            agents = workspace / "AGENTS.md"
-            text = agents.read_text(encoding="utf-8")
-            hint = extract_rules(text, "agents")
-            assert hint is not None
-            rules = "\n- Nasza reguła A\n"
-            agents.write_text(
-                text.replace(hint, rules).replace("## Code review", "## Code review (stare)"),
-                encoding="utf-8",
-                newline="\n",
-            )
-
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-
-            text = agents.read_text(encoding="utf-8")
-            self.assertEqual(extract_rules(text, "agents"), rules)
-            self.assertNotIn("(stare)", text)
-
-
-class TestAgentsBriefBlock(_BootstrapTestCase):
-    """Bootstrap renderuje brief z Profilu i overlayu do bloku ``kit:brief`` (#307)."""
-
-    def test_broken_profile_still_installs_agents_md(self) -> None:
-        """Błąd renderowania briefu nie zatrzymuje bootstrapu — AGENTS.md z domyślnym blokiem."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / ".ai").mkdir(parents=True)
-            (workspace / ".ai" / "project.profile.yaml").write_text(
-                "name: broken\nlanguage: pl\nclients: claude\nbackend: [oops\n",
-                encoding="utf-8",
-            )
-
-            run_bootstrap(
-                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
-            )
-
-            text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
-            template = (KIT_ROOT / "templates" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertEqual(extract_brief(text), extract_brief(template))
-
-    def test_bootstrap_renders_profile_brief_values(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / ".ai").mkdir(parents=True)
-            (workspace / ".ai" / "project.profile.yaml").write_text(
-                "name: brief-app\nlanguage: pl\nclients: claude\n"
-                "backend: fastapi\nweb: none\nmobile: none\ncodegen: none\n",
-                encoding="utf-8",
-            )
-            (workspace / ".ai" / "project.md").write_text(
-                "# Overlay\n\nbase: dev\n\n## Komendy\n\n- test: `make test`\n",
-                encoding="utf-8",
-            )
-
-            run_bootstrap(
-                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
-            )
-
-            brief = extract_brief((workspace / "AGENTS.md").read_text(encoding="utf-8"))
-            self.assertIsNotNone(brief)
-            assert brief is not None
-            self.assertIn("`pl`", brief)
-            self.assertIn("`dev`", brief)
-            self.assertIn("backend=`fastapi`", brief)
-            self.assertIn("`none`", brief)
-            self.assertIn("make test", brief)
-            self.assertIn("project.md", brief)
-
-    def test_reload_refreshes_brief_after_profile_change(self) -> None:
-        """Brief nie jest blokiem projektu — reload podmienia go nowymi wartościami."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / ".ai").mkdir(parents=True)
-            profile = workspace / ".ai" / "project.profile.yaml"
-            profile.write_text(
-                "name: brief-app\nlanguage: pl\nclients: claude\n"
-                "backend: none\nweb: none\nmobile: none\ncodegen: none\n",
-                encoding="utf-8",
-            )
-            run_bootstrap(
-                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
-            )
-            profile.write_text(
-                "name: brief-app\nlanguage: pl\nclients: claude\n"
-                "backend: fastapi\nweb: none\nmobile: none\ncodegen: none\n",
-                encoding="utf-8",
-            )
-
-            run_bootstrap(
-                target=workspace, kit_root=KIT_ROOT, clients="claude", language="pl"
-            )
-
-            brief = extract_brief((workspace / "AGENTS.md").read_text(encoding="utf-8"))
-            self.assertIsNotNone(brief)
-            assert brief is not None
-            self.assertIn("backend=`fastapi`", brief)
-
-    def test_bootstrap_renders_brief_rules_for_language(self) -> None:
-        """Bootstrap i reload renderują reguły briefu w AGENTS.md w języku Profilu (#355)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / ".ai").mkdir(parents=True)
-            profile = workspace / ".ai" / "project.profile.yaml"
-            profile.write_text(
-                "name: brief-rules-app\nlanguage: en\nclients: claude\n"
-                "backend: none\nweb: none\nmobile: none\ncodegen: none\n",
-                encoding="utf-8",
-            )
-            run_bootstrap(
-                target=workspace, kit_root=KIT_ROOT, clients="claude", language="en"
-            )
-
-            agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
-            rules = extract_brief_rules(agents_text)
-            self.assertIsNotNone(rules)
-            assert rules is not None
-            self.assertIn("Task classification and MCP rules", rules)
-            self.assertIn("in English", rules)
-            self.assertNotIn("Zadanie kodowe", rules)
-            self.assertNotIn("po polsku", rules)
-
-
-class TestServerTool(_BootstrapTestCase):
-    """Narzędzie MCP — domyślki, bramka dry-run i odmowy."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        self._saved = (
-            server._kit_root,
-            server._workspace_root,
-            server._clients,
-            server._legacy_config,
+    def test_detect_profile_tiers(self) -> None:
+        """Tiery backend/client działają dla aktualnych i legacy pól Profilu."""
+        self.assertEqual(detect_profile_tiers(""), [])
+        self.assertEqual(detect_profile_tiers("backend: none\nweb: none\nmobile: none\n"), [])
+        self.assertEqual(detect_profile_tiers("backend: fastapi\nweb: none\n"), ["backend"])
+        self.assertEqual(detect_profile_tiers("backend: none\nweb: react\n"), ["client"])
+        self.assertEqual(detect_profile_tiers("backend: none\nmobile: expo\n"), ["client"])
+        self.assertEqual(detect_profile_tiers("backend: django\nweb: react\n"), ["backend", "client"])
+        self.assertEqual(
+            detect_profile_tiers("stacks:\n  django-drf: true\n  expo-router: false\n"),
+            ["backend"],
         )
-        server._kit_root = KIT_ROOT
-        server._clients = ["claude"]
-        server._legacy_config = False
-        self._tmp = tempfile.mkdtemp(prefix="guides-tool-test-")
-        self.addCleanup(shutil.rmtree, self._tmp, True)
-        self.workspace = Path(self._tmp) / "app"
-        self.workspace.mkdir()
-        server._workspace_root = self.workspace
 
-    def tearDown(self) -> None:
-        (
-            server._kit_root,
-            server._workspace_root,
-            server._clients,
-            server._legacy_config,
-        ) = self._saved
+    def test_stage_shared_agents_filters_by_tier_and_headless(self) -> None:
+        """Staging filtruje po ``tier:``, ``headless``, usuwa metadane i ocenia ``<!-- clients: -->``."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "staged"
+            skipped = stage_shared_agents(
+                src_dir=KIT_ROOT / "templates" / "shared" / "agents",
+                dest_dir=dest,
+                tiers={"backend"},
+                clients={"opencode"},
+                headless_enabled=False,
+            )
+            self.assertIn("headless", skipped)
+            self.assertIn("review-frontend", skipped)
+            self.assertNotIn("review-backend", skipped)
+            self.assertTrue((dest / "review-backend.md").is_file())
+            self.assertFalse((dest / "review-frontend.md").exists())
+            backend_text = (dest / "review-backend.md").read_text(encoding="utf-8")
+            self.assertNotIn("\ntier:", backend_text)
+            self.assertNotIn("\nmodel-tier:", backend_text)
+            self.assertNotIn("\nclassification:", backend_text)
+            night_run_text = (dest / "night-run.md").read_text(encoding="utf-8")
+            self.assertNotIn("<!-- clients:", night_run_text)
 
-    def test_default_call_is_dry_run(self) -> None:
-        """Bez argumentów narzędzie planuje, nie instaluje."""
-        before = _snapshot(self.workspace)
-        out = server.bootstrap_workspace()
-        self.assertIn("dry run", out)
-        self.assertIn(".ai/.kit-bootstrap.json", out)
-        self.assertEqual(_snapshot(self.workspace), before)
-
-    def test_explicit_dry_run_false_installs(self) -> None:
-        """Zapis wymaga jawnego dry_run=False."""
-        out = server.bootstrap_workspace(dry_run=False)
-        self.assertIn("zainstalowano", out)
-        self.assertTrue((self.workspace / ".ai" / ".kit-bootstrap.json").is_file())
-        self.assertTrue((self.workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
-
-    def test_report_has_no_empty_sections(self) -> None:
-        """Każdy nagłówek `##` w raporcie musi mieć pod sobą wyliczenie."""
-        server.bootstrap_workspace(dry_run=False)
-        out = server.bootstrap_workspace()
-
-        self.assertIn("Bez zmian:", out)
-        self.assertNotIn("## Bez zmian", out)
-        lines = out.splitlines()
-        for index, line in enumerate(lines):
-            if not line.startswith("## "):
-                continue
-            body = [rest for rest in lines[index + 1 :] if rest.strip()]
-            self.assertTrue(body and body[0].startswith("- `"), msg=f"pusta sekcja: {line}")
-
-    def test_missing_workspace_errors_instead_of_writing_cwd(self) -> None:
-        """Brak --workspace: błąd, a bieżący katalog procesu zostaje nietknięty."""
-        server._workspace_root = None
-        cwd_sentinel = Path(self._tmp) / "cwd"
-        cwd_sentinel.mkdir()
-        previous = Path.cwd()
-        os.chdir(cwd_sentinel)
-        self.addCleanup(os.chdir, previous)
-
-        out = server.bootstrap_workspace(dry_run=False)
-
-        self.assertIn("błąd", out)
-        self.assertIn("--workspace", out)
-        self.assertEqual(_snapshot(cwd_sentinel), {})
-
-    def test_workspace_equal_to_kit_is_refused(self) -> None:
-        """Bootstrap repo kita samym sobą to pomyłka, nie funkcja."""
-        server._workspace_root = KIT_ROOT
-        out = server.bootstrap_workspace(dry_run=False)
-        self.assertIn("błąd", out)
-        self.assertIn("ten sam katalog", out)
-
-    def test_invalid_clients_is_reported_not_raised(self) -> None:
-        """Zła wartość --clients wraca jako komunikat narzędzia."""
-        out = server.bootstrap_workspace(clients="nieistniejacy-klient")
-        self.assertIn("błąd", out)
+    def test_stage_shared_agents_rejects_unclosed_client_block(self) -> None:
+        """Niedomknięty znacznik ``<!-- clients: -->`` podnosi ``ValueError``."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src"
+            dest = Path(tmp) / "dest"
+            src.mkdir()
+            (src / "broken.md").write_text(
+                "---\nname: broken\n---\n<!-- clients: claude -->\nbody\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                stage_shared_agents(
+                    src_dir=src,
+                    dest_dir=dest,
+                    tiers=set(),
+                    clients={"claude"},
+                    headless_enabled=False,
+                )
 
 
-class TestTestNamePolicy(_BootstrapTestCase):
+class TestOpencodeDefaultModelUnit(unittest.TestCase):
+    """Dziedziczenie ``model`` z globalnego configu OpenCode w Pythonie (#167)."""
+
+    def _new_project_config(self, workspace: Path) -> Path:
+        dest = workspace / "opencode.json"
+        sync_mcp_file(
+            KIT_ROOT / "templates/opencode/opencode.json",
+            dest,
+            from_src=str(KIT_ROOT),
+            language="pl",
+            clients_arg="opencode",
+            workspace_repl=workspace.as_posix(),
+        )
+        return dest
+
+    def _global(self, home: Path, name: str, text: str) -> Path:
+        cfg_dir = home / "opencode"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        path = cfg_dir / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_missing_project_model_is_copied_from_global(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark", "theme": "x"}')
+
+            res = inherit_opencode_model(dest, config_dir=home / "opencode")
+            self.assertIsNotNone(res)
+            data = json.loads(dest.read_text(encoding="utf-8"))
+            self.assertEqual(data["model"], "opencode/muse-spark")
+            self.assertNotIn("theme", data)
+
+    def test_project_model_is_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
+            data = json.loads(dest.read_text(encoding="utf-8"))
+            data["model"] = "anthropic/claude-x"
+            dest.write_text(json.dumps(data), encoding="utf-8")
+
+            self.assertIsNone(inherit_opencode_model(dest, config_dir=home / "opencode"))
+            self.assertEqual(json.loads(dest.read_text(encoding="utf-8"))["model"], "anthropic/claude-x")
+
+    def test_no_global_config_or_model_leaves_field_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self.assertIsNone(inherit_opencode_model(dest, config_dir=home / "opencode"))
+            self.assertNotIn("model", json.loads(dest.read_text(encoding="utf-8")))
+            self._global(home, "opencode.json", '{"theme": "x"}')
+            self.assertIsNone(inherit_opencode_model(dest, config_dir=home / "opencode"))
+            self._global(home, "opencode.json", "{ zepsuty")
+            self.assertIsNone(inherit_opencode_model(dest, config_dir=home / "opencode"))
+
+    def test_inherited_model_keeps_kit_layout_of_opencode_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
+
+            inherit_opencode_model(dest, config_dir=home / "opencode")
+            self.assertIn('"run", "--project"', dest.read_text(encoding="utf-8"))
+
+    def test_last_global_file_wins_like_opencode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self._global(home, "config.json", '{"model": "a/legacy"}')
+            self._global(home, "opencode.json", '{"model": "a/json"}')
+            self._global(home, "opencode.jsonc", '{"model": "a/jsonc"}')
+
+            inherit_opencode_model(dest, config_dir=home / "opencode")
+            self.assertEqual(json.loads(dest.read_text(encoding="utf-8"))["model"], "a/jsonc")
+
+    def test_global_config_with_bom_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self._global(home, "opencode.json", '\ufeff{"model": "a/bom"}')
+
+            inherit_opencode_model(dest, config_dir=home / "opencode")
+            self.assertEqual(json.loads(dest.read_text(encoding="utf-8"))["model"], "a/bom")
+
+    def test_jsonc_global_config_with_comments_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
+            dest = self._new_project_config(workspace)
+            self._global(
+                home,
+                "opencode.jsonc",
+                '{\n  // domyślny\n  "$schema": "https://opencode.ai/config.json",\n'
+                '  /* darmowy */ "model": "opencode/muse-spark",\n}\n',
+            )
+            parsed = load_jsonc((home / "opencode" / "opencode.jsonc").read_text(encoding="utf-8"))
+            self.assertEqual(parsed["model"], "opencode/muse-spark")
+            inherit_opencode_model(dest, config_dir=home / "opencode")
+            self.assertEqual(json.loads(dest.read_text(encoding="utf-8"))["model"], "opencode/muse-spark")
+
+
+class TestTestNamePolicy(unittest.TestCase):
     """Nazwy testów zawsze po angielsku, także przy `language: pl` (#163)."""
 
     def _language(self, lang: str) -> str:
@@ -1148,440 +634,6 @@ class TestTestNamePolicy(_BootstrapTestCase):
         en = self._language("en")
         self.assertIn("test function and class names", en)
         self.assertNotIn("/tdd", en)
-
-    def test_bugbot_blocks_non_english_test_names(self) -> None:
-        """Zbootstrapowany BUGBOT.md ma blokującą regułę na nieangielskie nazwy."""
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            bugbot = (workspace / "BUGBOT.md").read_text(encoding="utf-8")
-            rule = bugbot[bugbot.index("Non-English identifier") - 300:]
-            self.assertIn("`test_*`", rule)
-            self.assertIn("blocking bug", rule)
-
-
-
-class TestModelTiers(_BootstrapTestCase):
-    """`targets:` / `agents:` w Profilu → `model:` i `effort:` u Claude (#168, #515)."""
-
-    def _install(self, workspace: Path, profile_extra: str = "") -> None:
-        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
-        if profile_extra:
-            profile = workspace / ".ai" / "project.profile.yaml"
-            profile.write_text(profile.read_text(encoding="utf-8") + profile_extra, encoding="utf-8")
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
-
-    def test_without_models_agents_have_no_model_field(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace)
-            profile = (workspace / ".ai" / "project.profile.yaml").read_text(encoding="utf-8")
-            self.assertIn("\nagents:\n  light: ", profile)
-            for rel in (".claude/agents/git-start.md", ".opencode/commands/kit-ai/git-start.md"):
-                text = (workspace / rel).read_text(encoding="utf-8")
-                self.assertNotIn("model:", text.split("---")[1], rel)
-                self.assertNotIn("model-tier", text, rel)
-
-    def test_targets_render_model_and_effort_for_claude_only(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(
-                workspace,
-                "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n"
-                "      model: claude-haiku-5-5\n      options: [{ id: effort, value: low }]\n"
-                "    takeover:\n      providerInstanceId: claudeAgent\n      model: claude-haiku-5-5\n"
-                "  opencode:\n    light:\n      providerInstanceId: opencode\n"
-                "      model: anthropic/claude-haiku-5-5\n"
-                "    takeover:\n      providerInstanceId: opencode\n      model: anthropic/claude-haiku-5-5\n",
-            )
-            read = lambda rel: (workspace / rel).read_text(encoding="utf-8")  # noqa: E731
-            self.assertIn("\nmodel: claude-haiku-5-5\neffort: low\n---", read(".claude/agents/git-start.md"))
-            self.assertIn(
-                "\nmodel: anthropic/claude-haiku-5-5\n---", read(".opencode/commands/kit-ai/git-start.md")
-            )
-            self.assertNotIn("model:", read(".claude/skills/kit-ai/skills/git-start/SKILL.md").split("---")[1])
-            self.assertNotIn("model:", read(".claude/agents/night-run.md").split("---")[1])
-
-    def test_models_key_stops_bootstrap_with_migration_hint(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
-            profile = workspace / ".ai" / "project.profile.yaml"
-            profile.write_text(
-                profile.read_text(encoding="utf-8") + "\nmodels:\n  claude:\n    light: haiku\n",
-                encoding="utf-8",
-            )
-            with self.assertRaises(BootstrapError) as ctx:
-                run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,opencode")
-            self.assertIn("models:", str(ctx.exception))
-            self.assertIn("targets:", str(ctx.exception))
-
-    def test_invalid_agents_block_fails_with_reason(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            with self.assertRaises(BootstrapError) as ctx:
-                self._install(
-                    workspace,
-                    "\ntargets:\n  claude:\n    turbo:\n      providerInstanceId: claudeAgent\n",
-                )
-            self.assertIn("targets.claude.turbo", str(ctx.exception))
-
-
-class TestClaudeAgentDescription(_BootstrapTestCase):
-    """Kopia agenta Claude z " #" w opisie wraca z YAML w całości (#547)."""
-
-    def test_generated_claude_agent_keeps_full_description(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            text = (workspace / ".claude" / "agents" / "git-end.md").read_text(encoding="utf-8")
-            meta = yaml.safe_load(text.split("---\n")[1])
-            self.assertIn("(Closes #N)", meta["description"])
-            self.assertTrue(meta["description"].endswith("(Dawniej git-pr.)"), meta["description"])
-
-
-class TestOpencodeGuards(_BootstrapTestCase):
-    """`--clients opencode` kładzie plugin guardów i guardy w `.opencode/` (#166)."""
-
-    def test_opencode_gets_guard_plugin_and_guards(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
-            self.assertTrue((workspace / ".opencode/plugins/kit-guards.js").is_file())
-            for guard in ("invoke-hook.js", "git-guard.mjs", "sensitive-files-guard.mjs"):
-                with self.subTest(guard=guard):
-                    self.assertEqual(
-                        (workspace / ".opencode/hooks" / guard).read_bytes(),
-                        (KIT_ROOT / "templates/shared/guards" / guard).read_bytes(),
-                    )
-
-    def test_dropping_opencode_removes_its_guards(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude")
-            self.assertFalse((workspace / ".opencode").exists())
-
-
-class TestServerGuardInstall(_BootstrapTestCase):
-    """Server-guard i jego JSON trafiają do hooków claude, cursor i opencode (#194)."""
-
-    def test_guard_wired_and_config_rendered_for_each_client(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            (workspace / ".ai").mkdir(parents=True)
-            (workspace / ".ai/project.profile.yaml").write_text(
-                'server:\n  deny:\n    - "bunx eas-cli"\n', encoding="utf-8"
-            )
-            (workspace / "Taskfile.yml").write_text(
-                "version: '3'\ntasks:\n  up:\n    cmds:\n      - docker compose up -d\n", encoding="utf-8"
-            )
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,cursor,opencode")
-            for hooks in (".claude/hooks", ".cursor/hooks", ".opencode/hooks"):
-                with self.subTest(hooks=hooks):
-                    self.assertEqual(
-                        (workspace / hooks / "server-guard.mjs").read_bytes(),
-                        (KIT_ROOT / "templates/shared/guards/server-guard.mjs").read_bytes(),
-                    )
-                    config = json.loads((workspace / hooks / "server-guard.json").read_text(encoding="utf-8"))
-                    self.assertEqual(config["project_deny"], ["bunx eas-cli"])
-                    self.assertTrue(any("task up" in w["chain"] for w in config["wrappers"]))
-            settings = json.loads((workspace / ".claude/settings.json").read_text(encoding="utf-8"))
-            pre = settings["hooks"]["PreToolUse"]
-            bash = next(e for e in pre if e["matcher"] == "Bash")
-            self.assertTrue(any("server-guard.mjs" in h["command"] for h in bash["hooks"]))
-            self.assertTrue(any("playwright" in e["matcher"] and "server-guard.mjs" in e["hooks"][0]["command"] for e in pre))
-            self.assertIn("server-guard.mjs", (workspace / ".cursor/hooks.json").read_text(encoding="utf-8"))
-            self.assertIn("server-guard.mjs", (workspace / ".opencode/plugins/kit-guards.js").read_text(encoding="utf-8"))
-
-
-class TestSensitiveGuardBashWiring(_BootstrapTestCase):
-    """Sensitive guard widzi Bash tam, gdzie git-guard już go widzi (#231)."""
-
-    def test_shell_reads_wired_for_each_client(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="claude,codex,cursor,vscode")
-
-            settings = json.loads((workspace / ".claude/settings.json").read_text(encoding="utf-8"))
-            bash = next(e for e in settings["hooks"]["PreToolUse"] if "Bash" in e["matcher"].split("|"))
-            self.assertTrue(
-                any("sensitive-files-guard.mjs" in h["command"] for h in bash["hooks"]), bash
-            )
-
-            codex = json.loads((workspace / ".codex/hooks.json").read_text(encoding="utf-8"))
-            bash = next(e for e in codex["hooks"]["PreToolUse"] if "Bash" in e["matcher"].split("|"))
-            self.assertTrue(
-                any("sensitive-files-guard.mjs" in h["command"] for h in bash["hooks"]), bash
-            )
-
-            cursor = json.loads((workspace / ".cursor/hooks.json").read_text(encoding="utf-8"))
-            shell_guards = [h["command"] for h in cursor["hooks"]["beforeShellExecution"]]
-            self.assertTrue(
-                any("sensitive-files-guard.mjs" in c for c in shell_guards), shell_guards
-            )
-
-            # VS Code: hooki PreToolUse bez matchera widzą wszystkie narzędzia, także Bash.
-            copilot = json.loads(
-                (workspace / ".github/hooks/kit-guards.json").read_text(encoding="utf-8")
-            )
-            self.assertTrue(
-                any("sensitive-files-guard.mjs" in e["command"] for e in copilot["hooks"]["PreToolUse"]),
-                copilot,
-            )
-
-
-class TestOpencodeDefaultModel(_BootstrapTestCase):
-    """Projektowy `opencode.json` dziedziczy `model` z globalnego configu (#167)."""
-
-    def _run(self, home: Path, workspace: Path) -> dict:
-        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(home)}):
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients="opencode")
-        return json.loads((workspace / "opencode.json").read_text(encoding="utf-8"))
-
-    def _global(self, home: Path, name: str, text: str) -> None:
-        (home / "opencode").mkdir(parents=True, exist_ok=True)
-        (home / "opencode" / name).write_text(text, encoding="utf-8")
-
-    def test_missing_project_model_is_copied_from_global(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self._global(home, "opencode.json", '{"model": "opencode/muse-spark", "theme": "x"}')
-            data = self._run(home, workspace)
-            self.assertEqual(data["model"], "opencode/muse-spark")
-            self.assertNotIn("theme", data)
-
-    def test_project_model_is_never_overwritten(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
-            self._run(home, workspace)
-            path = workspace / "opencode.json"
-            data = json.loads(path.read_text(encoding="utf-8"))
-            data["model"] = "anthropic/claude-x"
-            path.write_text(json.dumps(data), encoding="utf-8")
-            self.assertEqual(self._run(home, workspace)["model"], "anthropic/claude-x")
-
-    def test_no_global_config_or_model_leaves_field_out(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self.assertNotIn("model", self._run(home, workspace))
-            self._global(home, "opencode.json", '{"theme": "x"}')
-            self.assertNotIn("model", self._run(home, workspace))
-            self._global(home, "opencode.json", "{ zepsuty")
-            self.assertNotIn("model", self._run(home, workspace))
-
-    def test_inherited_model_keeps_kit_layout_of_opencode_json(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self._global(home, "opencode.json", '{"model": "opencode/muse-spark"}')
-            self._run(home, workspace)
-            text = (workspace / "opencode.json").read_text(encoding="utf-8")
-            self.assertIn('"run", "--project"', text)
-
-    def test_last_global_file_wins_like_opencode(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self._global(home, "config.json", '{"model": "a/legacy"}')
-            self._global(home, "opencode.json", '{"model": "a/json"}')
-            self._global(home, "opencode.jsonc", '{"model": "a/jsonc"}')
-            self.assertEqual(self._run(home, workspace)["model"], "a/jsonc")
-
-    def test_global_config_with_bom_is_read(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self._global(home, "opencode.json", '\ufeff{"model": "a/bom"}')
-            self.assertEqual(self._run(home, workspace)["model"], "a/bom")
-
-    def test_jsonc_global_config_with_comments_is_read(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            home, workspace = Path(tmp) / "cfg", Path(tmp) / "app"
-            workspace.mkdir()
-            self._global(
-                home,
-                "opencode.jsonc",
-                '{\n  // domyślny\n  "$schema": "https://opencode.ai/config.json",\n'
-                '  /* darmowy */ "model": "opencode/muse-spark",\n}\n',
-            )
-            self.assertEqual(self._run(home, workspace)["model"], "opencode/muse-spark")
-
-
-
-class TestHeadlessAgent(_BootstrapTestCase):
-    """Agent `/headless` i wrapper tylko przy ≥2 klientach z trybem headless (#169)."""
-
-    HOST_FILES = {
-        "claude": (".claude/agents/headless.md", ".claude/skills/kit-ai/skills/headless/SKILL.md"),
-        "opencode": (".opencode/commands/kit-ai/headless.md",),
-        "codex": (".codex/skills/headless/SKILL.md",),
-        "cursor": (".cursor/agents/headless.md",),
-    }
-
-    def _install(self, workspace: Path, clients: str) -> None:
-        run_bootstrap(target=workspace, kit_root=KIT_ROOT, clients=clients)
-
-    def test_installed_for_every_host_with_its_own_host_id(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace, "claude,opencode,codex,cursor")
-            import sys
-            sys.path.insert(0, str(KIT_ROOT / "scripts"))
-            from command_prefix import read_values, resolve
-            sigil, namespace, name_prefix = read_values(KIT_ROOT / "manifest.yaml", "shared")
-            expected_headless = resolve(
-                (KIT_ROOT / "templates/shared/headless/headless.mjs").read_text(encoding="utf-8"),
-                sigil=sigil,
-                namespace=namespace,
-                name_prefix=name_prefix,
-            )
-            self.assertEqual(
-                (workspace / ".ai/headless.mjs").read_text(encoding="utf-8"),
-                expected_headless,
-            )
-            for host, files in self.HOST_FILES.items():
-                for rel in files:
-                    with self.subTest(file=rel):
-                        text = (workspace / rel).read_text(encoding="utf-8")
-                        self.assertIn(f"--host {host} ", text)
-                        self.assertNotIn("@KIT_HOST@", text)
-
-    def test_not_installed_with_fewer_than_two_headless_clients(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace, "claude,codex,cursor")
-            self.assertFalse((workspace / ".ai/headless.mjs").exists())
-            self.assertFalse((workspace / ".claude/agents/headless.md").exists())
-            self.assertFalse((workspace / ".codex/skills/headless").exists())
-
-    def test_installed_with_antigravity_as_executor(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace, "claude,antigravity")
-            self.assertTrue((workspace / ".ai/headless.mjs").is_file())
-            self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
-
-    def test_removed_when_clients_drop_below_two(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace, "claude,opencode,antigravity")
-            self.assertTrue((workspace / ".agents/skills/headless/SKILL.md").is_file())
-            self._install(workspace, "claude,codex")
-            self.assertFalse((workspace / ".agents/skills/headless").exists())
-            self.assertFalse((workspace / ".ai/headless.mjs").exists())
-            self.assertFalse((workspace / ".claude/agents/headless.md").exists())
-            self.assertFalse((workspace / ".claude/skills/kit-ai/skills/headless/SKILL.md").exists())
-
-    def test_light_tier_model_lands_in_claude_agent(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace, "claude,opencode")
-            agent = workspace / ".claude/agents/headless.md"
-            self.assertNotIn("model:", agent.read_text(encoding="utf-8").split("---")[1])
-            profile = workspace / ".ai/project.profile.yaml"
-            profile.write_text(
-                profile.read_text(encoding="utf-8")
-                + "\ntargets:\n  claude:\n    light:\n      providerInstanceId: claudeAgent\n      model: haiku\n"
-                "    takeover:\n      providerInstanceId: claudeAgent\n      model: haiku\n",
-                encoding="utf-8",
-            )
-            self._install(workspace, "claude,opencode")
-            self.assertIn("\nmodel: haiku\n---", agent.read_text(encoding="utf-8"))
-
-    def test_remove_deletes_wrapper(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-            self._install(workspace, "claude,opencode")
-            run_bootstrap(target=workspace, kit_root=KIT_ROOT, remove=True)
-            self.assertFalse((workspace / ".ai/headless.mjs").exists())
-
-
-# Atrapy shimów pyenv-win (podmieniane na PATH tylko w teście, `{real}` = prawdziwy Python).
-_PLAIN_SHIM = """#!/bin/sh
-exec "{real}" "$@"
-"""
-
-# Wielolinijkowe `-c` nie przechodzi przez shim, reszta idzie do prawdziwego Pythona.
-_MULTILINE_BREAKING_SHIM = """#!/bin/sh
-NL='
-'
-for arg in "$@"; do
-  case "$arg" in *"$NL"*) echo "shim: wielolinijkowe -c" >&2; exit 97 ;; esac
-done
-exec "{real}" "$@"
-"""
-
-# `command -v` go widzi, ale uruchomić się nie da (pyenv-win bez zainstalowanej wersji).
-_DEAD_SHIM = """#!/bin/sh
-echo "'python3' is not recognized as an internal or external command" >&2
-exit 1
-"""
-
-
-class TestPythonShimResolution(_BootstrapTestCase):
-    """Bootstrap uruchomiony bez KIT_PYTHON nie może ufać shimom `python3` / `python` (#420)."""
-
-    def _run_with_shims(self, workspace: Path, shims: dict[str, str]) -> subprocess.CompletedProcess:
-        shim_dir = workspace.parent / "shim"
-        shim_dir.mkdir()
-        real = Path(sys.executable).as_posix()
-        for name, body in shims.items():
-            path = shim_dir / name
-            path.write_text(body.format(real=real), encoding="utf-8", newline="\n")
-            path.chmod(0o755)
-        argv = build_args(kit_root=KIT_ROOT, target=workspace, clients="claude")
-        new_path = os.pathsep.join([str(shim_dir), os.environ.get("PATH", "")])
-        with mock.patch.dict(os.environ, {"PATH": new_path}):
-            os.environ.pop("KIT_PYTHON", None)
-            os.environ.pop("KIT_WORKSPACE", None)
-            return subprocess.run(
-                [find_bash(), "--noprofile", "--norc", *argv],
-                capture_output=True,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                check=False,
-            )
-
-    def test_bootstrap_runs_through_python3_shim_that_breaks_multiline_c(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-
-            result = self._run_with_shims(workspace, {"python3": _MULTILINE_BREAKING_SHIM})
-
-            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
-            self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
-
-    def test_bootstrap_skips_python3_that_does_not_run(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "app"
-            workspace.mkdir()
-
-            result = self._run_with_shims(
-                workspace, {"python3": _DEAD_SHIM, "python": _PLAIN_SHIM}
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr[-2000:])
-            self.assertTrue((workspace / ".claude" / "hooks" / "git-guard.mjs").is_file())
 
 
 if __name__ == "__main__":
